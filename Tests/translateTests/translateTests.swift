@@ -1,8 +1,10 @@
-import Testing
+import AppKit
+import XCTest
 @testable import translate
 
-@Test func example() async throws {
-    // Write your test here and use APIs like `#expect(...)` to check expected conditions.
-    // Swift Testing Documentation
-    // https://developer.apple.com/documentation/testing
+final class TranslateTests: XCTestCase {
+    func testMarkdownDisplayPreservesReadableText() {
+        let rendered = NSAttributedString.markdownDisplay("**Bold** and *italic*", font: .systemFont(ofSize: 13))
+        XCTAssertEqual(rendered.string, "Bold and italic")
+    }
 }
