@@ -1,0 +1,23 @@
+{
+  "apiBaseURL": "http://localhost:20128/v1/chat/completions",
+  "keychainService": "9r-api-key",
+  "model": "9r-gemini-low",
+  "lang": "Vietnamese",
+  "systemPrompt": "You are a translation system. Translate the selected text to {{config.lang}}. Return only the final replacement text, with no explanations. Preserve meaning, tone, names, numbers, URLs, line breaks, and formatting where possible. The output will directly replace the user's selected text.",
+  "speechSourceModel": "edge-tts/en-US-AvaMultilingualNeural",
+  "speechSourceModelVietnamese": "edge-tts/vi-VN-HoaiMyNeural",
+  "speechSourceModelChinese": "edge-tts/zh-CN-XiaoxiaoNeural",
+  "speechTargetModel": "edge-tts/vi-VN-HoaiMyNeural",
+  "hotkey": {
+    "key": "D",
+    "option": true,
+    "command": false,
+    "control": false,
+    "shift": false
+  },
+  "ui": {
+    "width": 480,
+    "height": 320,
+    "autoCopy": false
+  }
+}
