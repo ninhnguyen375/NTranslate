@@ -5,38 +5,8 @@ import Carbon.HIToolbox
 import AVFoundation
 
 extension NSAttributedString {
-    static func markdownDisplay(_ text: String, font: NSFont) -> NSAttributedString {
+    static func plainDisplay(_ text: String, font: NSFont) -> NSAttributedString {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else {
-            return NSAttributedString(string: "", attributes: [.font: font, .foregroundColor: NSColor.labelColor])
-        }
-        let markdown = trimmed.replacingOccurrences(of: "\n", with: "  \n")
-        if #available(macOS 12.0, *) {
-            if let attributed = try? AttributedString(
-                markdown: markdown,
-                options: AttributedString.MarkdownParsingOptions(interpretedSyntax: .full)
-            ) {
-                let mutable = NSMutableAttributedString(attributedString: NSAttributedString(attributed))
-                let fullRange = NSRange(location: 0, length: mutable.length)
-                mutable.addAttributes([
-                    .font: font,
-                    .foregroundColor: NSColor.labelColor
-                ], range: fullRange)
-                mutable.enumerateAttribute(.font, in: fullRange) { value, range, _ in
-                    guard let currentFont = value as? NSFont else { return }
-                    let traits = currentFont.fontDescriptor.symbolicTraits
-                    var converted = font
-                    if traits.contains(.bold) {
-                        converted = NSFontManager.shared.convert(converted, toHaveTrait: .boldFontMask)
-                    }
-                    if traits.contains(.italic) {
-                        converted = NSFontManager.shared.convert(converted, toHaveTrait: .italicFontMask)
-                    }
-                    mutable.addAttribute(.font, value: converted, range: range)
-                }
-                return mutable
-            }
-        }
         return NSAttributedString(string: trimmed, attributes: [.font: font, .foregroundColor: NSColor.labelColor])
     }
 }
@@ -169,7 +139,9 @@ final class Translator {
         You are an English learning assistant for a Vietnamese learner.
         Explain the selected text in concise Vietnamese.
         If the selected text is not a single English word, extract the most useful English word or short phrase to learn.
-        Return markdown only in this exact format, with no intro and no extra sections:
+
+        Return plain text only. No markdown. No intro. No commentary. No code fences.
+        Follow this format exactly. Keep every item on its own line:
 
         IPA: /.../
         n. ...
@@ -187,13 +159,37 @@ final class Translator {
         - ...
         - ...
 
-        Rules:
+        Hard rules:
         - Omit any part of speech that does not fit.
         - Keep each meaning very short.
         - Examples must be natural and useful.
+        - Each example sentence MUST start with "- " on its own line.
+        - Each Vietnamese translation MUST be on the next line and start with "  → ".
+        - Do not put meanings and examples on the same line.
+        - Do not merge two examples into one paragraph.
+        - Do not put any text after a meaning on the same line.
+        - Put exactly one blank line between sections.
+        - "Ví dụ" and "Nhớ nhanh" must each be on their own line.
         - In "Nhớ nhanh", explain the fastest way to grasp and remember the word.
+        - Preserve line breaks exactly.
+        - Output plain text only. Do not use markdown formatting such as **, *, #, _, [], or code fences.
         - Target learner language: Vietnamese.
         - Source language hint: \(sourceLang). Target language hint: \(targetLang).
+
+        Good output example:
+        IPA: /ˈɡræfɪks/
+        n. đồ họa; hình ảnh máy tính.
+
+        Ví dụ
+        - High-quality graphics make the game look realistic.
+          → Đồ họa chất lượng cao làm cho trò chơi trông chân thực.
+        - The company specializes in computer graphics.
+          → Công ty chuyên về đồ họa máy tính.
+
+        Nhớ nhanh
+        - Gốc liên tưởng: graph = vẽ, viết.
+        - graphics = phần hình ảnh nhìn thấy trên màn hình.
+        - Nhấn âm đầu: GRA-.
         """
     }
 
@@ -563,21 +559,116 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     }
 
     private func setResultText(_ value: String) {
-        textView.textStorage?.setAttributedString(.markdownDisplay(value, font: .systemFont(ofSize: 13)))
+        textView.textStorage?.setAttributedString(.plainDisplay(value, font: .systemFont(ofSize: 13)))
+    }
+
+    private func normalizeLearnOutput(_ text: String) -> String {
+        var value = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !value.isEmpty else { return value }
+
+        value = value.replacingOccurrences(of: "\r\n", with: "\n")
+        value = value.replacingOccurrences(of: "\r", with: "\n")
+        value = value.replacingOccurrences(of: "Ví dụ", with: "\n\nVí dụ\n")
+        value = value.replacingOccurrences(of: "Nhớ nhanh", with: "\n\nNhớ nhanh\n")
+        value = value.replacingOccurrences(of: "→", with: "\n→ ")
+        value = value.replacingOccurrences(of: #"(?<!\n)-\s+"#, with: "\n- ", options: .regularExpression)
+        value = value.replacingOccurrences(of: #"([.!?])\s*\n\n(Ví dụ|Nhớ nhanh)\n"#, with: "$1\n\n$2\n", options: .regularExpression)
+        value = value.replacingOccurrences(of: #"([.!?])\s*(?=[A-Z][^\n]*\n→)"#, with: "$1\n", options: .regularExpression)
+        value = value.replacingOccurrences(of: #"([.!?])\s*(?=Gốc từ|Gốc liên tưởng|Gợi nhớ|Liên tưởng|Nghĩa:|Ghi nhớ:|Nhấn|Nhấn mạnh|Trọng âm)"#, with: "$1\n", options: .regularExpression)
+        value = value.replacingOccurrences(of: #"\n{3,}"#, with: "\n\n", options: .regularExpression)
+
+        let parts = value.components(separatedBy: "\n\nNhớ nhanh\n")
+        var main = parts.first ?? value
+        var memory = parts.count > 1 ? parts.dropFirst().joined(separator: " ") : ""
+
+        let memoryMarkers = ["Gốc từ", "Gốc liên tưởng", "Gợi nhớ", "Liên tưởng", "Nghĩa:", "Ghi nhớ:", "Nhấn", "Nhấn mạnh", "Trọng âm"]
+        if memory.isEmpty, let range = memoryMarkers.compactMap({ marker in main.range(of: marker) }).min(by: { $0.lowerBound < $1.lowerBound }) {
+            memory = String(main[range.lowerBound...])
+            main = String(main[..<range.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+
+        var output: [String] = []
+        let mainLines = main.components(separatedBy: .newlines).map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+        var inExamples = false
+        var currentExample: String?
+
+        for line in mainLines {
+            if line == "Ví dụ" {
+                inExamples = true
+                if let currentExample {
+                    output.append("- \(currentExample)")
+                }
+                currentExample = nil
+                if !output.isEmpty, output.last != "" { output.append("") }
+                output.append("Ví dụ")
+                continue
+            }
+
+            if !inExamples {
+                output.append(line)
+                continue
+            }
+
+            if line.hasPrefix("→") {
+                if let existingExample = currentExample {
+                    output.append("- \(existingExample)")
+                    currentExample = nil
+                }
+                output.append("  \(line)")
+                continue
+            }
+
+            if !output.isEmpty, output.last?.hasPrefix("  →") == true {
+                currentExample = line.replacingOccurrences(of: "^-\\s*", with: "", options: .regularExpression)
+                continue
+            }
+
+            if currentExample == nil {
+                currentExample = line.replacingOccurrences(of: "^-\\s*", with: "", options: .regularExpression)
+            } else {
+                currentExample? += " \(line)"
+            }
+        }
+
+        if let currentExample {
+            output.append("- \(currentExample)")
+        }
+
+        let normalizedMemory = memory
+            .replacingOccurrences(of: #"(?<=[.!?])\s+(?=[A-ZÀ-Ỵ"“])"#, with: "\n", options: .regularExpression)
+            .components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+
+        if !normalizedMemory.isEmpty {
+            if !output.isEmpty, output.last != "" { output.append("") }
+            output.append("Nhớ nhanh")
+            for line in normalizedMemory {
+                output.append("- \(line)")
+            }
+        }
+
+        return output.joined(separator: "\n")
     }
 
     private func inputHeight(for text: String, minHeight: CGFloat, maxHeight: CGFloat, width: CGFloat) -> CGFloat {
-        let contentWidth = max(100, width - 20)
+        let inset = inputTextView.textContainerInset
+        let padding = inputTextView.textContainer?.lineFragmentPadding ?? 5
+        let contentWidth = max(100, width - 20 - inset.width * 2 - padding * 2)
+
         let storage = NSTextStorage(string: text.isEmpty ? " " : text)
+        storage.addAttribute(.font, value: inputTextView.font ?? .systemFont(ofSize: 13), range: NSRange(location: 0, length: storage.length))
+
         let container = NSTextContainer(size: NSSize(width: contentWidth, height: .greatestFiniteMagnitude))
-        container.lineFragmentPadding = 0
+        container.lineFragmentPadding = padding
+
         let layoutManager = NSLayoutManager()
         layoutManager.addTextContainer(container)
         storage.addLayoutManager(layoutManager)
-        storage.addAttribute(.font, value: NSFont.systemFont(ofSize: 13), range: NSRange(location: 0, length: storage.length))
         layoutManager.ensureLayout(for: container)
+
         let usedHeight = layoutManager.usedRect(for: container).height
-        let measured = ceil(usedHeight + 14)
+        let measured = ceil(usedHeight + inset.height * 2)
         return min(max(minHeight, measured), maxHeight)
     }
 
@@ -964,7 +1055,7 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
                 switch result {
                 case let .success(value):
                     self?.rebuildPopoverLayout()
-                    self?.setResultText(value)
+                    self?.setResultText(self?.normalizeLearnOutput(value) ?? value)
                     self?.textView.scrollToBeginningOfDocument(nil)
                 case let .failure(error):
                     self?.rebuildPopoverLayout()
