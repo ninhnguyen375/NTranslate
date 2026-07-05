@@ -9,8 +9,14 @@ extension NSAttributedString {
     }
 }
 
+/// Borderless windows don't become key by default; override so the input text view can accept typing.
+final class TranslatePanelWindow: NSWindow {
+    override var canBecomeKey: Bool { true }
+    override var canBecomeMain: Bool { true }
+}
+
 @MainActor
-final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelegate, NSPopoverDelegate {
+final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelegate, NSWindowDelegate {
     private enum SpeechKind {
         case source
         case result
@@ -25,7 +31,12 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     private static let buildVersion: String = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "dev"
 
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-    private let popover = NSPopover()
+    private let panel = TranslatePanelWindow(
+        contentRect: NSRect(x: 0, y: 0, width: 1, height: 1),
+        styleMask: [.borderless],
+        backing: .buffered,
+        defer: false
+    )
     private let textView = NSTextView(frame: .zero)
     private let textScrollView = NSScrollView(frame: .zero)
     private let inputTextView = NSTextView(frame: .zero)
@@ -39,12 +50,6 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     private let titleLabel = NSTextField(labelWithString: "Translate")
     private let speakSourceButton = NSButton(frame: .zero)
     private let speakResultButton = NSButton(frame: .zero)
-    private let anchorWindow = NSWindow(
-        contentRect: NSRect(x: 0, y: 0, width: 1, height: 1),
-        styleMask: .borderless,
-        backing: .buffered,
-        defer: false
-    )
     private var translator: Translator?
     private var hotKeyRef: EventHotKeyRef?
     private var hotKeyEventHandlerRef: EventHandlerRef?
@@ -60,38 +65,41 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     private var activatesAppOnShow = false
     private var isPastingResult = false
     private var prefetchedSpeech: [SpeechKind: PrefetchedSpeech] = [:]
+    private var showMousePoint: NSPoint = .zero
+    private var userMovedWindow = false
+    private var isProgrammaticFrameChange = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         statusItem.button?.title = "T"
         statusItem.button?.action = #selector(manualToggle)
         statusItem.button?.target = self
         requestAccessibilityPermissionIfNeeded()
-        anchorWindow.isOpaque = false
-        anchorWindow.backgroundColor = .clear
-        anchorWindow.hasShadow = false
-        anchorWindow.ignoresMouseEvents = true
-        anchorWindow.level = .statusBar
-        anchorWindow.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient]
-        anchorWindow.contentView = NSView(frame: NSRect(x: 0, y: 0, width: 1, height: 1))
+        panel.isOpaque = false
+        panel.backgroundColor = .clear
+        panel.hasShadow = true
+        panel.level = .statusBar
+        panel.isMovableByWindowBackground = true
+        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient]
+        panel.delegate = self
         buildPopover()
         buildMenu()
         installHotKeyEventHandler()
         reloadConfig()
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            guard let self, self.popover.isShown else { return event }
+            guard let self, self.panel.isVisible else { return event }
             if event.keyCode == UInt16(kVK_Escape) {
                 self.restoresPreviousAppOnClose = true
-                self.popover.performClose(nil)
+                self.closePanel()
                 return nil
             }
             return event
         }
         globalKeyMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            guard let self, self.popover.isShown else { return }
+            guard let self, self.panel.isVisible else { return }
             if event.keyCode == UInt16(kVK_Escape) {
                 Task { @MainActor in
                     self.restoresPreviousAppOnClose = true
-                    self.popover.performClose(nil)
+                    self.closePanel()
                 }
             }
         }
@@ -120,14 +128,13 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         let resultY = padding
         let resultHeight = max(120, buttonY - 12 - resultY - (buttonAreaHeight - buttonHeight))
 
-        let vc = NSViewController()
         let root = NSView(frame: NSRect(x: 0, y: 0, width: width, height: height))
         root.wantsLayer = true
         root.layer?.cornerRadius = 16
         root.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
 
         let titleText = NSMutableAttributedString(
-            string: "Translate",
+            string: "NTranslate",
             attributes: [.font: NSFont.systemFont(ofSize: 14, weight: .semibold), .foregroundColor: NSColor.labelColor]
         )
         titleText.append(NSAttributedString(
@@ -244,16 +251,14 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         root.addSubview(speakSourceButton)
         root.addSubview(speakResultButton)
         root.addSubview(resultCard)
-        vc.view = root
-        popover.contentViewController = vc
-        popover.delegate = self
-        popover.behavior = .applicationDefined
+        panel.contentView = root
+        panel.setFrame(NSRect(origin: panel.frame.origin, size: root.frame.size), display: false)
     }
 
-    private func reflowLayout(useMaxHeight: Bool = false) {
-        guard let root = popover.contentViewController?.view else { return }
+    private func reflowLayout() {
+        guard let root = panel.contentView else { return }
         let width = CGFloat(config.ui.width)
-        let height = useMaxHeight ? maxPopoverHeight() : currentPopoverHeight()
+        let height = currentPopoverHeight()
         let padding: CGFloat = 14
         let headerHeight: CGFloat = 18
         let languageHeight: CGFloat = 28
@@ -290,7 +295,67 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
             resultCard.frame = NSRect(x: padding, y: resultY, width: width - padding * 2, height: resultHeight)
             textScrollView.frame = NSRect(x: 1, y: 1, width: resultCard.frame.width - 2, height: resultCard.frame.height - 2)
         }
-        popover.contentSize = root.frame.size
+        applyPanelFrame(size: root.frame.size)
+    }
+
+    /// Resizes/repositions the panel around `size`. While the panel hasn't been dragged by the
+    /// user, it stays anchored to `showMousePoint` (recomputed each time, so growth/shrinkage never
+    /// straddles the cursor). Once dragged, resizes keep the panel's top-left corner fixed instead.
+    private func applyPanelFrame(size: NSSize) {
+        guard let screenFrame = currentScreenFrame() else {
+            isProgrammaticFrameChange = true
+            panel.setFrame(NSRect(origin: panel.frame.origin, size: size), display: panel.isVisible)
+            isProgrammaticFrameChange = false
+            return
+        }
+        let newFrame: NSRect
+        if userMovedWindow {
+            let oldFrame = panel.frame
+            let originY = clamp(oldFrame.maxY - size.height, minV: screenFrame.minY, maxV: screenFrame.maxY - size.height)
+            let originX = clamp(oldFrame.minX, minV: screenFrame.minX, maxV: screenFrame.maxX - size.width)
+            newFrame = NSRect(x: originX, y: originY, width: size.width, height: size.height)
+        } else {
+            let origin = computePopupOrigin(size: size, mouse: showMousePoint, screenFrame: screenFrame)
+            newFrame = NSRect(origin: origin, size: size)
+        }
+        isProgrammaticFrameChange = true
+        panel.setFrame(newFrame, display: panel.isVisible)
+        isProgrammaticFrameChange = false
+    }
+
+    private func currentScreenFrame() -> NSRect? {
+        (NSScreen.screens.first { $0.frame.contains(showMousePoint) } ?? NSScreen.main)?.visibleFrame
+    }
+
+    /// Places the panel beside `mouse` (below, above, right, then left, in that preference order),
+    /// falling back to a clamped on-screen position. The cursor point is never inside the resulting
+    /// rect, so the panel never lands centered on top of it.
+    private func computePopupOrigin(size: NSSize, mouse: NSPoint, screenFrame: NSRect) -> NSPoint {
+        let gap: CGFloat = 12
+        if mouse.y - gap - size.height >= screenFrame.minY {
+            let x = clamp(mouse.x - size.width / 2, minV: screenFrame.minX, maxV: screenFrame.maxX - size.width)
+            return NSPoint(x: x, y: mouse.y - gap - size.height)
+        }
+        if mouse.y + gap + size.height <= screenFrame.maxY {
+            let x = clamp(mouse.x - size.width / 2, minV: screenFrame.minX, maxV: screenFrame.maxX - size.width)
+            return NSPoint(x: x, y: mouse.y + gap)
+        }
+        if mouse.x + gap + size.width <= screenFrame.maxX {
+            let y = clamp(mouse.y - size.height / 2, minV: screenFrame.minY, maxV: screenFrame.maxY - size.height)
+            return NSPoint(x: mouse.x + gap, y: y)
+        }
+        if mouse.x - gap - size.width >= screenFrame.minX {
+            let y = clamp(mouse.y - size.height / 2, minV: screenFrame.minY, maxV: screenFrame.maxY - size.height)
+            return NSPoint(x: mouse.x - gap - size.width, y: y)
+        }
+        let x = clamp(mouse.x, minV: screenFrame.minX, maxV: screenFrame.maxX - size.width)
+        let y = clamp(mouse.y - size.height, minV: screenFrame.minY, maxV: screenFrame.maxY - size.height)
+        return NSPoint(x: x, y: y)
+    }
+
+    private func clamp(_ value: CGFloat, minV: CGFloat, maxV: CGFloat) -> CGFloat {
+        guard maxV >= minV else { return minV }
+        return min(max(value, minV), maxV)
     }
 
     private func setResultText(_ value: String) {
@@ -329,14 +394,8 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     }
 
     private func currentPopoverHeight() -> CGFloat {
-        // While the popover is already on screen, never report a height taller than what we
-        // last presented: growing after show can force NSPopover to reposition itself to stay
-        // on screen, which desyncs its arrow chrome from our custom rounded content view and
-        // renders as a corner artifact. Shrinking is always safe, so only that direction moves.
         let baseHeight = CGFloat(config.ui.height)
-        let desired = min(max(baseHeight, preferredPopoverHeight()), maxPopoverHeight())
-        guard popover.isShown else { return desired }
-        return min(desired, popover.contentSize.height)
+        return min(max(baseHeight, preferredPopoverHeight()), maxPopoverHeight())
     }
 
     private func measuredTextHeight(_ text: NSAttributedString, width: CGFloat) -> CGFloat {
@@ -576,14 +635,14 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
 
     @objc private func manualToggle() {
         guard NSApp.currentEvent?.type == .leftMouseUp else { return }
-        if popover.isShown {
+        if panel.isVisible {
             restoresPreviousAppOnClose = true
-            popover.performClose(nil)
-        } else if let button = statusItem.button {
-            activatesAppOnShow = true
-            popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
-            NSApp.activate(ignoringOtherApps: true)
-            focusInputTextView()
+            closePanel()
+        } else if let button = statusItem.button, let buttonWindow = button.window {
+            let buttonFrameOnScreen = buttonWindow.convertToScreen(button.convert(button.bounds, to: nil))
+            showMousePoint = NSPoint(x: buttonFrameOnScreen.midX, y: buttonFrameOnScreen.minY)
+            reflowLayout()
+            presentPanel(activatesApp: true, restoresPreviousAppOnCloseValue: false)
         }
     }
 
@@ -625,24 +684,6 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         }
     }
 
-    private func moveAnchorWindowToMouse() {
-        let mouse = NSEvent.mouseLocation
-        let screenFrame = (NSScreen.screens.first { $0.frame.contains(mouse) } ?? NSScreen.main)?.visibleFrame
-        var anchorPoint = mouse
-        if let screenFrame {
-            // Reserve room for the popover's maximum possible size (it grows upward/centered
-            // after translation fills in), so a later resize never forces NSPopover to
-            // reposition the window sideways to stay on screen.
-            let maxWidth = CGFloat(config.ui.width)
-            let maxHeight = CGFloat(config.ui.height) + 300
-            anchorPoint.x = min(max(mouse.x, screenFrame.minX + maxWidth / 2), screenFrame.maxX - maxWidth / 2)
-            anchorPoint.y = min(mouse.y, screenFrame.maxY - maxHeight)
-            anchorPoint.y = max(anchorPoint.y, screenFrame.minY)
-        }
-        anchorWindow.setFrame(NSRect(x: anchorPoint.x, y: anchorPoint.y, width: 1, height: 1), display: false)
-        anchorWindow.orderFrontRegardless()
-    }
-
     private func restorePreviousAppFocus() {
         guard restoresPreviousAppOnClose else { return }
         previousApp?.activate(options: [.activateIgnoringOtherApps])
@@ -651,9 +692,9 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     private func installOutsideClickMonitor() {
         globalMouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
             Task { @MainActor in
-                guard let self, self.popover.isShown else { return }
+                guard let self, self.panel.isVisible else { return }
                 self.restoresPreviousAppOnClose = false
-                self.popover.performClose(nil)
+                self.closePanel()
             }
         }
     }
@@ -665,7 +706,30 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         globalMouseMonitor = nil
     }
 
-    func popoverDidClose(_ notification: Notification) {
+    /// Shows the panel (or re-focuses it if already open) using the frame `reflowLayout` already
+    /// computed against `showMousePoint`.
+    private func presentPanel(activatesApp: Bool, restoresPreviousAppOnCloseValue: Bool) {
+        let wasVisible = panel.isVisible
+        if !wasVisible {
+            userMovedWindow = false
+        }
+        restoresPreviousAppOnClose = restoresPreviousAppOnCloseValue
+        activatesAppOnShow = activatesApp
+        panel.makeKeyAndOrderFront(nil)
+        if activatesApp {
+            NSApp.activate(ignoringOtherApps: true)
+        }
+        if !wasVisible {
+            installOutsideClickMonitor()
+        }
+        focusInputTextView()
+    }
+
+    private func closePanel() {
+        guard panel.isVisible else { return }
+        panel.orderOut(nil)
+        audioPlayer?.stop()
+        audioPlayer = nil
         removeOutsideClickMonitor()
         restorePreviousAppFocus()
         previousApp = nil
@@ -673,21 +737,16 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         activatesAppOnShow = false
     }
 
-    func popoverDidShow(_ notification: Notification) {
-        installOutsideClickMonitor()
-        if activatesAppOnShow {
-            NSApp.activate(ignoringOtherApps: true)
-        }
-        focusInputTextView()
+    func windowDidMove(_ notification: Notification) {
+        guard (notification.object as? NSWindow) === panel, !isProgrammaticFrameChange else { return }
+        userMovedWindow = true
     }
 
     private func focusInputTextView() {
         DispatchQueue.main.async { [weak self] in
-            guard let self,
-                  let window = self.popover.contentViewController?.view.window
-            else { return }
-            window.makeKey()
-            window.makeFirstResponder(self.inputTextView)
+            guard let self else { return }
+            self.panel.makeKey()
+            self.panel.makeFirstResponder(self.inputTextView)
         }
     }
 
@@ -706,22 +765,15 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         inputTextView.string = trimmed
-        // Show at the maximum possible size so the later reflow (once translation completes)
-        // only ever shrinks the popover, never grows it — growth after show is what triggers
-        // NSPopover's on-screen repositioning and the corner rendering glitch.
-        reflowLayout(useMaxHeight: true)
-        updateLanguageSelection(for: trimmed)
+        if !panel.isVisible {
+            showMousePoint = NSEvent.mouseLocation
+        }
         setResultText("Translating...")
+        reflowLayout()
+        updateLanguageSelection(for: trimmed)
         prefetchedSpeech.removeAll()
         prefetchSpeech(trimmed, model: sourceSpeechModel(for: trimmed), kind: .source)
-        moveAnchorWindowToMouse()
-        if !popover.isShown, let contentView = anchorWindow.contentView {
-            restoresPreviousAppOnClose = false
-            activatesAppOnShow = true
-            popover.show(relativeTo: contentView.bounds, of: contentView, preferredEdge: .maxY)
-            NSApp.activate(ignoringOtherApps: true)
-        }
-        focusInputTextView()
+        presentPanel(activatesApp: true, restoresPreviousAppOnCloseValue: false)
         runTranslate()
     }
 
@@ -794,10 +846,13 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         let speechModel = model.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, !speechModel.isEmpty else { return }
         if let cached = prefetchedSpeech[kind], cached.text == trimmed, cached.model == speechModel { return }
+        setSpeaking(true, for: kind)
         translator.speak(trimmed, model: speechModel) { [weak self] result in
-            guard case let .success(fileURL) = result else { return }
             Task { @MainActor in
-                self?.prefetchedSpeech[kind] = PrefetchedSpeech(text: trimmed, model: speechModel, url: fileURL)
+                guard let self else { return }
+                defer { self.setSpeaking(false, for: kind) }
+                guard case let .success(fileURL) = result else { return }
+                self.prefetchedSpeech[kind] = PrefetchedSpeech(text: trimmed, model: speechModel, url: fileURL)
             }
         }
     }
@@ -865,13 +920,13 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     private func pasteResultToPreviousApp() {
         guard !isPastingResult else { return }
         guard let value = copyValue(), writePasteboard(value) else {
-            popover.performClose(nil)
+            closePanel()
             return
         }
         isPastingResult = true
         let app = previousApp
         restoresPreviousAppOnClose = false
-        popover.performClose(nil)
+        closePanel()
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
             app?.activate(options: [.activateIgnoringOtherApps])
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
@@ -883,6 +938,6 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
 
     @objc private func closePopover() {
         restoresPreviousAppOnClose = true
-        popover.performClose(nil)
+        closePanel()
     }
 }

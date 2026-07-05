@@ -74,6 +74,8 @@ cd ~/Code/MacOS/translate
 
 You do **not** need to edit `install-app.sh` for normal code changes.
 
+**For Claude Code / agents:** after finishing any code change task in this repo, always run `./install-app.sh` to build, sign, and reinstall the app — don't stop at `swift build`. No need to ask for confirmation first, since it only affects the local `/Applications/NTranslate.app` copy (kills and reopens the app, bumps its patch version).
+
 Only edit `install-app.sh` when packaging details change, for example:
 - app name
 - bundle id
