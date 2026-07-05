@@ -16,6 +16,12 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         case result
     }
 
+    private struct PrefetchedSpeech {
+        let text: String
+        let model: String
+        let url: URL
+    }
+
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
     private let popover = NSPopover()
     private let textView = NSTextView(frame: .zero)
@@ -28,6 +34,7 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     private let closeButton = NSButton(frame: .zero)
     private let translateButton = NSButton(frame: .zero)
     private let learnButton = NSButton(frame: .zero)
+    private let titleLabel = NSTextField(labelWithString: "Translate")
     private let speakSourceButton = NSButton(frame: .zero)
     private let speakResultButton = NSButton(frame: .zero)
     private let anchorWindow = NSWindow(
@@ -50,6 +57,7 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     private var restoresPreviousAppOnClose = false
     private var activatesAppOnShow = false
     private var isPastingResult = false
+    private var prefetchedSpeech: [SpeechKind: PrefetchedSpeech] = [:]
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         statusItem.button?.title = "T"
@@ -116,10 +124,9 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         root.layer?.cornerRadius = 16
         root.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
 
-        let title = NSTextField(labelWithString: "Translate")
-        title.font = .systemFont(ofSize: 14, weight: .semibold)
-        title.textColor = .labelColor
-        title.frame = NSRect(x: padding, y: height - padding - headerHeight, width: 200, height: headerHeight)
+        titleLabel.font = .systemFont(ofSize: 14, weight: .semibold)
+        titleLabel.textColor = .labelColor
+        titleLabel.frame = NSRect(x: padding, y: height - padding - headerHeight, width: 200, height: headerHeight)
 
         closeButton.title = ""
         closeButton.image = NSImage(systemSymbolName: "xmark.circle", accessibilityDescription: "Close")
@@ -130,9 +137,10 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         closeButton.frame = NSRect(x: width - padding - 18, y: height - padding - headerHeight + 1, width: 18, height: 18)
 
         configureLanguageControls()
-        sourceLanguagePopup.frame = NSRect(x: padding, y: languageY, width: 150, height: languageHeight)
+        let languageDropdownWidth = (width - padding * 2 - 38 - 16) / 2
+        sourceLanguagePopup.frame = NSRect(x: padding, y: languageY, width: languageDropdownWidth, height: languageHeight)
         swapLanguagesButton.frame = NSRect(x: sourceLanguagePopup.frame.maxX + 8, y: languageY, width: 38, height: languageHeight)
-        targetLanguagePopup.frame = NSRect(x: swapLanguagesButton.frame.maxX + 8, y: languageY, width: 150, height: languageHeight)
+        targetLanguagePopup.frame = NSRect(x: swapLanguagesButton.frame.maxX + 8, y: languageY, width: languageDropdownWidth, height: languageHeight)
 
         let inputFrame = NSRect(x: padding, y: inputY, width: width - padding * 2, height: inputHeight)
 
@@ -216,7 +224,7 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         textScrollView.documentView = textView
         resultCard.addSubview(textScrollView)
 
-        root.addSubview(title)
+        root.addSubview(titleLabel)
         root.addSubview(closeButton)
         root.addSubview(sourceLanguagePopup)
         root.addSubview(swapLanguagesButton)
@@ -258,10 +266,12 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         let inputFrame = NSRect(x: padding, y: inputY, width: width - padding * 2, height: inputHeight)
 
         root.frame = NSRect(x: 0, y: 0, width: width, height: height)
+        titleLabel.frame = NSRect(x: padding, y: height - padding - headerHeight, width: 200, height: headerHeight)
         closeButton.frame = NSRect(x: width - padding - 18, y: height - padding - headerHeight + 1, width: 18, height: 18)
-        sourceLanguagePopup.frame = NSRect(x: padding, y: languageY, width: 150, height: languageHeight)
+        let languageDropdownWidth = (width - padding * 2 - 38 - 16) / 2
+        sourceLanguagePopup.frame = NSRect(x: padding, y: languageY, width: languageDropdownWidth, height: languageHeight)
         swapLanguagesButton.frame = NSRect(x: sourceLanguagePopup.frame.maxX + 8, y: languageY, width: 38, height: languageHeight)
-        targetLanguagePopup.frame = NSRect(x: swapLanguagesButton.frame.maxX + 8, y: languageY, width: 150, height: languageHeight)
+        targetLanguagePopup.frame = NSRect(x: swapLanguagesButton.frame.maxX + 8, y: languageY, width: languageDropdownWidth, height: languageHeight)
         inputScrollView.frame = inputFrame
         inputScrollView.hasVerticalScroller = inputHeight >= maxInputHeight
         inputTextView.textContainer?.containerSize = NSSize(width: inputFrame.width - 20, height: .greatestFiniteMagnitude)
@@ -271,7 +281,14 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
             resultCard.frame = NSRect(x: padding, y: resultY, width: width - padding * 2, height: resultHeight)
             textScrollView.frame = NSRect(x: 1, y: 1, width: resultCard.frame.width - 2, height: resultCard.frame.height - 2)
         }
+        let popoverWindow = popover.contentViewController?.view.window
+        let previousX = popoverWindow?.frame.origin.x
         popover.contentSize = root.frame.size
+        if let popoverWindow, let previousX, popoverWindow.frame.origin.x != previousX {
+            var frame = popoverWindow.frame
+            frame.origin.x = previousX
+            popoverWindow.setFrame(frame, display: true)
+        }
     }
 
     private func setResultText(_ value: String) {
@@ -357,6 +374,9 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         }
         if selectedTargetLanguage() != pair.target {
             targetLanguagePopup.selectItem(withTitle: pair.target)
+        }
+        if !inputTextView.string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            runTranslate()
         }
     }
 
@@ -595,7 +615,19 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
 
     private func moveAnchorWindowToMouse() {
         let mouse = NSEvent.mouseLocation
-        anchorWindow.setFrame(NSRect(x: mouse.x, y: mouse.y, width: 1, height: 1), display: false)
+        let screenFrame = (NSScreen.screens.first { $0.frame.contains(mouse) } ?? NSScreen.main)?.visibleFrame
+        var anchorPoint = mouse
+        if let screenFrame {
+            // Reserve room for the popover's maximum possible size (it grows upward/centered
+            // after translation fills in), so a later resize never forces NSPopover to
+            // reposition the window sideways to stay on screen.
+            let maxWidth = CGFloat(config.ui.width)
+            let maxHeight = CGFloat(config.ui.height) + 300
+            anchorPoint.x = min(max(mouse.x, screenFrame.minX + maxWidth / 2), screenFrame.maxX - maxWidth / 2)
+            anchorPoint.y = min(mouse.y, screenFrame.maxY - maxHeight)
+            anchorPoint.y = max(anchorPoint.y, screenFrame.minY)
+        }
+        anchorWindow.setFrame(NSRect(x: anchorPoint.x, y: anchorPoint.y, width: 1, height: 1), display: false)
         anchorWindow.orderFrontRegardless()
     }
 
@@ -608,7 +640,7 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         globalMouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
             Task { @MainActor in
                 guard let self, self.popover.isShown else { return }
-                self.restoresPreviousAppOnClose = true
+                self.restoresPreviousAppOnClose = false
                 self.popover.performClose(nil)
             }
         }
@@ -665,11 +697,14 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         reflowLayout()
         updateLanguageSelection(for: trimmed)
         setResultText("Translating...")
+        prefetchedSpeech.removeAll()
+        prefetchSpeech(trimmed, model: sourceSpeechModel(for: trimmed), kind: .source)
         moveAnchorWindowToMouse()
         if !popover.isShown, let contentView = anchorWindow.contentView {
             restoresPreviousAppOnClose = false
-            activatesAppOnShow = false
+            activatesAppOnShow = true
             popover.show(relativeTo: contentView.bounds, of: contentView, preferredEdge: .maxY)
+            NSApp.activate(ignoringOtherApps: true)
         }
         focusInputTextView()
         runTranslate()
@@ -689,6 +724,9 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
                     self?.setResultText(value)
                     self?.reflowLayout()
                     self?.textView.scrollToBeginningOfDocument(nil)
+                    if let self {
+                        self.prefetchSpeech(value, model: self.config.speechTargetModel, kind: .result)
+                    }
                     if self?.config.ui.autoCopy == true {
                         NSPasteboard.general.clearContents()
                         NSPasteboard.general.setString(value, forType: .string)
@@ -725,8 +763,31 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         }
     }
 
-    private func playSpeech(_ text: String, model: String, kind: SpeechKind) {
+    private func playAudio(at fileURL: URL) {
+        do {
+            audioPlayer = try AVAudioPlayer(contentsOf: fileURL)
+            audioPlayer?.prepareToPlay()
+            audioPlayer?.play()
+        } catch {
+            setResultText("Error: \(error.localizedDescription)")
+        }
+    }
+
+    private func prefetchSpeech(_ text: String, model: String, kind: SpeechKind) {
         guard let translator else { return }
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let speechModel = model.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, !speechModel.isEmpty else { return }
+        if let cached = prefetchedSpeech[kind], cached.text == trimmed, cached.model == speechModel { return }
+        translator.speak(trimmed, model: speechModel) { [weak self] result in
+            guard case let .success(fileURL) = result else { return }
+            Task { @MainActor in
+                self?.prefetchedSpeech[kind] = PrefetchedSpeech(text: trimmed, model: speechModel, url: fileURL)
+            }
+        }
+    }
+
+    private func playSpeech(_ text: String, model: String, kind: SpeechKind) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         let speechModel = model.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
@@ -734,6 +795,11 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
             setResultText("Error: Empty speech model")
             return
         }
+        if let cached = prefetchedSpeech[kind], cached.text == trimmed, cached.model == speechModel {
+            playAudio(at: cached.url)
+            return
+        }
+        guard let translator else { return }
         setSpeaking(true, for: kind)
         translator.speak(trimmed, model: speechModel) { [weak self] result in
             Task { @MainActor in
@@ -741,13 +807,8 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
                 defer { self.setSpeaking(false, for: kind) }
                 switch result {
                 case let .success(fileURL):
-                    do {
-                        self.audioPlayer = try AVAudioPlayer(contentsOf: fileURL)
-                        self.audioPlayer?.prepareToPlay()
-                        self.audioPlayer?.play()
-                    } catch {
-                        self.setResultText("Error: \(error.localizedDescription)")
-                    }
+                    self.prefetchedSpeech[kind] = PrefetchedSpeech(text: trimmed, model: speechModel, url: fileURL)
+                    self.playAudio(at: fileURL)
                 case let .failure(error):
                     self.setResultText("Error: \(error.localizedDescription)")
                 }
