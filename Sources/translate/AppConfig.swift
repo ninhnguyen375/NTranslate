@@ -16,7 +16,7 @@ struct AppConfig: Codable {
     }
 
     var apiBaseURL: String
-    var keychainService: String
+    var apiKey: String
     var model: String
     var sourceLang: String
     var targetLang: String
@@ -32,7 +32,7 @@ struct AppConfig: Codable {
 
     static let `default` = AppConfig(
         apiBaseURL: "http://localhost:20128/v1/chat/completions",
-        keychainService: "9r-api-key",
+        apiKey: "",
         model: "9r-gemini-low",
         sourceLang: "Auto detect",
         targetLang: "Vietnamese",

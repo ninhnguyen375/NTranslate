@@ -34,6 +34,9 @@ final class Translator {
         v. ...
         adj. ...
 
+        Từ đồng nghĩa: ..., ...
+        Từ trái nghĩa: ..., ...
+
         Ví dụ
         - Example sentence.
           → Bản dịch tiếng Việt.
@@ -56,6 +59,12 @@ final class Translator {
         - Do not put any text after a meaning on the same line.
         - Put exactly one blank line between sections.
         - "Ví dụ" and "Nhớ nhanh" must each be on their own line.
+        - "Từ đồng nghĩa" and "Từ trái nghĩa" must each be on their own line, formatted exactly as:
+          Từ đồng nghĩa: word1, word2
+          Từ trái nghĩa: word1, word2
+        - List 2-4 common English synonyms and 1-3 common English antonyms when they exist.
+        - If no natural antonym exists, write: Từ trái nghĩa: (không có)
+        - If no useful synonym exists, write: Từ đồng nghĩa: (không có)
         - In "Nhớ nhanh", explain the fastest way to grasp and remember the word.
         - Preserve line breaks exactly.
         - Output plain text only. Do not use markdown formatting such as **, *, #, _, [], or code fences.
@@ -65,6 +74,9 @@ final class Translator {
         Good output example:
         IPA: /ˈɡræfɪks/
         n. đồ họa; hình ảnh máy tính.
+
+        Từ đồng nghĩa: visuals, imagery, illustrations
+        Từ trái nghĩa: text, audio
 
         Ví dụ
         - High-quality graphics make the game look realistic.
@@ -129,7 +141,7 @@ final class Translator {
         request(text, mode: .learn(sourceLang: sourceLang, targetLang: targetLang), completion: completion)
     }
 
-    func speak(_ text: String, model: String, completion: @escaping @Sendable (Result<URL, Error>) -> Void) {
+    func speak(_ text: String, model: String, completion: @escaping @Sendable (Result<Data, Error>) -> Void) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
             completion(.failure(NSError(domain: "Speech", code: 1, userInfo: [NSLocalizedDescriptionKey: "Empty text"])))
@@ -158,15 +170,7 @@ final class Translator {
                 completion(.failure(NSError(domain: "HTTP", code: http.statusCode, userInfo: [NSLocalizedDescriptionKey: body])))
                 return
             }
-            do {
-                let outputURL = FileManager.default.temporaryDirectory
-                    .appendingPathComponent("translate-speech-\(UUID().uuidString)")
-                    .appendingPathExtension("mp3")
-                try data.write(to: outputURL, options: .atomic)
-                completion(.success(outputURL))
-            } catch {
-                completion(.failure(error))
-            }
+            completion(.success(data))
         }.resume()
     }
 }

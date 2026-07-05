@@ -25,7 +25,7 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     private struct PrefetchedSpeech {
         let text: String
         let model: String
-        let url: URL
+        let data: Data
     }
 
     private static let buildVersion: String = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "dev"
@@ -710,18 +710,24 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         let outcome = AppConfig.loadOutcome()
         config = outcome.config
         reflowLayout()
-        do {
-            translator = try Translator(config: config, apiKey: APIKeychain.load(service: config.keychainService))
-            registerHotKey()
-            assert(URL(string: config.apiBaseURL) != nil)
-            assert(URL(string: config.speechURL) != nil)
+        let apiKey = config.apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !apiKey.isEmpty else {
+            translator = nil
             if let message = outcome.message {
                 setResultText("Config load error: \(message)")
-            } else if showSuccess {
-                setResultText("Reloaded config from \(AppConfig.configPath)")
+            } else {
+                setResultText("Config load error: apiKey is empty")
             }
-        } catch {
-            setResultText("Config load error: \(error.localizedDescription)")
+            return
+        }
+        translator = Translator(config: config, apiKey: apiKey)
+        registerHotKey()
+        assert(URL(string: config.apiBaseURL) != nil)
+        assert(URL(string: config.speechURL) != nil)
+        if let message = outcome.message {
+            setResultText("Config load error: \(message)")
+        } else if showSuccess {
+            setResultText("Reloaded config from \(AppConfig.configPath)")
         }
     }
 
@@ -919,9 +925,9 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         }
     }
 
-    private func playAudio(at fileURL: URL) {
+    private func playAudio(data: Data) {
         do {
-            audioPlayer = try AVAudioPlayer(contentsOf: fileURL)
+            audioPlayer = try AVAudioPlayer(data: data)
             audioPlayer?.prepareToPlay()
             audioPlayer?.play()
         } catch {
@@ -940,8 +946,8 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
             Task { @MainActor in
                 guard let self else { return }
                 defer { self.setSpeaking(false, for: kind) }
-                guard case let .success(fileURL) = result else { return }
-                self.prefetchedSpeech[kind] = PrefetchedSpeech(text: trimmed, model: speechModel, url: fileURL)
+                guard case let .success(audioData) = result else { return }
+                self.prefetchedSpeech[kind] = PrefetchedSpeech(text: trimmed, model: speechModel, data: audioData)
             }
         }
     }
@@ -955,7 +961,7 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
             return
         }
         if let cached = prefetchedSpeech[kind], cached.text == trimmed, cached.model == speechModel {
-            playAudio(at: cached.url)
+            playAudio(data: cached.data)
             return
         }
         guard let translator else { return }
@@ -965,9 +971,9 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
                 guard let self else { return }
                 defer { self.setSpeaking(false, for: kind) }
                 switch result {
-                case let .success(fileURL):
-                    self.prefetchedSpeech[kind] = PrefetchedSpeech(text: trimmed, model: speechModel, url: fileURL)
-                    self.playAudio(at: fileURL)
+                case let .success(audioData):
+                    self.prefetchedSpeech[kind] = PrefetchedSpeech(text: trimmed, model: speechModel, data: audioData)
+                    self.playAudio(data: audioData)
                 case let .failure(error):
                     self.setResultText("Error: \(error.localizedDescription)")
                 }
