@@ -44,6 +44,7 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     private let sourceLanguagePopup = NSPopUpButton(frame: .zero, pullsDown: false)
     private let targetLanguagePopup = NSPopUpButton(frame: .zero, pullsDown: false)
     private let swapLanguagesButton = NSButton(frame: .zero)
+    private let pinButton = NSButton(frame: .zero)
     private let closeButton = NSButton(frame: .zero)
     private let translateButton = NSButton(frame: .zero)
     private let learnButton = NSButton(frame: .zero)
@@ -68,6 +69,7 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     private var showMousePoint: NSPoint = .zero
     private var userMovedWindow = false
     private var isProgrammaticFrameChange = false
+    private var isPinned = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         statusItem.button?.title = "T"
@@ -151,6 +153,14 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         closeButton.target = self
         closeButton.action = #selector(closePopover)
         closeButton.frame = NSRect(x: width - padding - 18, y: height - padding - headerHeight + 1, width: 18, height: 18)
+
+        pinButton.title = ""
+        pinButton.imagePosition = .imageOnly
+        pinButton.isBordered = false
+        pinButton.target = self
+        pinButton.action = #selector(togglePin)
+        pinButton.frame = NSRect(x: width - padding - 18 - 22, y: height - padding - headerHeight + 1, width: 18, height: 18)
+        updatePinButton()
 
         configureLanguageControls()
         let languageDropdownWidth = (width - padding * 2 - 38 - 16) / 2
@@ -241,6 +251,7 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         resultCard.addSubview(textScrollView)
 
         root.addSubview(titleLabel)
+        root.addSubview(pinButton)
         root.addSubview(closeButton)
         root.addSubview(sourceLanguagePopup)
         root.addSubview(swapLanguagesButton)
@@ -282,6 +293,7 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         root.frame = NSRect(x: 0, y: 0, width: width, height: height)
         titleLabel.frame = NSRect(x: padding, y: height - padding - headerHeight, width: 200, height: headerHeight)
         closeButton.frame = NSRect(x: width - padding - 18, y: height - padding - headerHeight + 1, width: 18, height: 18)
+        pinButton.frame = NSRect(x: width - padding - 18 - 22, y: height - padding - headerHeight + 1, width: 18, height: 18)
         let languageDropdownWidth = (width - padding * 2 - 38 - 16) / 2
         sourceLanguagePopup.frame = NSRect(x: padding, y: languageY, width: languageDropdownWidth, height: languageHeight)
         swapLanguagesButton.frame = NSRect(x: sourceLanguagePopup.frame.maxX + 8, y: languageY, width: 38, height: languageHeight)
@@ -692,7 +704,7 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     private func installOutsideClickMonitor() {
         globalMouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
             Task { @MainActor in
-                guard let self, self.panel.isVisible else { return }
+                guard let self, self.panel.isVisible, !self.isPinned else { return }
                 self.restoresPreviousAppOnClose = false
                 self.closePanel()
             }
@@ -712,6 +724,8 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         let wasVisible = panel.isVisible
         if !wasVisible {
             userMovedWindow = false
+            isPinned = false
+            updatePinButton()
         }
         restoresPreviousAppOnClose = restoresPreviousAppOnCloseValue
         activatesAppOnShow = activatesApp
@@ -740,6 +754,20 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     func windowDidMove(_ notification: Notification) {
         guard (notification.object as? NSWindow) === panel, !isProgrammaticFrameChange else { return }
         userMovedWindow = true
+        if !isPinned {
+            isPinned = true
+            updatePinButton()
+        }
+    }
+
+    @objc private func togglePin() {
+        isPinned.toggle()
+        updatePinButton()
+    }
+
+    private func updatePinButton() {
+        pinButton.image = NSImage(systemSymbolName: isPinned ? "pin.fill" : "pin", accessibilityDescription: "Pin")
+        pinButton.contentTintColor = isPinned ? .controlAccentColor : nil
     }
 
     private func focusInputTextView() {
