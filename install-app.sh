@@ -13,6 +13,7 @@ ICON_SRC="$PROJECT_DIR/icon.jpg"
 ICONSET_DIR="$PROJECT_DIR/NTranslate.iconset"
 ICON_ICNS="$PROJECT_DIR/NTranslate.icns"
 APP_ICON_DST="$APP_SRC/Contents/Resources/NTranslate.icns"
+SIGN_IDENTITY="Apple Development: ninhnguyen375@gmail.com (7GMHS3RDUF)"
 
 cd "$PROJECT_DIR"
 swift build -c release
@@ -90,6 +91,9 @@ cp "$PLIST" "$APP_DST/Contents/Info.plist"
 if [ -f "$APP_ICON_DST" ]; then
   cp "$APP_ICON_DST" "$APP_DST/Contents/Resources/NTranslate.icns"
 fi
+codesign --force --deep --sign "$SIGN_IDENTITY" "$APP_DST"
+codesign -vv "$APP_DST"
+codesign -dv --verbose=4 "$APP_DST" 2>&1 | grep -E 'Identifier=|Authority=|TeamIdentifier=' || true
 touch "$APP_DST"
 open "$APP_DST"
 
