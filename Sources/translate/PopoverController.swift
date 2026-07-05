@@ -66,6 +66,7 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     private var activatesAppOnShow = false
     private var isPastingResult = false
     private var prefetchedSpeech: [SpeechKind: PrefetchedSpeech] = [:]
+    private var recentTargets: [String] = []
     private var showMousePoint: NSPoint = .zero
     private var userMovedWindow = false
     private var isProgrammaticFrameChange = false
@@ -321,7 +322,11 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
             return
         }
         let newFrame: NSRect
-        if userMovedWindow {
+        if userMovedWindow || panel.isVisible {
+            // Panel is already on screen (e.g. an async translate result just resized it) — keep
+            // its top-left corner fixed instead of re-anchoring to the mouse, otherwise it jumps
+            // out from under a click the user is mid-way through, which the outside-click monitor
+            // then reads as a click outside the panel and closes it.
             let oldFrame = panel.frame
             let originY = clamp(oldFrame.maxY - size.height, minV: screenFrame.minY, maxV: screenFrame.maxY - size.height)
             let originX = clamp(oldFrame.minX, minV: screenFrame.minX, maxV: screenFrame.maxX - size.width)
@@ -423,7 +428,10 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     }
 
     private func resolvedLanguagePair(for text: String) -> (source: String, target: String) {
-        LanguageDetector.resolvedPair(selectedSource: selectedSourceLanguage(), selectedTarget: selectedTargetLanguage(), text: text)
+        let pair = LanguageDetector.resolvedPair(selectedSource: selectedSourceLanguage(), selectedTarget: selectedTargetLanguage(), text: text, recentTargets: recentTargets)
+        recentTargets.removeAll { $0 == pair.target }
+        recentTargets.insert(pair.target, at: 0)
+        return pair
     }
 
     private func configureLanguageControls() {
@@ -434,8 +442,9 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         sourceLanguagePopup.action = #selector(languageSelectionChanged)
 
         targetLanguagePopup.removeAllItems()
-        targetLanguagePopup.addItems(withTitles: LanguageDetector.supportedLanguages.filter { $0 != "Auto detect" })
+        targetLanguagePopup.addItems(withTitles: LanguageDetector.targetLanguages)
         targetLanguagePopup.selectItem(withTitle: LanguageDetector.normalizeTarget(config.resolvedTargetLang))
+        recentTargets = [LanguageDetector.normalizeTarget(config.resolvedTargetLang)]
         targetLanguagePopup.target = self
         targetLanguagePopup.action = #selector(languageSelectionChanged)
 
@@ -789,7 +798,7 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
             requestAccessibilityPermissionIfNeeded(forcePrompt: true)
         }
         previousApp = NSWorkspace.shared.frontmostApplication
-        let text = SelectionReader.snapshotText() ?? NSPasteboard.general.string(forType: .string) ?? ""
+        let text = SelectionReader.snapshotText() ?? ""
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         inputTextView.string = trimmed
