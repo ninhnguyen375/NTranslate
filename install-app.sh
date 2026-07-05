@@ -71,6 +71,27 @@ if [ ! -f "$PLIST" ]; then
 PLIST
 fi
 
+CURRENT_BUILD=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$PLIST" 2>/dev/null || echo 0)
+NEXT_BUILD=$(( ${CURRENT_BUILD:-0} + 1 ))
+/usr/libexec/PlistBuddy -c "Set :CFBundleVersion $NEXT_BUILD" "$PLIST"
+
+# Semver-ish display version (MAJOR.MINOR.PATCH). Patch bumps on every build by default;
+# pass VERSION_BUMP=minor or VERSION_BUMP=major when a change is big enough to warrant it,
+# e.g. `VERSION_BUMP=minor ./install-app.sh`.
+CURRENT_VERSION=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$PLIST" 2>/dev/null || echo "1.0.2")
+IFS='.' read -r VMAJOR VMINOR VPATCH <<< "$CURRENT_VERSION"
+VMAJOR=${VMAJOR:-1}
+VMINOR=${VMINOR:-0}
+VPATCH=${VPATCH:-0}
+case "${VERSION_BUMP:-patch}" in
+  major) VMAJOR=$((VMAJOR + 1)); VMINOR=0; VPATCH=0 ;;
+  minor) VMINOR=$((VMINOR + 1)); VPATCH=0 ;;
+  *) VPATCH=$((VPATCH + 1)) ;;
+esac
+NEXT_VERSION="$VMAJOR.$VMINOR.$VPATCH"
+/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $NEXT_VERSION" "$PLIST"
+echo "Version: $NEXT_VERSION (build $NEXT_BUILD)"
+
 /usr/libexec/PlistBuddy -c 'Set :CFBundleName NTranslate' "$PLIST"
 /usr/libexec/PlistBuddy -c 'Set :CFBundleDisplayName NTranslate' "$PLIST" 2>/dev/null || /usr/libexec/PlistBuddy -c 'Add :CFBundleDisplayName string NTranslate' "$PLIST"
 /usr/libexec/PlistBuddy -c 'Set :CFBundleExecutable NTranslate' "$PLIST"

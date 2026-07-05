@@ -22,6 +22,8 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         let url: URL
     }
 
+    private static let buildVersion: String = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "dev"
+
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
     private let popover = NSPopover()
     private let textView = NSTextView(frame: .zero)
@@ -124,8 +126,15 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         root.layer?.cornerRadius = 16
         root.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
 
-        titleLabel.font = .systemFont(ofSize: 14, weight: .semibold)
-        titleLabel.textColor = .labelColor
+        let titleText = NSMutableAttributedString(
+            string: "Translate",
+            attributes: [.font: NSFont.systemFont(ofSize: 14, weight: .semibold), .foregroundColor: NSColor.labelColor]
+        )
+        titleText.append(NSAttributedString(
+            string: "  v\(Self.buildVersion)",
+            attributes: [.font: NSFont.systemFont(ofSize: 11), .foregroundColor: NSColor.secondaryLabelColor]
+        ))
+        titleLabel.attributedStringValue = titleText
         titleLabel.frame = NSRect(x: padding, y: height - padding - headerHeight, width: 200, height: headerHeight)
 
         closeButton.title = ""
@@ -241,10 +250,10 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         popover.behavior = .applicationDefined
     }
 
-    private func reflowLayout() {
+    private func reflowLayout(useMaxHeight: Bool = false) {
         guard let root = popover.contentViewController?.view else { return }
         let width = CGFloat(config.ui.width)
-        let height = currentPopoverHeight()
+        let height = useMaxHeight ? maxPopoverHeight() : currentPopoverHeight()
         let padding: CGFloat = 14
         let headerHeight: CGFloat = 18
         let languageHeight: CGFloat = 28
@@ -281,14 +290,7 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
             resultCard.frame = NSRect(x: padding, y: resultY, width: width - padding * 2, height: resultHeight)
             textScrollView.frame = NSRect(x: 1, y: 1, width: resultCard.frame.width - 2, height: resultCard.frame.height - 2)
         }
-        let popoverWindow = popover.contentViewController?.view.window
-        let previousX = popoverWindow?.frame.origin.x
         popover.contentSize = root.frame.size
-        if let popoverWindow, let previousX, popoverWindow.frame.origin.x != previousX {
-            var frame = popoverWindow.frame
-            frame.origin.x = previousX
-            popoverWindow.setFrame(frame, display: true)
-        }
     }
 
     private func setResultText(_ value: String) {
@@ -322,9 +324,19 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         return padding + headerHeight + 10 + languageHeight + 10 + inputHeight + 12 + buttonHeight + 12 + resultHeight + padding
     }
 
+    private func maxPopoverHeight() -> CGFloat {
+        CGFloat(config.ui.height) + 300
+    }
+
     private func currentPopoverHeight() -> CGFloat {
+        // While the popover is already on screen, never report a height taller than what we
+        // last presented: growing after show can force NSPopover to reposition itself to stay
+        // on screen, which desyncs its arrow chrome from our custom rounded content view and
+        // renders as a corner artifact. Shrinking is always safe, so only that direction moves.
         let baseHeight = CGFloat(config.ui.height)
-        return min(max(baseHeight, preferredPopoverHeight()), baseHeight + 300)
+        let desired = min(max(baseHeight, preferredPopoverHeight()), maxPopoverHeight())
+        guard popover.isShown else { return desired }
+        return min(desired, popover.contentSize.height)
     }
 
     private func measuredTextHeight(_ text: NSAttributedString, width: CGFloat) -> CGFloat {
@@ -694,7 +706,10 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         inputTextView.string = trimmed
-        reflowLayout()
+        // Show at the maximum possible size so the later reflow (once translation completes)
+        // only ever shrinks the popover, never grows it — growth after show is what triggers
+        // NSPopover's on-screen repositioning and the corner rendering glitch.
+        reflowLayout(useMaxHeight: true)
         updateLanguageSelection(for: trimmed)
         setResultText("Translating...")
         prefetchedSpeech.removeAll()
