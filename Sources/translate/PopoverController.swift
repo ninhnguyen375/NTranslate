@@ -16,7 +16,7 @@ final class TranslatePanelWindow: NSWindow {
 }
 
 @MainActor
-final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelegate, NSWindowDelegate {
+final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelegate, NSWindowDelegate, NSMenuDelegate {
     private enum SpeechKind {
         case source
         case result
@@ -73,7 +73,11 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     private var isPinned = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        statusItem.button?.title = "T"
+        if let icon = NSImage(systemSymbolName: "translate", accessibilityDescription: "NTranslate") {
+            statusItem.button?.image = icon
+        } else {
+            statusItem.button?.title = "T"
+        }
         statusItem.button?.action = #selector(manualToggle)
         statusItem.button?.target = self
         requestAccessibilityPermissionIfNeeded()
@@ -602,13 +606,29 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         NSApp.mainMenu = mainMenu
 
         let statusMenu = NSMenu()
-        statusMenu.addItem(withTitle: "Grant Accessibility Access", action: #selector(requestAccessibilityPermissionMenu), keyEquivalent: "")
+        let versionItem = NSMenuItem(title: "NTranslate v\(Self.appVersionString())", action: nil, keyEquivalent: "")
+        versionItem.isEnabled = false
+        statusMenu.addItem(versionItem)
+        statusMenu.addItem(NSMenuItem.separator())
+        let accessibilityItem = NSMenuItem(title: "Grant Accessibility Access", action: #selector(requestAccessibilityPermissionMenu), keyEquivalent: "")
+        accessibilityItem.tag = Self.accessibilityMenuItemTag
+        statusMenu.addItem(accessibilityItem)
+        statusMenu.addItem(withTitle: "Open Config File", action: #selector(openConfigFileMenu), keyEquivalent: "")
         statusMenu.addItem(withTitle: "Reload Config", action: #selector(reloadConfigMenu), keyEquivalent: "r")
         statusMenu.addItem(NSMenuItem.separator())
         statusMenu.addItem(withTitle: "Quit", action: #selector(quitApp), keyEquivalent: "q")
         statusMenu.items.forEach { $0.target = self }
+        statusMenu.delegate = self
         statusItem.menu = statusMenu
         statusItem.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
+    }
+
+    private static let accessibilityMenuItemTag = 9001
+
+    func menuWillOpen(_ menu: NSMenu) {
+        if let item = menu.item(withTag: Self.accessibilityMenuItemTag) {
+            item.isHidden = AXIsProcessTrusted()
+        }
     }
 
     @objc private func requestAccessibilityPermissionMenu() {
@@ -617,6 +637,17 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
 
     @objc private func reloadConfigMenu() {
         reloadConfig(showSuccess: true)
+    }
+
+    @objc private func openConfigFileMenu() {
+        NSWorkspace.shared.open(URL(fileURLWithPath: AppConfig.configPath))
+    }
+
+    private static func appVersionString() -> String {
+        let info = Bundle.main.infoDictionary
+        let short = info?["CFBundleShortVersionString"] as? String ?? "0.0"
+        let build = info?["CFBundleVersion"] as? String ?? "0"
+        return "\(short) (\(build))"
     }
 
     private func hotKeyModifiers() -> UInt32 {
@@ -793,14 +824,29 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         targetLanguagePopup.selectItem(withTitle: pair.target)
     }
 
+    private static let maxTranslateLength = 5000
+
     func translateAtCursor() {
         if !AXIsProcessTrusted() {
             requestAccessibilityPermissionIfNeeded(forcePrompt: true)
         }
         previousApp = NSWorkspace.shared.frontmostApplication
         let text = SelectionReader.snapshotText() ?? ""
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        var trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            trimmed = (NSPasteboard.general.string(forType: .string) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        }
         guard !trimmed.isEmpty else { return }
+        if trimmed.count > Self.maxTranslateLength {
+            inputTextView.string = "Text is too long to translate."
+            setResultText("")
+            if !panel.isVisible {
+                showMousePoint = NSEvent.mouseLocation
+            }
+            reflowLayout()
+            presentPanel(activatesApp: true, restoresPreviousAppOnCloseValue: false)
+            return
+        }
         inputTextView.string = trimmed
         if !panel.isVisible {
             showMousePoint = NSEvent.mouseLocation
@@ -818,6 +864,12 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         guard let translator else { return }
         let text = inputTextView.string.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
+        guard text.count <= Self.maxTranslateLength else {
+            setResultText("")
+            inputTextView.string = "Text is too long to translate."
+            reflowLayout()
+            return
+        }
         let pair = resolvedLanguagePair(for: text)
         updateLanguageSelection(for: text)
         setResultText("Translating...")
