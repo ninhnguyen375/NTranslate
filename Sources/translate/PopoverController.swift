@@ -840,6 +840,15 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         targetLanguagePopup.selectItem(withTitle: pair.target)
     }
 
+    private func showSelectionFallbackAlert(accessibilityError: String, source: TranslatableTextSource) {
+        let alert = NSAlert()
+        alert.messageText = "Selection read failed"
+        alert.informativeText = "\(accessibilityError)\n\nFallback source: \(source == .simulatedCopy ? "simulated copy" : "clipboard")"
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
+    }
+
     private static let maxTranslateLength = 5000
 
     func translateAtCursor() {
@@ -847,7 +856,10 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
             requestAccessibilityPermissionIfNeeded(forcePrompt: true)
         }
         previousApp = NSWorkspace.shared.frontmostApplication
-        guard let resolved = SelectionReader.resolveTranslatableText() else { return }
+        guard let resolved = SelectionReader.resolveTranslatableTextWithDiagnostics() else { return }
+        if let accessibilityError = resolved.accessibilityError {
+            showSelectionFallbackAlert(accessibilityError: accessibilityError, source: resolved.source)
+        }
         let trimmed = resolved.text
         if trimmed.count > Self.maxTranslateLength {
             inputTextView.string = "Text is too long to translate."

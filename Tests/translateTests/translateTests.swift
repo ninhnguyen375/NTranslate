@@ -99,6 +99,11 @@ struct TranslateTests {
         #expect(SelectionReader.isNonTextSelection(text: nil, selectedRangeLength: nil, role: "AXImage"))
     }
 
+    @Test func selectionReadFailureIncludesAttributeAndTypes() {
+        let error = SelectionReadFailure.unexpectedValue(attribute: "AXFocusedUIElement", expected: "AXUIElement", actual: "String")
+        #expect(error.description == "Accessibility read failed at AXFocusedUIElement: expected AXUIElement, got String")
+    }
+
     @Test func speechModelResolverUsesTargetLanguage() {
         let config = AppConfig.default
         #expect(SpeechModelResolver.model(for: "Vietnamese", config: config) == config.speechTargetModel)

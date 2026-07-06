@@ -9,27 +9,43 @@ enum TranslatableTextSource {
     case simulatedCopy
 }
 
+struct SelectionResolution {
+    let text: String
+    let source: TranslatableTextSource
+    let accessibilityError: String?
+}
+
+enum SelectionReadFailure: Error, CustomStringConvertible {
+    case unexpectedValue(attribute: String, expected: String, actual: String)
+
+    var description: String {
+        switch self {
+        case let .unexpectedValue(attribute, expected, actual):
+            return "Accessibility read failed at \(attribute): expected \(expected), got \(actual)"
+        }
+    }
+}
+
 struct SelectionReader {
     static func resolveTranslatableText() -> (text: String, source: TranslatableTextSource)? {
+        resolveTranslatableTextWithDiagnostics().map { ($0.text, $0.source) }
+    }
+
+    static func resolveTranslatableTextWithDiagnostics() -> SelectionResolution? {
+        var accessibilityError: String?
         if AXIsProcessTrusted() {
-            let system = AXUIElementCreateSystemWide()
-            if let focused = focusedElement(from: system, attribute: kAXFocusedUIElementAttribute as CFString) {
-                if let text = selectedText(from: focused) {
-                    return (text, .selection)
+            do {
+                if let resolved = try accessibilitySelection() {
+                    return SelectionResolution(text: resolved.text, source: resolved.source, accessibilityError: nil)
                 }
-                if isNonTextSelection(text: nil, selectedRangeLength: selectedTextRangeLength(from: focused), role: role(from: focused)) {
-                    return pasteboardPlainText().map { ($0, .clipboard) }
-                }
-            }
-            if let focused = focusedElement(from: system, attribute: kAXFocusedApplicationAttribute as CFString),
-               let text = selectedText(from: focused) {
-                return (text, .selection)
+            } catch {
+                accessibilityError = String(describing: error)
             }
         }
         if let copied = copyViaKeyboard() {
-            return (copied, .simulatedCopy)
+            return SelectionResolution(text: copied, source: .simulatedCopy, accessibilityError: accessibilityError)
         }
-        return pasteboardPlainText().map { ($0, .clipboard) }
+        return pasteboardPlainText().map { SelectionResolution(text: $0, source: .clipboard, accessibilityError: accessibilityError) }
     }
 
     static func snapshotText() -> String? {
@@ -54,6 +70,23 @@ struct SelectionReader {
     private static func normalizedText(_ text: String?) -> String? {
         let trimmed = text?.trimmingCharacters(in: .whitespacesAndNewlines)
         return (trimmed?.isEmpty ?? true) ? nil : trimmed
+    }
+
+    private static func accessibilitySelection() throws -> (text: String, source: TranslatableTextSource)? {
+        let system = AXUIElementCreateSystemWide()
+        if let focused = try focusedElement(from: system, attribute: kAXFocusedUIElementAttribute as CFString) {
+            if let text = selectedText(from: focused) {
+                return (text, .selection)
+            }
+            if isNonTextSelection(text: nil, selectedRangeLength: selectedTextRangeLength(from: focused), role: role(from: focused)) {
+                return pasteboardPlainText().map { ($0, .clipboard) }
+            }
+        }
+        if let focused = try focusedElement(from: system, attribute: kAXFocusedApplicationAttribute as CFString),
+           let text = selectedText(from: focused) {
+            return (text, .selection)
+        }
+        return nil
     }
 
     private static func copyViaKeyboard() -> String? {
@@ -86,12 +119,15 @@ struct SelectionReader {
         return normalizedText(copied)
     }
 
-    private static func focusedElement(from element: AXUIElement, attribute: CFString) -> AXUIElement? {
+    private static func focusedElement(from element: AXUIElement, attribute: CFString) throws -> AXUIElement? {
         var ref: CFTypeRef?
         guard AXUIElementCopyAttributeValue(element, attribute, &ref) == .success,
               let value = ref
         else { return nil }
-        return unsafeDowncast(value, to: AXUIElement.self)
+        guard CFGetTypeID(value) == AXUIElementGetTypeID() else {
+            throw SelectionReadFailure.unexpectedValue(attribute: attribute as String, expected: "AXUIElement", actual: String(describing: type(of: value)))
+        }
+        return (value as! AXUIElement)
     }
 
     private static func selectedText(from element: AXUIElement) -> String? {
