@@ -13,6 +13,10 @@ enum PopoverLayoutMath {
         return ceil(layoutManager.usedRect(for: container).height)
     }
 
+    static func clickIsInsidePanel(click: NSPoint, panelFrame: NSRect, padding: CGFloat = 2) -> Bool {
+        panelFrame.insetBy(dx: -padding, dy: -padding).contains(click)
+    }
+
     static func inputHeight(
         text: String,
         font: NSFont,

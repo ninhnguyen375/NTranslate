@@ -83,4 +83,41 @@ struct TranslateTests {
         let height = PopoverLayoutMath.measuredTextHeight(NSAttributedString(string: ""), width: 200)
         #expect(height > 0)
     }
+
+    @Test func clickIsInsidePanelRecognizesInsideAndOutsidePoints() {
+        let frame = NSRect(x: 100, y: 100, width: 200, height: 100)
+        #expect(PopoverLayoutMath.clickIsInsidePanel(click: NSPoint(x: 150, y: 150), panelFrame: frame))
+        #expect(!PopoverLayoutMath.clickIsInsidePanel(click: NSPoint(x: 50, y: 50), panelFrame: frame))
+    }
+
+    @Test func nonTextSelectionDetectedWhenRangeExistsButTextEmpty() {
+        #expect(SelectionReader.isNonTextSelection(text: nil, selectedRangeLength: 1, role: nil))
+        #expect(!SelectionReader.isNonTextSelection(text: "hello", selectedRangeLength: 1, role: nil))
+    }
+
+    @Test func nonTextSelectionDetectedForImageRole() {
+        #expect(SelectionReader.isNonTextSelection(text: nil, selectedRangeLength: nil, role: "AXImage"))
+    }
+
+    @Test func speechModelResolverUsesTargetLanguage() {
+        let config = AppConfig.default
+        #expect(SpeechModelResolver.model(for: "Vietnamese", config: config) == config.speechTargetModel)
+        #expect(SpeechModelResolver.model(for: "English", config: config) == config.speechSourceModel)
+        #expect(SpeechModelResolver.model(for: "Chinese", config: config) == config.speechSourceModelChinese)
+    }
+
+    @Test func crashReportSummaryParsesExceptionType() {
+        let data = Data("""
+        {"timestamp":"2026-07-06 12:44:26.00 +0700","exception":{"type":"EXC_BAD_ACCESS"},"termination":{"namespace":"SIGNAL","indicator":"Segmentation fault: 11"}}
+        {"ignored":"full report"}
+        """.utf8)
+        let summary = CrashRecovery.summary(fromCrashReportData: data)
+        #expect(summary?.timestamp == "2026-07-06 12:44:26.00 +0700")
+        #expect(summary?.exceptionType == "EXC_BAD_ACCESS")
+        #expect(summary?.terminationReason == "SIGNAL: Segmentation fault: 11")
+    }
+
+    @Test func crashReportSummaryReturnsNilForInvalidData() {
+        #expect(CrashRecovery.summary(fromCrashReportData: Data("not json".utf8)) == nil)
+    }
 }

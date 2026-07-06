@@ -59,8 +59,8 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     private var isSpeakingSource = false
     private var isSpeakingResult = false
     private var keyMonitor: Any?
-    private var globalKeyMonitor: Any?
     private var globalMouseMonitor: Any?
+    private var localMouseMonitor: Any?
     private var previousApp: NSRunningApplication?
     private var restoresPreviousAppOnClose = false
     private var activatesAppOnShow = false
@@ -80,8 +80,10 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         }
         statusItem.button?.action = #selector(manualToggle)
         statusItem.button?.target = self
+        CrashRecovery.presentCrashAlertIfNeeded()
         requestAccessibilityPermissionIfNeeded()
         panel.isOpaque = false
+        panel.ignoresMouseEvents = false
         panel.backgroundColor = .clear
         panel.hasShadow = true
         panel.level = .statusBar
@@ -100,15 +102,6 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
                 return nil
             }
             return event
-        }
-        globalKeyMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            guard let self, self.panel.isVisible else { return }
-            if event.keyCode == UInt16(kVK_Escape) {
-                Task { @MainActor in
-                    self.restoresPreviousAppOnClose = true
-                    self.closePanel()
-                }
-            }
         }
     }
 
@@ -572,13 +565,10 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     }
 
     private func sourceSpeechModel(for text: String) -> String {
-        if LanguageDetector.looksChinese(text) {
-            return config.speechSourceModelChinese
-        }
         if LanguageDetector.looksVietnamese(text) {
             return config.speechSourceModelVietnamese
         }
-        return config.speechSourceModel
+        return SpeechModelResolver.model(for: LanguageDetector.detectedLanguage(text), config: config)
     }
 
     private func buildMenu() {
@@ -668,7 +658,9 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
             GetEventParameter(event, EventParamName(kEventParamDirectObject), EventParamType(typeEventHotKeyID), nil, MemoryLayout<EventHotKeyID>.size, nil, &hotKeyID)
             if hotKeyID.id == 1 {
                 let controller = Unmanaged<PopoverController>.fromOpaque(userData).takeUnretainedValue()
-                Task { @MainActor in controller.translateAtCursor() }
+                Task { @MainActor [controller] in
+                    controller.translateAtCursor()
+                }
             }
             return noErr
         }, 1, &eventSpec, Unmanaged.passUnretained(self).toOpaque(), &hotKeyEventHandlerRef)
@@ -696,6 +688,10 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
             reflowLayout()
             presentPanel(activatesApp: true, restoresPreviousAppOnCloseValue: false)
         }
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        CrashRecovery.markCleanShutdown()
     }
 
     @objc private func quitApp() {
@@ -748,12 +744,22 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     }
 
     private func installOutsideClickMonitor() {
+        removeOutsideClickMonitor()
         globalMouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
-            Task { @MainActor in
+            let click = NSEvent.mouseLocation
+            Task { @MainActor [weak self] in
                 guard let self, self.panel.isVisible, !self.isPinned else { return }
+                guard !PopoverLayoutMath.clickIsInsidePanel(click: click, panelFrame: self.panel.frame) else { return }
                 self.restoresPreviousAppOnClose = false
                 self.closePanel()
             }
+        }
+        localMouseMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
+            guard let self, self.panel.isVisible, !self.isPinned else { return event }
+            guard !PopoverLayoutMath.clickIsInsidePanel(click: NSEvent.mouseLocation, panelFrame: self.panel.frame) else { return event }
+            self.restoresPreviousAppOnClose = false
+            self.closePanel()
+            return event
         }
     }
 
@@ -761,7 +767,11 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         if let globalMouseMonitor {
             NSEvent.removeMonitor(globalMouseMonitor)
         }
+        if let localMouseMonitor {
+            NSEvent.removeMonitor(localMouseMonitor)
+        }
         globalMouseMonitor = nil
+        localMouseMonitor = nil
     }
 
     /// Shows the panel (or re-focuses it if already open) using the frame `reflowLayout` already
@@ -837,12 +847,8 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
             requestAccessibilityPermissionIfNeeded(forcePrompt: true)
         }
         previousApp = NSWorkspace.shared.frontmostApplication
-        let text = SelectionReader.snapshotText() ?? ""
-        var trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.isEmpty {
-            trimmed = (NSPasteboard.general.string(forType: .string) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        }
-        guard !trimmed.isEmpty else { return }
+        guard let resolved = SelectionReader.resolveTranslatableText() else { return }
+        let trimmed = resolved.text
         if trimmed.count > Self.maxTranslateLength {
             inputTextView.string = "Text is too long to translate."
             setResultText("")
@@ -887,7 +893,7 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
                     self?.reflowLayout()
                     self?.textView.scrollToBeginningOfDocument(nil)
                     if let self {
-                        self.prefetchSpeech(value, model: self.config.speechTargetModel, kind: .result)
+                        self.prefetchSpeech(value, model: SpeechModelResolver.model(for: pair.target, config: self.config), kind: .result)
                     }
                     if self?.config.ui.autoCopy == true {
                         NSPasteboard.general.clearContents()
@@ -986,7 +992,8 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     }
 
     @objc func speakResult() {
-        playSpeech(textView.string, model: config.speechTargetModel, kind: .result)
+        let target = resolvedLanguagePair(for: inputTextView.string).target
+        playSpeech(textView.string, model: SpeechModelResolver.model(for: target, config: config), kind: .result)
     }
 
     private func copyValue() -> String? {
