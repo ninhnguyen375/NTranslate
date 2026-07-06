@@ -13,6 +13,22 @@ struct AppConfig: Codable {
         var width: Double
         var height: Double
         var autoCopy: Bool
+        var simulateCopy: Bool
+
+        init(width: Double, height: Double, autoCopy: Bool, simulateCopy: Bool = false) {
+            self.width = width
+            self.height = height
+            self.autoCopy = autoCopy
+            self.simulateCopy = simulateCopy
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            width = try container.decode(Double.self, forKey: .width)
+            height = try container.decode(Double.self, forKey: .height)
+            autoCopy = try container.decode(Bool.self, forKey: .autoCopy)
+            simulateCopy = try container.decodeIfPresent(Bool.self, forKey: .simulateCopy) ?? false
+        }
     }
 
     var apiBaseURL: String
@@ -42,7 +58,7 @@ struct AppConfig: Codable {
         speechSourceModelChinese: "edge-tts/zh-CN-XiaoxiaoNeural",
         speechTargetModel: "edge-tts/vi-VN-HoaiMyNeural",
         hotkey: .init(key: "D", option: true, command: false, control: false, shift: false),
-        ui: .init(width: 480, height: 320, autoCopy: false)
+        ui: .init(width: 480, height: 320, autoCopy: false, simulateCopy: false)
     )
 
     enum LoadOutcome {

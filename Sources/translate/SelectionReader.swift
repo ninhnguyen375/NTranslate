@@ -27,11 +27,11 @@ enum SelectionReadFailure: Error, CustomStringConvertible {
 }
 
 struct SelectionReader {
-    static func resolveTranslatableText() -> (text: String, source: TranslatableTextSource)? {
-        resolveTranslatableTextWithDiagnostics().map { ($0.text, $0.source) }
+    static func resolveTranslatableText(simulateCopy: Bool = false) -> (text: String, source: TranslatableTextSource)? {
+        resolveTranslatableTextWithDiagnostics(simulateCopy: simulateCopy).map { ($0.text, $0.source) }
     }
 
-    static func resolveTranslatableTextWithDiagnostics() -> SelectionResolution? {
+    static func resolveTranslatableTextWithDiagnostics(simulateCopy: Bool = false) -> SelectionResolution? {
         var accessibilityError: String?
         if AXIsProcessTrusted() {
             do {
@@ -42,14 +42,14 @@ struct SelectionReader {
                 accessibilityError = String(describing: error)
             }
         }
-        if let copied = copyViaKeyboard() {
+        if simulateCopy, let copied = copyViaKeyboard() {
             return SelectionResolution(text: copied, source: .simulatedCopy, accessibilityError: accessibilityError)
         }
         return pasteboardPlainText().map { SelectionResolution(text: $0, source: .clipboard, accessibilityError: accessibilityError) }
     }
 
-    static func snapshotText() -> String? {
-        resolveTranslatableText()?.text
+    static func snapshotText(simulateCopy: Bool = false) -> String? {
+        resolveTranslatableText(simulateCopy: simulateCopy)?.text
     }
 
     static func pasteboardPlainText() -> String? {

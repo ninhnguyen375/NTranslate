@@ -658,9 +658,7 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
             GetEventParameter(event, EventParamName(kEventParamDirectObject), EventParamType(typeEventHotKeyID), nil, MemoryLayout<EventHotKeyID>.size, nil, &hotKeyID)
             if hotKeyID.id == 1 {
                 let controller = Unmanaged<PopoverController>.fromOpaque(userData).takeUnretainedValue()
-                Task { @MainActor [controller] in
-                    controller.translateAtCursor()
-                }
+                controller.perform(#selector(PopoverController.hotKeyPressed), on: .main, with: nil, waitUntilDone: false)
             }
             return noErr
         }, 1, &eventSpec, Unmanaged.passUnretained(self).toOpaque(), &hotKeyEventHandlerRef)
@@ -677,6 +675,10 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         }
     }
 
+    @objc private func hotKeyPressed() {
+        translateAtCursor()
+    }
+
     @objc private func manualToggle() {
         guard NSApp.currentEvent?.type == .leftMouseUp else { return }
         if panel.isVisible {
@@ -691,6 +693,8 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        if let hotKeyEventHandlerRef { RemoveEventHandler(hotKeyEventHandlerRef) }
+        if let hotKeyRef { UnregisterEventHotKey(hotKeyRef) }
         CrashRecovery.markCleanShutdown()
     }
 
@@ -856,7 +860,7 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
             requestAccessibilityPermissionIfNeeded(forcePrompt: true)
         }
         previousApp = NSWorkspace.shared.frontmostApplication
-        guard let resolved = SelectionReader.resolveTranslatableTextWithDiagnostics() else { return }
+        guard let resolved = SelectionReader.resolveTranslatableTextWithDiagnostics(simulateCopy: config.ui.simulateCopy) else { return }
         if let accessibilityError = resolved.accessibilityError {
             showSelectionFallbackAlert(accessibilityError: accessibilityError, source: resolved.source)
         }

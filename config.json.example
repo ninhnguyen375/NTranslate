@@ -19,6 +19,7 @@
   "ui": {
     "width": 480,
     "height": 320,
-    "autoCopy": false
+    "autoCopy": false,
+    "simulateCopy": false
   }
 }

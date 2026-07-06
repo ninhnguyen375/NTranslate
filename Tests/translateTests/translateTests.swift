@@ -64,6 +64,19 @@ struct TranslateTests {
             return
         }
         #expect(config.apiBaseURL == AppConfig.default.apiBaseURL)
+        #expect(config.ui.simulateCopy == false)
+    }
+
+    @Test func appConfigDecodeDefaultsSimulateCopyWhenMissing() throws {
+        let json = """
+        {"apiBaseURL":"http://localhost:1/v1/chat/completions","apiKey":"","model":"m","sourceLang":"Auto detect","targetLang":"Vietnamese","systemPrompt":"p","speechSourceModel":"a","speechSourceModelVietnamese":"b","speechSourceModelChinese":"c","speechTargetModel":"d","hotkey":{"key":"D","option":true,"command":false,"control":false,"shift":false},"ui":{"width":480,"height":320,"autoCopy":false}}
+        """
+        let outcome = AppConfig.decodeOutcome(data: Data(json.utf8))
+        guard case let .loaded(config) = outcome else {
+            Issue.record("Expected loaded outcome")
+            return
+        }
+        #expect(config.ui.simulateCopy == false)
     }
 
     @Test func popoverLayoutMathClampsInputHeight() {
