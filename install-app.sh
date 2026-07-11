@@ -116,6 +116,27 @@ codesign --force --deep --sign "$SIGN_IDENTITY" "$APP_DST"
 codesign -vv "$APP_DST"
 codesign -dv --verbose=4 "$APP_DST" 2>&1 | grep -E 'Identifier=|Authority=|TeamIdentifier=' || true
 touch "$APP_DST"
+
+# Seed runtime config into Application Support (app only reads this path; no hardcoded repo path).
+CONFIG_SUPPORT_DIR="${HOME}/Library/Application Support/NTranslate"
+CONFIG_DST="$CONFIG_SUPPORT_DIR/config.json"
+CONFIG_SRC=""
+if [ -f "$PROJECT_DIR/config.json" ]; then
+  CONFIG_SRC="$PROJECT_DIR/config.json"
+elif [ -f "$PROJECT_DIR/config.json.example" ]; then
+  CONFIG_SRC="$PROJECT_DIR/config.json.example"
+fi
+mkdir -p "$CONFIG_SUPPORT_DIR"
+if [ -z "$CONFIG_SRC" ]; then
+  echo "Warning: no config.json or config.json.example in project; skipped seeding $CONFIG_DST" >&2
+elif [ -f "$CONFIG_DST" ] && [ "${FORCE_CONFIG:-0}" != "1" ]; then
+  echo "Config exists (leave as-is): $CONFIG_DST"
+  echo "  Tip: FORCE_CONFIG=1 ./install-app.sh to overwrite from $CONFIG_SRC"
+else
+  cp "$CONFIG_SRC" "$CONFIG_DST"
+  echo "Config seeded: $CONFIG_SRC -> $CONFIG_DST"
+fi
+
 open "$APP_DST"
 
 echo "Installed: $APP_DST"

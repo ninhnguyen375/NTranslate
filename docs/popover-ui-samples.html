@@ -1,0 +1,684 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>NTranslate — 5 mẫu UX/UI compact</title>
+<style>
+  :root {
+    --bg: #e8eaef;
+    --ink: #1d1d1f;
+    --muted: #6e6e73;
+    --card: #ffffff;
+    --line: rgba(0,0,0,.08);
+    --accent: #0071e3;
+    --accent-soft: #e8f1fc;
+    --ok: #1a7f37;
+    --shadow: 0 18px 48px rgba(0,0,0,.12), 0 2px 8px rgba(0,0,0,.06);
+    --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: var(--font);
+    color: var(--ink);
+    background:
+      radial-gradient(1200px 600px at 10% -10%, #dce8ff 0%, transparent 55%),
+      radial-gradient(900px 500px at 100% 0%, #f0e8ff 0%, transparent 50%),
+      var(--bg);
+    min-height: 100vh;
+  }
+  header.page {
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 36px 28px 12px;
+  }
+  header.page h1 {
+    margin: 0 0 6px;
+    font-size: 26px;
+    font-weight: 700;
+    letter-spacing: -0.03em;
+  }
+  header.page p {
+    margin: 0;
+    color: var(--muted);
+    font-size: 14px;
+    line-height: 1.5;
+    max-width: 720px;
+  }
+  .toolbar {
+    max-width: 1280px;
+    margin: 16px auto 0;
+    padding: 0 28px;
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  .chip {
+    font-size: 12px;
+    color: var(--muted);
+    background: rgba(255,255,255,.7);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 5px 10px;
+  }
+  .chip strong { color: var(--ink); font-weight: 600; }
+  .grid {
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 20px 28px 60px;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+    gap: 22px;
+  }
+  .sample {
+    background: rgba(255,255,255,.55);
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    padding: 16px;
+    backdrop-filter: blur(10px);
+    transition: border-color .15s, box-shadow .15s, transform .15s;
+    cursor: pointer;
+    position: relative;
+  }
+  .sample:hover { border-color: rgba(0,113,227,.35); transform: translateY(-1px); }
+  .sample.selected {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(0,113,227,.18);
+  }
+  .sample-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 10px;
+    margin-bottom: 12px;
+    padding-right: 28px;
+  }
+  .sample-meta h2 {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+  }
+  .sample-meta .tag {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--accent);
+    background: var(--accent-soft);
+    border-radius: 6px;
+    padding: 3px 7px;
+    white-space: nowrap;
+  }
+  .sample-meta p {
+    margin: 4px 0 0;
+    font-size: 12px;
+    color: var(--muted);
+    line-height: 1.45;
+  }
+  .pick {
+    position: absolute;
+    top: 14px;
+    right: 14px;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    border: 2px solid #c7c7cc;
+    background: #fff;
+    display: grid;
+    place-items: center;
+  }
+  .sample.selected .pick {
+    border-color: var(--accent);
+    background: var(--accent);
+  }
+  .sample.selected .pick::after {
+    content: "";
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #fff;
+  }
+  .stage {
+    background: #cfd3db;
+    border-radius: 14px;
+    padding: 22px 14px;
+    display: flex;
+    justify-content: center;
+    min-height: 420px;
+  }
+
+  /* SF Symbol–style icons */
+  .sf {
+    width: 1em;
+    height: 1em;
+    display: inline-block;
+    flex-shrink: 0;
+    vertical-align: -0.125em;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.6;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  .sf.filled { fill: currentColor; stroke: none; }
+
+  .popover {
+    width: 320px;
+    background: var(--card);
+    border-radius: 14px;
+    box-shadow: var(--shadow);
+    border: 1px solid rgba(0,0,0,.06);
+    overflow: hidden;
+    font-size: 12px;
+  }
+  .hdr {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .hdr .brand {
+    font-weight: 700;
+    font-size: 12px;
+    letter-spacing: -0.02em;
+  }
+  .hdr .spacer { flex: 1; }
+  .icon-btn {
+    width: 18px;
+    height: 18px;
+    border: 0;
+    background: transparent;
+    color: var(--muted);
+    border-radius: 4px;
+    display: grid;
+    place-items: center;
+    padding: 0;
+    cursor: default;
+    font-size: 12px;
+  }
+  .lang {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .select {
+    flex: 1;
+    height: 24px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: #f5f5f7;
+    color: var(--ink);
+    font-size: 11px;
+    padding: 0 8px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .select .chev { font-size: 9px; color: var(--muted); opacity: .8; }
+  .swap {
+    width: 22px;
+    height: 22px;
+    border-radius: 6px;
+    border: 1px solid var(--line);
+    background: #fff;
+    color: var(--muted);
+    display: grid;
+    place-items: center;
+    font-size: 11px;
+  }
+  .box {
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: #fafafa;
+    color: var(--ink);
+    line-height: 1.4;
+  }
+  .box.source { color: #3a3a3c; }
+  .box.result { background: #f7f8fa; }
+  .btn {
+    border: 1px solid var(--line);
+    background: #f5f5f7;
+    color: var(--ink);
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 560;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    cursor: default;
+    white-space: nowrap;
+  }
+  .btn .sf { font-size: 11px; }
+  .btn.primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+  }
+  .btn.ghost { background: transparent; }
+  .btn.icon {
+    width: 24px;
+    padding: 0;
+  }
+  .status {
+    color: var(--muted);
+    font-size: 10px;
+    min-height: 12px;
+  }
+
+  /* A */
+  .a { padding: 8px; }
+  .a .hdr { margin-bottom: 2px; }
+  .a .status { margin-bottom: 6px; }
+  .a .lang { margin-bottom: 6px; }
+  .a .source { height: 54px; padding: 6px 8px; margin-bottom: 6px; }
+  .a .actions { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 6px; }
+  .a .btn { height: 22px; padding: 0 8px; }
+  .a .result { height: 120px; padding: 8px; }
+
+  /* B */
+  .b { padding: 8px; }
+  .b .hdr { margin-bottom: 2px; }
+  .b .status { margin-bottom: 6px; }
+  .b .lang { margin-bottom: 6px; }
+  .b .source { height: 54px; padding: 6px 8px; margin-bottom: 6px; }
+  .b .actions { display: flex; align-items: center; gap: 4px; margin-bottom: 6px; }
+  .b .btn { height: 22px; padding: 0 8px; }
+  .b .btn.icon { width: 22px; height: 22px; border-radius: 6px; }
+  .b .actions .grow { flex: 1; }
+  .b .result { height: 132px; padding: 8px; }
+
+  /* C */
+  .c { padding: 8px; }
+  .c .hdr { margin-bottom: 2px; }
+  .c .status { margin-bottom: 6px; }
+  .c .lang { margin-bottom: 6px; }
+  .c .source { height: 54px; padding: 6px 8px; margin-bottom: 6px; }
+  .c .primary-row { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-bottom: 4px; }
+  .c .primary-row .btn { height: 24px; }
+  .c .util-row { display: flex; gap: 4px; margin-bottom: 6px; }
+  .c .util-row .btn { height: 20px; padding: 0 7px; font-size: 10px; flex: 1; }
+  .c .util-row .btn .sf { font-size: 10px; }
+  .c .result { height: 118px; padding: 8px; }
+
+  /* D */
+  .d { padding: 8px; }
+  .d .hdr { margin-bottom: 2px; }
+  .d .status { margin-bottom: 6px; }
+  .d .lang { margin-bottom: 6px; }
+  .d .source-wrap {
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    overflow: hidden;
+    margin-bottom: 6px;
+    background: #fafafa;
+  }
+  .d .source-wrap .body { height: 48px; padding: 6px 8px; }
+  .d .source-wrap .footer {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px;
+    border-top: 1px solid var(--line);
+    background: #f3f3f5;
+  }
+  .d .source-wrap .footer .btn { height: 20px; padding: 0 7px; font-size: 10px; }
+  .d .source-wrap .footer .btn .sf { font-size: 10px; }
+  .d .source-wrap .footer .spacer { flex: 1; }
+  .d .result-wrap {
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    overflow: hidden;
+    background: #f7f8fa;
+  }
+  .d .result-wrap .top {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 6px;
+    border-bottom: 1px solid var(--line);
+    background: #eef0f3;
+    color: var(--muted);
+    font-size: 10px;
+    font-weight: 600;
+  }
+  .d .result-wrap .top .spacer { flex: 1; }
+  .d .result-wrap .top .btn {
+    height: 18px;
+    width: 18px;
+    padding: 0;
+    font-size: 10px;
+    color: var(--ink);
+  }
+  .d .result-wrap .body { height: 110px; padding: 8px; }
+
+  /* E */
+  .e { padding: 6px; }
+  .e .hdr { margin-bottom: 2px; }
+  .e .hdr .brand { font-size: 11px; }
+  .e .status { margin-bottom: 4px; font-size: 9px; min-height: 10px; }
+  .e .lang { margin-bottom: 4px; gap: 4px; }
+  .e .select { height: 20px; font-size: 10px; border-radius: 5px; padding: 0 6px; }
+  .e .swap { width: 18px; height: 18px; border-radius: 5px; font-size: 10px; }
+  .e .source { height: 48px; padding: 5px 6px; margin-bottom: 4px; border-radius: 6px; font-size: 11px; }
+  .e .actions { display: flex; gap: 3px; margin-bottom: 4px; }
+  .e .btn { height: 20px; padding: 0 6px; font-size: 10px; border-radius: 5px; gap: 3px; }
+  .e .btn .sf { font-size: 10px; }
+  .e .btn.icon { width: 20px; }
+  .e .result { height: 128px; padding: 6px; border-radius: 6px; font-size: 11px; }
+
+  footer.page {
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 0 28px 40px;
+    color: var(--muted);
+    font-size: 12px;
+  }
+  #choice { display: none; max-width: 1280px; margin: 0 auto 12px; padding: 0 28px; }
+  #choice .banner {
+    background: #e8f6ec;
+    border: 1px solid #b7e0c2;
+    color: var(--ok);
+    border-radius: 10px;
+    padding: 10px 14px;
+    font-size: 13px;
+    font-weight: 600;
+  }
+
+  /* Hidden SVG sprite */
+  .sprites { position: absolute; width: 0; height: 0; overflow: hidden; }
+</style>
+</head>
+<body>
+
+<svg class="sprites" aria-hidden="true">
+  <!-- arrow.right.circle -->
+  <symbol id="i-translate" viewBox="0 0 16 16">
+    <circle cx="8" cy="8" r="6.25"/>
+    <path d="M5.2 8h5.1"/>
+    <path d="M8.2 5.5L10.7 8l-2.5 2.5"/>
+  </symbol>
+  <!-- brain.head.profile (simplified) -->
+  <symbol id="i-learn" viewBox="0 0 16 16">
+    <path d="M9.2 2.8c1.7.2 3 1.7 3 3.5 0 .6-.1 1.1-.4 1.6.8.5 1.3 1.4 1.3 2.4 0 1.5-1.1 2.7-2.6 2.9v1.3H8.8v-1.2c-1.1-.1-2-.6-2.6-1.4-.4.2-.8.3-1.2.3-1.5 0-2.7-1.2-2.7-2.7 0-.9.4-1.7 1.1-2.2C3.2 6 3.1 5.5 3.1 5c0-1.8 1.4-3.3 3.2-3.5.4-1 1.4-1.7 2.5-1.5.2 0 .3 0 .4.1z"/>
+    <path d="M6.2 6.2c.4-.5 1-.8 1.7-.8M9.5 7.8c.3.4.5.9.5 1.4"/>
+  </symbol>
+  <!-- doc.on.doc -->
+  <symbol id="i-copy" viewBox="0 0 16 16">
+    <rect x="5.2" y="3.2" width="7.2" height="9.2" rx="1.2"/>
+    <path d="M3.6 5.2h-.2A1.2 1.2 0 0 0 2.2 6.4v7c0 .7.5 1.2 1.2 1.2h6c.7 0 1.2-.5 1.2-1.2v-.2"/>
+  </symbol>
+  <!-- speaker.wave.2 -->
+  <symbol id="i-speak" viewBox="0 0 16 16">
+    <path d="M7.2 4.2L4.4 6.4H2.6v3.2h1.8l2.8 2.2V4.2z"/>
+    <path d="M9.4 6.1c.6.5.9 1.1.9 1.9s-.3 1.4-.9 1.9"/>
+    <path d="M11.1 4.6c1.1.9 1.7 2.1 1.7 3.4s-.6 2.5-1.7 3.4"/>
+  </symbol>
+  <!-- pin -->
+  <symbol id="i-pin" viewBox="0 0 16 16">
+    <path d="M8.9 2.6l4.5 4.5-1.2.5-2.3 2.3-.5 3.1-1.5-1.5-3.4 3.4-.9-.9 3.4-3.4-1.5-1.5 3.1-.5 2.3-2.3.5-1.2z"/>
+  </symbol>
+  <!-- xmark.circle -->
+  <symbol id="i-close" viewBox="0 0 16 16">
+    <circle cx="8" cy="8" r="6.25"/>
+    <path d="M5.8 5.8l4.4 4.4M10.2 5.8l-4.4 4.4"/>
+  </symbol>
+  <!-- arrow.left.arrow.right -->
+  <symbol id="i-swap" viewBox="0 0 16 16">
+    <path d="M3.2 5.5h8.2"/>
+    <path d="M9.5 3.2L12.2 5.5 9.5 7.8"/>
+    <path d="M12.8 10.5H4.6"/>
+    <path d="M6.5 8.2L3.8 10.5 6.5 12.8"/>
+  </symbol>
+  <!-- chevron.down -->
+  <symbol id="i-chevron" viewBox="0 0 16 16">
+    <path d="M4.5 6.2L8 9.7l3.5-3.5"/>
+  </symbol>
+</svg>
+
+<header class="page">
+  <h1>NTranslate — 5 mẫu UX/UI compact</h1>
+  <p>
+    Mục tiêu: nút nhỏ hơn, ít padding hơn để tiết kiệm không gian.
+    Icon dùng SVG kiểu <strong>SF Symbols</strong> (giống app: arrow.right.circle, brain, doc.on.doc, speaker.wave.2).
+    Click 1 mẫu để chọn — báo lại số (A–E).
+  </p>
+</header>
+
+<div class="toolbar">
+  <span class="chip"><strong>Hiện tại</strong> btn 30 · gap 8 · pad 14 · wrap 2 hàng</span>
+  <span class="chip"><strong>Mục tiêu</strong> btn 20–24 · gap 3–4 · pad 6–8 · 1 hàng nếu được</span>
+  <span class="chip"><strong>Icon</strong> SF Symbols SVG · không emoji</span>
+</div>
+
+<div id="choice"><div class="banner" id="choiceText"></div></div>
+
+<div class="grid">
+
+  <!-- A -->
+  <article class="sample" data-id="A" onclick="pick(this)">
+    <div class="pick"></div>
+    <div class="sample-meta">
+      <div>
+        <h2>A · Compact Classic</h2>
+        <p>Giữ layout hiện tại, thu nhỏ toàn bộ: pad 8, btn 22, gap 4. Ít rủi ro, dễ port sang AppKit.</p>
+      </div>
+      <span class="tag">An toàn</span>
+    </div>
+    <div class="stage">
+      <div class="popover a">
+        <div class="hdr">
+          <span class="brand">NTranslate</span>
+          <span class="spacer"></span>
+          <button class="icon-btn" title="Pin"><svg class="sf"><use href="#i-pin"/></svg></button>
+          <button class="icon-btn" title="Close"><svg class="sf"><use href="#i-close"/></svg></button>
+        </div>
+        <div class="status"></div>
+        <div class="lang">
+          <div class="select"><span>English</span><svg class="sf chev"><use href="#i-chevron"/></svg></div>
+          <div class="swap"><svg class="sf"><use href="#i-swap"/></svg></div>
+          <div class="select"><span>Vietnamese</span><svg class="sf chev"><use href="#i-chevron"/></svg></div>
+        </div>
+        <div class="box source">The quick brown fox jumps over the lazy dog.</div>
+        <div class="actions">
+          <button class="btn primary"><svg class="sf"><use href="#i-translate"/></svg> Translate</button>
+          <button class="btn"><svg class="sf"><use href="#i-learn"/></svg> Learn</button>
+          <button class="btn"><svg class="sf"><use href="#i-copy"/></svg> Copy</button>
+          <button class="btn"><svg class="sf"><use href="#i-speak"/></svg> Speak Src</button>
+          <button class="btn"><svg class="sf"><use href="#i-speak"/></svg> Speak Tr</button>
+        </div>
+        <div class="box result">Con cáo nâu nhanh nhẹn nhảy qua chú chó lười biếng.</div>
+      </div>
+    </div>
+  </article>
+
+  <!-- B -->
+  <article class="sample" data-id="B" onclick="pick(this)">
+    <div class="pick"></div>
+    <div class="sample-meta">
+      <div>
+        <h2>B · Icon Toolbar</h2>
+        <p>Translate + Learn giữ chữ; Copy / Speak chỉ icon. Một hàng chắc chắn, gọn nhất khi popover hẹp.</p>
+      </div>
+      <span class="tag">Gọn nhất</span>
+    </div>
+    <div class="stage">
+      <div class="popover b">
+        <div class="hdr">
+          <span class="brand">NTranslate</span>
+          <span class="spacer"></span>
+          <button class="icon-btn"><svg class="sf"><use href="#i-pin"/></svg></button>
+          <button class="icon-btn"><svg class="sf"><use href="#i-close"/></svg></button>
+        </div>
+        <div class="status"></div>
+        <div class="lang">
+          <div class="select"><span>English</span><svg class="sf chev"><use href="#i-chevron"/></svg></div>
+          <div class="swap"><svg class="sf"><use href="#i-swap"/></svg></div>
+          <div class="select"><span>Vietnamese</span><svg class="sf chev"><use href="#i-chevron"/></svg></div>
+        </div>
+        <div class="box source">The quick brown fox jumps over the lazy dog.</div>
+        <div class="actions">
+          <button class="btn primary"><svg class="sf"><use href="#i-translate"/></svg> Translate</button>
+          <button class="btn"><svg class="sf"><use href="#i-learn"/></svg> Learn</button>
+          <span class="grow"></span>
+          <button class="btn icon" title="Copy"><svg class="sf"><use href="#i-copy"/></svg></button>
+          <button class="btn icon" title="Speak source"><svg class="sf"><use href="#i-speak"/></svg></button>
+          <button class="btn icon" title="Speak result"><svg class="sf"><use href="#i-speak"/></svg></button>
+        </div>
+        <div class="box result">Con cáo nâu nhanh nhẹn nhảy qua chú chó lười biếng.</div>
+      </div>
+    </div>
+  </article>
+
+  <!-- C -->
+  <article class="sample" data-id="C" onclick="pick(this)">
+    <div class="pick"></div>
+    <div class="sample-meta">
+      <div>
+        <h2>C · Split Primary / Utility</h2>
+        <p>Hàng 1: Translate | Learn full-width. Hàng 2: Copy / Speak Src / Speak Tr nhỏ hơn. Phân tầng rõ hành động chính.</p>
+      </div>
+      <span class="tag">Phân tầng</span>
+    </div>
+    <div class="stage">
+      <div class="popover c">
+        <div class="hdr">
+          <span class="brand">NTranslate</span>
+          <span class="spacer"></span>
+          <button class="icon-btn"><svg class="sf"><use href="#i-pin"/></svg></button>
+          <button class="icon-btn"><svg class="sf"><use href="#i-close"/></svg></button>
+        </div>
+        <div class="status"></div>
+        <div class="lang">
+          <div class="select"><span>English</span><svg class="sf chev"><use href="#i-chevron"/></svg></div>
+          <div class="swap"><svg class="sf"><use href="#i-swap"/></svg></div>
+          <div class="select"><span>Vietnamese</span><svg class="sf chev"><use href="#i-chevron"/></svg></div>
+        </div>
+        <div class="box source">The quick brown fox jumps over the lazy dog.</div>
+        <div class="primary-row">
+          <button class="btn primary"><svg class="sf"><use href="#i-translate"/></svg> Translate</button>
+          <button class="btn"><svg class="sf"><use href="#i-learn"/></svg> Learn</button>
+        </div>
+        <div class="util-row">
+          <button class="btn"><svg class="sf"><use href="#i-copy"/></svg> Copy</button>
+          <button class="btn"><svg class="sf"><use href="#i-speak"/></svg> Speak Src</button>
+          <button class="btn"><svg class="sf"><use href="#i-speak"/></svg> Speak Tr</button>
+        </div>
+        <div class="box result">Con cáo nâu nhanh nhẹn nhảy qua chú chó lười biếng.</div>
+      </div>
+    </div>
+  </article>
+
+  <!-- D -->
+  <article class="sample selected" data-id="D" onclick="pick(this)">
+    <div class="pick"></div>
+    <div class="sample-meta">
+      <div>
+        <h2>D · Inline Chrome</h2>
+        <p>Translate/Learn gắn footer ô nguồn; Copy/Speak gắn header ô kết quả. Không còn hàng nút riêng — tiết kiệm chiều cao.</p>
+      </div>
+      <span class="tag">Tiết kiệm H</span>
+    </div>
+    <div class="stage">
+      <div class="popover d">
+        <div class="hdr">
+          <span class="brand">NTranslate</span>
+          <span class="spacer"></span>
+          <button class="icon-btn"><svg class="sf"><use href="#i-pin"/></svg></button>
+          <button class="icon-btn"><svg class="sf"><use href="#i-close"/></svg></button>
+        </div>
+        <div class="status"></div>
+        <div class="lang">
+          <div class="select"><span>English</span><svg class="sf chev"><use href="#i-chevron"/></svg></div>
+          <div class="swap"><svg class="sf"><use href="#i-swap"/></svg></div>
+          <div class="select"><span>Vietnamese</span><svg class="sf chev"><use href="#i-chevron"/></svg></div>
+        </div>
+        <div class="source-wrap">
+          <div class="body">The quick brown fox jumps over the lazy dog.</div>
+          <div class="footer">
+            <button class="btn primary"><svg class="sf"><use href="#i-translate"/></svg> Translate</button>
+            <button class="btn"><svg class="sf"><use href="#i-learn"/></svg> Learn</button>
+            <span class="spacer"></span>
+            <button class="btn ghost icon" title="Speak source"><svg class="sf"><use href="#i-speak"/></svg></button>
+          </div>
+        </div>
+        <div class="result-wrap">
+          <div class="top">
+            <span>Translation</span>
+            <span class="spacer"></span>
+            <button class="btn icon" title="Speak result"><svg class="sf"><use href="#i-speak"/></svg></button>
+            <button class="btn icon" title="Copy"><svg class="sf"><use href="#i-copy"/></svg></button>
+          </div>
+          <div class="body">Con cáo nâu nhanh nhẹn nhảy qua chú chó lười biếng.</div>
+        </div>
+      </div>
+    </div>
+  </article>
+
+  <!-- E -->
+  <article class="sample" data-id="E" onclick="pick(this)">
+    <div class="pick"></div>
+    <div class="sample-meta">
+      <div>
+        <h2>E · Ultra Dense</h2>
+        <p>Pad 6, btn 20, gap 3, font 10–11. Translate + Learn chữ; 3 nút phụ icon. Tối đa mật độ — hơi “tool-like”.</p>
+      </div>
+      <span class="tag">Max density</span>
+    </div>
+    <div class="stage">
+      <div class="popover e">
+        <div class="hdr">
+          <span class="brand">NTranslate</span>
+          <span class="spacer"></span>
+          <button class="icon-btn"><svg class="sf"><use href="#i-pin"/></svg></button>
+          <button class="icon-btn"><svg class="sf"><use href="#i-close"/></svg></button>
+        </div>
+        <div class="status"></div>
+        <div class="lang">
+          <div class="select"><span>English</span><svg class="sf chev"><use href="#i-chevron"/></svg></div>
+          <div class="swap"><svg class="sf"><use href="#i-swap"/></svg></div>
+          <div class="select"><span>Vietnamese</span><svg class="sf chev"><use href="#i-chevron"/></svg></div>
+        </div>
+        <div class="box source">The quick brown fox jumps over the lazy dog.</div>
+        <div class="actions">
+          <button class="btn primary"><svg class="sf"><use href="#i-translate"/></svg> Translate</button>
+          <button class="btn"><svg class="sf"><use href="#i-learn"/></svg> Learn</button>
+          <button class="btn icon" title="Copy"><svg class="sf"><use href="#i-copy"/></svg></button>
+          <button class="btn icon" title="Speak Src"><svg class="sf"><use href="#i-speak"/></svg></button>
+          <button class="btn icon" title="Speak Tr"><svg class="sf"><use href="#i-speak"/></svg></button>
+        </div>
+        <div class="box result">Con cáo nâu nhanh nhẹn nhảy qua chú chó lười biếng.</div>
+      </div>
+    </div>
+  </article>
+
+</div>
+
+<footer class="page">
+  File: <code>docs/popover-ui-samples.html</code> · Icon = SVG stroke kiểu SF Symbols
+  (<code>arrow.right.circle</code>, <code>brain</code>, <code>doc.on.doc</code>, <code>speaker.wave.2</code>, <code>pin</code>, <code>xmark.circle</code>).
+  Chọn D (hoặc mẫu khác) rồi trả lời trong chat để apply vào AppKit.
+</footer>
+
+<script>
+function pick(el) {
+  document.querySelectorAll('.sample').forEach(s => s.classList.remove('selected'));
+  el.classList.add('selected');
+  const id = el.dataset.id;
+  const names = {
+    A: 'Compact Classic — thu nhỏ layout hiện tại',
+    B: 'Icon Toolbar — Copy/Speak chỉ icon',
+    C: 'Split Primary / Utility — 2 hàng phân tầng',
+    D: 'Inline Chrome — nút gắn vào ô nguồn/kết quả',
+    E: 'Ultra Dense — mật độ tối đa'
+  };
+  const box = document.getElementById('choice');
+  const text = document.getElementById('choiceText');
+  box.style.display = 'block';
+  text.textContent = 'Đã chọn mẫu ' + id + ': ' + names[id] + ' — trả lời "' + id + '" trong chat để apply.';
+}
+// Pre-select D from previous preference
+pick(document.querySelector('[data-id="D"]'));
+</script>
+</body>
+</html>

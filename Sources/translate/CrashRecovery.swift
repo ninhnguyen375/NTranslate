@@ -3,6 +3,7 @@ import Foundation
 
 struct CrashRecovery {
     private static let cleanShutdownKey = "local.ninh.ntranslate.cleanShutdown"
+    private static let acknowledgedCrashReportKey = "local.ninh.ntranslate.acknowledgedCrashReport"
     private static let diagnosticReportsPath = NSString(string: "~/Library/Logs/DiagnosticReports").expandingTildeInPath
 
     struct CrashSummary: Equatable {
@@ -20,6 +21,9 @@ struct CrashRecovery {
         }
     }
 
+    /// Returns `true` when the previous session did not call `markCleanShutdown`
+    /// (force-quit, crash, or being replaced by install). Always marks this launch unclean
+    /// until terminate.
     static func markUncleanLaunch() -> Bool {
         let defaults = UserDefaults.standard
         let hadCleanShutdown = defaults.object(forKey: cleanShutdownKey) as? Bool ?? true
@@ -31,20 +35,45 @@ struct CrashRecovery {
         UserDefaults.standard.set(true, forKey: cleanShutdownKey)
     }
 
+    /// Only alert when the previous session ended uncleanly AND there is a real
+    /// NTranslate `.ips` crash report that the user has not already dismissed.
+    /// Force-quit / install-replace without a crash report must not warn.
+    static func shouldPresentCrashAlert(
+        uncleanShutdown: Bool,
+        crashReportURL: URL?,
+        acknowledgedReportName: String?
+    ) -> Bool {
+        guard uncleanShutdown, let crashReportURL else { return false }
+        return crashReportURL.lastPathComponent != acknowledgedReportName
+    }
+
     @MainActor
     static func presentCrashAlertIfNeeded() {
-        guard markUncleanLaunch() else { return }
+        let unclean = markUncleanLaunch()
         let latestReport = latestCrashReportURL()
-        let summary = latestReport == nil ? nil : summary(fromCrashReportAt: latestReport!)
+        let defaults = UserDefaults.standard
+        let acknowledged = defaults.string(forKey: acknowledgedCrashReportKey)
+
+        guard shouldPresentCrashAlert(
+            uncleanShutdown: unclean,
+            crashReportURL: latestReport,
+            acknowledgedReportName: acknowledged
+        ), let latestReport
+        else { return }
+
+        let summary = summary(fromCrashReportAt: latestReport)
 
         let alert = NSAlert()
         alert.messageText = "NTranslate gặp sự cố lần chạy trước"
-        alert.informativeText = summary?.displayText ?? "NTranslate có thể đã bị crash ở lần chạy trước. Bạn có thể mở crash log để xem chi tiết."
+        alert.informativeText = summary?.displayText
+            ?? "NTranslate có thể đã bị crash ở lần chạy trước. Bạn có thể mở crash log để xem chi tiết."
         alert.alertStyle = .warning
         alert.addButton(withTitle: "OK")
         alert.addButton(withTitle: "Mở crash log")
 
-        if alert.runModal() == .alertSecondButtonReturn {
+        let response = alert.runModal()
+        defaults.set(latestReport.lastPathComponent, forKey: acknowledgedCrashReportKey)
+        if response == .alertSecondButtonReturn {
             NSWorkspace.shared.open(URL(fileURLWithPath: diagnosticReportsPath))
         }
     }
@@ -74,14 +103,23 @@ struct CrashRecovery {
         )
     }
 
-    private static func latestCrashReportURL() -> URL? {
-        let directory = URL(fileURLWithPath: diagnosticReportsPath)
-        guard let urls = try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: [.contentModificationDateKey]) else { return nil }
+    static func latestCrashReportURL(
+        in directory: URL = URL(fileURLWithPath: diagnosticReportsPath),
+        fileManager: FileManager = .default
+    ) -> URL? {
+        guard let urls = try? fileManager.contentsOfDirectory(
+            at: directory,
+            includingPropertiesForKeys: [.contentModificationDateKey]
+        ) else { return nil }
+
         return urls
             .filter { $0.lastPathComponent.hasPrefix("NTranslate-") && $0.pathExtension == "ips" }
             .max { lhs, rhs in
-                (try? lhs.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast <
-                    (try? rhs.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+                let left = (try? lhs.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate)
+                    ?? .distantPast
+                let right = (try? rhs.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate)
+                    ?? .distantPast
+                return left < right
             }
     }
 }

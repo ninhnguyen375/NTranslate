@@ -1,16 +1,28 @@
 import Foundation
 
 enum LanguageDetector {
-    static let supportedLanguages = ["Auto detect", "English", "Vietnamese", "Chinese"]
+    static let autoDetect = "Auto detect"
+    static let defaultLanguages = AppConfig.defaultLanguages
+    static let defaultTargetLanguages = AppConfig.defaultTargetLanguages
 
-    static func normalizeSource(_ value: String) -> String {
-        supportedLanguages.contains(value) ? value : "Auto detect"
+    /// Kept for call sites / tests that don't pass an explicit list.
+    static var supportedLanguages: [String] { defaultLanguages }
+    static var targetLanguages: [String] { defaultTargetLanguages }
+
+    static func normalizeSource(_ value: String, languages: [String] = defaultLanguages) -> String {
+        if languages.contains(value) { return value }
+        if languages.contains(autoDetect) { return autoDetect }
+        return languages.first ?? autoDetect
     }
 
-    static let targetLanguages = supportedLanguages.filter { $0 != "Auto detect" && $0 != "Chinese" }
-
-    static func normalizeTarget(_ value: String) -> String {
-        targetLanguages.contains(value) ? value : "Vietnamese"
+    static func normalizeTarget(
+        _ value: String,
+        targetLanguages: [String] = defaultTargetLanguages,
+        fallback: String = "Vietnamese"
+    ) -> String {
+        if targetLanguages.contains(value) { return value }
+        if targetLanguages.contains(fallback) { return fallback }
+        return targetLanguages.first ?? fallback
     }
 
     static func looksVietnamese(_ text: String) -> Bool {
@@ -32,20 +44,34 @@ enum LanguageDetector {
 
     /// `recentTargets` is ordered most-recently-used first. On auto detect, we pick the most
     /// recently used target language that differs from the detected source, falling back to
-    /// the Vietnamese/English default when nothing in the history qualifies.
-    static func resolvedPair(selectedSource: String, selectedTarget: String, text: String, recentTargets: [String] = []) -> (source: String, target: String) {
-        let source = normalizeSource(selectedSource)
-        var target = normalizeTarget(selectedTarget)
-        if source == "Vietnamese" {
-            target = "English"
-        } else if source == "Auto detect" {
+    /// the configured native/other default when nothing in the history qualifies.
+    /// When the user explicitly picks the same source and target language (only possible via
+    /// manual selection, not auto-detect), that's honored as-is — it triggers grammar-check mode
+    /// instead of translation (see `Translator`).
+    static func resolvedPair(
+        selectedSource: String,
+        selectedTarget: String,
+        text: String,
+        recentTargets: [String] = [],
+        languages: [String] = defaultLanguages,
+        targetLanguages: [String] = defaultTargetLanguages,
+        nativeLang: String = "Vietnamese"
+    ) -> (source: String, target: String) {
+        let source = normalizeSource(selectedSource, languages: languages)
+        var target = normalizeTarget(selectedTarget, targetLanguages: targetLanguages, fallback: nativeLang)
+        if source == autoDetect {
             let detected = detectedLanguage(text)
             target = recentTargets.first(where: { $0 != detected && targetLanguages.contains($0) })
-                ?? (detected == "Vietnamese" ? "English" : "Vietnamese")
-        }
-        if source == target {
-            target = source == "English" ? "Vietnamese" : "English"
+                ?? fallbackTarget(detected: detected, targetLanguages: targetLanguages, nativeLang: nativeLang)
         }
         return (source, target)
+    }
+
+    static func fallbackTarget(detected: String, targetLanguages: [String], nativeLang: String) -> String {
+        if detected == nativeLang {
+            return targetLanguages.first { $0 != nativeLang } ?? "English"
+        }
+        if targetLanguages.contains(nativeLang) { return nativeLang }
+        return targetLanguages.first ?? nativeLang
     }
 }

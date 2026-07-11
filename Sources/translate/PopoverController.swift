@@ -4,8 +4,8 @@ import Carbon.HIToolbox
 import AVFoundation
 
 extension NSAttributedString {
-    static func plainDisplay(_ text: String, font: NSFont) -> NSAttributedString {
-        NSAttributedString(string: text, attributes: [.font: font, .foregroundColor: NSColor.labelColor])
+    static func plainDisplay(_ text: String, font: NSFont, color: NSColor = .labelColor) -> NSAttributedString {
+        NSAttributedString(string: text, attributes: [.font: font, .foregroundColor: color])
     }
 }
 
@@ -29,6 +29,22 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     }
 
     private static let buildVersion: String = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "dev"
+    /// Fixed source field height — scrolls like the result area, but stays shorter.
+    private enum ChromeLayout {
+        static let padding: CGFloat = 8
+        static let headerHeight: CGFloat = 18
+        static let statusHeight: CGFloat = 14
+        static let languageHeight: CGFloat = 26
+        static let sourceBodyHeight: CGFloat = 56
+        static let sourceFooterHeight: CGFloat = 28
+        static let resultHeaderHeight: CGFloat = 26
+        static let sectionGap: CGFloat = 6
+        static let languageGap: CGFloat = 6
+        static let primaryButtonHeight: CGFloat = 22
+        static let iconButtonSize: CGFloat = 20
+        static let minResultBodyHeight: CGFloat = 140
+        static let maxResultBodyHeight: CGFloat = 500
+    }
 
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
     private let panel = TranslatePanelWindow(
@@ -41,6 +57,11 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     private let textScrollView = NSScrollView(frame: .zero)
     private let inputTextView = NSTextView(frame: .zero)
     private let inputScrollView = NSScrollView(frame: .zero)
+    private let sourceCard = NSView(frame: .zero)
+    private let sourceFooter = NSView(frame: .zero)
+    private let resultCard = NSView(frame: .zero)
+    private let resultHeaderBar = NSView(frame: .zero)
+    private let resultHeaderLabel = NSTextField(labelWithString: "Translation")
     private let sourceLanguagePopup = NSPopUpButton(frame: .zero, pullsDown: false)
     private let targetLanguagePopup = NSPopUpButton(frame: .zero, pullsDown: false)
     private let swapLanguagesButton = NSButton(frame: .zero)
@@ -48,7 +69,9 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     private let closeButton = NSButton(frame: .zero)
     private let translateButton = NSButton(frame: .zero)
     private let learnButton = NSButton(frame: .zero)
+    private let copyButton = NSButton(frame: .zero)
     private let titleLabel = NSTextField(labelWithString: "Translate")
+    private let statusLabel = NSTextField(labelWithString: "")
     private let speakSourceButton = NSButton(frame: .zero)
     private let speakResultButton = NSButton(frame: .zero)
     private var translator: Translator?
@@ -58,6 +81,8 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     private var audioPlayer: AVAudioPlayer?
     private var isSpeakingSource = false
     private var isSpeakingResult = false
+    private var requestGeneration = 0
+    private var isRequestInFlight = false
     private var keyMonitor: Any?
     private var globalMouseMonitor: Any?
     private var localMouseMonitor: Any?
@@ -67,10 +92,13 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     private var isPastingResult = false
     private var prefetchedSpeech: [SpeechKind: PrefetchedSpeech] = [:]
     private var recentTargets: [String] = []
+    private static let lastTargetLangKey = "local.ninh.ntranslate.lastTargetLang"
     private var showMousePoint: NSPoint = .zero
     private var userMovedWindow = false
     private var isProgrammaticFrameChange = false
     private var isPinned = false
+    private var statusClearWorkItem: DispatchWorkItem?
+    private var copyFlashWorkItem: DispatchWorkItem?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         if let icon = NSImage(systemSymbolName: "translate", accessibilityDescription: "NTranslate") {
@@ -101,6 +129,19 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
                 self.closePanel()
                 return nil
             }
+            let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+            if flags == .command, event.keyCode == UInt16(kVK_Return) || event.keyCode == UInt16(kVK_ANSI_KeypadEnter) {
+                self.runTranslate()
+                return nil
+            }
+            if flags == [.command, .shift], event.keyCode == UInt16(kVK_ANSI_C) {
+                self.copyResult()
+                return nil
+            }
+            if flags == [.command, .shift], event.keyCode == UInt16(kVK_ANSI_L) {
+                self.runLearn()
+                return nil
+            }
             return event
         }
     }
@@ -109,40 +150,43 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     private func buildPopover() {
         let width = CGFloat(config.ui.width)
         let height = currentPopoverHeight()
-        let padding: CGFloat = 14
-        let headerHeight: CGFloat = 18
-        let languageHeight: CGFloat = 28
-        let minInputHeight: CGFloat = 30
-        let maxInputHeight: CGFloat = 74
-        let buttonHeight: CGFloat = 30
-        let buttonGap: CGFloat = 8
-        let buttonTitles = ["Translate", "Learn", speakSourceButtonTitle(), speakResultButtonTitle()]
-        let buttonFonts = [translateButton, learnButton, speakSourceButton, speakResultButton].map {
-            ($0.font ?? NSFont.systemFont(ofSize: NSFont.systemFontSize)).withSize(NSFont.systemFontSize)
-        }
-        let buttonAreaHeight = actionButtonsHeight(height: buttonHeight, gap: buttonGap, width: width - padding * 2, titles: buttonTitles, fonts: buttonFonts)
-        let languageY = height - padding - headerHeight - 10 - languageHeight
-        let inputHeight = inputHeight(for: inputTextView.string, minHeight: minInputHeight, maxHeight: maxInputHeight, width: width - padding * 2)
-        let inputY = languageY - 10 - inputHeight
-        let buttonY = inputY - 12 - buttonHeight
-        let resultY = padding
-        let resultHeight = max(120, buttonY - 12 - resultY - (buttonAreaHeight - buttonHeight))
+        let L = ChromeLayout.self
+        let contentWidth = width - L.padding * 2
+        let sourceCardHeight = L.sourceBodyHeight + L.sourceFooterHeight
+        let languageY = height - L.padding - L.headerHeight - L.statusHeight - L.languageGap - L.languageHeight
+        let sourceCardY = languageY - L.sectionGap - sourceCardHeight
+        let resultY = L.padding
+        let resultHeight = max(L.resultHeaderHeight + L.minResultBodyHeight, sourceCardY - L.sectionGap - resultY)
 
         let root = NSView(frame: NSRect(x: 0, y: 0, width: width, height: height))
         root.wantsLayer = true
-        root.layer?.cornerRadius = 16
-        root.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
+        root.layer?.cornerRadius = 14
+        root.layer?.backgroundColor = NSColor.white.cgColor
+        root.appearance = NSAppearance(named: .aqua)
+        panel.appearance = NSAppearance(named: .aqua)
 
         let titleText = NSMutableAttributedString(
             string: "NTranslate",
-            attributes: [.font: NSFont.systemFont(ofSize: 14, weight: .semibold), .foregroundColor: NSColor.labelColor]
+            attributes: [.font: NSFont.systemFont(ofSize: 13, weight: .semibold), .foregroundColor: NSColor.labelColor]
         )
         titleText.append(NSAttributedString(
             string: "  v\(Self.buildVersion)",
-            attributes: [.font: NSFont.systemFont(ofSize: 11), .foregroundColor: NSColor.secondaryLabelColor]
+            attributes: [.font: NSFont.systemFont(ofSize: 10), .foregroundColor: NSColor.secondaryLabelColor]
         ))
         titleLabel.attributedStringValue = titleText
-        titleLabel.frame = NSRect(x: padding, y: height - padding - headerHeight, width: 200, height: headerHeight)
+        titleLabel.frame = NSRect(x: L.padding, y: height - L.padding - L.headerHeight, width: 200, height: L.headerHeight)
+
+        statusLabel.font = .systemFont(ofSize: 10)
+        statusLabel.textColor = .secondaryLabelColor
+        statusLabel.lineBreakMode = .byTruncatingTail
+        statusLabel.stringValue = ""
+        statusLabel.isHidden = true
+        statusLabel.frame = NSRect(
+            x: L.padding,
+            y: height - L.padding - L.headerHeight - L.statusHeight,
+            width: contentWidth - 50,
+            height: L.statusHeight
+        )
 
         closeButton.title = ""
         closeButton.image = NSImage(systemSymbolName: "xmark.circle", accessibilityDescription: "Close")
@@ -150,162 +194,240 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         closeButton.isBordered = false
         closeButton.target = self
         closeButton.action = #selector(closePopover)
-        closeButton.frame = NSRect(x: width - padding - 18, y: height - padding - headerHeight + 1, width: 18, height: 18)
+        closeButton.frame = NSRect(x: width - L.padding - 18, y: height - L.padding - L.headerHeight + 1, width: 18, height: 18)
 
         pinButton.title = ""
         pinButton.imagePosition = .imageOnly
         pinButton.isBordered = false
         pinButton.target = self
         pinButton.action = #selector(togglePin)
-        pinButton.frame = NSRect(x: width - padding - 18 - 22, y: height - padding - headerHeight + 1, width: 18, height: 18)
+        pinButton.frame = NSRect(x: width - L.padding - 18 - 22, y: height - L.padding - L.headerHeight + 1, width: 18, height: 18)
         updatePinButton()
 
         configureLanguageControls()
-        let languageDropdownWidth = (width - padding * 2 - 38 - 16) / 2
-        sourceLanguagePopup.frame = NSRect(x: padding, y: languageY, width: languageDropdownWidth, height: languageHeight)
-        swapLanguagesButton.frame = NSRect(x: sourceLanguagePopup.frame.maxX + 8, y: languageY, width: 38, height: languageHeight)
-        targetLanguagePopup.frame = NSRect(x: swapLanguagesButton.frame.maxX + 8, y: languageY, width: languageDropdownWidth, height: languageHeight)
+        let languageDropdownWidth = (contentWidth - 38 - 12) / 2
+        sourceLanguagePopup.frame = NSRect(x: L.padding, y: languageY, width: languageDropdownWidth, height: L.languageHeight)
+        swapLanguagesButton.frame = NSRect(x: sourceLanguagePopup.frame.maxX + 6, y: languageY, width: 38, height: L.languageHeight)
+        targetLanguagePopup.frame = NSRect(x: swapLanguagesButton.frame.maxX + 6, y: languageY, width: languageDropdownWidth, height: L.languageHeight)
 
-        let inputFrame = NSRect(x: padding, y: inputY, width: width - padding * 2, height: inputHeight)
+        // Source card: text + footer actions (Translate / Learn / Speak)
+        styleCard(sourceCard, fill: NSColor(calibratedWhite: 0.98, alpha: 1))
+        sourceCard.frame = NSRect(x: L.padding, y: sourceCardY, width: contentWidth, height: sourceCardHeight)
 
         inputTextView.isEditable = true
         inputTextView.isSelectable = true
         inputTextView.delegate = self
         inputTextView.font = .systemFont(ofSize: 13)
-        inputTextView.drawsBackground = true
-        inputTextView.backgroundColor = .textBackgroundColor
+        inputTextView.drawsBackground = false
         inputTextView.textColor = .labelColor
+        inputTextView.textContainerInset = NSSize(width: 6, height: 6)
+        inputTextView.minSize = NSSize(width: 0, height: L.sourceBodyHeight)
+        inputTextView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
         inputTextView.isVerticallyResizable = true
         inputTextView.isHorizontallyResizable = false
-        inputTextView.textContainerInset = NSSize(width: 4, height: 4)
+        inputTextView.autoresizingMask = [.width]
         inputTextView.textContainer?.widthTracksTextView = true
-        inputTextView.textContainer?.containerSize = NSSize(width: inputFrame.width - 20, height: .greatestFiniteMagnitude)
-        inputTextView.frame = NSRect(x: 0, y: 0, width: inputFrame.width, height: inputHeight)
 
-        inputScrollView.frame = inputFrame
-        inputScrollView.borderType = .bezelBorder
-        inputScrollView.drawsBackground = true
-        inputScrollView.backgroundColor = .textBackgroundColor
-        inputScrollView.hasVerticalScroller = inputHeight >= maxInputHeight
+        inputScrollView.borderType = .noBorder
+        inputScrollView.drawsBackground = false
+        inputScrollView.hasVerticalScroller = true
         inputScrollView.hasHorizontalScroller = false
         inputScrollView.autohidesScrollers = true
         inputScrollView.documentView = inputTextView
 
-        translateButton.title = "Translate"
-        translateButton.image = NSImage(systemSymbolName: "arrow.right.circle", accessibilityDescription: "Translate")
-        translateButton.imagePosition = .imageLeading
-        translateButton.target = self
-        translateButton.action = #selector(runTranslate)
-        translateButton.bezelStyle = .rounded
-        translateButton.controlSize = .large
+        sourceFooter.wantsLayer = true
+        sourceFooter.layer?.backgroundColor = NSColor(calibratedWhite: 0.953, alpha: 1).cgColor
 
-        learnButton.title = "Learn"
-        learnButton.image = NSImage(systemSymbolName: "brain.head.profile", accessibilityDescription: "Learn")
-        learnButton.imagePosition = .imageLeading
-        learnButton.target = self
-        learnButton.action = #selector(runLearn)
-        learnButton.bezelStyle = .rounded
-        learnButton.controlSize = .large
-
-        speakSourceButton.target = self
-        speakSourceButton.action = #selector(speakInput)
-        speakSourceButton.bezelStyle = .rounded
-        speakSourceButton.controlSize = .large
-
-        speakResultButton.target = self
-        speakResultButton.action = #selector(speakResult)
-        speakResultButton.bezelStyle = .rounded
-        speakResultButton.controlSize = .large
+        configurePrimaryButton(translateButton, title: "Translate", symbol: "arrow.right.circle", action: #selector(runTranslate), accent: true)
+        configurePrimaryButton(learnButton, title: "Learn", symbol: "brain.head.profile", action: #selector(runLearn), accent: false)
+        configureIconButton(speakSourceButton, symbol: "speaker.wave.2", action: #selector(speakInput), label: "Speak source")
+        configureIconButton(speakResultButton, symbol: "speaker.wave.2", action: #selector(speakResult), label: "Speak translation")
+        configureIconButton(copyButton, symbol: "doc.on.doc", action: #selector(copyResult), label: "Copy")
 
         updateSpeakButtons()
-        layoutActionButtons(y: buttonY, height: buttonHeight, gap: buttonGap, width: width - padding * 2, titles: buttonTitles, fonts: buttonFonts)
+        updateBusyState()
         languageSelectionChanged()
 
-        let resultCard = NSView(frame: NSRect(x: padding, y: resultY, width: width - padding * 2, height: resultHeight))
-        resultCard.wantsLayer = true
-        resultCard.layer?.cornerRadius = 12
-        resultCard.layer?.backgroundColor = NSColor.controlBackgroundColor.cgColor
+        sourceCard.addSubview(inputScrollView)
+        sourceFooter.addSubview(translateButton)
+        sourceFooter.addSubview(learnButton)
+        sourceFooter.addSubview(speakSourceButton)
+        sourceCard.addSubview(sourceFooter)
+
+        // Result card: header chrome (Speak / Copy) + body
+        styleCard(resultCard, fill: NSColor(calibratedWhite: 0.97, alpha: 1))
+        resultCard.frame = NSRect(x: L.padding, y: resultY, width: contentWidth, height: resultHeight)
+
+        resultHeaderBar.wantsLayer = true
+        resultHeaderBar.layer?.backgroundColor = NSColor(calibratedWhite: 0.933, alpha: 1).cgColor
+
+        resultHeaderLabel.stringValue = "Translation"
+        resultHeaderLabel.font = .systemFont(ofSize: 10, weight: .semibold)
+        resultHeaderLabel.textColor = .secondaryLabelColor
+        resultHeaderLabel.isBezeled = false
+        resultHeaderLabel.drawsBackground = false
+        resultHeaderLabel.isEditable = false
 
         textView.isEditable = true
         textView.isSelectable = true
         textView.drawsBackground = false
         textView.font = .systemFont(ofSize: 13)
         textView.textColor = .labelColor
-        textView.textContainerInset = NSSize(width: 8, height: 10)
-        textView.minSize = NSSize(width: 0, height: resultHeight)
+        textView.textContainerInset = NSSize(width: 6, height: 6)
+        textView.minSize = NSSize(width: 0, height: max(0, resultHeight - L.resultHeaderHeight))
         textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
         textView.isVerticallyResizable = true
         textView.isHorizontallyResizable = false
         textView.autoresizingMask = [.width]
         textView.textContainer?.widthTracksTextView = true
 
-        textScrollView.frame = NSRect(x: 1, y: 1, width: resultCard.frame.width - 2, height: resultCard.frame.height - 2)
         textScrollView.borderType = .noBorder
         textScrollView.drawsBackground = false
         textScrollView.hasVerticalScroller = true
         textScrollView.hasHorizontalScroller = false
         textScrollView.autohidesScrollers = true
         textScrollView.documentView = textView
+
+        resultHeaderBar.addSubview(resultHeaderLabel)
+        resultHeaderBar.addSubview(speakResultButton)
+        resultHeaderBar.addSubview(copyButton)
+        resultCard.addSubview(resultHeaderBar)
         resultCard.addSubview(textScrollView)
 
+        layoutInlineChrome(width: width, height: height)
+
         root.addSubview(titleLabel)
+        root.addSubview(statusLabel)
         root.addSubview(pinButton)
         root.addSubview(closeButton)
         root.addSubview(sourceLanguagePopup)
         root.addSubview(swapLanguagesButton)
         root.addSubview(targetLanguagePopup)
-        root.addSubview(inputScrollView)
-        root.addSubview(translateButton)
-        root.addSubview(learnButton)
-        root.addSubview(speakSourceButton)
-        root.addSubview(speakResultButton)
+        root.addSubview(sourceCard)
         root.addSubview(resultCard)
         panel.contentView = root
         panel.setFrame(NSRect(origin: panel.frame.origin, size: root.frame.size), display: false)
     }
 
+    private func styleCard(_ view: NSView, fill: NSColor) {
+        view.wantsLayer = true
+        view.layer?.cornerRadius = 8
+        view.layer?.masksToBounds = true
+        view.layer?.borderWidth = 1
+        view.layer?.borderColor = NSColor.separatorColor.withAlphaComponent(0.55).cgColor
+        view.layer?.backgroundColor = fill.cgColor
+    }
+
+    private func configurePrimaryButton(
+        _ button: NSButton,
+        title: String,
+        symbol: String,
+        action: Selector,
+        accent: Bool
+    ) {
+        button.title = title
+        button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: title)
+        button.imagePosition = .imageLeading
+        button.imageHugsTitle = true
+        button.target = self
+        button.action = action
+        button.bezelStyle = .rounded
+        button.controlSize = .small
+        button.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+        if accent {
+            button.bezelColor = .controlAccentColor
+        } else {
+            button.bezelColor = nil
+        }
+    }
+
+    private func configureIconButton(_ button: NSButton, symbol: String, action: Selector, label: String) {
+        button.title = ""
+        button.attributedTitle = NSAttributedString(string: "")
+        button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: label)
+        button.imagePosition = .imageOnly
+        button.isBordered = false
+        button.bezelStyle = .inline
+        button.target = self
+        button.action = action
+        button.toolTip = label
+        button.setAccessibilityLabel(label)
+        button.contentTintColor = .secondaryLabelColor
+    }
+
+    private func resetCopyButtonAppearance() {
+        copyButton.title = ""
+        copyButton.attributedTitle = NSAttributedString(string: "")
+        copyButton.image = NSImage(systemSymbolName: "doc.on.doc", accessibilityDescription: "Copy")
+        copyButton.imagePosition = .imageOnly
+        copyButton.contentTintColor = .secondaryLabelColor
+    }
+
     private func reflowLayout() {
-        guard let root = panel.contentView else { return }
+        guard panel.contentView != nil else { return }
         let width = CGFloat(config.ui.width)
         let height = currentPopoverHeight()
-        let padding: CGFloat = 14
-        let headerHeight: CGFloat = 18
-        let languageHeight: CGFloat = 28
-        let minInputHeight: CGFloat = 30
-        let maxInputHeight: CGFloat = 74
-        let buttonHeight: CGFloat = 30
-        let buttonGap: CGFloat = 8
-        let buttonTitles = ["Translate", "Learn", speakSourceButtonTitle(), speakResultButtonTitle()]
-        let buttonFonts = [translateButton, learnButton, speakSourceButton, speakResultButton].map {
-            ($0.font ?? NSFont.systemFont(ofSize: NSFont.systemFontSize)).withSize(NSFont.systemFontSize)
-        }
-        let buttonAreaHeight = actionButtonsHeight(height: buttonHeight, gap: buttonGap, width: width - padding * 2, titles: buttonTitles, fonts: buttonFonts)
-        let languageY = height - padding - headerHeight - 10 - languageHeight
-        let inputHeight = inputHeight(for: inputTextView.string, minHeight: minInputHeight, maxHeight: maxInputHeight, width: width - padding * 2)
-        let inputY = languageY - 10 - inputHeight
-        let buttonY = inputY - 12 - buttonHeight
-        let resultY = padding
-        let resultHeight = max(120, buttonY - 12 - resultY - (buttonAreaHeight - buttonHeight))
-        let inputFrame = NSRect(x: padding, y: inputY, width: width - padding * 2, height: inputHeight)
+        layoutInlineChrome(width: width, height: height)
+        applyPanelFrame(size: NSSize(width: width, height: height))
+    }
+
+    private func layoutInlineChrome(width: CGFloat, height: CGFloat) {
+        guard let root = panel.contentView else { return }
+        let L = ChromeLayout.self
+        let contentWidth = width - L.padding * 2
+        let sourceCardHeight = L.sourceBodyHeight + L.sourceFooterHeight
+        let languageY = height - L.padding - L.headerHeight - L.statusHeight - L.languageGap - L.languageHeight
+        let sourceCardY = languageY - L.sectionGap - sourceCardHeight
+        let resultY = L.padding
+        let resultHeight = max(L.resultHeaderHeight + L.minResultBodyHeight, sourceCardY - L.sectionGap - resultY)
+        let resultBodyHeight = max(0, resultHeight - L.resultHeaderHeight)
 
         root.frame = NSRect(x: 0, y: 0, width: width, height: height)
-        titleLabel.frame = NSRect(x: padding, y: height - padding - headerHeight, width: 200, height: headerHeight)
-        closeButton.frame = NSRect(x: width - padding - 18, y: height - padding - headerHeight + 1, width: 18, height: 18)
-        pinButton.frame = NSRect(x: width - padding - 18 - 22, y: height - padding - headerHeight + 1, width: 18, height: 18)
-        let languageDropdownWidth = (width - padding * 2 - 38 - 16) / 2
-        sourceLanguagePopup.frame = NSRect(x: padding, y: languageY, width: languageDropdownWidth, height: languageHeight)
-        swapLanguagesButton.frame = NSRect(x: sourceLanguagePopup.frame.maxX + 8, y: languageY, width: 38, height: languageHeight)
-        targetLanguagePopup.frame = NSRect(x: swapLanguagesButton.frame.maxX + 8, y: languageY, width: languageDropdownWidth, height: languageHeight)
-        inputScrollView.frame = inputFrame
-        inputScrollView.hasVerticalScroller = inputHeight >= maxInputHeight
-        inputTextView.textContainer?.containerSize = NSSize(width: inputFrame.width - 20, height: .greatestFiniteMagnitude)
-        inputTextView.frame = NSRect(x: 0, y: 0, width: inputFrame.width, height: inputHeight)
-        layoutActionButtons(y: buttonY, height: buttonHeight, gap: buttonGap, width: width - padding * 2, titles: buttonTitles, fonts: buttonFonts)
-        if let resultCard = textScrollView.superview {
-            resultCard.frame = NSRect(x: padding, y: resultY, width: width - padding * 2, height: resultHeight)
-            textScrollView.frame = NSRect(x: 1, y: 1, width: resultCard.frame.width - 2, height: resultCard.frame.height - 2)
-        }
-        applyPanelFrame(size: root.frame.size)
+        titleLabel.frame = NSRect(x: L.padding, y: height - L.padding - L.headerHeight, width: 200, height: L.headerHeight)
+        statusLabel.frame = NSRect(
+            x: L.padding,
+            y: height - L.padding - L.headerHeight - L.statusHeight,
+            width: contentWidth - 50,
+            height: L.statusHeight
+        )
+        closeButton.frame = NSRect(x: width - L.padding - 18, y: height - L.padding - L.headerHeight + 1, width: 18, height: 18)
+        pinButton.frame = NSRect(x: width - L.padding - 18 - 22, y: height - L.padding - L.headerHeight + 1, width: 18, height: 18)
+
+        let languageDropdownWidth = (contentWidth - 38 - 12) / 2
+        sourceLanguagePopup.frame = NSRect(x: L.padding, y: languageY, width: languageDropdownWidth, height: L.languageHeight)
+        swapLanguagesButton.frame = NSRect(x: sourceLanguagePopup.frame.maxX + 6, y: languageY, width: 38, height: L.languageHeight)
+        targetLanguagePopup.frame = NSRect(x: swapLanguagesButton.frame.maxX + 6, y: languageY, width: languageDropdownWidth, height: L.languageHeight)
+
+        sourceCard.frame = NSRect(x: L.padding, y: sourceCardY, width: contentWidth, height: sourceCardHeight)
+        inputScrollView.frame = NSRect(x: 0, y: L.sourceFooterHeight, width: contentWidth, height: L.sourceBodyHeight)
+        inputScrollView.hasVerticalScroller = true
+        inputTextView.minSize = NSSize(width: 0, height: L.sourceBodyHeight)
+        sourceFooter.frame = NSRect(x: 0, y: 0, width: contentWidth, height: L.sourceFooterHeight)
+
+        translateButton.sizeToFit()
+        learnButton.sizeToFit()
+        let btnH = L.primaryButtonHeight
+        let btnY = (L.sourceFooterHeight - btnH) / 2
+        let translateW = max(78, translateButton.frame.width)
+        let learnW = max(62, learnButton.frame.width)
+        translateButton.frame = NSRect(x: 4, y: btnY, width: translateW, height: btnH)
+        learnButton.frame = NSRect(x: translateButton.frame.maxX + 4, y: btnY, width: learnW, height: btnH)
+        let icon = L.iconButtonSize
+        let iconY = (L.sourceFooterHeight - icon) / 2
+        speakSourceButton.frame = NSRect(x: contentWidth - 4 - icon, y: iconY, width: icon, height: icon)
+
+        resultCard.frame = NSRect(x: L.padding, y: resultY, width: contentWidth, height: resultHeight)
+        // Header sits at top of card (AppKit y=0 is bottom)
+        resultHeaderBar.frame = NSRect(x: 0, y: resultBodyHeight, width: contentWidth, height: L.resultHeaderHeight)
+        resultHeaderLabel.sizeToFit()
+        let labelH = max(12, resultHeaderLabel.fittingSize.height)
+        let labelY = ((L.resultHeaderHeight - labelH) / 2).rounded(.towardZero)
+        resultHeaderLabel.frame = NSRect(x: 8, y: labelY, width: max(120, resultHeaderLabel.fittingSize.width), height: labelH)
+        let headerIconY = (L.resultHeaderHeight - icon) / 2
+        copyButton.frame = NSRect(x: contentWidth - 6 - icon, y: headerIconY, width: icon, height: icon)
+        speakResultButton.frame = NSRect(x: copyButton.frame.minX - 4 - icon, y: headerIconY, width: icon, height: icon)
+        textScrollView.frame = NSRect(x: 0, y: 0, width: contentWidth, height: resultBodyHeight)
+        textView.minSize = NSSize(width: 0, height: resultBodyHeight)
     }
 
     /// Resizes/repositions the panel around `size`. While the panel hasn't been dragged by the
@@ -372,35 +494,84 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         return min(max(value, minV), maxV)
     }
 
-    private func setResultText(_ value: String) {
-        textView.textStorage?.setAttributedString(.plainDisplay(value, font: .systemFont(ofSize: 13)))
+    private func setResultText(_ value: String, style: PopoverFeedback.ResultStyle? = nil) {
+        let resolved = style ?? PopoverFeedback.resultStyle(for: value)
+        let color: NSColor
+        switch resolved {
+        case .normal:
+            color = .labelColor
+        case .loading:
+            color = .secondaryLabelColor
+        case .error:
+            color = .systemRed
+        }
+        textView.textStorage?.setAttributedString(.plainDisplay(value, font: .systemFont(ofSize: 13), color: color))
     }
 
-    private func inputHeight(for text: String, minHeight: CGFloat, maxHeight: CGFloat, width: CGFloat) -> CGFloat {
-        PopoverLayoutMath.inputHeight(
-            text: text,
-            font: inputTextView.font ?? .systemFont(ofSize: 13),
-            inset: inputTextView.textContainerInset,
-            lineFragmentPadding: inputTextView.textContainer?.lineFragmentPadding ?? 5,
-            minHeight: minHeight,
-            maxHeight: maxHeight,
-            width: width
-        )
+    private func setStatus(_ message: String, autoClearAfter: TimeInterval = 4) {
+        statusClearWorkItem?.cancel()
+        statusLabel.stringValue = message
+        statusLabel.isHidden = message.isEmpty
+        if !message.isEmpty {
+            let work = DispatchWorkItem { [weak self] in
+                self?.statusLabel.stringValue = ""
+                self?.statusLabel.isHidden = true
+            }
+            statusClearWorkItem = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + autoClearAfter, execute: work)
+        }
+    }
+
+    private func clearStatus() {
+        statusClearWorkItem?.cancel()
+        statusClearWorkItem = nil
+        statusLabel.stringValue = ""
+        statusLabel.isHidden = true
+    }
+
+    private func beginRequest() -> Int {
+        requestGeneration += 1
+        isRequestInFlight = true
+        updateBusyState()
+        return requestGeneration
+    }
+
+    private func finishRequest(generation: Int) {
+        guard generation == requestGeneration else { return }
+        isRequestInFlight = false
+        updateBusyState()
+    }
+
+    private func updateBusyState() {
+        translateButton.isEnabled = !isRequestInFlight
+        learnButton.isEnabled = !isRequestInFlight
+        swapLanguagesButton.isEnabled = !isRequestInFlight
+        updateSpeakButtons()
+        updateCopyButtonEnabled()
+    }
+
+    private func updateCopyButtonEnabled() {
+        copyButton.isEnabled = PopoverFeedback.isCopyableResult(textView.string)
     }
 
     private func preferredPopoverHeight() -> CGFloat {
         let width = CGFloat(config.ui.width)
-        let padding: CGFloat = 14
-        let headerHeight: CGFloat = 18
-        let languageHeight: CGFloat = 28
-        let minInputHeight: CGFloat = 30
-        let maxInputHeight: CGFloat = 74
-        let buttonHeight: CGFloat = 30
-        let minResultHeight: CGFloat = 160
-        let maxResultHeight: CGFloat = 520
-        let inputHeight = inputHeight(for: inputTextView.string, minHeight: minInputHeight, maxHeight: maxInputHeight, width: width - padding * 2)
-        let resultHeight = min(max(minResultHeight, measuredTextHeight(textView.attributedString(), width: width - padding * 2 - 18) + 24), maxResultHeight)
-        return padding + headerHeight + 10 + languageHeight + 10 + inputHeight + 12 + buttonHeight + 12 + resultHeight + padding
+        let L = ChromeLayout.self
+        let contentWidth = width - L.padding * 2
+        let sourceCardHeight = L.sourceBodyHeight + L.sourceFooterHeight
+        let measuredBody = measuredTextHeight(textView.attributedString(), width: contentWidth - 14) + 16
+        let resultBody = min(max(L.minResultBodyHeight, measuredBody), L.maxResultBodyHeight)
+        let resultCardHeight = L.resultHeaderHeight + resultBody
+        return L.padding
+            + L.headerHeight
+            + L.statusHeight
+            + L.languageGap
+            + L.languageHeight
+            + L.sectionGap
+            + sourceCardHeight
+            + L.sectionGap
+            + resultCardHeight
+            + L.padding
     }
 
     private func maxPopoverHeight() -> CGFloat {
@@ -425,7 +596,15 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     }
 
     private func resolvedLanguagePair(for text: String) -> (source: String, target: String) {
-        let pair = LanguageDetector.resolvedPair(selectedSource: selectedSourceLanguage(), selectedTarget: selectedTargetLanguage(), text: text, recentTargets: recentTargets)
+        let pair = LanguageDetector.resolvedPair(
+            selectedSource: selectedSourceLanguage(),
+            selectedTarget: selectedTargetLanguage(),
+            text: text,
+            recentTargets: recentTargets,
+            languages: config.languages,
+            targetLanguages: config.targetLanguages,
+            nativeLang: config.resolvedNativeLang
+        )
         recentTargets.removeAll { $0 == pair.target }
         recentTargets.insert(pair.target, at: 0)
         return pair
@@ -433,15 +612,21 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
 
     private func configureLanguageControls() {
         sourceLanguagePopup.removeAllItems()
-        sourceLanguagePopup.addItems(withTitles: LanguageDetector.supportedLanguages)
-        sourceLanguagePopup.selectItem(withTitle: LanguageDetector.normalizeSource(config.resolvedSourceLang))
+        sourceLanguagePopup.addItems(withTitles: config.languages)
+        sourceLanguagePopup.selectItem(withTitle: LanguageDetector.normalizeSource(config.resolvedSourceLang, languages: config.languages))
         sourceLanguagePopup.target = self
         sourceLanguagePopup.action = #selector(languageSelectionChanged)
 
+        let savedTarget = UserDefaults.standard.string(forKey: Self.lastTargetLangKey) ?? config.resolvedTargetLang
+        let normalizedTarget = LanguageDetector.normalizeTarget(
+            savedTarget,
+            targetLanguages: config.targetLanguages,
+            fallback: config.resolvedNativeLang
+        )
         targetLanguagePopup.removeAllItems()
-        targetLanguagePopup.addItems(withTitles: LanguageDetector.targetLanguages)
-        targetLanguagePopup.selectItem(withTitle: LanguageDetector.normalizeTarget(config.resolvedTargetLang))
-        recentTargets = [LanguageDetector.normalizeTarget(config.resolvedTargetLang)]
+        targetLanguagePopup.addItems(withTitles: config.targetLanguages)
+        targetLanguagePopup.selectItem(withTitle: normalizedTarget)
+        recentTargets = [normalizedTarget]
         targetLanguagePopup.target = self
         targetLanguagePopup.action = #selector(languageSelectionChanged)
 
@@ -453,105 +638,67 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
 
     func textDidChange(_ notification: Notification) {
         guard notification.object as AnyObject? === inputTextView else { return }
-        reflowLayout()
+        updateSpeakButtons()
     }
 
     @objc private func languageSelectionChanged() {
-        let pair = resolvedLanguagePair(for: inputTextView.string)
+        let text = inputTextView.string
+        // User manually picked a target that matches the auto-detected source language —
+        // that's a request for grammar-check mode, so pin the source dropdown to match
+        // instead of letting auto-detect's target override snap it back.
+        if selectedSourceLanguage() == "Auto detect" {
+            let detected = LanguageDetector.detectedLanguage(text)
+            if selectedTargetLanguage() == detected {
+                sourceLanguagePopup.selectItem(withTitle: detected)
+            }
+        }
+        let pair = resolvedLanguagePair(for: text)
         if selectedSourceLanguage() != pair.source {
             sourceLanguagePopup.selectItem(withTitle: pair.source)
         }
         if selectedTargetLanguage() != pair.target {
             targetLanguagePopup.selectItem(withTitle: pair.target)
         }
+        UserDefaults.standard.set(pair.target, forKey: Self.lastTargetLangKey)
         if !inputTextView.string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             runTranslate()
         }
     }
 
     @objc private func swapLanguages() {
-        let source = LanguageDetector.normalizeSource(selectedSourceLanguage())
-        let target = LanguageDetector.normalizeTarget(selectedTargetLanguage())
+        let source = LanguageDetector.normalizeSource(selectedSourceLanguage(), languages: config.languages)
+        let target = LanguageDetector.normalizeTarget(
+            selectedTargetLanguage(),
+            targetLanguages: config.targetLanguages,
+            fallback: config.resolvedNativeLang
+        )
         sourceLanguagePopup.selectItem(withTitle: target)
-        targetLanguagePopup.selectItem(withTitle: source == "Auto detect" ? "Vietnamese" : source)
+        let swappedTarget = source == LanguageDetector.autoDetect ? config.resolvedNativeLang : source
+        targetLanguagePopup.selectItem(withTitle: LanguageDetector.normalizeTarget(
+            swappedTarget,
+            targetLanguages: config.targetLanguages,
+            fallback: config.resolvedNativeLang
+        ))
         languageSelectionChanged()
     }
 
     private func updateSpeakButtons() {
-        speakSourceButton.title = speakSourceButtonTitle()
-        speakSourceButton.image = NSImage(systemSymbolName: isSpeakingSource ? "hourglass" : "speaker.wave.2", accessibilityDescription: "Speak source")
-        speakSourceButton.imagePosition = .imageLeading
-        speakSourceButton.isEnabled = !isSpeakingSource
+        speakSourceButton.title = ""
+        speakSourceButton.image = NSImage(
+            systemSymbolName: isSpeakingSource ? "hourglass" : "speaker.wave.2",
+            accessibilityDescription: "Speak source"
+        )
+        speakSourceButton.imagePosition = .imageOnly
+        let hasSourceText = !inputTextView.string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        speakSourceButton.isEnabled = hasSourceText && !isSpeakingSource
 
-        speakResultButton.title = speakResultButtonTitle()
-        speakResultButton.image = NSImage(systemSymbolName: isSpeakingResult ? "hourglass" : "speaker.wave.2", accessibilityDescription: "Speak translation")
-        speakResultButton.imagePosition = .imageLeading
-        speakResultButton.isEnabled = !isSpeakingResult
-    }
-
-    private func speakSourceButtonTitle() -> String {
-        isSpeakingSource ? "Loading" : "Src"
-    }
-
-    private func speakResultButtonTitle() -> String {
-        isSpeakingResult ? "Loading" : "Trans"
-    }
-
-    private func actionButtonRows(width: CGFloat, titles: [String], fonts: [NSFont]) -> [[Int]] {
-        let symbolPadding: CGFloat = 30
-        let horizontalPadding: CGFloat = 18
-        let minWidth: CGFloat = 62
-        let naturalWidths = zip(titles, fonts).map { title, font in
-            max(minWidth, ceil((title as NSString).size(withAttributes: [.font: font]).width) + symbolPadding + horizontalPadding)
-        }
-
-        var rows: [[Int]] = [[]]
-        var currentRowWidth: CGFloat = 0
-        for (index, naturalWidth) in naturalWidths.enumerated() {
-            let neededWidth = rows[rows.count - 1].isEmpty ? naturalWidth : currentRowWidth + 8 + naturalWidth
-            if neededWidth > width, !rows[rows.count - 1].isEmpty {
-                rows.append([index])
-                currentRowWidth = naturalWidth
-            } else {
-                rows[rows.count - 1].append(index)
-                currentRowWidth = rows[rows.count - 1].count == 1 ? naturalWidth : currentRowWidth + 8 + naturalWidth
-            }
-        }
-        return rows
-    }
-
-    private func actionButtonsHeight(height: CGFloat, gap: CGFloat, width: CGFloat, titles: [String], fonts: [NSFont]) -> CGFloat {
-        let rowGap: CGFloat = 8
-        let rows = actionButtonRows(width: width, titles: titles, fonts: fonts)
-        return CGFloat(rows.count) * height + CGFloat(max(0, rows.count - 1)) * rowGap
-    }
-
-    private func layoutActionButtons(y: CGFloat, height: CGFloat, gap: CGFloat, width: CGFloat, titles: [String], fonts: [NSFont]) {
-        let buttons = [translateButton, learnButton, speakSourceButton, speakResultButton]
-        let symbolPadding: CGFloat = 30
-        let horizontalPadding: CGFloat = 18
-        let minWidth: CGFloat = 62
-        let rowGap: CGFloat = 8
-        let rowWidth = width
-        let naturalWidths = zip(titles, fonts).map { title, font in
-            max(minWidth, ceil((title as NSString).size(withAttributes: [.font: font]).width) + symbolPadding + horizontalPadding)
-        }
-
-        let rows = actionButtonRows(width: rowWidth, titles: titles, fonts: fonts)
-
-        for (rowIndex, row) in rows.enumerated() {
-            let rowNaturalWidths = row.map { naturalWidths[$0] }
-            let availableWidth = max(0, rowWidth - gap * CGFloat(max(0, row.count - 1)))
-            let totalNaturalWidth = rowNaturalWidths.reduce(0, +)
-            let scale = totalNaturalWidth > 0 ? min(1, availableWidth / totalNaturalWidth) : 1
-            let rowY = y - CGFloat(rowIndex) * (height + rowGap)
-            var x: CGFloat = 14
-            for index in row {
-                let buttonWidth = max(minWidth, floor(naturalWidths[index] * scale))
-                buttons[index].frame = NSRect(x: x, y: rowY, width: buttonWidth, height: height)
-                x += buttonWidth + gap
-            }
-        }
+        speakResultButton.title = ""
+        speakResultButton.image = NSImage(
+            systemSymbolName: isSpeakingResult ? "hourglass" : "speaker.wave.2",
+            accessibilityDescription: "Speak translation"
+        )
+        speakResultButton.imagePosition = .imageOnly
+        speakResultButton.isEnabled = PopoverFeedback.isCopyableResult(textView.string) && !isSpeakingResult
     }
 
     private func setSpeaking(_ value: Bool, for kind: SpeechKind) {
@@ -721,6 +868,7 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
             return
         }
         translator = Translator(config: config, apiKey: apiKey)
+        configureLanguageControls()
         registerHotKey()
         assert(URL(string: config.apiBaseURL) != nil)
         assert(URL(string: config.speechURL) != nil)
@@ -801,6 +949,15 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
 
     private func closePanel() {
         guard panel.isVisible else { return }
+        requestGeneration += 1
+        isRequestInFlight = false
+        isSpeakingSource = false
+        isSpeakingResult = false
+        clearStatus()
+        copyFlashWorkItem?.cancel()
+        copyFlashWorkItem = nil
+        resetCopyButtonAppearance()
+        updateBusyState()
         panel.orderOut(nil)
         audioPlayer?.stop()
         audioPlayer = nil
@@ -844,34 +1001,42 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         targetLanguagePopup.selectItem(withTitle: pair.target)
     }
 
-    private func showSelectionFallbackAlert(accessibilityError: String, source: TranslatableTextSource) {
-        let alert = NSAlert()
-        alert.messageText = "Selection read failed"
-        alert.informativeText = "\(accessibilityError)\n\nFallback source: \(source == .simulatedCopy ? "simulated copy" : "clipboard")"
-        alert.alertStyle = .warning
-        alert.addButton(withTitle: "OK")
-        alert.runModal()
+    private func showEmptySelectionPanel() {
+        if !panel.isVisible {
+            showMousePoint = NSEvent.mouseLocation
+        }
+        inputTextView.string = ""
+        setResultText(PopoverFeedback.emptySelectionGuidance)
+        clearStatus()
+        prefetchedSpeech.removeAll()
+        reflowLayout()
+        updateBusyState()
+        presentPanel(activatesApp: true, restoresPreviousAppOnCloseValue: false)
     }
-
-    private static let maxTranslateLength = 5000
 
     func translateAtCursor() {
         if !AXIsProcessTrusted() {
             requestAccessibilityPermissionIfNeeded(forcePrompt: true)
         }
         previousApp = NSWorkspace.shared.frontmostApplication
-        guard let resolved = SelectionReader.resolveTranslatableTextWithDiagnostics(simulateCopy: config.ui.simulateCopy) else { return }
-        if let accessibilityError = resolved.accessibilityError {
-            showSelectionFallbackAlert(accessibilityError: accessibilityError, source: resolved.source)
+        guard let resolved = SelectionReader.resolveTranslatableTextWithDiagnostics(simulateCopy: config.ui.simulateCopy) else {
+            showEmptySelectionPanel()
+            return
         }
         let trimmed = resolved.text
-        if trimmed.count > Self.maxTranslateLength {
-            inputTextView.string = "Text is too long to translate."
-            setResultText("")
+        if trimmed.count > config.maxTranslateLength {
             if !panel.isVisible {
                 showMousePoint = NSEvent.mouseLocation
             }
+            inputTextView.string = trimmed
+            setResultText(PopoverFeedback.textTooLong)
+            if resolved.accessibilityError != nil {
+                setStatus(PopoverFeedback.accessibilityFallbackNote(source: resolved.source))
+            } else {
+                clearStatus()
+            }
             reflowLayout()
+            updateBusyState()
             presentPanel(activatesApp: true, restoresPreviousAppOnCloseValue: false)
             return
         }
@@ -879,46 +1044,74 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         if !panel.isVisible {
             showMousePoint = NSEvent.mouseLocation
         }
-        setResultText("Translating...")
+        if resolved.accessibilityError != nil {
+            setStatus(PopoverFeedback.accessibilityFallbackNote(source: resolved.source))
+        } else {
+            clearStatus()
+        }
+        let generation = beginRequest()
+        setResultText(PopoverFeedback.translating)
         reflowLayout()
         updateLanguageSelection(for: trimmed)
         prefetchedSpeech.removeAll()
         prefetchSpeech(trimmed, model: sourceSpeechModel(for: trimmed), kind: .source)
         presentPanel(activatesApp: true, restoresPreviousAppOnCloseValue: false)
-        runTranslate()
+        performTranslate(generation: generation)
     }
 
     @objc func runTranslate() {
-        guard let translator else { return }
+        performTranslate(generation: nil)
+    }
+
+    private func performTranslate(generation existingGeneration: Int?) {
+        guard let translator else {
+            if let existingGeneration {
+                finishRequest(generation: existingGeneration)
+            }
+            return
+        }
         let text = inputTextView.string.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return }
-        guard text.count <= Self.maxTranslateLength else {
-            setResultText("")
-            inputTextView.string = "Text is too long to translate."
+        guard !text.isEmpty else {
+            setResultText(PopoverFeedback.emptyInputHint)
             reflowLayout()
+            updateBusyState()
+            return
+        }
+        guard text.count <= config.maxTranslateLength else {
+            setResultText(PopoverFeedback.textTooLong)
+            reflowLayout()
+            updateBusyState()
             return
         }
         let pair = resolvedLanguagePair(for: text)
         updateLanguageSelection(for: text)
-        setResultText("Translating...")
+        let generation = existingGeneration ?? beginRequest()
+        if existingGeneration == nil {
+            setResultText(PopoverFeedback.translating)
+            reflowLayout()
+        }
         translator.translate(text, sourceLang: pair.source, targetLang: pair.target) { [weak self] result in
             Task { @MainActor in
+                guard let self else { return }
+                defer { self.finishRequest(generation: generation) }
+                guard !PopoverFeedback.isStale(resultGeneration: generation, currentGeneration: self.requestGeneration) else { return }
                 switch result {
                 case let .success(value):
-                    self?.setResultText(value)
-                    self?.reflowLayout()
-                    self?.textView.scrollToBeginningOfDocument(nil)
-                    if let self {
-                        self.prefetchSpeech(value, model: SpeechModelResolver.model(for: pair.target, config: self.config), kind: .result)
-                    }
-                    if self?.config.ui.autoCopy == true {
+                    self.setResultText(value)
+                    self.reflowLayout()
+                    self.textView.scrollToBeginningOfDocument(nil)
+                    self.updateBusyState()
+                    self.prefetchSpeech(value, model: SpeechModelResolver.model(for: pair.target, config: self.config), kind: .result)
+                    if self.config.ui.autoCopy {
                         NSPasteboard.general.clearContents()
                         NSPasteboard.general.setString(value, forType: .string)
+                        self.flashCopied()
                     }
                 case let .failure(error):
-                    self?.setResultText("Error: \(error.localizedDescription)")
-                    self?.reflowLayout()
-                    self?.textView.scrollToBeginningOfDocument(nil)
+                    self.setResultText("Error: \(error.localizedDescription)")
+                    self.reflowLayout()
+                    self.textView.scrollToBeginningOfDocument(nil)
+                    self.updateBusyState()
                 }
             }
         }
@@ -927,21 +1120,39 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     @objc func runLearn() {
         guard let translator else { return }
         let text = inputTextView.string.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return }
+        guard !text.isEmpty else {
+            setResultText(PopoverFeedback.emptyInputHint)
+            reflowLayout()
+            updateBusyState()
+            return
+        }
+        guard text.count <= config.maxTranslateLength else {
+            setResultText(PopoverFeedback.textTooLong)
+            reflowLayout()
+            updateBusyState()
+            return
+        }
         let pair = resolvedLanguagePair(for: text)
         updateLanguageSelection(for: text)
-        setResultText("Learning...")
+        let generation = beginRequest()
+        setResultText(PopoverFeedback.learning)
+        reflowLayout()
         translator.learn(text, sourceLang: pair.source, targetLang: pair.target) { [weak self] result in
             Task { @MainActor in
+                guard let self else { return }
+                defer { self.finishRequest(generation: generation) }
+                guard !PopoverFeedback.isStale(resultGeneration: generation, currentGeneration: self.requestGeneration) else { return }
                 switch result {
                 case let .success(value):
-                    self?.setResultText(value)
-                    self?.reflowLayout()
-                    self?.textView.scrollToBeginningOfDocument(nil)
+                    self.setResultText(value)
+                    self.reflowLayout()
+                    self.textView.scrollToBeginningOfDocument(nil)
+                    self.updateBusyState()
                 case let .failure(error):
-                    self?.setResultText("Error: \(error.localizedDescription)")
-                    self?.reflowLayout()
-                    self?.textView.scrollToBeginningOfDocument(nil)
+                    self.setResultText("Error: \(error.localizedDescription)")
+                    self.reflowLayout()
+                    self.textView.scrollToBeginningOfDocument(nil)
+                    self.updateBusyState()
                 }
             }
         }
@@ -953,7 +1164,7 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
             audioPlayer?.prepareToPlay()
             audioPlayer?.play()
         } catch {
-            setResultText("Error: \(error.localizedDescription)")
+            setStatus("Speak failed: \(error.localizedDescription)")
         }
     }
 
@@ -963,11 +1174,13 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         let speechModel = model.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, !speechModel.isEmpty else { return }
         if let cached = prefetchedSpeech[kind], cached.text == trimmed, cached.model == speechModel { return }
+        let generation = requestGeneration
         setSpeaking(true, for: kind)
         translator.speak(trimmed, model: speechModel) { [weak self] result in
             Task { @MainActor in
                 guard let self else { return }
                 defer { self.setSpeaking(false, for: kind) }
+                guard !PopoverFeedback.isStale(resultGeneration: generation, currentGeneration: self.requestGeneration) else { return }
                 guard case let .success(audioData) = result else { return }
                 self.prefetchedSpeech[kind] = PrefetchedSpeech(text: trimmed, model: speechModel, data: audioData)
             }
@@ -979,7 +1192,7 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         let speechModel = model.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         guard !speechModel.isEmpty else {
-            setResultText("Error: Empty speech model")
+            setStatus("Speak failed: Empty speech model")
             return
         }
         if let cached = prefetchedSpeech[kind], cached.text == trimmed, cached.model == speechModel {
@@ -987,17 +1200,19 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
             return
         }
         guard let translator else { return }
+        let generation = requestGeneration
         setSpeaking(true, for: kind)
         translator.speak(trimmed, model: speechModel) { [weak self] result in
             Task { @MainActor in
                 guard let self else { return }
                 defer { self.setSpeaking(false, for: kind) }
+                guard !PopoverFeedback.isStale(resultGeneration: generation, currentGeneration: self.requestGeneration) else { return }
                 switch result {
                 case let .success(audioData):
                     self.prefetchedSpeech[kind] = PrefetchedSpeech(text: trimmed, model: speechModel, data: audioData)
                     self.playAudio(data: audioData)
                 case let .failure(error):
-                    self.setResultText("Error: \(error.localizedDescription)")
+                    self.setStatus("Speak failed: \(error.localizedDescription)")
                 }
             }
         }
@@ -1012,9 +1227,32 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         playSpeech(textView.string, model: SpeechModelResolver.model(for: target, config: config), kind: .result)
     }
 
+    @objc func copyResult() {
+        guard let value = copyValue() else { return }
+        guard writePasteboard(value) else {
+            setStatus("Copy failed")
+            return
+        }
+        flashCopied()
+    }
+
+    private func flashCopied() {
+        copyFlashWorkItem?.cancel()
+        copyButton.title = ""
+        copyButton.attributedTitle = NSAttributedString(string: "")
+        copyButton.image = NSImage(systemSymbolName: "checkmark.circle", accessibilityDescription: "Copied")
+        copyButton.imagePosition = .imageOnly
+        copyButton.contentTintColor = .systemGreen
+        let work = DispatchWorkItem { [weak self] in
+            self?.resetCopyButtonAppearance()
+        }
+        copyFlashWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1, execute: work)
+    }
+
     private func copyValue() -> String? {
         let value = textView.string.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !value.isEmpty, value != "Translating..." else { return nil }
+        guard PopoverFeedback.isCopyableResult(value) else { return nil }
         return value
     }
 

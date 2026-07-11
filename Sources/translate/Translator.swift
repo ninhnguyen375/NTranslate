@@ -20,75 +20,17 @@ final class Translator {
             .replacingOccurrences(of: "{{config.targetLang}}", with: targetLang)
     }
 
+    /// Source and target language are the same: user wants grammar-check, not translation.
+    private func renderGrammarPrompt(lang: String) -> String {
+        config.grammarPrompt
+            .replacingOccurrences(of: "{{lang}}", with: lang)
+            .replacingOccurrences(of: "{{config.nativeLang}}", with: config.resolvedNativeLang)
+    }
+
     private func renderLearnPrompt(sourceLang: String, targetLang: String) -> String {
-        """
-        You are an English learning assistant for a Vietnamese learner.
-        Explain the selected text in concise Vietnamese.
-        If the selected text is not a single English word, extract the most useful English word or short phrase to learn.
-
-        Return plain text only. No markdown. No intro. No commentary. No code fences.
-        Follow this format exactly. Keep every item on its own line:
-
-        IPA: /.../
-        n. ...
-        v. ...
-        adj. ...
-
-        Từ đồng nghĩa: ..., ...
-        Từ trái nghĩa: ..., ...
-
-        Ví dụ
-        - Example sentence.
-          → Bản dịch tiếng Việt.
-        - Example sentence.
-          → Bản dịch tiếng Việt.
-
-        Nhớ nhanh
-        - ...
-        - ...
-        - ...
-
-        Hard rules:
-        - Omit any part of speech that does not fit.
-        - Keep each meaning very short.
-        - Examples must be natural and useful.
-        - Each example sentence MUST start with "- " on its own line.
-        - Each Vietnamese translation MUST be on the next line and start with "  → ".
-        - Do not put meanings and examples on the same line.
-        - Do not merge two examples into one paragraph.
-        - Do not put any text after a meaning on the same line.
-        - Put exactly one blank line between sections.
-        - "Ví dụ" and "Nhớ nhanh" must each be on their own line.
-        - "Từ đồng nghĩa" and "Từ trái nghĩa" must each be on their own line, formatted exactly as:
-          Từ đồng nghĩa: word1, word2
-          Từ trái nghĩa: word1, word2
-        - List 2-4 common English synonyms and 1-3 common English antonyms when they exist.
-        - If no natural antonym exists, write: Từ trái nghĩa: (không có)
-        - If no useful synonym exists, write: Từ đồng nghĩa: (không có)
-        - In "Nhớ nhanh", explain the fastest way to grasp and remember the word.
-        - Preserve line breaks exactly.
-        - Output plain text only. Do not use markdown formatting such as **, *, #, _, [], or code fences.
-        - Target learner language: Vietnamese.
-        - Source language hint: \(sourceLang). Target language hint: \(targetLang).
-
-        Good output example:
-        IPA: /ˈɡræfɪks/
-        n. đồ họa; hình ảnh máy tính.
-
-        Từ đồng nghĩa: visuals, imagery, illustrations
-        Từ trái nghĩa: text, audio
-
-        Ví dụ
-        - High-quality graphics make the game look realistic.
-          → Đồ họa chất lượng cao làm cho trò chơi trông chân thực.
-        - The company specializes in computer graphics.
-          → Công ty chuyên về đồ họa máy tính.
-
-        Nhớ nhanh
-        - Gốc liên tưởng: graph = vẽ, viết.
-        - graphics = phần hình ảnh nhìn thấy trên màn hình.
-        - Nhấn âm đầu: GRA-.
-        """
+        config.learnPrompt
+            .replacingOccurrences(of: "{{config.sourceLang}}", with: sourceLang)
+            .replacingOccurrences(of: "{{config.targetLang}}", with: targetLang)
     }
 
     private func request(_ text: String, mode: RequestMode, completion: @escaping @Sendable (Result<String, Error>) -> Void) {
@@ -103,6 +45,8 @@ final class Translator {
         let wrappedText = "<selected-text>\(text)</selected-text>"
         let systemPrompt: String
         switch mode {
+        case let .translate(sourceLang, targetLang) where sourceLang == targetLang:
+            systemPrompt = renderGrammarPrompt(lang: targetLang)
         case let .translate(sourceLang, targetLang):
             systemPrompt = renderSystemPrompt(sourceLang: sourceLang, targetLang: targetLang)
         case let .learn(sourceLang, targetLang):

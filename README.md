@@ -18,6 +18,7 @@ Menu bar app for macOS:
 
 Current popup actions:
 - `Translate`
+- `Learn`
 - `Copy`
 - `Speak Src`
 - `Speak Tr`
@@ -27,7 +28,8 @@ NTranslate does **not** auto-replace the selected text.
 ## Project files
 
 - Swift source: `Sources/translate/translate.swift`
-- Runtime config: `config.json`
+- Install seed config: `config.json` / `config.json.example`
+- Runtime config: `~/Library/Application Support/NTranslate/config.json`
 - Install script: `install-app.sh`
 - App icon source: `icon.jpg`
 
@@ -60,6 +62,7 @@ What `install-app.sh` does:
 - updates `Info.plist`
 - builds `NTranslate.icns` from `icon.jpg` if present
 - updates `/Applications/NTranslate.app` in place
+- seeds `~/Library/Application Support/NTranslate/config.json` from project `config.json` (or `config.json.example`) if missing — use `FORCE_CONFIG=1` to overwrite
 - touches the app bundle so LaunchServices/Raycast refresh metadata
 - opens the app
 
@@ -85,14 +88,33 @@ Only edit `install-app.sh` when packaging details change, for example:
 
 ## Config changes
 
-Edit:
+Runtime config (what the app reads):
 
 ```bash
-~/Code/MacOS/translate/config.json
+~/Library/Application Support/NTranslate/config.json
 ```
 
-Then apply without rebuild:
+Project `config.json` is the install seed source (`./install-app.sh` copies it into Application Support when missing). Edit the Application Support file for live settings, then:
 - menu bar app → `Reload Config`
+
+To re-seed from the project file:
+
+```bash
+FORCE_CONFIG=1 ./install-app.sh
+```
+
+Current language / limit config keys:
+
+```json
+{
+  "speechURL": "http://localhost:20128/v1/audio/speech",
+  "nativeLang": "Vietnamese",
+  "languages": ["Auto detect", "English", "Vietnamese", "Chinese"],
+  "targetLanguages": ["English", "Vietnamese"],
+  "maxTranslateLength": 5000,
+  "grammarPrompt": "..."
+}
+```
 
 Current TTS-related config keys:
 
