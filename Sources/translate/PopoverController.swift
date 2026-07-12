@@ -1121,6 +1121,8 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         versionItem.isEnabled = false
         statusMenu.addItem(versionItem)
         statusMenu.addItem(NSMenuItem.separator())
+        statusMenu.addItem(withTitle: "Open Translate Panel", action: #selector(openTranslatePanelMenu), keyEquivalent: "t")
+        statusMenu.addItem(NSMenuItem.separator())
         let accessibilityItem = NSMenuItem(title: "Grant Accessibility Access", action: #selector(requestAccessibilityPermissionMenu), keyEquivalent: "")
         accessibilityItem.tag = Self.accessibilityMenuItemTag
         statusMenu.addItem(accessibilityItem)
@@ -1146,12 +1148,60 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         requestAccessibilityPermissionIfNeeded(forcePrompt: true)
     }
 
+    @objc private func openTranslatePanelMenu() {
+        let outcome = reloadConfig(showSuccess: false)
+        openTranslatePanelShowingSetupStatus(loadMessage: outcome.message)
+    }
+
     @objc private func reloadConfigMenu() {
-        reloadConfig(showSuccess: true)
+        let outcome = reloadConfig(showSuccess: true)
+        let issues = outcome.config.setupIssues(
+            loadMessage: outcome.message,
+            accessibilityTrusted: AXIsProcessTrusted()
+        )
+        if !issues.isEmpty {
+            openTranslatePanelShowingSetupStatus(loadMessage: outcome.message)
+        }
     }
 
     @objc private func openConfigFileMenu() {
         NSWorkspace.shared.open(URL(fileURLWithPath: AppConfig.configPath))
+    }
+
+    /// Opens the translate panel and shows config/permission errors immediately when present.
+    private func openTranslatePanelShowingSetupStatus(loadMessage: String? = nil) {
+        if !panel.isVisible {
+            if let button = statusItem.button, let buttonWindow = button.window {
+                let buttonFrameOnScreen = buttonWindow.convertToScreen(button.convert(button.bounds, to: nil))
+                showMousePoint = NSPoint(x: buttonFrameOnScreen.midX, y: buttonFrameOnScreen.minY)
+            } else {
+                showMousePoint = NSEvent.mouseLocation
+            }
+        }
+
+        let issues = config.setupIssues(
+            loadMessage: loadMessage,
+            accessibilityTrusted: AXIsProcessTrusted()
+        )
+
+        if issues.isEmpty {
+            let current = textView.string.trimmingCharacters(in: .whitespacesAndNewlines)
+            if current.isEmpty
+                || current.hasPrefix("Error:")
+                || current.hasPrefix("Config load error:")
+                || current.hasPrefix("Created ")
+            {
+                setResultText(PopoverFeedback.emptySelectionGuidance)
+            }
+            clearStatus()
+        } else {
+            setResultText(AppConfig.formatSetupIssues(issues))
+            setStatus("Fix the errors above, then Reload Config")
+        }
+
+        reflowLayout()
+        updateBusyState()
+        presentPanel(activatesApp: true, restoresPreviousAppOnCloseValue: false)
     }
 
     private static func appVersionString() -> String {
@@ -1224,22 +1274,27 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     }
 
     @objc private func reloadConfig() {
-        reloadConfig(showSuccess: false)
+        _ = reloadConfig(showSuccess: false)
     }
 
-    private func reloadConfig(showSuccess: Bool) {
+    @discardableResult
+    private func reloadConfig(showSuccess: Bool) -> AppConfig.LoadOutcome {
         let outcome = AppConfig.loadOutcome()
         config = outcome.config
         reflowLayout()
         let apiKey = config.apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !apiKey.isEmpty else {
             translator = nil
-            if let message = outcome.message {
-                setResultText("Config load error: \(message)")
+            if outcome.didSeedConfig {
+                setResultText(
+                    "Error: Created \(AppConfig.configPath). Set apiKey (from 9router), then menu → Reload Config."
+                )
+            } else if let message = outcome.message {
+                setResultText("Error: \(message)")
             } else {
-                setResultText("Config load error: apiKey is empty")
+                setResultText("Error: apiKey is empty — edit \(AppConfig.configPath)")
             }
-            return
+            return outcome
         }
         translator = Translator(config: config, apiKey: apiKey)
         configureLanguageControls()
@@ -1247,10 +1302,13 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         assert(URL(string: config.apiBaseURL) != nil)
         assert(URL(string: config.speechURL) != nil)
         if let message = outcome.message {
-            setResultText("Config load error: \(message)")
+            setResultText("Error: \(message)")
+        } else if outcome.didSeedConfig {
+            setResultText("Created config at \(AppConfig.configPath)")
         } else if showSuccess {
             setResultText("Reloaded config from \(AppConfig.configPath)")
         }
+        return outcome
     }
 
     private func requestAccessibilityPermissionIfNeeded(forcePrompt: Bool = false) {

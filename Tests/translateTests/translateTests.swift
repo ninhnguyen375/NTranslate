@@ -162,6 +162,66 @@ struct TranslateTests {
         #expect(config.ui.simulateCopy == false)
     }
 
+    @Test func appConfigSeedCreatesMissingFile() throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ntranslate-seed-\(UUID().uuidString)", isDirectory: true)
+        let path = dir.appendingPathComponent("config.json").path
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        #expect(AppConfig.seedConfigFileIfMissing(at: path) == .created)
+        #expect(FileManager.default.fileExists(atPath: path))
+        #expect(AppConfig.seedConfigFileIfMissing(at: path) == .alreadyExists)
+
+        let data = try Data(contentsOf: URL(fileURLWithPath: path))
+        let decoded = try JSONDecoder().decode(AppConfig.self, from: data)
+        #expect(decoded.apiBaseURL == AppConfig.default.apiBaseURL)
+        #expect(decoded.apiKey.isEmpty)
+    }
+
+    @Test func appConfigLoadOutcomeSeedsMissingFileThenLoads() throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ntranslate-load-\(UUID().uuidString)", isDirectory: true)
+        let path = dir.appendingPathComponent("config.json").path
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let outcome = AppConfig.loadOutcome(at: path)
+        guard case let .seeded(config) = outcome else {
+            Issue.record("Expected seeded outcome, got \(outcome)")
+            return
+        }
+        #expect(outcome.didSeedConfig)
+        #expect(config.model == AppConfig.default.model)
+        #expect(FileManager.default.fileExists(atPath: path))
+
+        let second = AppConfig.loadOutcome(at: path)
+        guard case .loaded = second else {
+            Issue.record("Expected loaded outcome on second read")
+            return
+        }
+        #expect(!second.didSeedConfig)
+    }
+
+    @Test func appConfigSetupIssuesReportsEmptyApiKeyAndAccessibility() {
+        var config = AppConfig.default
+        config.apiKey = ""
+        let issues = config.setupIssues(accessibilityTrusted: false)
+        #expect(issues.contains(where: { $0.contains("apiKey is empty") }))
+        #expect(issues.contains(where: { $0.contains("Accessibility") }))
+        #expect(AppConfig.formatSetupIssues(issues).hasPrefix("Error:"))
+    }
+
+    @Test func appConfigSetupIssuesEmptyWhenReady() {
+        var config = AppConfig.default
+        config.apiKey = "sk-test"
+        #expect(config.setupIssues(accessibilityTrusted: true).isEmpty)
+    }
+
+    @Test func popoverFeedbackTreatsSetupErrorsAsErrorStyle() {
+        #expect(PopoverFeedback.resultStyle(for: "Error: apiKey is empty") == .error)
+        #expect(PopoverFeedback.resultStyle(for: "Config load error: boom") == .error)
+        #expect(!PopoverFeedback.isCopyableResult("Error: apiKey is empty"))
+    }
+
     @Test func popoverLayoutMathClampsInputHeight() {
         let height = PopoverLayoutMath.inputHeight(
             text: String(repeating: "hello ", count: 200),

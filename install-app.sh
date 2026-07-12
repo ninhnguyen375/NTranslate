@@ -117,7 +117,8 @@ codesign -vv "$APP_DST"
 codesign -dv --verbose=4 "$APP_DST" 2>&1 | grep -E 'Identifier=|Authority=|TeamIdentifier=' || true
 touch "$APP_DST"
 
-# Seed runtime config into Application Support (app only reads this path; no hardcoded repo path).
+# Seed runtime config into Application Support when missing.
+# The app also auto-creates this file on first launch; FORCE_CONFIG=1 still overwrites from the project seed.
 CONFIG_SUPPORT_DIR="${HOME}/Library/Application Support/NTranslate"
 CONFIG_DST="$CONFIG_SUPPORT_DIR/config.json"
 CONFIG_SRC=""

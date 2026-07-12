@@ -10,11 +10,11 @@ NTranslate does **not** auto-replace the selected text.
 
 Prebuilt Apple Silicon (arm64) builds are on **[Releases](https://github.com/ninhnguyen375/NTranslate/releases)**.
 
-Latest: **[v1.1.1](https://github.com/ninhnguyen375/NTranslate/releases/tag/v1.1.1)** — download `NTranslate-1.1.1-arm64.dmg`, drag the app into Applications, then:
+Latest: **[v1.1.3](https://github.com/ninhnguyen375/NTranslate/releases/tag/v1.1.3)** — download `NTranslate-1.1.3-arm64.dmg`, drag the app into Applications, then:
 
 1. First open: Right-click → **Open** if Gatekeeper warns (Development signature, not notarized)
 2. Grant **Accessibility** in System Settings
-3. Run [9router](https://github.com/decolua/9router) and configure `~/Library/Application Support/NTranslate/config.json` (see `config.json.example`)
+3. Run [9router](https://github.com/decolua/9router), open **Open Config File** from the menu bar (auto-created on first launch), set `apiKey`, then **Reload Config**
 
 ## Features
 
@@ -71,13 +71,15 @@ macOS may treat a Terminal-launched binary as a different Accessibility client t
 | `config.json` | Local seed file — **gitignored**; copy from the example |
 | `~/Library/Application Support/NTranslate/config.json` | Runtime config the app actually reads |
 
-`install-app.sh` seeds Application Support from `config.json` (or the example) when missing. To overwrite:
+On first launch, if the Application Support file is missing, the app **creates it automatically** from built-in defaults (empty `apiKey`). `install-app.sh` can also seed/overwrite it from the project file.
+
+To overwrite from the project seed:
 
 ```bash
 FORCE_CONFIG=1 ./install-app.sh
 ```
 
-After editing the Application Support file, use the menu bar item **Reload Config**.
+After editing the Application Support file, use the menu bar item **Reload Config**. Set `apiKey` (from the 9router dashboard) before translating.
 
 ### Important keys
 

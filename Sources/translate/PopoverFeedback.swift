@@ -20,7 +20,11 @@ enum PopoverFeedback {
         {
             return .loading
         }
-        if text == textTooLong || text.hasPrefix("Error:") {
+        if text == textTooLong
+            || text.hasPrefix("Error:")
+            || text.hasPrefix("Config load error:")
+            || text.hasPrefix("Grant Accessibility")
+        {
             return .error
         }
         return .normal
@@ -38,6 +42,8 @@ enum PopoverFeedback {
             return false
         default:
             return !trimmed.hasPrefix("Error:")
+                && !trimmed.hasPrefix("Config load error:")
+                && !trimmed.hasPrefix("Grant Accessibility")
         }
     }
 

@@ -51,7 +51,8 @@ struct AppConfig: Codable {
     var hotkey: Hotkey
     var ui: UI
 
-    /// Runtime config lives in Application Support. Seeded by `install-app.sh` (not by the app).
+    /// Runtime config lives in Application Support.
+    /// Created automatically on first launch if missing; `install-app.sh` can also seed/overwrite it.
     static let configPath =
         NSString(string: "~/Library/Application Support/NTranslate/config.json").expandingTildeInPath
 
@@ -251,22 +252,62 @@ struct AppConfig: Codable {
 
     enum LoadOutcome {
         case loaded(AppConfig)
+        case seeded(AppConfig)
         case missingFile(AppConfig)
         case failed(AppConfig, String)
 
         var config: AppConfig {
             switch self {
-            case let .loaded(config), let .missingFile(config), let .failed(config, _): config
+            case let .loaded(config), let .seeded(config), let .missingFile(config), let .failed(config, _):
+                config
             }
         }
 
         var message: String? {
             switch self {
-            case .loaded, .missingFile:
+            case .loaded, .seeded, .missingFile:
                 return nil
             case let .failed(_, message):
                 return message
             }
+        }
+
+        var didSeedConfig: Bool {
+            if case .seeded = self { return true }
+            return false
+        }
+    }
+
+    enum SeedResult: Equatable {
+        case alreadyExists
+        case created
+        case failed(String)
+    }
+
+    static func encodePrettyJSON(_ config: AppConfig = .default) throws -> Data {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        return try encoder.encode(config)
+    }
+
+    /// Creates `~/Library/Application Support/NTranslate/config.json` when missing.
+    static func seedConfigFileIfMissing(
+        at path: String = configPath,
+        fileManager: FileManager = .default,
+        config: AppConfig = .default
+    ) -> SeedResult {
+        if fileManager.fileExists(atPath: path) {
+            return .alreadyExists
+        }
+        do {
+            let directory = (path as NSString).deletingLastPathComponent
+            try fileManager.createDirectory(atPath: directory, withIntermediateDirectories: true)
+            let data = try encodePrettyJSON(config)
+            let url = URL(fileURLWithPath: path)
+            try data.write(to: url, options: [.atomic])
+            return .created
+        } catch {
+            return .failed(error.localizedDescription)
         }
     }
 
@@ -278,11 +319,33 @@ struct AppConfig: Codable {
         }
     }
 
-    static func loadOutcome() -> LoadOutcome {
+    static func loadOutcome(at path: String = configPath, fileManager: FileManager = .default) -> LoadOutcome {
         do {
-            return decodeOutcome(data: try Data(contentsOf: URL(fileURLWithPath: configPath)))
+            return decodeOutcome(data: try Data(contentsOf: URL(fileURLWithPath: path)))
         } catch CocoaError.fileReadNoSuchFile {
-            return .missingFile(.default)
+            switch seedConfigFileIfMissing(at: path, fileManager: fileManager) {
+            case .alreadyExists:
+                do {
+                    return decodeOutcome(data: try Data(contentsOf: URL(fileURLWithPath: path)))
+                } catch {
+                    return .failed(.default, error.localizedDescription)
+                }
+            case .created:
+                do {
+                    let seeded = decodeOutcome(data: try Data(contentsOf: URL(fileURLWithPath: path)))
+                    if case let .loaded(config) = seeded {
+                        return .seeded(config)
+                    }
+                    return seeded
+                } catch {
+                    return .failed(.default, "Created config at \(path) but could not read it: \(error.localizedDescription)")
+                }
+            case let .failed(message):
+                return .failed(
+                    .default,
+                    "Missing config and could not create \(path): \(message)"
+                )
+            }
         } catch {
             return .failed(.default, error.localizedDescription)
         }
@@ -305,5 +368,44 @@ struct AppConfig: Codable {
     var resolvedNativeLang: String {
         let trimmed = nativeLang.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? "Vietnamese" : trimmed
+    }
+
+    /// User-facing setup problems that block translation (empty key, bad URLs, missing Accessibility).
+    func setupIssues(loadMessage: String? = nil, accessibilityTrusted: Bool) -> [String] {
+        var issues: [String] = []
+        if let loadMessage {
+            let trimmed = loadMessage.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty {
+                issues.append(trimmed)
+            }
+        }
+        if apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            issues.append(
+                "apiKey is empty. Menu → Open Config File, set your 9router API key, then Reload Config."
+            )
+        }
+        if apiBaseURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || URL(string: apiBaseURL) == nil {
+            issues.append("apiBaseURL is invalid: \(apiBaseURL)")
+        }
+        if speechURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || URL(string: speechURL) == nil {
+            issues.append("speechURL is invalid: \(speechURL)")
+        }
+        if model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            issues.append("model is empty.")
+        }
+        if !accessibilityTrusted {
+            issues.append(
+                "Accessibility permission is missing. Menu → Grant Accessibility Access (needed to read selected text)."
+            )
+        }
+        return issues
+    }
+
+    static func formatSetupIssues(_ issues: [String]) -> String {
+        issues.map { issue in
+            let trimmed = issue.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed.hasPrefix("Error:") { return trimmed }
+            return "Error: \(trimmed)"
+        }.joined(separator: "\n\n")
     }
 }
