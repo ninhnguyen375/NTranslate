@@ -6,6 +6,16 @@ Designed to work with **[9router](https://github.com/decolua/9router)** — a lo
 
 NTranslate does **not** auto-replace the selected text.
 
+## Download
+
+Prebuilt Apple Silicon (arm64) builds are on **[Releases](https://github.com/ninhnguyen375/NTranslate/releases)**.
+
+Latest: **[v1.1.1](https://github.com/ninhnguyen375/NTranslate/releases/tag/v1.1.1)** — download `NTranslate-1.1.1-arm64.dmg`, drag the app into Applications, then:
+
+1. First open: Right-click → **Open** if Gatekeeper warns (Development signature, not notarized)
+2. Grant **Accessibility** in System Settings
+3. Run [9router](https://github.com/decolua/9router) and configure `~/Library/Application Support/NTranslate/config.json` (see `config.json.example`)
+
 ## Features
 
 - Global hotkey (default `Option+D`) to translate the current selection
