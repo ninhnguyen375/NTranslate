@@ -161,6 +161,18 @@ Set your signing identity before install (see Security notes below). Version bum
 VERSION_BUMP=minor ./install-app.sh
 ```
 
+## Release DMG
+
+Package a signed DMG (and optionally upload to GitHub Releases):
+
+```bash
+./release-dmg.sh                 # build + DMG + GitHub Release
+SKIP_UPLOAD=1 ./release-dmg.sh   # DMG only → dist/
+VERSION_BUMP=minor ./release-dmg.sh
+```
+
+Requires `gh` logged in for upload. Output lands in `dist/` (gitignored).
+
 ## Privacy
 
 - Selected text is sent to the API endpoint you configure (`apiBaseURL` / `speechURL`).
