@@ -6,6 +6,22 @@ Designed to work with **[9router](https://github.com/decolua/9router)** — a lo
 
 NTranslate does **not** auto-replace the selected text.
 
+## Screenshots
+
+Select text anywhere → press `Option+D` → popup near the cursor.
+
+<p align="center">
+  <img src="screenshort/translate.jpg" alt="NTranslate translating selected English text to Vietnamese" width="820" />
+</p>
+
+<p align="center"><em>Translate — dual-pane source / translation with speak, copy, and language controls</em></p>
+
+<p align="center">
+  <img src="screenshort/learn-button.jpg" alt="NTranslate Learn mode with IPA, meanings, examples, and memory tips" width="820" />
+</p>
+
+<p align="center"><em>Learn — vocabulary breakdown (IPA, synonyms, examples, quick tips)</em></p>
+
 ## Download
 
 Prebuilt Apple Silicon (arm64) builds are on **[Releases](https://github.com/ninhnguyen375/NTranslate/releases)**.
@@ -44,7 +60,7 @@ git clone https://github.com/<you>/NTranslate.git
 cd NTranslate
 cp config.json.example config.json
 # Edit config.json: set apiKey (from 9router), model, languages, etc.
-# Default apiBaseURL / speechURL already target 9router on localhost:20128.
+# Default apiBaseURL / apiSpeechURL already target 9router on localhost:20128.
 ./install-app.sh
 ```
 
@@ -86,7 +102,7 @@ After editing the Application Support file, use the menu bar item **Reload Confi
 ```json
 {
   "apiBaseURL": "http://localhost:20128/v1/chat/completions",
-  "speechURL": "http://localhost:20128/v1/audio/speech",
+  "apiSpeechURL": "http://localhost:20128/v1/audio/speech",
   "apiKey": "your-api-key-here",
   "model": "your-model-id",
   "sourceLang": "Auto detect",
@@ -140,6 +156,7 @@ tccutil reset Accessibility local.ninh.ntranslate
 ```
 Sources/translate/   Swift sources (menu bar app, selection, API, UI)
 Tests/translateTests/
+screenshort/         README screenshots
 config.json.example  Public config template
 install-app.sh       Build, sign, install to /Applications
 Package.swift
@@ -177,7 +194,7 @@ Requires `gh` logged in for upload. Output lands in `dist/` (gitignored).
 
 ## Privacy
 
-- Selected text is sent to the API endpoint you configure (`apiBaseURL` / `speechURL`).
+- Selected text is sent to the API endpoint you configure (`apiBaseURL` / `apiSpeechURL`).
 - Accessibility is used only to read the focused selection for translation.
 - The app does not ship with cloud credentials; you bring your own API.
 

@@ -91,7 +91,7 @@ final class Translator {
             completion(.failure(NSError(domain: "Speech", code: 1, userInfo: [NSLocalizedDescriptionKey: "Empty text"])))
             return
         }
-        guard let url = URL(string: config.speechURL) else {
+        guard let url = URL(string: config.apiSpeechURL) else {
             completion(.failure(NSError(domain: "Config", code: 2, userInfo: [NSLocalizedDescriptionKey: "Invalid speech URL"])))
             return
         }

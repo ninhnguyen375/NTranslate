@@ -125,7 +125,7 @@ struct TranslateTests {
             Issue.record("Expected loaded outcome")
             return
         }
-        #expect(config.speechURL == "http://localhost:1/v1/audio/speech")
+        #expect(config.apiSpeechURL == "http://localhost:1/v1/audio/speech")
         #expect(config.nativeLang == "Vietnamese")
         #expect(config.languages == AppConfig.defaultLanguages)
         #expect(config.targetLanguages == AppConfig.defaultTargetLanguages)
@@ -135,19 +135,31 @@ struct TranslateTests {
 
     @Test func appConfigDecodeKeepsExplicitSpeechURLAndNewKeys() throws {
         let json = """
-        {"apiBaseURL":"http://localhost:1/v1/chat/completions","speechURL":"http://speech.example/v1/audio/speech","apiKey":"k","model":"m","sourceLang":"Auto detect","targetLang":"English","nativeLang":"English","languages":["Auto detect","English"],"targetLanguages":["English"],"maxTranslateLength":123,"systemPrompt":"p","learnPrompt":"learn","grammarPrompt":"grammar {{lang}} {{config.nativeLang}}","speechSourceModel":"a","speechSourceModelVietnamese":"b","speechSourceModelChinese":"c","speechTargetModel":"d","hotkey":{"key":"D","option":true,"command":false,"control":false,"shift":false},"ui":{"width":480,"height":320,"autoCopy":false}}
+        {"apiBaseURL":"http://localhost:1/v1/chat/completions","apiSpeechURL":"http://speech.example/v1/audio/speech","apiKey":"k","model":"m","sourceLang":"Auto detect","targetLang":"English","nativeLang":"English","languages":["Auto detect","English"],"targetLanguages":["English"],"maxTranslateLength":123,"systemPrompt":"p","learnPrompt":"learn","grammarPrompt":"grammar {{lang}} {{config.nativeLang}}","speechSourceModel":"a","speechSourceModelVietnamese":"b","speechSourceModelChinese":"c","speechTargetModel":"d","hotkey":{"key":"D","option":true,"command":false,"control":false,"shift":false},"ui":{"width":480,"height":320,"autoCopy":false}}
         """
         let outcome = AppConfig.decodeOutcome(data: Data(json.utf8))
         guard case let .loaded(config) = outcome else {
             Issue.record("Expected loaded outcome")
             return
         }
-        #expect(config.speechURL == "http://speech.example/v1/audio/speech")
+        #expect(config.apiSpeechURL == "http://speech.example/v1/audio/speech")
         #expect(config.nativeLang == "English")
         #expect(config.languages == ["Auto detect", "English"])
         #expect(config.targetLanguages == ["English"])
         #expect(config.maxTranslateLength == 123)
         #expect(config.grammarPrompt.contains("{{lang}}"))
+    }
+
+    @Test func appConfigDecodeAcceptsLegacySpeechURLKey() throws {
+        let json = """
+        {"apiBaseURL":"http://localhost:1/v1/chat/completions","speechURL":"http://legacy.example/v1/audio/speech","apiKey":"","model":"m","sourceLang":"Auto detect","targetLang":"Vietnamese","systemPrompt":"p","speechSourceModel":"a","speechSourceModelVietnamese":"b","speechSourceModelChinese":"c","speechTargetModel":"d","hotkey":{"key":"D","option":true,"command":false,"control":false,"shift":false},"ui":{"width":480,"height":320,"autoCopy":false}}
+        """
+        let outcome = AppConfig.decodeOutcome(data: Data(json.utf8))
+        guard case let .loaded(config) = outcome else {
+            Issue.record("Expected loaded outcome")
+            return
+        }
+        #expect(config.apiSpeechURL == "http://legacy.example/v1/audio/speech")
     }
 
     @Test func appConfigDecodeDefaultsSimulateCopyWhenMissing() throws {
@@ -199,6 +211,13 @@ struct TranslateTests {
             return
         }
         #expect(!second.didSeedConfig)
+    }
+
+    @Test func appConfigEncodePrettyJSONDoesNotEscapeSlashes() throws {
+        let data = try AppConfig.encodePrettyJSON()
+        let text = String(data: data, encoding: .utf8) ?? ""
+        #expect(text.contains("http://localhost:20128/v1/chat/completions"))
+        #expect(!text.contains("http:\\/\\/"))
     }
 
     @Test func appConfigSetupIssuesReportsEmptyApiKeyAndAccessibility() {

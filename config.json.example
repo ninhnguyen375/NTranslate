@@ -1,6 +1,6 @@
 {
   "apiBaseURL": "http://localhost:20128/v1/chat/completions",
-  "speechURL": "http://localhost:20128/v1/audio/speech",
+  "apiSpeechURL": "http://localhost:20128/v1/audio/speech",
   "apiKey": "your-api-key-here",
   "model": "9r-gemini-low",
   "sourceLang": "Auto detect",

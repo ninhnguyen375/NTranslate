@@ -1300,7 +1300,7 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         configureLanguageControls()
         registerHotKey()
         assert(URL(string: config.apiBaseURL) != nil)
-        assert(URL(string: config.speechURL) != nil)
+        assert(URL(string: config.apiSpeechURL) != nil)
         if let message = outcome.message {
             setResultText("Error: \(message)")
         } else if outcome.didSeedConfig {

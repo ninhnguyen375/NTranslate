@@ -32,7 +32,7 @@ struct AppConfig: Codable {
     }
 
     var apiBaseURL: String
-    var speechURL: String
+    var apiSpeechURL: String
     var apiKey: String
     var model: String
     var sourceLang: String
@@ -156,7 +156,7 @@ struct AppConfig: Codable {
 
     static let `default` = AppConfig(
         apiBaseURL: "http://localhost:20128/v1/chat/completions",
-        speechURL: "http://localhost:20128/v1/audio/speech",
+        apiSpeechURL: "http://localhost:20128/v1/audio/speech",
         apiKey: "",
         model: "9r-gemini-low",
         sourceLang: "Auto detect",
@@ -178,7 +178,7 @@ struct AppConfig: Codable {
 
     init(
         apiBaseURL: String,
-        speechURL: String,
+        apiSpeechURL: String,
         apiKey: String,
         model: String,
         sourceLang: String,
@@ -198,7 +198,7 @@ struct AppConfig: Codable {
         ui: UI
     ) {
         self.apiBaseURL = apiBaseURL
-        self.speechURL = speechURL
+        self.apiSpeechURL = apiSpeechURL
         self.apiKey = apiKey
         self.model = model
         self.sourceLang = sourceLang
@@ -216,6 +216,10 @@ struct AppConfig: Codable {
         self.speechTargetModel = speechTargetModel
         self.hotkey = hotkey
         self.ui = ui
+    }
+
+    private enum LegacySpeechKeys: String, CodingKey {
+        case speechURL
     }
 
     init(from decoder: Decoder) throws {
@@ -238,11 +242,15 @@ struct AppConfig: Codable {
         speechTargetModel = try container.decode(String.self, forKey: .speechTargetModel)
         hotkey = try container.decode(Hotkey.self, forKey: .hotkey)
         ui = try container.decode(UI.self, forKey: .ui)
-        if let explicit = try container.decodeIfPresent(String.self, forKey: .speechURL),
+        let legacy = try decoder.container(keyedBy: LegacySpeechKeys.self)
+        if let explicit = try container.decodeIfPresent(String.self, forKey: .apiSpeechURL),
            !explicit.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            speechURL = explicit
+            apiSpeechURL = explicit
+        } else if let legacyURL = try legacy.decodeIfPresent(String.self, forKey: .speechURL),
+                  !legacyURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            apiSpeechURL = legacyURL
         } else {
-            speechURL = Self.derivedSpeechURL(from: apiBaseURL)
+            apiSpeechURL = Self.derivedSpeechURL(from: apiBaseURL)
         }
     }
 
@@ -286,7 +294,7 @@ struct AppConfig: Codable {
 
     static func encodePrettyJSON(_ config: AppConfig = .default) throws -> Data {
         let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
         return try encoder.encode(config)
     }
 
@@ -387,8 +395,8 @@ struct AppConfig: Codable {
         if apiBaseURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || URL(string: apiBaseURL) == nil {
             issues.append("apiBaseURL is invalid: \(apiBaseURL)")
         }
-        if speechURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || URL(string: speechURL) == nil {
-            issues.append("speechURL is invalid: \(speechURL)")
+        if apiSpeechURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || URL(string: apiSpeechURL) == nil {
+            issues.append("apiSpeechURL is invalid: \(apiSpeechURL)")
         }
         if model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             issues.append("model is empty.")
