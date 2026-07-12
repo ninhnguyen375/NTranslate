@@ -10,7 +10,7 @@ NTranslate does **not** auto-replace the selected text.
 
 Prebuilt Apple Silicon (arm64) builds are on **[Releases](https://github.com/ninhnguyen375/NTranslate/releases)**.
 
-Latest: **[v1.1.3](https://github.com/ninhnguyen375/NTranslate/releases/tag/v1.1.3)** — download `NTranslate-1.1.3-arm64.dmg`, drag the app into Applications, then:
+Latest: **[v1.1.5](https://github.com/ninhnguyen375/NTranslate/releases/tag/v1.1.5)** — download `NTranslate-1.1.5-arm64.dmg`, drag the app into Applications, then:
 
 1. First open: Right-click → **Open** if Gatekeeper warns (Development signature, not notarized)
 2. Grant **Accessibility** in System Settings
