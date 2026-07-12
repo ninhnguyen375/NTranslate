@@ -180,6 +180,71 @@ struct TranslateTests {
         #expect(height > 0)
     }
 
+    @Test func splitPaneWidthDividesEvenlyWithOddRemainderToRight() {
+        let panes = PopoverLayoutMath.splitPaneWidth(contentWidth: 464, divider: 1)
+        #expect(panes.left == 231)
+        #expect(panes.right == 232)
+        #expect(panes.left + panes.right + 1 == 464)
+    }
+
+    @Test func splitPaneHeightClampsBetweenMinAndMax() {
+        let clampedLow = PopoverLayoutMath.splitPaneHeight(
+            sourceMeasured: 10,
+            resultMeasured: 20,
+            paneHeaderHeight: 26,
+            minPaneHeight: 200,
+            maxPaneHeight: 420
+        )
+        #expect(clampedLow == 200)
+
+        let clampedHigh = PopoverLayoutMath.splitPaneHeight(
+            sourceMeasured: 1000,
+            resultMeasured: 1000,
+            paneHeaderHeight: 26,
+            minPaneHeight: 200,
+            maxPaneHeight: 420
+        )
+        #expect(clampedHigh == 420)
+
+        let mid = PopoverLayoutMath.splitPaneHeight(
+            sourceMeasured: 100,
+            resultMeasured: 180,
+            paneHeaderHeight: 26,
+            minPaneHeight: 200,
+            maxPaneHeight: 420
+        )
+        #expect(mid == 206)
+    }
+
+    @Test func splitPrismHeightSumsChromeAndPane() {
+        let height = PopoverLayoutMath.splitPrismHeight(
+            padding: 14,
+            paddingBottom: 16,
+            headerHeight: 22,
+            statusHeight: 0,
+            headerGap: 12,
+            splitPaneHeight: 160,
+            footerGap: 16,
+            bottomBarHeight: 32
+        )
+        // 14 + 22 + 0 + 12 + 160 + 16 + 32 + 16
+        #expect(height == 272)
+    }
+
+    @Test func splitPrismHeightIncludesStatusWhenPresent() {
+        let height = PopoverLayoutMath.splitPrismHeight(
+            padding: 14,
+            paddingBottom: 16,
+            headerHeight: 22,
+            statusHeight: 14,
+            headerGap: 12,
+            splitPaneHeight: 160,
+            footerGap: 16,
+            bottomBarHeight: 32
+        )
+        #expect(height == 286)
+    }
+
     @Test func clickIsInsidePanelRecognizesInsideAndOutsidePoints() {
         let frame = NSRect(x: 100, y: 100, width: 200, height: 100)
         #expect(PopoverLayoutMath.clickIsInsidePanel(click: NSPoint(x: 150, y: 150), panelFrame: frame))

@@ -1,0 +1,1145 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>NTranslate — Liquid Glass · 6 mẫu UI/UX</title>
+<style>
+  @import url("https://fonts.googleapis.com/css2?family=SF+Pro+Display:wght@400;500;600;700&display=swap");
+
+  :root {
+    --ink: #1d1d1f;
+    --ink-inv: #f5f5f7;
+    --muted: #6e6e73;
+    --accent: #0071e3;
+    --ok: #34c759;
+    --font: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: var(--font);
+    color: var(--ink);
+    min-height: 100vh;
+    background: #0a0a0c;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Page chrome */
+  header.page {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 40px 28px 8px;
+  }
+  header.page h1 {
+    font-size: 28px;
+    font-weight: 700;
+    letter-spacing: -0.035em;
+    color: #fff;
+  }
+  header.page h1 span {
+    background: linear-gradient(135deg, #7dd3fc 0%, #c4b5fd 45%, #f9a8d4 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  header.page p {
+    margin-top: 8px;
+    color: rgba(255,255,255,.55);
+    font-size: 14px;
+    line-height: 1.55;
+    max-width: 680px;
+  }
+
+  .toolbar {
+    max-width: 1400px;
+    margin: 18px auto 0;
+    padding: 0 28px;
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .chip {
+    font-size: 11px;
+    color: rgba(255,255,255,.55);
+    background: rgba(255,255,255,.06);
+    border: 1px solid rgba(255,255,255,.1);
+    border-radius: 999px;
+    padding: 5px 11px;
+    backdrop-filter: blur(12px);
+  }
+  .chip strong { color: rgba(255,255,255,.9); font-weight: 600; }
+
+  #choice { display: none; max-width: 1400px; margin: 16px auto 0; padding: 0 28px; }
+  #choice .banner {
+    background: rgba(52,199,89,.12);
+    border: 1px solid rgba(52,199,89,.35);
+    color: #6ee7a0;
+    border-radius: 12px;
+    padding: 11px 16px;
+    font-size: 13px;
+    font-weight: 600;
+    backdrop-filter: blur(20px);
+  }
+
+  .grid {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 20px 28px 56px;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+    gap: 22px;
+  }
+
+  .sample {
+    border-radius: 22px;
+    padding: 14px;
+    background: rgba(255,255,255,.04);
+    border: 1px solid rgba(255,255,255,.08);
+    cursor: pointer;
+    position: relative;
+    transition: border-color .2s, box-shadow .2s, transform .2s;
+  }
+  .sample:hover {
+    border-color: rgba(125,211,252,.35);
+    transform: translateY(-2px);
+  }
+  .sample.selected {
+    border-color: rgba(125,211,252,.65);
+    box-shadow: 0 0 0 3px rgba(125,211,252,.18), 0 20px 60px rgba(0,0,0,.4);
+  }
+
+  .pick {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    border: 2px solid rgba(255,255,255,.25);
+    background: rgba(0,0,0,.3);
+    z-index: 2;
+  }
+  .sample.selected .pick {
+    border-color: #7dd3fc;
+    background: #0071e3;
+  }
+  .sample.selected .pick::after {
+    content: "";
+    display: block;
+    width: 8px;
+    height: 8px;
+    margin: 5px auto;
+    border-radius: 50%;
+    background: #fff;
+  }
+
+  .sample-meta {
+    padding: 4px 28px 12px 6px;
+  }
+  .sample-meta h2 {
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    color: #fff;
+  }
+  .sample-meta .tag {
+    display: inline-block;
+    margin-top: 6px;
+    font-size: 10px;
+    font-weight: 650;
+    letter-spacing: .02em;
+    text-transform: uppercase;
+    color: #7dd3fc;
+    background: rgba(125,211,252,.12);
+    border: 1px solid rgba(125,211,252,.2);
+    border-radius: 6px;
+    padding: 3px 7px;
+  }
+  .sample-meta p {
+    margin-top: 6px;
+    font-size: 12px;
+    color: rgba(255,255,255,.45);
+    line-height: 1.45;
+  }
+
+  /* Wallpaper stages — each option sits on rich desktop wallpaper */
+  .stage {
+    border-radius: 16px;
+    padding: 28px 16px;
+    min-height: 460px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    overflow: hidden;
+  }
+
+  /* Shared SF icons */
+  .sf {
+    width: 1em;
+    height: 1em;
+    display: inline-block;
+    flex-shrink: 0;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.55;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  .sprites { position: absolute; width: 0; height: 0; overflow: hidden; }
+
+  /* ═══════════════════════════════════════════
+     SHARED LIQUID GLASS PRIMITIVES
+     ═══════════════════════════════════════════ */
+  .glass {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+  }
+  .glass::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(
+      135deg,
+      rgba(255,255,255,.55) 0%,
+      rgba(255,255,255,.12) 35%,
+      rgba(255,255,255,.05) 55%,
+      rgba(255,255,255,.28) 100%
+    );
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
+    z-index: 3;
+  }
+  .glass::after {
+    /* specular highlight */
+    content: "";
+    position: absolute;
+    top: -40%;
+    left: -20%;
+    width: 70%;
+    height: 55%;
+    background: radial-gradient(ellipse, rgba(255,255,255,.22) 0%, transparent 70%);
+    pointer-events: none;
+    z-index: 2;
+  }
+
+  .lg-popover {
+    width: 320px;
+    border-radius: 22px;
+    position: relative;
+    z-index: 1;
+    font-size: 12px;
+    color: var(--ink);
+  }
+
+  .lg-hdr {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .lg-hdr .brand {
+    font-weight: 700;
+    font-size: 12px;
+    letter-spacing: -0.02em;
+  }
+  .lg-hdr .spacer { flex: 1; }
+  .lg-icon {
+    width: 22px;
+    height: 22px;
+    border: 0;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    padding: 0;
+    cursor: default;
+    font-size: 11px;
+    background: rgba(255,255,255,.35);
+    color: rgba(0,0,0,.45);
+    backdrop-filter: blur(8px);
+  }
+
+  .lg-lang {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .lg-select {
+    flex: 1;
+    height: 28px;
+    border-radius: 999px;
+    border: 1px solid rgba(255,255,255,.35);
+    background: rgba(255,255,255,.28);
+    backdrop-filter: blur(12px);
+    color: var(--ink);
+    font-size: 11px;
+    font-weight: 500;
+    padding: 0 10px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .lg-swap {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    border: 1px solid rgba(255,255,255,.35);
+    background: rgba(255,255,255,.4);
+    backdrop-filter: blur(12px);
+    color: rgba(0,0,0,.5);
+    display: grid;
+    place-items: center;
+    font-size: 11px;
+  }
+
+  .lg-box {
+    border-radius: 14px;
+    border: 1px solid rgba(255,255,255,.3);
+    background: rgba(255,255,255,.22);
+    backdrop-filter: blur(16px);
+    line-height: 1.45;
+    padding: 10px 12px;
+  }
+
+  .lg-btn {
+    border: 1px solid rgba(255,255,255,.35);
+    background: rgba(255,255,255,.32);
+    backdrop-filter: blur(10px);
+    color: var(--ink);
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    height: 26px;
+    padding: 0 12px;
+    cursor: default;
+    white-space: nowrap;
+  }
+  .lg-btn.primary {
+    background: rgba(0,113,227,.85);
+    border-color: rgba(255,255,255,.25);
+    color: #fff;
+    box-shadow: 0 4px 16px rgba(0,113,227,.35), inset 0 1px 0 rgba(255,255,255,.35);
+  }
+  .lg-btn.icon {
+    width: 26px;
+    padding: 0;
+    border-radius: 50%;
+  }
+
+  .lg-status {
+    font-size: 10px;
+    color: rgba(0,0,0,.4);
+    min-height: 12px;
+  }
+
+  /* ═══════════════════════════════════════════
+     OPTION 1 — Frosted Sheet (light)
+     Classic liquid glass on bright wallpaper
+     ═══════════════════════════════════════════ */
+  .stage-1 {
+    background:
+      radial-gradient(ellipse 80% 60% at 20% 30%, #fda4af 0%, transparent 50%),
+      radial-gradient(ellipse 70% 50% at 80% 20%, #93c5fd 0%, transparent 45%),
+      radial-gradient(ellipse 60% 70% at 60% 90%, #c4b5fd 0%, transparent 50%),
+      linear-gradient(160deg, #fef3c7 0%, #fce7f3 40%, #dbeafe 100%);
+  }
+  .opt1 {
+    padding: 12px;
+    background: rgba(255,255,255,.38);
+    backdrop-filter: blur(40px) saturate(180%);
+    -webkit-backdrop-filter: blur(40px) saturate(180%);
+    box-shadow:
+      0 8px 32px rgba(0,0,0,.12),
+      0 2px 8px rgba(0,0,0,.06),
+      inset 0 1px 0 rgba(255,255,255,.7);
+  }
+  .opt1 .lg-hdr { margin-bottom: 4px; }
+  .opt1 .lg-status { margin-bottom: 8px; }
+  .opt1 .lg-lang { margin-bottom: 8px; }
+  .opt1 .lg-box.source { height: 56px; margin-bottom: 8px; }
+  .opt1 .actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    margin-bottom: 8px;
+  }
+  .opt1 .lg-box.result { height: 120px; }
+
+  /* ═══════════════════════════════════════════
+     OPTION 2 — Dark Specular
+     Dark liquid glass, luminous edge
+     ═══════════════════════════════════════════ */
+  .stage-2 {
+    background:
+      radial-gradient(ellipse 70% 50% at 15% 80%, #1e3a5f 0%, transparent 55%),
+      radial-gradient(ellipse 60% 60% at 85% 15%, #3b1f5e 0%, transparent 50%),
+      radial-gradient(ellipse 50% 40% at 50% 50%, #0f2744 0%, transparent 60%),
+      #06080f;
+  }
+  .opt2 {
+    padding: 12px;
+    background: rgba(20,24,36,.55);
+    backdrop-filter: blur(48px) saturate(200%);
+    -webkit-backdrop-filter: blur(48px) saturate(200%);
+    color: rgba(255,255,255,.92);
+    box-shadow:
+      0 12px 40px rgba(0,0,0,.5),
+      inset 0 1px 0 rgba(255,255,255,.18),
+      0 0 0 0.5px rgba(255,255,255,.12);
+  }
+  .opt2::before {
+    background: linear-gradient(
+      145deg,
+      rgba(255,255,255,.45) 0%,
+      rgba(125,211,252,.2) 30%,
+      rgba(255,255,255,.04) 55%,
+      rgba(196,181,253,.25) 100%
+    );
+  }
+  .opt2 .lg-icon {
+    background: rgba(255,255,255,.1);
+    color: rgba(255,255,255,.6);
+  }
+  .opt2 .lg-select {
+    background: rgba(255,255,255,.08);
+    border-color: rgba(255,255,255,.12);
+    color: rgba(255,255,255,.85);
+  }
+  .opt2 .lg-swap {
+    background: rgba(255,255,255,.1);
+    border-color: rgba(255,255,255,.12);
+    color: rgba(255,255,255,.6);
+  }
+  .opt2 .lg-box {
+    background: rgba(255,255,255,.06);
+    border-color: rgba(255,255,255,.1);
+    color: rgba(255,255,255,.85);
+  }
+  .opt2 .lg-btn {
+    background: rgba(255,255,255,.1);
+    border-color: rgba(255,255,255,.12);
+    color: rgba(255,255,255,.85);
+  }
+  .opt2 .lg-btn.primary {
+    background: linear-gradient(135deg, #3b82f6, #6366f1);
+    border-color: rgba(255,255,255,.2);
+    box-shadow: 0 4px 20px rgba(99,102,241,.4), inset 0 1px 0 rgba(255,255,255,.3);
+  }
+  .opt2 .lg-status { color: rgba(255,255,255,.35); }
+  .opt2 .lg-hdr { margin-bottom: 4px; }
+  .opt2 .lg-status { margin-bottom: 8px; }
+  .opt2 .lg-lang { margin-bottom: 8px; }
+  .opt2 .lg-box.source { height: 56px; margin-bottom: 8px; }
+  .opt2 .actions {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    margin-bottom: 8px;
+  }
+  .opt2 .actions .grow { flex: 1; }
+  .opt2 .lg-box.result { height: 128px; }
+
+  /* ═══════════════════════════════════════════
+     OPTION 3 — Nested Lenses
+     Glass cards stacked inside glass shell
+     ═══════════════════════════════════════════ */
+  .stage-3 {
+    background:
+      radial-gradient(ellipse 90% 70% at 70% 10%, #67e8f9 0%, transparent 45%),
+      radial-gradient(ellipse 70% 60% at 10% 70%, #a78bfa 0%, transparent 50%),
+      radial-gradient(ellipse 50% 40% at 90% 80%, #f472b6 0%, transparent 40%),
+      linear-gradient(135deg, #ecfeff 0%, #f5f3ff 50%, #fdf2f8 100%);
+  }
+  .opt3 {
+    padding: 10px;
+    background: rgba(255,255,255,.28);
+    backdrop-filter: blur(36px) saturate(160%);
+    -webkit-backdrop-filter: blur(36px) saturate(160%);
+    box-shadow: 0 10px 36px rgba(0,0,0,.1), inset 0 1px 0 rgba(255,255,255,.6);
+  }
+  .opt3 .lg-hdr { margin-bottom: 8px; padding: 2px 4px; }
+  .opt3 .lens {
+    border-radius: 16px;
+    border: 1px solid rgba(255,255,255,.4);
+    background: rgba(255,255,255,.32);
+    backdrop-filter: blur(20px);
+    padding: 10px;
+    margin-bottom: 8px;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.5), 0 2px 8px rgba(0,0,0,.04);
+  }
+  .opt3 .lens:last-child { margin-bottom: 0; }
+  .opt3 .lens .label {
+    font-size: 9px;
+    font-weight: 650;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    color: rgba(0,0,0,.35);
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .opt3 .lens .label .spacer { flex: 1; }
+  .opt3 .lens .body { font-size: 12px; line-height: 1.45; min-height: 40px; }
+  .opt3 .lens.result .body { min-height: 88px; }
+  .opt3 .lg-lang { margin-bottom: 8px; }
+  .opt3 .lens-actions {
+    display: flex;
+    gap: 5px;
+    margin-top: 8px;
+  }
+  .opt3 .mini-icon {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    border: 1px solid rgba(255,255,255,.4);
+    background: rgba(255,255,255,.4);
+    display: grid;
+    place-items: center;
+    font-size: 10px;
+    color: rgba(0,0,0,.45);
+  }
+
+  /* ═══════════════════════════════════════════
+     OPTION 4 — Capsule Dock
+     Floating language capsule + glass body
+     ═══════════════════════════════════════════ */
+  .stage-4 {
+    background:
+      url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E"),
+      radial-gradient(ellipse 80% 50% at 50% 0%, #86efac 0%, transparent 50%),
+      radial-gradient(ellipse 60% 50% at 0% 100%, #67e8f9 0%, transparent 45%),
+      radial-gradient(ellipse 50% 60% at 100% 60%, #fcd34d 0%, transparent 40%),
+      #e0f2fe;
+  }
+  .opt4-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    width: 320px;
+  }
+  .opt4-dock {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 5px 6px;
+    border-radius: 999px;
+    background: rgba(255,255,255,.45);
+    backdrop-filter: blur(32px) saturate(180%);
+    -webkit-backdrop-filter: blur(32px) saturate(180%);
+    border: 1px solid rgba(255,255,255,.5);
+    box-shadow: 0 6px 24px rgba(0,0,0,.1), inset 0 1px 0 rgba(255,255,255,.7);
+    width: 100%;
+  }
+  .opt4-dock .pill {
+    flex: 1;
+    height: 26px;
+    border-radius: 999px;
+    background: rgba(255,255,255,.5);
+    border: 1px solid rgba(255,255,255,.4);
+    font-size: 11px;
+    font-weight: 550;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    color: var(--ink);
+  }
+  .opt4-dock .swap-pill {
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    background: rgba(0,0,0,.06);
+    display: grid;
+    place-items: center;
+    font-size: 11px;
+    color: rgba(0,0,0,.45);
+    border: 0;
+  }
+  .opt4 {
+    padding: 12px;
+    background: rgba(255,255,255,.4);
+    backdrop-filter: blur(40px) saturate(170%);
+    -webkit-backdrop-filter: blur(40px) saturate(170%);
+    box-shadow: 0 10px 36px rgba(0,0,0,.1), inset 0 1px 0 rgba(255,255,255,.65);
+    width: 100%;
+  }
+  .opt4 .lg-hdr { margin-bottom: 8px; }
+  .opt4 .source-area {
+    border-radius: 14px;
+    background: rgba(255,255,255,.3);
+    border: 1px solid rgba(255,255,255,.4);
+    padding: 10px 12px;
+    min-height: 52px;
+    margin-bottom: 8px;
+    line-height: 1.45;
+  }
+  .opt4 .cta-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    margin-bottom: 8px;
+  }
+  .opt4 .cta-row .lg-btn { height: 30px; border-radius: 12px; width: 100%; }
+  .opt4 .result-area {
+    border-radius: 14px;
+    background: rgba(255,255,255,.25);
+    border: 1px solid rgba(255,255,255,.35);
+    padding: 10px 12px;
+    min-height: 110px;
+    line-height: 1.45;
+    position: relative;
+  }
+  .opt4 .result-tools {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    display: flex;
+    gap: 4px;
+  }
+
+  /* ═══════════════════════════════════════════
+     OPTION 5 — Split Prism
+     Side-by-side source | result in one glass
+     ═══════════════════════════════════════════ */
+  .stage-5 {
+    background:
+      radial-gradient(ellipse 60% 80% at 100% 50%, #f9a8d4 0%, transparent 50%),
+      radial-gradient(ellipse 60% 80% at 0% 50%, #93c5fd 0%, transparent 50%),
+      linear-gradient(180deg, #fdf4ff 0%, #eff6ff 100%);
+  }
+  .opt5 {
+    width: 360px;
+    padding: 10px;
+    background: rgba(255,255,255,.36);
+    backdrop-filter: blur(42px) saturate(180%);
+    -webkit-backdrop-filter: blur(42px) saturate(180%);
+    box-shadow: 0 12px 40px rgba(0,0,0,.1), inset 0 1px 0 rgba(255,255,255,.7);
+  }
+  .opt5 .lg-hdr { margin-bottom: 8px; padding: 0 2px; }
+  .opt5 .split {
+    display: grid;
+    grid-template-columns: 1fr 1px 1fr;
+    gap: 0;
+    border-radius: 16px;
+    overflow: hidden;
+    background: rgba(255,255,255,.25);
+    border: 1px solid rgba(255,255,255,.4);
+    min-height: 200px;
+    margin-bottom: 8px;
+  }
+  .opt5 .pane {
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+  }
+  .opt5 .pane .plabel {
+    font-size: 9px;
+    font-weight: 650;
+    letter-spacing: .05em;
+    text-transform: uppercase;
+    color: rgba(0,0,0,.35);
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+  }
+  .opt5 .pane .plabel .spacer { flex: 1; }
+  .opt5 .pane .pbody {
+    flex: 1;
+    font-size: 12px;
+    line-height: 1.45;
+  }
+  .opt5 .divider {
+    background: linear-gradient(
+      180deg,
+      transparent 0%,
+      rgba(255,255,255,.6) 20%,
+      rgba(0,0,0,.08) 50%,
+      rgba(255,255,255,.6) 80%,
+      transparent 100%
+    );
+  }
+  .opt5 .bottom-bar {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .opt5 .bottom-bar .lg-select {
+    height: 26px;
+    font-size: 10px;
+  }
+  .opt5 .bottom-bar .lg-btn.primary {
+    height: 26px;
+    padding: 0 14px;
+  }
+
+  /* ═══════════════════════════════════════════
+     OPTION 6 — Soft Aurora
+     Color-reactive glass, ambient glow
+     ═══════════════════════════════════════════ */
+  .stage-6 {
+    background: #0c0e14;
+    overflow: hidden;
+  }
+  .stage-6 .aurora {
+    position: absolute;
+    inset: -20%;
+    background:
+      radial-gradient(ellipse 50% 40% at 30% 40%, rgba(56,189,248,.45) 0%, transparent 60%),
+      radial-gradient(ellipse 45% 50% at 70% 30%, rgba(167,139,250,.4) 0%, transparent 55%),
+      radial-gradient(ellipse 40% 40% at 50% 75%, rgba(244,114,182,.3) 0%, transparent 50%),
+      radial-gradient(ellipse 30% 30% at 80% 70%, rgba(52,211,153,.25) 0%, transparent 50%);
+    animation: aurora-drift 12s ease-in-out infinite alternate;
+    filter: blur(2px);
+  }
+  @keyframes aurora-drift {
+    0% { transform: translate(0, 0) rotate(0deg) scale(1); }
+    100% { transform: translate(-3%, 4%) rotate(3deg) scale(1.05); }
+  }
+  .opt6 {
+    padding: 14px;
+    background: rgba(255,255,255,.08);
+    backdrop-filter: blur(50px) saturate(200%);
+    -webkit-backdrop-filter: blur(50px) saturate(200%);
+    color: rgba(255,255,255,.92);
+    box-shadow:
+      0 16px 48px rgba(0,0,0,.4),
+      inset 0 1px 0 rgba(255,255,255,.25),
+      0 0 60px rgba(167,139,250,.15);
+  }
+  .opt6::before {
+    background: linear-gradient(
+      135deg,
+      rgba(255,255,255,.5) 0%,
+      rgba(125,211,252,.25) 25%,
+      rgba(255,255,255,.04) 50%,
+      rgba(244,114,182,.2) 75%,
+      rgba(255,255,255,.3) 100%
+    );
+  }
+  .opt6 .lg-icon {
+    background: rgba(255,255,255,.12);
+    color: rgba(255,255,255,.65);
+  }
+  .opt6 .lg-hdr { margin-bottom: 10px; }
+  .opt6 .lg-hdr .brand {
+    background: linear-gradient(90deg, #7dd3fc, #c4b5fd, #f9a8d4);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .opt6 .lang-pills {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 10px;
+  }
+  .opt6 .lang-pills .pill {
+    flex: 1;
+    height: 28px;
+    border-radius: 10px;
+    background: rgba(255,255,255,.08);
+    border: 1px solid rgba(255,255,255,.12);
+    font-size: 11px;
+    font-weight: 550;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: rgba(255,255,255,.8);
+  }
+  .opt6 .lang-pills .swap-mid {
+    width: 28px;
+    height: 28px;
+    border-radius: 10px;
+    background: rgba(255,255,255,.1);
+    border: 1px solid rgba(255,255,255,.12);
+    display: grid;
+    place-items: center;
+    color: rgba(255,255,255,.55);
+    font-size: 11px;
+  }
+  .opt6 .field {
+    border-radius: 14px;
+    background: rgba(255,255,255,.06);
+    border: 1px solid rgba(255,255,255,.1);
+    padding: 12px;
+    margin-bottom: 8px;
+    line-height: 1.5;
+    color: rgba(255,255,255,.85);
+  }
+  .opt6 .field.source { min-height: 48px; }
+  .opt6 .field.result { min-height: 100px; }
+  .opt6 .action-bar {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+  }
+  .opt6 .action-bar .lg-btn {
+    background: rgba(255,255,255,.1);
+    border-color: rgba(255,255,255,.14);
+    color: rgba(255,255,255,.85);
+    border-radius: 10px;
+    height: 28px;
+  }
+  .opt6 .action-bar .lg-btn.primary {
+    background: linear-gradient(135deg, rgba(56,189,248,.9), rgba(167,139,250,.9));
+    border-color: rgba(255,255,255,.25);
+    box-shadow: 0 4px 24px rgba(139,92,246,.35), inset 0 1px 0 rgba(255,255,255,.35);
+    flex: 1;
+  }
+  .opt6 .action-bar .lg-btn.icon {
+    width: 28px;
+    border-radius: 10px;
+  }
+
+  footer.page {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 0 28px 48px;
+    color: rgba(255,255,255,.35);
+    font-size: 12px;
+    line-height: 1.5;
+  }
+  footer.page code {
+    background: rgba(255,255,255,.08);
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-size: 11px;
+  }
+</style>
+</head>
+<body>
+
+<svg class="sprites" aria-hidden="true">
+  <symbol id="i-translate" viewBox="0 0 16 16">
+    <circle cx="8" cy="8" r="6.25"/>
+    <path d="M5.2 8h5.1"/>
+    <path d="M8.2 5.5L10.7 8l-2.5 2.5"/>
+  </symbol>
+  <symbol id="i-learn" viewBox="0 0 16 16">
+    <path d="M9.2 2.8c1.7.2 3 1.7 3 3.5 0 .6-.1 1.1-.4 1.6.8.5 1.3 1.4 1.3 2.4 0 1.5-1.1 2.7-2.6 2.9v1.3H8.8v-1.2c-1.1-.1-2-.6-2.6-1.4-.4.2-.8.3-1.2.3-1.5 0-2.7-1.2-2.7-2.7 0-.9.4-1.7 1.1-2.2C3.2 6 3.1 5.5 3.1 5c0-1.8 1.4-3.3 3.2-3.5.4-1 1.4-1.7 2.5-1.5.2 0 .3 0 .4.1z"/>
+    <path d="M6.2 6.2c.4-.5 1-.8 1.7-.8M9.5 7.8c.3.4.5.9.5 1.4"/>
+  </symbol>
+  <symbol id="i-copy" viewBox="0 0 16 16">
+    <rect x="5.2" y="3.2" width="7.2" height="9.2" rx="1.2"/>
+    <path d="M3.6 5.2h-.2A1.2 1.2 0 0 0 2.2 6.4v7c0 .7.5 1.2 1.2 1.2h6c.7 0 1.2-.5 1.2-1.2v-.2"/>
+  </symbol>
+  <symbol id="i-speak" viewBox="0 0 16 16">
+    <path d="M7.2 4.2L4.4 6.4H2.6v3.2h1.8l2.8 2.2V4.2z"/>
+    <path d="M9.4 6.1c.6.5.9 1.1.9 1.9s-.3 1.4-.9 1.9"/>
+    <path d="M11.1 4.6c1.1.9 1.7 2.1 1.7 3.4s-.6 2.5-1.7 3.4"/>
+  </symbol>
+  <symbol id="i-pin" viewBox="0 0 16 16">
+    <path d="M8.9 2.6l4.5 4.5-1.2.5-2.3 2.3-.5 3.1-1.5-1.5-3.4 3.4-.9-.9 3.4-3.4-1.5-1.5 3.1-.5 2.3-2.3.5-1.2z"/>
+  </symbol>
+  <symbol id="i-close" viewBox="0 0 16 16">
+    <circle cx="8" cy="8" r="6.25"/>
+    <path d="M5.8 5.8l4.4 4.4M10.2 5.8l-4.4 4.4"/>
+  </symbol>
+  <symbol id="i-swap" viewBox="0 0 16 16">
+    <path d="M3.2 5.5h8.2"/>
+    <path d="M9.5 3.2L12.2 5.5 9.5 7.8"/>
+    <path d="M12.8 10.5H4.6"/>
+    <path d="M6.5 8.2L3.8 10.5 6.5 12.8"/>
+  </symbol>
+  <symbol id="i-chevron" viewBox="0 0 16 16">
+    <path d="M4.5 6.2L8 9.7l3.5-3.5"/>
+  </symbol>
+</svg>
+
+<header class="page">
+  <h1>NTranslate — <span>Liquid Glass</span></h1>
+  <p>
+    6 phương án UI/UX theo ngôn ngữ Apple Liquid Glass (macOS Tahoe): vật liệu kính khúc xạ,
+    viền specular, blur bão hòa. Click để chọn — trả lời số (1–6) trong chat để apply vào AppKit.
+  </p>
+</header>
+
+<div class="toolbar">
+  <span class="chip"><strong>Material</strong> blur + saturate + specular rim</span>
+  <span class="chip"><strong>Layout</strong> giữ Inline Chrome (D) làm nền UX</span>
+  <span class="chip"><strong>Port</strong> NSVisualEffectView · vibrancy · cornerCurve</span>
+</div>
+
+<div id="choice"><div class="banner" id="choiceText"></div></div>
+
+<div class="grid">
+
+  <!-- 1 Frosted Sheet -->
+  <article class="sample" data-id="1" onclick="pick(this)">
+    <div class="pick"></div>
+    <div class="sample-meta">
+      <h2>1 · Frosted Sheet</h2>
+      <span class="tag">Light · Classic</span>
+      <p>Kính mờ sáng trên wallpaper pastel. Gần macOS light mode nhất — dễ port NSVisualEffectView (.popover / .hudWindow).</p>
+    </div>
+    <div class="stage stage-1">
+      <div class="lg-popover glass opt1">
+        <div class="lg-hdr">
+          <span class="brand">NTranslate</span>
+          <span class="spacer"></span>
+          <button class="lg-icon"><svg class="sf"><use href="#i-pin"/></svg></button>
+          <button class="lg-icon"><svg class="sf"><use href="#i-close"/></svg></button>
+        </div>
+        <div class="lg-status"></div>
+        <div class="lg-lang">
+          <div class="lg-select"><span>English</span><svg class="sf" style="width:9px;opacity:.5"><use href="#i-chevron"/></svg></div>
+          <div class="lg-swap"><svg class="sf"><use href="#i-swap"/></svg></div>
+          <div class="lg-select"><span>Vietnamese</span><svg class="sf" style="width:9px;opacity:.5"><use href="#i-chevron"/></svg></div>
+        </div>
+        <div class="lg-box source">The quick brown fox jumps over the lazy dog.</div>
+        <div class="actions">
+          <button class="lg-btn primary"><svg class="sf"><use href="#i-translate"/></svg> Translate</button>
+          <button class="lg-btn"><svg class="sf"><use href="#i-learn"/></svg> Learn</button>
+          <button class="lg-btn icon"><svg class="sf"><use href="#i-copy"/></svg></button>
+          <button class="lg-btn icon"><svg class="sf"><use href="#i-speak"/></svg></button>
+        </div>
+        <div class="lg-box result">Con cáo nâu nhanh nhẹn nhảy qua chú chó lười biếng.</div>
+      </div>
+    </div>
+  </article>
+
+  <!-- 2 Dark Specular -->
+  <article class="sample" data-id="2" onclick="pick(this)">
+    <div class="pick"></div>
+    <div class="sample-meta">
+      <h2>2 · Dark Specular</h2>
+      <span class="tag">Dark · Luminous</span>
+      <p>Kính tối, viền sáng khúc xạ xanh–tím. Translate + Learn chữ; Copy/Speak icon. Hợp dark desktop.</p>
+    </div>
+    <div class="stage stage-2">
+      <div class="lg-popover glass opt2">
+        <div class="lg-hdr">
+          <span class="brand">NTranslate</span>
+          <span class="spacer"></span>
+          <button class="lg-icon"><svg class="sf"><use href="#i-pin"/></svg></button>
+          <button class="lg-icon"><svg class="sf"><use href="#i-close"/></svg></button>
+        </div>
+        <div class="lg-status"></div>
+        <div class="lg-lang">
+          <div class="lg-select"><span>English</span><svg class="sf" style="width:9px;opacity:.5"><use href="#i-chevron"/></svg></div>
+          <div class="lg-swap"><svg class="sf"><use href="#i-swap"/></svg></div>
+          <div class="lg-select"><span>Vietnamese</span><svg class="sf" style="width:9px;opacity:.5"><use href="#i-chevron"/></svg></div>
+        </div>
+        <div class="lg-box source">The quick brown fox jumps over the lazy dog.</div>
+        <div class="actions">
+          <button class="lg-btn primary"><svg class="sf"><use href="#i-translate"/></svg> Translate</button>
+          <button class="lg-btn"><svg class="sf"><use href="#i-learn"/></svg> Learn</button>
+          <span class="grow"></span>
+          <button class="lg-btn icon"><svg class="sf"><use href="#i-copy"/></svg></button>
+          <button class="lg-btn icon"><svg class="sf"><use href="#i-speak"/></svg></button>
+          <button class="lg-btn icon"><svg class="sf"><use href="#i-speak"/></svg></button>
+        </div>
+        <div class="lg-box result">Con cáo nâu nhanh nhẹn nhảy qua chú chó lười biếng.</div>
+      </div>
+    </div>
+  </article>
+
+  <!-- 3 Nested Lenses -->
+  <article class="sample" data-id="3" onclick="pick(this)">
+    <div class="pick"></div>
+    <div class="sample-meta">
+      <h2>3 · Nested Lenses</h2>
+      <span class="tag">Layered · Inline</span>
+      <p>Hai “thấu kính” lồng trong shell kính. Source + Translate/Learn trong lens trên; result + Copy/Speak trong lens dưới — đúng Inline Chrome.</p>
+    </div>
+    <div class="stage stage-3">
+      <div class="lg-popover glass opt3">
+        <div class="lg-hdr">
+          <span class="brand">NTranslate</span>
+          <span class="spacer"></span>
+          <button class="lg-icon"><svg class="sf"><use href="#i-pin"/></svg></button>
+          <button class="lg-icon"><svg class="sf"><use href="#i-close"/></svg></button>
+        </div>
+        <div class="lg-lang">
+          <div class="lg-select"><span>English</span><svg class="sf" style="width:9px;opacity:.5"><use href="#i-chevron"/></svg></div>
+          <div class="lg-swap"><svg class="sf"><use href="#i-swap"/></svg></div>
+          <div class="lg-select"><span>Vietnamese</span><svg class="sf" style="width:9px;opacity:.5"><use href="#i-chevron"/></svg></div>
+        </div>
+        <div class="lens">
+          <div class="label">Source</div>
+          <div class="body">The quick brown fox jumps over the lazy dog.</div>
+          <div class="lens-actions">
+            <button class="lg-btn primary"><svg class="sf"><use href="#i-translate"/></svg> Translate</button>
+            <button class="lg-btn"><svg class="sf"><use href="#i-learn"/></svg> Learn</button>
+            <span style="flex:1"></span>
+            <div class="mini-icon"><svg class="sf"><use href="#i-speak"/></svg></div>
+          </div>
+        </div>
+        <div class="lens result">
+          <div class="label">
+            Translation
+            <span class="spacer"></span>
+            <div class="mini-icon"><svg class="sf"><use href="#i-speak"/></svg></div>
+            <div class="mini-icon"><svg class="sf"><use href="#i-copy"/></svg></div>
+          </div>
+          <div class="body">Con cáo nâu nhanh nhẹn nhảy qua chú chó lười biếng.</div>
+        </div>
+      </div>
+    </div>
+  </article>
+
+  <!-- 4 Capsule Dock -->
+  <article class="sample" data-id="4" onclick="pick(this)">
+    <div class="pick"></div>
+    <div class="sample-meta">
+      <h2>4 · Capsule Dock</h2>
+      <span class="tag">Floating · Dock</span>
+      <p>Thanh ngôn ngữ tách thành capsule nổi (kiểu Control Center). Body kính bên dưới với CTA 2 cột Translate | Learn.</p>
+    </div>
+    <div class="stage stage-4">
+      <div class="opt4-wrap">
+        <div class="opt4-dock glass">
+          <div class="pill">English <svg class="sf" style="width:8px;opacity:.45"><use href="#i-chevron"/></svg></div>
+          <button class="swap-pill"><svg class="sf"><use href="#i-swap"/></svg></button>
+          <div class="pill">Vietnamese <svg class="sf" style="width:8px;opacity:.45"><use href="#i-chevron"/></svg></div>
+        </div>
+        <div class="lg-popover glass opt4">
+          <div class="lg-hdr">
+            <span class="brand">NTranslate</span>
+            <span class="spacer"></span>
+            <button class="lg-icon"><svg class="sf"><use href="#i-pin"/></svg></button>
+            <button class="lg-icon"><svg class="sf"><use href="#i-close"/></svg></button>
+          </div>
+          <div class="source-area">The quick brown fox jumps over the lazy dog.</div>
+          <div class="cta-row">
+            <button class="lg-btn primary"><svg class="sf"><use href="#i-translate"/></svg> Translate</button>
+            <button class="lg-btn"><svg class="sf"><use href="#i-learn"/></svg> Learn</button>
+          </div>
+          <div class="result-area">
+            <div class="result-tools">
+              <button class="lg-btn icon"><svg class="sf"><use href="#i-speak"/></svg></button>
+              <button class="lg-btn icon"><svg class="sf"><use href="#i-copy"/></svg></button>
+            </div>
+            Con cáo nâu nhanh nhẹn nhảy qua chú chó lười biếng.
+          </div>
+        </div>
+      </div>
+    </div>
+  </article>
+
+  <!-- 5 Split Prism -->
+  <article class="sample" data-id="5" onclick="pick(this)">
+    <div class="pick"></div>
+    <div class="sample-meta">
+      <h2>5 · Split Prism</h2>
+      <span class="tag">Wide · Dual-pane</span>
+      <p>Source | Result cạnh nhau trong một thấu kính. Thanh dưới: lang + Translate. Rộng hơn (~360px) — đọc song song nhanh.</p>
+    </div>
+    <div class="stage stage-5">
+      <div class="lg-popover glass opt5">
+        <div class="lg-hdr">
+          <span class="brand">NTranslate</span>
+          <span class="spacer"></span>
+          <button class="lg-icon"><svg class="sf"><use href="#i-pin"/></svg></button>
+          <button class="lg-icon"><svg class="sf"><use href="#i-close"/></svg></button>
+        </div>
+        <div class="split">
+          <div class="pane">
+            <div class="plabel">
+              EN
+              <span class="spacer"></span>
+              <svg class="sf" style="width:11px;opacity:.4"><use href="#i-speak"/></svg>
+            </div>
+            <div class="pbody">The quick brown fox jumps over the lazy dog.</div>
+          </div>
+          <div class="divider"></div>
+          <div class="pane">
+            <div class="plabel">
+              VI
+              <span class="spacer"></span>
+              <svg class="sf" style="width:11px;opacity:.4"><use href="#i-speak"/></svg>
+              <svg class="sf" style="width:11px;opacity:.4;margin-left:4px"><use href="#i-copy"/></svg>
+            </div>
+            <div class="pbody">Con cáo nâu nhanh nhẹn nhảy qua chú chó lười biếng.</div>
+          </div>
+        </div>
+        <div class="bottom-bar">
+          <div class="lg-select" style="flex:0 0 auto;width:72px;justify-content:center">EN</div>
+          <div class="lg-swap" style="width:26px;height:26px"><svg class="sf"><use href="#i-swap"/></svg></div>
+          <div class="lg-select" style="flex:0 0 auto;width:72px;justify-content:center">VI</div>
+          <span style="flex:1"></span>
+          <button class="lg-btn"><svg class="sf"><use href="#i-learn"/></svg></button>
+          <button class="lg-btn primary"><svg class="sf"><use href="#i-translate"/></svg> Translate</button>
+        </div>
+      </div>
+    </div>
+  </article>
+
+  <!-- 6 Soft Aurora -->
+  <article class="sample" data-id="6" onclick="pick(this)">
+    <div class="pick"></div>
+    <div class="sample-meta">
+      <h2>6 · Soft Aurora</h2>
+      <span class="tag">Ambient · Expressive</span>
+      <p>Kính tối phản chiếu aurora động phía sau. Brand gradient, CTA full-width gradient. Ấn tượng nhất — phức tạp port hơn.</p>
+    </div>
+    <div class="stage stage-6">
+      <div class="aurora"></div>
+      <div class="lg-popover glass opt6">
+        <div class="lg-hdr">
+          <span class="brand">NTranslate</span>
+          <span class="spacer"></span>
+          <button class="lg-icon"><svg class="sf"><use href="#i-pin"/></svg></button>
+          <button class="lg-icon"><svg class="sf"><use href="#i-close"/></svg></button>
+        </div>
+        <div class="lang-pills">
+          <div class="pill">English</div>
+          <div class="swap-mid"><svg class="sf"><use href="#i-swap"/></svg></div>
+          <div class="pill">Vietnamese</div>
+        </div>
+        <div class="field source">The quick brown fox jumps over the lazy dog.</div>
+        <div class="action-bar" style="margin-bottom:8px">
+          <button class="lg-btn primary"><svg class="sf"><use href="#i-translate"/></svg> Translate</button>
+          <button class="lg-btn"><svg class="sf"><use href="#i-learn"/></svg> Learn</button>
+          <button class="lg-btn icon"><svg class="sf"><use href="#i-speak"/></svg></button>
+        </div>
+        <div class="field result">Con cáo nâu nhanh nhẹn nhảy qua chú chó lười biếng.</div>
+        <div class="action-bar" style="justify-content:flex-end;margin-top:8px">
+          <button class="lg-btn icon"><svg class="sf"><use href="#i-speak"/></svg></button>
+          <button class="lg-btn icon"><svg class="sf"><use href="#i-copy"/></svg></button>
+        </div>
+      </div>
+    </div>
+  </article>
+
+</div>
+
+<footer class="page">
+  File: <code>docs/liquid-glass-ui-samples.html</code>
+  · Mở bằng trình duyệt để xem blur/specular.
+  · AppKit map: <code>NSVisualEffectView</code> + <code>cornerRadius</code> + border gradient layer.
+  · Chọn 1–6 rồi trả lời trong chat để apply.
+</footer>
+
+<script>
+function pick(el) {
+  document.querySelectorAll('.sample').forEach(s => s.classList.remove('selected'));
+  el.classList.add('selected');
+  const id = el.dataset.id;
+  const names = {
+    '1': 'Frosted Sheet — kính mờ sáng, classic light',
+    '2': 'Dark Specular — kính tối, viền luminous',
+    '3': 'Nested Lenses — thấu kính lồng nhau (Inline Chrome)',
+    '4': 'Capsule Dock — lang capsule nổi + body kính',
+    '5': 'Split Prism — dual-pane ngang, rộng hơn',
+    '6': 'Soft Aurora — kính tối + aurora ambient'
+  };
+  const box = document.getElementById('choice');
+  const text = document.getElementById('choiceText');
+  box.style.display = 'block';
+  text.textContent = 'Đã chọn mẫu ' + id + ': ' + names[id] + ' — trả lời "' + id + '" trong chat để apply vào AppKit.';
+}
+</script>
+</body>
+</html>

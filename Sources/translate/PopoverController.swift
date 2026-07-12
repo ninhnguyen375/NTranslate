@@ -2,6 +2,7 @@ import AppKit
 import ApplicationServices
 import Carbon.HIToolbox
 import AVFoundation
+import QuartzCore
 
 extension NSAttributedString {
     static func plainDisplay(_ text: String, font: NSFont, color: NSColor = .labelColor) -> NSAttributedString {
@@ -29,21 +30,42 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     }
 
     private static let buildVersion: String = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "dev"
-    /// Fixed source field height — scrolls like the result area, but stays shorter.
+    /// Split Prism chrome — dual-pane + bottom bar inside Liquid Glass shell.
     private enum ChromeLayout {
-        static let padding: CGFloat = 8
-        static let headerHeight: CGFloat = 18
+        static let padding: CGFloat = 14
+        /// Bottom inset for footer controls — a bit more air from the popup edge.
+        static let paddingBottom: CGFloat = 16
+        static let headerHeight: CGFloat = 22
         static let statusHeight: CGFloat = 14
-        static let languageHeight: CGFloat = 26
-        static let sourceBodyHeight: CGFloat = 56
-        static let sourceFooterHeight: CGFloat = 28
-        static let resultHeaderHeight: CGFloat = 26
-        static let sectionGap: CGFloat = 6
-        static let languageGap: CGFloat = 6
-        static let primaryButtonHeight: CGFloat = 22
-        static let iconButtonSize: CGFloat = 20
-        static let minResultBodyHeight: CGFloat = 140
-        static let maxResultBodyHeight: CGFloat = 500
+        /// Gap between title/header and the split body.
+        static let headerGap: CGFloat = 12
+        /// Gap between split body and bottom controls.
+        static let footerGap: CGFloat = 16
+        static let paneHeaderHeight: CGFloat = 30
+        static let paneHeaderTopInset: CGFloat = 4
+        static let splitMinPaneHeight: CGFloat = 160
+        static let splitMaxPaneHeight: CGFloat = 420
+        static let dividerWidth: CGFloat = 1
+        /// Shared height for Learn / Translate.
+        static let controlHeight: CGFloat = 32
+        static let bottomBarHeight: CGFloat = controlHeight
+        /// Compact language selects (smaller than primary actions).
+        static let languageControlHeight: CGFloat = 26
+        static let languageWidth: CGFloat = 118
+        static let languageCornerRadius: CGFloat = 12
+        static let swapWidth: CGFloat = languageControlHeight
+        static let iconButtonSize: CGFloat = 18
+        static let chromeIconSize: CGFloat = 24
+        static let glassCornerRadius: CGFloat = 22
+        static let splitCornerRadius: CGFloat = 16
+        /// Matches popup softness on compact controls (pill-ish at control height).
+        static let controlCornerRadius: CGFloat = 16
+        /// Source / translation body text.
+        static let bodyFontSize: CGFloat = 14
+        /// Learn / Translate labels.
+        static let controlFontSize: CGFloat = 12
+        /// Language select labels (compact).
+        static let languageFontSize: CGFloat = 10
     }
 
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
@@ -57,13 +79,24 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     private let textScrollView = NSScrollView(frame: .zero)
     private let inputTextView = NSTextView(frame: .zero)
     private let inputScrollView = NSScrollView(frame: .zero)
+    /// Official Liquid Glass container — merges nearby glass views.
+    private let glassContainer = NSGlassEffectContainerView(frame: .zero)
+    private let shellGlass = NSGlassEffectView(frame: .zero)
+    private let chromeHost = NSView(frame: .zero)
+    private let splitHost = NSView(frame: .zero)
+    private let splitDivider = NSView(frame: .zero)
     private let sourceCard = NSView(frame: .zero)
-    private let sourceFooter = NSView(frame: .zero)
+    private let sourceHeaderBar = NSView(frame: .zero)
+    private let sourceHeaderLabel = NSTextField(labelWithString: "Source")
     private let resultCard = NSView(frame: .zero)
     private let resultHeaderBar = NSView(frame: .zero)
     private let resultHeaderLabel = NSTextField(labelWithString: "Translation")
-    private let sourceLanguagePopup = NSPopUpButton(frame: .zero, pullsDown: false)
-    private let targetLanguagePopup = NSPopUpButton(frame: .zero, pullsDown: false)
+    private let sourceLanguageButton = NSButton(frame: .zero)
+    private let targetLanguageButton = NSButton(frame: .zero)
+    private var sourceLanguageSelection = ""
+    private var targetLanguageSelection = ""
+    private var sourceLanguageOptions: [String] = []
+    private var targetLanguageOptions: [String] = []
     private let swapLanguagesButton = NSButton(frame: .zero)
     private let pinButton = NSButton(frame: .zero)
     private let closeButton = NSButton(frame: .zero)
@@ -74,6 +107,7 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     private let statusLabel = NSTextField(labelWithString: "")
     private let speakSourceButton = NSButton(frame: .zero)
     private let speakResultButton = NSButton(frame: .zero)
+    private var splitDividerGradient: CAGradientLayer?
     private var translator: Translator?
     private var hotKeyRef: EventHotKeyRef?
     private var hotKeyEventHandlerRef: EventHandlerRef?
@@ -151,77 +185,70 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         let width = CGFloat(config.ui.width)
         let height = currentPopoverHeight()
         let L = ChromeLayout.self
-        let contentWidth = width - L.padding * 2
-        let sourceCardHeight = L.sourceBodyHeight + L.sourceFooterHeight
-        let languageY = height - L.padding - L.headerHeight - L.statusHeight - L.languageGap - L.languageHeight
-        let sourceCardY = languageY - L.sectionGap - sourceCardHeight
-        let resultY = L.padding
-        let resultHeight = max(L.resultHeaderHeight + L.minResultBodyHeight, sourceCardY - L.sectionGap - resultY)
 
-        let root = NSView(frame: NSRect(x: 0, y: 0, width: width, height: height))
-        root.wantsLayer = true
-        root.layer?.cornerRadius = 14
-        root.layer?.backgroundColor = NSColor.white.cgColor
-        root.appearance = NSAppearance(named: .aqua)
-        panel.appearance = NSAppearance(named: .aqua)
+        // Always light chrome — white glass, dark text/icons (matches design sample).
+        let light = NSAppearance(named: .aqua)
+        panel.appearance = light
+        glassContainer.appearance = light
+        chromeHost.appearance = light
 
-        let titleText = NSMutableAttributedString(
-            string: "NTranslate",
-            attributes: [.font: NSFont.systemFont(ofSize: 13, weight: .semibold), .foregroundColor: NSColor.labelColor]
-        )
-        titleText.append(NSAttributedString(
-            string: "  v\(Self.buildVersion)",
-            attributes: [.font: NSFont.systemFont(ofSize: 10), .foregroundColor: NSColor.secondaryLabelColor]
-        ))
-        titleLabel.attributedStringValue = titleText
-        titleLabel.frame = NSRect(x: L.padding, y: height - L.padding - L.headerHeight, width: 200, height: L.headerHeight)
+        glassContainer.frame = NSRect(x: 0, y: 0, width: width, height: height)
+        glassContainer.spacing = 0
+        glassContainer.focusRingType = .none
+
+        shellGlass.frame = glassContainer.bounds
+        shellGlass.cornerRadius = L.glassCornerRadius
+        shellGlass.style = .regular
+        shellGlass.focusRingType = .none
+        shellGlass.contentView = chromeHost
+        chromeHost.frame = shellGlass.bounds
+        chromeHost.autoresizingMask = [.width, .height]
+        chromeHost.focusRingType = .none
+
+        titleLabel.stringValue = "NTranslate"
+        titleLabel.font = .systemFont(ofSize: 13, weight: .bold)
+        titleLabel.textColor = NSColor.black.withAlphaComponent(0.92)
+        titleLabel.drawsBackground = false
+        titleLabel.toolTip = "NTranslate v\(Self.buildVersion)"
 
         statusLabel.font = .systemFont(ofSize: 10)
-        statusLabel.textColor = .secondaryLabelColor
+        statusLabel.textColor = NSColor.black.withAlphaComponent(0.45)
         statusLabel.lineBreakMode = .byTruncatingTail
         statusLabel.stringValue = ""
         statusLabel.isHidden = true
-        statusLabel.frame = NSRect(
-            x: L.padding,
-            y: height - L.padding - L.headerHeight - L.statusHeight,
-            width: contentWidth - 50,
-            height: L.statusHeight
-        )
+        statusLabel.drawsBackground = false
 
-        closeButton.title = ""
-        closeButton.image = NSImage(systemSymbolName: "xmark.circle", accessibilityDescription: "Close")
-        closeButton.imagePosition = .imageOnly
-        closeButton.isBordered = false
-        closeButton.target = self
-        closeButton.action = #selector(closePopover)
-        closeButton.frame = NSRect(x: width - L.padding - 18, y: height - L.padding - L.headerHeight + 1, width: 18, height: 18)
-
-        pinButton.title = ""
-        pinButton.imagePosition = .imageOnly
-        pinButton.isBordered = false
-        pinButton.target = self
-        pinButton.action = #selector(togglePin)
-        pinButton.frame = NSRect(x: width - L.padding - 18 - 22, y: height - L.padding - L.headerHeight + 1, width: 18, height: 18)
+        configureChromeIconButton(closeButton, symbol: "xmark", action: #selector(closePopover), label: "Close")
+        configureChromeIconButton(pinButton, symbol: "pin", action: #selector(togglePin), label: "Pin")
         updatePinButton()
 
         configureLanguageControls()
-        let languageDropdownWidth = (contentWidth - 38 - 12) / 2
-        sourceLanguagePopup.frame = NSRect(x: L.padding, y: languageY, width: languageDropdownWidth, height: L.languageHeight)
-        swapLanguagesButton.frame = NSRect(x: sourceLanguagePopup.frame.maxX + 6, y: languageY, width: 38, height: L.languageHeight)
-        targetLanguagePopup.frame = NSRect(x: swapLanguagesButton.frame.maxX + 6, y: languageY, width: languageDropdownWidth, height: L.languageHeight)
 
-        // Source card: text + footer actions (Translate / Learn / Speak)
-        styleCard(sourceCard, fill: NSColor(calibratedWhite: 0.98, alpha: 1))
-        sourceCard.frame = NSRect(x: L.padding, y: sourceCardY, width: contentWidth, height: sourceCardHeight)
+        // Split prism sits inside shell glass content (glass shouldn't nest/sample glass).
+        splitHost.wantsLayer = true
+        splitHost.layer?.cornerRadius = L.splitCornerRadius
+        splitHost.layer?.cornerCurve = .continuous
+        splitHost.layer?.masksToBounds = true
+        applySplitHostChrome()
+
+        stylePane(sourceCard)
+        stylePane(resultCard)
+        configurePaneHeaderLabel(sourceHeaderLabel, title: "EN")
+        configurePaneHeaderLabel(resultHeaderLabel, title: "VI")
+        stylePaneHeaderBar(sourceHeaderBar)
+        stylePaneHeaderBar(resultHeaderBar)
+        installSplitDividerGradient()
 
         inputTextView.isEditable = true
         inputTextView.isSelectable = true
         inputTextView.delegate = self
-        inputTextView.font = .systemFont(ofSize: 13)
+        inputTextView.font = .systemFont(ofSize: ChromeLayout.bodyFontSize)
         inputTextView.drawsBackground = false
-        inputTextView.textColor = .labelColor
-        inputTextView.textContainerInset = NSSize(width: 6, height: 6)
-        inputTextView.minSize = NSSize(width: 0, height: L.sourceBodyHeight)
+        inputTextView.textColor = NSColor.black.withAlphaComponent(0.88)
+        inputTextView.insertionPointColor = .controlAccentColor
+        inputTextView.focusRingType = .none
+        inputTextView.textContainerInset = NSSize(width: 12, height: 10)
+        inputTextView.minSize = NSSize(width: 0, height: 40)
         inputTextView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
         inputTextView.isVerticallyResizable = true
         inputTextView.isHorizontallyResizable = false
@@ -230,51 +257,21 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
 
         inputScrollView.borderType = .noBorder
         inputScrollView.drawsBackground = false
+        inputScrollView.focusRingType = .none
         inputScrollView.hasVerticalScroller = true
         inputScrollView.hasHorizontalScroller = false
         inputScrollView.autohidesScrollers = true
+        inputScrollView.scrollerStyle = .overlay
         inputScrollView.documentView = inputTextView
-
-        sourceFooter.wantsLayer = true
-        sourceFooter.layer?.backgroundColor = NSColor(calibratedWhite: 0.953, alpha: 1).cgColor
-
-        configurePrimaryButton(translateButton, title: "Translate", symbol: "arrow.right.circle", action: #selector(runTranslate), accent: true)
-        configurePrimaryButton(learnButton, title: "Learn", symbol: "brain.head.profile", action: #selector(runLearn), accent: false)
-        configureIconButton(speakSourceButton, symbol: "speaker.wave.2", action: #selector(speakInput), label: "Speak source")
-        configureIconButton(speakResultButton, symbol: "speaker.wave.2", action: #selector(speakResult), label: "Speak translation")
-        configureIconButton(copyButton, symbol: "doc.on.doc", action: #selector(copyResult), label: "Copy")
-
-        updateSpeakButtons()
-        updateBusyState()
-        languageSelectionChanged()
-
-        sourceCard.addSubview(inputScrollView)
-        sourceFooter.addSubview(translateButton)
-        sourceFooter.addSubview(learnButton)
-        sourceFooter.addSubview(speakSourceButton)
-        sourceCard.addSubview(sourceFooter)
-
-        // Result card: header chrome (Speak / Copy) + body
-        styleCard(resultCard, fill: NSColor(calibratedWhite: 0.97, alpha: 1))
-        resultCard.frame = NSRect(x: L.padding, y: resultY, width: contentWidth, height: resultHeight)
-
-        resultHeaderBar.wantsLayer = true
-        resultHeaderBar.layer?.backgroundColor = NSColor(calibratedWhite: 0.933, alpha: 1).cgColor
-
-        resultHeaderLabel.stringValue = "Translation"
-        resultHeaderLabel.font = .systemFont(ofSize: 10, weight: .semibold)
-        resultHeaderLabel.textColor = .secondaryLabelColor
-        resultHeaderLabel.isBezeled = false
-        resultHeaderLabel.drawsBackground = false
-        resultHeaderLabel.isEditable = false
 
         textView.isEditable = true
         textView.isSelectable = true
         textView.drawsBackground = false
-        textView.font = .systemFont(ofSize: 13)
-        textView.textColor = .labelColor
-        textView.textContainerInset = NSSize(width: 6, height: 6)
-        textView.minSize = NSSize(width: 0, height: max(0, resultHeight - L.resultHeaderHeight))
+        textView.font = .systemFont(ofSize: ChromeLayout.bodyFontSize)
+        textView.textColor = NSColor.black.withAlphaComponent(0.88)
+        textView.focusRingType = .none
+        textView.textContainerInset = NSSize(width: 12, height: 10)
+        textView.minSize = NSSize(width: 0, height: 40)
         textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
         textView.isVerticallyResizable = true
         textView.isHorizontallyResizable = false
@@ -283,10 +280,29 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
 
         textScrollView.borderType = .noBorder
         textScrollView.drawsBackground = false
+        textScrollView.focusRingType = .none
         textScrollView.hasVerticalScroller = true
         textScrollView.hasHorizontalScroller = false
         textScrollView.autohidesScrollers = true
+        textScrollView.scrollerStyle = .overlay
         textScrollView.documentView = textView
+
+        configurePrimaryButton(translateButton, title: "Translate", symbol: "arrow.right.circle", action: #selector(runTranslate), accent: true)
+        configurePrimaryButton(learnButton, title: "Learn", symbol: "brain.head.profile", action: #selector(runLearn), accent: false)
+        learnButton.toolTip = "Learn"
+        learnButton.setAccessibilityLabel("Learn")
+        configureIconButton(speakSourceButton, symbol: "speaker.wave.2", action: #selector(speakInput), label: "Speak source")
+        configureIconButton(speakResultButton, symbol: "speaker.wave.2", action: #selector(speakResult), label: "Speak translation")
+        configureIconButton(copyButton, symbol: "doc.on.doc", action: #selector(copyResult), label: "Copy")
+
+        updateSpeakButtons()
+        updateBusyState()
+        languageSelectionChanged()
+
+        sourceHeaderBar.addSubview(sourceHeaderLabel)
+        sourceHeaderBar.addSubview(speakSourceButton)
+        sourceCard.addSubview(sourceHeaderBar)
+        sourceCard.addSubview(inputScrollView)
 
         resultHeaderBar.addSubview(resultHeaderLabel)
         resultHeaderBar.addSubview(speakResultButton)
@@ -294,28 +310,113 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         resultCard.addSubview(resultHeaderBar)
         resultCard.addSubview(textScrollView)
 
-        layoutInlineChrome(width: width, height: height)
+        splitHost.addSubview(sourceCard)
+        splitHost.addSubview(splitDivider)
+        splitHost.addSubview(resultCard)
 
-        root.addSubview(titleLabel)
-        root.addSubview(statusLabel)
-        root.addSubview(pinButton)
-        root.addSubview(closeButton)
-        root.addSubview(sourceLanguagePopup)
-        root.addSubview(swapLanguagesButton)
-        root.addSubview(targetLanguagePopup)
-        root.addSubview(sourceCard)
-        root.addSubview(resultCard)
-        panel.contentView = root
-        panel.setFrame(NSRect(origin: panel.frame.origin, size: root.frame.size), display: false)
+        chromeHost.addSubview(titleLabel)
+        chromeHost.addSubview(statusLabel)
+        chromeHost.addSubview(pinButton)
+        chromeHost.addSubview(closeButton)
+        chromeHost.addSubview(splitHost)
+        chromeHost.addSubview(sourceLanguageButton)
+        chromeHost.addSubview(swapLanguagesButton)
+        chromeHost.addSubview(targetLanguageButton)
+        chromeHost.addSubview(learnButton)
+        chromeHost.addSubview(translateButton)
+
+        let containerHost = NSView(frame: glassContainer.bounds)
+        containerHost.autoresizingMask = [.width, .height]
+        containerHost.addSubview(shellGlass)
+        glassContainer.contentView = containerHost
+
+        layoutSplitPrism(width: width, height: height)
+        panel.contentView = glassContainer
+        panel.setFrame(NSRect(origin: panel.frame.origin, size: glassContainer.frame.size), display: false)
     }
 
-    private func styleCard(_ view: NSView, fill: NSColor) {
+    private func installSplitDividerGradient() {
+        splitDivider.wantsLayer = true
+        splitDivider.layer?.backgroundColor = NSColor.clear.cgColor
+        splitDivider.layer?.masksToBounds = true
+        splitDividerGradient?.removeFromSuperlayer()
+        let gradient = CAGradientLayer()
+        gradient.colors = [
+            NSColor.white.withAlphaComponent(0.0).cgColor,
+            NSColor.white.withAlphaComponent(0.7).cgColor,
+            NSColor.black.withAlphaComponent(0.06).cgColor,
+            NSColor.white.withAlphaComponent(0.7).cgColor,
+            NSColor.white.withAlphaComponent(0.0).cgColor
+        ]
+        gradient.locations = [0, 0.18, 0.5, 0.82, 1]
+        gradient.startPoint = CGPoint(x: 0.5, y: 1)
+        gradient.endPoint = CGPoint(x: 0.5, y: 0)
+        splitDivider.layer?.addSublayer(gradient)
+        splitDividerGradient = gradient
+    }
+
+    private func applySplitHostChrome() {
+        splitHost.layer?.borderWidth = 1
+        splitHost.layer?.borderColor = NSColor.black.withAlphaComponent(0.06).cgColor
+        splitHost.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.72).cgColor
+    }
+
+    private func applyControlCornerRadius(_ view: NSView, radius: CGFloat? = nil) {
+        let resolved = radius ?? ChromeLayout.controlCornerRadius
         view.wantsLayer = true
-        view.layer?.cornerRadius = 8
+        view.layer?.cornerRadius = resolved
+        view.layer?.cornerCurve = .continuous
         view.layer?.masksToBounds = true
-        view.layer?.borderWidth = 1
-        view.layer?.borderColor = NSColor.separatorColor.withAlphaComponent(0.55).cgColor
-        view.layer?.backgroundColor = fill.cgColor
+    }
+
+    private func stylePane(_ view: NSView) {
+        view.wantsLayer = true
+        view.layer?.backgroundColor = NSColor.clear.cgColor
+    }
+
+    private func stylePaneHeaderBar(_ view: NSView) {
+        view.wantsLayer = true
+        view.layer?.backgroundColor = NSColor.clear.cgColor
+    }
+
+    private func configurePaneHeaderLabel(_ label: NSTextField, title: String) {
+        label.stringValue = title
+        label.font = .systemFont(ofSize: 9, weight: .bold)
+        label.textColor = NSColor.black.withAlphaComponent(0.38)
+        label.isBezeled = false
+        label.drawsBackground = false
+        label.isEditable = false
+    }
+
+    private func paneLanguageCode(_ language: String) -> String {
+        switch language {
+        case "Auto detect": return "AUTO"
+        case "English": return "EN"
+        case "Vietnamese": return "VI"
+        case "Chinese", "Chinese (Simplified)", "Chinese (Traditional)": return "ZH"
+        case "Japanese": return "JA"
+        case "Korean": return "KO"
+        case "French": return "FR"
+        case "German": return "DE"
+        case "Spanish": return "ES"
+        default:
+            let letters = language.uppercased().filter(\.isLetter)
+            return String(letters.prefix(2))
+        }
+    }
+
+    private func updatePaneLanguageLabels() {
+        let sourceTitle = selectedSourceLanguage()
+        let targetTitle = selectedTargetLanguage()
+        if sourceTitle == LanguageDetector.autoDetect {
+            let trimmed = inputTextView.string.trimmingCharacters(in: .whitespacesAndNewlines)
+            sourceHeaderLabel.stringValue = trimmed.isEmpty
+                ? "AUTO"
+                : paneLanguageCode(LanguageDetector.detectedLanguage(trimmed))
+        } else {
+            sourceHeaderLabel.stringValue = paneLanguageCode(sourceTitle)
+        }
+        resultHeaderLabel.stringValue = paneLanguageCode(targetTitle)
     }
 
     private func configurePrimaryButton(
@@ -326,19 +427,36 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         accent: Bool
     ) {
         button.title = title
-        button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: title)
-        button.imagePosition = .imageLeading
+        button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: title.isEmpty ? nil : title)
+        button.imagePosition = title.isEmpty ? .imageOnly : .imageLeading
         button.imageHugsTitle = true
         button.target = self
         button.action = action
-        button.bezelStyle = .rounded
-        button.controlSize = .small
-        button.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+        button.bezelStyle = .glass
+        button.controlSize = .regular
+        button.font = .systemFont(ofSize: ChromeLayout.controlFontSize, weight: .regular)
         if accent {
             button.bezelColor = .controlAccentColor
         } else {
             button.bezelColor = nil
         }
+        applyControlCornerRadius(button)
+    }
+
+    private func configureChromeIconButton(_ button: NSButton, symbol: String, action: Selector, label: String) {
+        button.title = ""
+        button.attributedTitle = NSAttributedString(string: "")
+        button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: label)
+        button.imagePosition = .imageOnly
+        button.isBordered = true
+        button.bezelStyle = .glass
+        button.controlSize = .regular
+        button.target = self
+        button.action = action
+        button.toolTip = label
+        button.setAccessibilityLabel(label)
+        button.contentTintColor = NSColor.black.withAlphaComponent(0.55)
+        applyControlCornerRadius(button, radius: ChromeLayout.chromeIconSize / 2)
     }
 
     private func configureIconButton(_ button: NSButton, symbol: String, action: Selector, label: String) {
@@ -352,7 +470,7 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         button.action = action
         button.toolTip = label
         button.setAccessibilityLabel(label)
-        button.contentTintColor = .secondaryLabelColor
+        button.contentTintColor = NSColor.black.withAlphaComponent(0.4)
     }
 
     private func resetCopyButtonAppearance() {
@@ -360,74 +478,187 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         copyButton.attributedTitle = NSAttributedString(string: "")
         copyButton.image = NSImage(systemSymbolName: "doc.on.doc", accessibilityDescription: "Copy")
         copyButton.imagePosition = .imageOnly
-        copyButton.contentTintColor = .secondaryLabelColor
+        copyButton.contentTintColor = NSColor.black.withAlphaComponent(0.4)
     }
 
     private func reflowLayout() {
         guard panel.contentView != nil else { return }
         let width = CGFloat(config.ui.width)
         let height = currentPopoverHeight()
-        layoutInlineChrome(width: width, height: height)
+        layoutSplitPrism(width: width, height: height)
         applyPanelFrame(size: NSSize(width: width, height: height))
     }
 
-    private func layoutInlineChrome(width: CGFloat, height: CGFloat) {
-        guard let root = panel.contentView else { return }
+    private func layoutSplitPrism(width: CGFloat, height: CGFloat) {
         let L = ChromeLayout.self
         let contentWidth = width - L.padding * 2
-        let sourceCardHeight = L.sourceBodyHeight + L.sourceFooterHeight
-        let languageY = height - L.padding - L.headerHeight - L.statusHeight - L.languageGap - L.languageHeight
-        let sourceCardY = languageY - L.sectionGap - sourceCardHeight
-        let resultY = L.padding
-        let resultHeight = max(L.resultHeaderHeight + L.minResultBodyHeight, sourceCardY - L.sectionGap - resultY)
-        let resultBodyHeight = max(0, resultHeight - L.resultHeaderHeight)
+        let panes = PopoverLayoutMath.splitPaneWidth(contentWidth: contentWidth, divider: L.dividerWidth)
+        let statusH = statusLabel.isHidden ? 0 : L.statusHeight
 
-        root.frame = NSRect(x: 0, y: 0, width: width, height: height)
-        titleLabel.frame = NSRect(x: L.padding, y: height - L.padding - L.headerHeight, width: 200, height: L.headerHeight)
-        statusLabel.frame = NSRect(
-            x: L.padding,
-            y: height - L.padding - L.headerHeight - L.statusHeight,
-            width: contentWidth - 50,
-            height: L.statusHeight
+        let headerY = height - L.padding - L.headerHeight
+        let statusY = headerY - statusH
+        let bottomY = L.paddingBottom
+        let splitY = bottomY + L.bottomBarHeight + L.footerGap
+        // Pin body under the header so extra panel height grows the pane — never a dead gap.
+        let splitTop = (statusH > 0 ? statusY : headerY) - L.headerGap
+        let availableSplitHeight = max(0, splitTop - splitY)
+        let measuredSplitHeight = currentSplitPaneHeight(paneWidth: panes.left)
+        let splitHeight = min(
+            L.splitMaxPaneHeight,
+            max(measuredSplitHeight, availableSplitHeight)
         )
-        closeButton.frame = NSRect(x: width - L.padding - 18, y: height - L.padding - L.headerHeight + 1, width: 18, height: 18)
-        pinButton.frame = NSRect(x: width - L.padding - 18 - 22, y: height - L.padding - L.headerHeight + 1, width: 18, height: 18)
+        let bodyHeight = max(0, splitHeight - L.paneHeaderHeight)
 
-        let languageDropdownWidth = (contentWidth - 38 - 12) / 2
-        sourceLanguagePopup.frame = NSRect(x: L.padding, y: languageY, width: languageDropdownWidth, height: L.languageHeight)
-        swapLanguagesButton.frame = NSRect(x: sourceLanguagePopup.frame.maxX + 6, y: languageY, width: 38, height: L.languageHeight)
-        targetLanguagePopup.frame = NSRect(x: swapLanguagesButton.frame.maxX + 6, y: languageY, width: languageDropdownWidth, height: L.languageHeight)
+        glassContainer.frame = NSRect(x: 0, y: 0, width: width, height: height)
+        if let containerHost = glassContainer.contentView {
+            containerHost.frame = glassContainer.bounds
+        }
+        shellGlass.frame = glassContainer.bounds
+        chromeHost.frame = shellGlass.bounds
+        applySplitHostChrome()
 
-        sourceCard.frame = NSRect(x: L.padding, y: sourceCardY, width: contentWidth, height: sourceCardHeight)
-        inputScrollView.frame = NSRect(x: 0, y: L.sourceFooterHeight, width: contentWidth, height: L.sourceBodyHeight)
-        inputScrollView.hasVerticalScroller = true
-        inputTextView.minSize = NSSize(width: 0, height: L.sourceBodyHeight)
-        sourceFooter.frame = NSRect(x: 0, y: 0, width: contentWidth, height: L.sourceFooterHeight)
+        let chromeIcon = L.chromeIconSize
+        titleLabel.frame = NSRect(x: L.padding + 2, y: headerY, width: 160, height: L.headerHeight)
+        statusLabel.frame = NSRect(x: L.padding, y: statusY, width: contentWidth - 50, height: statusH)
+        closeButton.frame = NSRect(
+            x: width - L.padding - chromeIcon,
+            y: headerY + (L.headerHeight - chromeIcon) / 2,
+            width: chromeIcon,
+            height: chromeIcon
+        )
+        pinButton.frame = NSRect(
+            x: closeButton.frame.minX - 6 - chromeIcon,
+            y: closeButton.frame.minY,
+            width: chromeIcon,
+            height: chromeIcon
+        )
+        applyControlCornerRadius(closeButton, radius: chromeIcon / 2)
+        applyControlCornerRadius(pinButton, radius: chromeIcon / 2)
 
+        splitHost.frame = NSRect(x: L.padding, y: splitY, width: contentWidth, height: splitHeight)
+
+        sourceCard.frame = NSRect(x: 0, y: 0, width: panes.left, height: splitHeight)
+        splitDivider.frame = NSRect(x: panes.left, y: 14, width: max(1, L.dividerWidth), height: max(0, splitHeight - 28))
+        splitDividerGradient?.frame = splitDivider.bounds
+        splitHost.addSubview(splitDivider, positioned: .above, relativeTo: nil)
+        resultCard.frame = NSRect(x: panes.left + L.dividerWidth, y: 0, width: panes.right, height: splitHeight)
+
+        layoutPaneChrome(
+            headerBar: sourceHeaderBar,
+            headerLabel: sourceHeaderLabel,
+            scrollView: inputScrollView,
+            textView: inputTextView,
+            trailingIcons: [speakSourceButton],
+            paneWidth: panes.left,
+            bodyHeight: bodyHeight
+        )
+        layoutPaneChrome(
+            headerBar: resultHeaderBar,
+            headerLabel: resultHeaderLabel,
+            scrollView: textScrollView,
+            textView: textView,
+            trailingIcons: [speakResultButton, copyButton],
+            paneWidth: panes.right,
+            bodyHeight: bodyHeight
+        )
+
+        // Bottom bar: Learn | Translate | spacer | EN | swap | VI
         translateButton.sizeToFit()
         learnButton.sizeToFit()
-        let btnH = L.primaryButtonHeight
-        let btnY = (L.sourceFooterHeight - btnH) / 2
-        let translateW = max(78, translateButton.frame.width)
-        let learnW = max(62, learnButton.frame.width)
-        translateButton.frame = NSRect(x: 4, y: btnY, width: translateW, height: btnH)
-        learnButton.frame = NSRect(x: translateButton.frame.maxX + 4, y: btnY, width: learnW, height: btnH)
-        let icon = L.iconButtonSize
-        let iconY = (L.sourceFooterHeight - icon) / 2
-        speakSourceButton.frame = NSRect(x: contentWidth - 4 - icon, y: iconY, width: icon, height: icon)
+        let btnH = L.controlHeight
+        let btnY = bottomY
+        let translateW = max(92, translateButton.frame.width)
+        let learnW = max(72, learnButton.frame.width)
+        learnButton.frame = NSRect(
+            x: L.padding,
+            y: btnY,
+            width: learnW,
+            height: btnH
+        )
+        translateButton.frame = NSRect(
+            x: learnButton.frame.maxX + 5,
+            y: btnY,
+            width: translateW,
+            height: btnH
+        )
+        applyControlCornerRadius(translateButton)
+        applyControlCornerRadius(learnButton)
 
-        resultCard.frame = NSRect(x: L.padding, y: resultY, width: contentWidth, height: resultHeight)
-        // Header sits at top of card (AppKit y=0 is bottom)
-        resultHeaderBar.frame = NSRect(x: 0, y: resultBodyHeight, width: contentWidth, height: L.resultHeaderHeight)
-        resultHeaderLabel.sizeToFit()
-        let labelH = max(12, resultHeaderLabel.fittingSize.height)
-        let labelY = ((L.resultHeaderHeight - labelH) / 2).rounded(.towardZero)
-        resultHeaderLabel.frame = NSRect(x: 8, y: labelY, width: max(120, resultHeaderLabel.fittingSize.width), height: labelH)
-        let headerIconY = (L.resultHeaderHeight - icon) / 2
-        copyButton.frame = NSRect(x: contentWidth - 6 - icon, y: headerIconY, width: icon, height: icon)
-        speakResultButton.frame = NSRect(x: copyButton.frame.minX - 4 - icon, y: headerIconY, width: icon, height: icon)
-        textScrollView.frame = NSRect(x: 0, y: 0, width: contentWidth, height: resultBodyHeight)
-        textView.minSize = NSSize(width: 0, height: resultBodyHeight)
+        let dropdownWidth = L.languageWidth
+        let langH = L.languageControlHeight
+        let langY = btnY + (btnH - langH) / 2
+        let swapSize = L.swapWidth
+        targetLanguageButton.frame = NSRect(
+            x: width - L.padding - dropdownWidth,
+            y: langY,
+            width: dropdownWidth,
+            height: langH
+        )
+        swapLanguagesButton.frame = NSRect(
+            x: targetLanguageButton.frame.minX - 5 - swapSize,
+            y: langY,
+            width: swapSize,
+            height: langH
+        )
+        sourceLanguageButton.frame = NSRect(
+            x: swapLanguagesButton.frame.minX - 5 - dropdownWidth,
+            y: langY,
+            width: dropdownWidth,
+            height: langH
+        )
+        applyControlCornerRadius(sourceLanguageButton, radius: L.languageCornerRadius)
+        applyControlCornerRadius(targetLanguageButton, radius: L.languageCornerRadius)
+        applyControlCornerRadius(swapLanguagesButton, radius: L.languageCornerRadius)
+        styleLanguageButtonTitle(sourceLanguageButton, language: sourceLanguageSelection)
+        styleLanguageButtonTitle(targetLanguageButton, language: targetLanguageSelection)
+    }
+
+    private func layoutPaneChrome(
+        headerBar: NSView,
+        headerLabel: NSTextField,
+        scrollView: NSScrollView,
+        textView: NSTextView,
+        trailingIcons: [NSButton],
+        paneWidth: CGFloat,
+        bodyHeight: CGFloat
+    ) {
+        let L = ChromeLayout.self
+        let icon = L.iconButtonSize
+        let topInset = L.paneHeaderTopInset
+        headerBar.frame = NSRect(x: 0, y: bodyHeight, width: paneWidth, height: L.paneHeaderHeight)
+        headerLabel.sizeToFit()
+        let labelH = max(11, headerLabel.fittingSize.height)
+        // Shift content down slightly so the speak/copy row has a little top padding.
+        let labelY = max(0, ((L.paneHeaderHeight - labelH) / 2 - topInset).rounded(.towardZero))
+        headerLabel.frame = NSRect(
+            x: 12,
+            y: labelY,
+            width: max(28, min(headerLabel.fittingSize.width + 2, paneWidth - 52)),
+            height: labelH
+        )
+        let headerIconY = max(0, (L.paneHeaderHeight - icon) / 2 - topInset)
+        var iconX = paneWidth - 10 - icon
+        for button in trailingIcons.reversed() {
+            button.frame = NSRect(x: iconX, y: headerIconY, width: icon, height: icon)
+            iconX -= icon + 4
+        }
+        scrollView.frame = NSRect(x: 0, y: 0, width: paneWidth, height: bodyHeight)
+        scrollView.hasVerticalScroller = true
+        textView.minSize = NSSize(width: 0, height: bodyHeight)
+    }
+
+    private func currentSplitPaneHeight(paneWidth: CGFloat) -> CGFloat {
+        let L = ChromeLayout.self
+        let measureWidth = max(80, paneWidth - 24)
+        let sourceMeasured = measuredTextHeight(inputTextView.attributedString(), width: measureWidth) + 20
+        let resultMeasured = measuredTextHeight(textView.attributedString(), width: measureWidth) + 20
+        return PopoverLayoutMath.splitPaneHeight(
+            sourceMeasured: sourceMeasured,
+            resultMeasured: resultMeasured,
+            paneHeaderHeight: L.paneHeaderHeight,
+            minPaneHeight: L.splitMinPaneHeight,
+            maxPaneHeight: L.splitMaxPaneHeight
+        )
     }
 
     /// Resizes/repositions the panel around `size`. While the panel hasn't been dragged by the
@@ -499,23 +730,33 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         let color: NSColor
         switch resolved {
         case .normal:
-            color = .labelColor
+            color = NSColor.black.withAlphaComponent(0.88)
         case .loading:
-            color = .secondaryLabelColor
+            color = NSColor.black.withAlphaComponent(0.4)
         case .error:
             color = .systemRed
         }
-        textView.textStorage?.setAttributedString(.plainDisplay(value, font: .systemFont(ofSize: 13), color: color))
+        textView.textStorage?.setAttributedString(
+            .plainDisplay(value, font: .systemFont(ofSize: ChromeLayout.bodyFontSize), color: color)
+        )
     }
 
     private func setStatus(_ message: String, autoClearAfter: TimeInterval = 4) {
         statusClearWorkItem?.cancel()
+        let wasHidden = statusLabel.isHidden
         statusLabel.stringValue = message
         statusLabel.isHidden = message.isEmpty
+        if wasHidden != statusLabel.isHidden {
+            reflowLayout()
+        }
         if !message.isEmpty {
             let work = DispatchWorkItem { [weak self] in
-                self?.statusLabel.stringValue = ""
-                self?.statusLabel.isHidden = true
+                guard let self else { return }
+                self.statusLabel.stringValue = ""
+                if !self.statusLabel.isHidden {
+                    self.statusLabel.isHidden = true
+                    self.reflowLayout()
+                }
             }
             statusClearWorkItem = work
             DispatchQueue.main.asyncAfter(deadline: .now() + autoClearAfter, execute: work)
@@ -525,8 +766,12 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     private func clearStatus() {
         statusClearWorkItem?.cancel()
         statusClearWorkItem = nil
+        let wasHidden = statusLabel.isHidden
         statusLabel.stringValue = ""
         statusLabel.isHidden = true
+        if !wasHidden {
+            reflowLayout()
+        }
     }
 
     private func beginRequest() -> Int {
@@ -546,6 +791,8 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         translateButton.isEnabled = !isRequestInFlight
         learnButton.isEnabled = !isRequestInFlight
         swapLanguagesButton.isEnabled = !isRequestInFlight
+        sourceLanguageButton.isEnabled = !isRequestInFlight
+        targetLanguageButton.isEnabled = !isRequestInFlight
         updateSpeakButtons()
         updateCopyButtonEnabled()
     }
@@ -558,20 +805,19 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         let width = CGFloat(config.ui.width)
         let L = ChromeLayout.self
         let contentWidth = width - L.padding * 2
-        let sourceCardHeight = L.sourceBodyHeight + L.sourceFooterHeight
-        let measuredBody = measuredTextHeight(textView.attributedString(), width: contentWidth - 14) + 16
-        let resultBody = min(max(L.minResultBodyHeight, measuredBody), L.maxResultBodyHeight)
-        let resultCardHeight = L.resultHeaderHeight + resultBody
-        return L.padding
-            + L.headerHeight
-            + L.statusHeight
-            + L.languageGap
-            + L.languageHeight
-            + L.sectionGap
-            + sourceCardHeight
-            + L.sectionGap
-            + resultCardHeight
-            + L.padding
+        let panes = PopoverLayoutMath.splitPaneWidth(contentWidth: contentWidth, divider: L.dividerWidth)
+        let splitHeight = currentSplitPaneHeight(paneWidth: panes.left)
+        let statusH = statusLabel.isHidden ? 0 : L.statusHeight
+        return PopoverLayoutMath.splitPrismHeight(
+            padding: L.padding,
+            paddingBottom: L.paddingBottom,
+            headerHeight: L.headerHeight,
+            statusHeight: statusH,
+            headerGap: L.headerGap,
+            splitPaneHeight: splitHeight,
+            footerGap: L.footerGap,
+            bottomBarHeight: L.bottomBarHeight
+        )
     }
 
     private func maxPopoverHeight() -> CGFloat {
@@ -579,8 +825,8 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     }
 
     private func currentPopoverHeight() -> CGFloat {
-        let baseHeight = CGFloat(config.ui.height)
-        return min(max(baseHeight, preferredPopoverHeight()), maxPopoverHeight())
+        // Hug content — don't force config.ui.height as a floor (that left empty chrome).
+        min(max(preferredPopoverHeight(), 220), maxPopoverHeight())
     }
 
     private func measuredTextHeight(_ text: NSAttributedString, width: CGFloat) -> CGFloat {
@@ -588,11 +834,115 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     }
 
     private func selectedSourceLanguage() -> String {
-        sourceLanguagePopup.selectedItem?.title ?? config.resolvedSourceLang
+        sourceLanguageSelection.isEmpty ? config.resolvedSourceLang : sourceLanguageSelection
     }
 
     private func selectedTargetLanguage() -> String {
-        targetLanguagePopup.selectedItem?.title ?? config.resolvedTargetLang
+        targetLanguageSelection.isEmpty ? config.resolvedTargetLang : targetLanguageSelection
+    }
+
+    private enum LanguageButtonKind: Int {
+        case source = 1
+        case target = 2
+    }
+
+    private func selectLanguage(_ language: String, kind: LanguageButtonKind) {
+        switch kind {
+        case .source:
+            sourceLanguageSelection = language
+            styleLanguageButtonTitle(sourceLanguageButton, language: language)
+        case .target:
+            targetLanguageSelection = language
+            styleLanguageButtonTitle(targetLanguageButton, language: language)
+        }
+    }
+
+    private func languageMenuFont() -> NSFont {
+        .systemFont(ofSize: ChromeLayout.languageFontSize, weight: .regular)
+    }
+
+    private func configureLanguageButton(_ button: NSButton, kind: LanguageButtonKind) {
+        button.bezelStyle = .glass
+        button.controlSize = .small
+        button.imagePosition = .imageTrailing
+        button.imageHugsTitle = true
+        button.target = self
+        button.action = #selector(showLanguageMenu(_:))
+        button.tag = kind.rawValue
+        button.font = languageMenuFont()
+        button.contentTintColor = NSColor.black.withAlphaComponent(0.75)
+        let chevron = NSImage.SymbolConfiguration(pointSize: 8, weight: .medium)
+        button.image = NSImage(
+            systemSymbolName: "chevron.up.chevron.down",
+            accessibilityDescription: nil
+        )?.withSymbolConfiguration(chevron)
+        applyControlCornerRadius(button, radius: ChromeLayout.languageCornerRadius)
+    }
+
+    private func styleLanguageButtonTitle(_ button: NSButton, language: String) {
+        button.title = language
+        button.attributedTitle = NSAttributedString(
+            string: language,
+            attributes: [
+                .font: languageMenuFont(),
+                .foregroundColor: NSColor.black.withAlphaComponent(0.78)
+            ]
+        )
+        button.toolTip = language
+        button.setAccessibilityLabel(language)
+    }
+
+    private func populateLanguageButton(
+        _ button: NSButton,
+        kind: LanguageButtonKind,
+        languages: [String],
+        selected: String
+    ) {
+        switch kind {
+        case .source: sourceLanguageOptions = languages
+        case .target: targetLanguageOptions = languages
+        }
+        selectLanguage(selected, kind: kind)
+        configureLanguageButton(button, kind: kind)
+        styleLanguageButtonTitle(button, language: selected)
+    }
+
+    @objc private func showLanguageMenu(_ sender: NSButton) {
+        guard let kind = LanguageButtonKind(rawValue: sender.tag) else { return }
+        let languages = kind == .source ? sourceLanguageOptions : targetLanguageOptions
+        let selected = kind == .source ? selectedSourceLanguage() : selectedTargetLanguage()
+        let menu = NSMenu()
+        let font = languageMenuFont()
+        for language in languages {
+            let item = NSMenuItem(
+                title: language,
+                action: #selector(languageMenuItemChosen(_:)),
+                keyEquivalent: ""
+            )
+            item.target = self
+            item.attributedTitle = NSAttributedString(
+                string: language,
+                attributes: [
+                    .font: font,
+                    .foregroundColor: NSColor.black.withAlphaComponent(0.85)
+                ]
+            )
+            item.representedObject = language
+            item.toolTip = language
+            item.state = language == selected ? .on : .off
+            item.tag = kind.rawValue
+            menu.addItem(item)
+        }
+        let point = NSPoint(x: 0, y: sender.bounds.height + 4)
+        menu.popUp(positioning: nil, at: point, in: sender)
+    }
+
+    @objc private func languageMenuItemChosen(_ sender: NSMenuItem) {
+        guard let kind = LanguageButtonKind(rawValue: sender.tag),
+              let language = sender.representedObject as? String
+        else { return }
+        selectLanguage(language, kind: kind)
+        languageSelectionChanged()
     }
 
     private func resolvedLanguagePair(for text: String) -> (source: String, target: String) {
@@ -611,11 +961,12 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     }
 
     private func configureLanguageControls() {
-        sourceLanguagePopup.removeAllItems()
-        sourceLanguagePopup.addItems(withTitles: config.languages)
-        sourceLanguagePopup.selectItem(withTitle: LanguageDetector.normalizeSource(config.resolvedSourceLang, languages: config.languages))
-        sourceLanguagePopup.target = self
-        sourceLanguagePopup.action = #selector(languageSelectionChanged)
+        populateLanguageButton(
+            sourceLanguageButton,
+            kind: .source,
+            languages: config.languages,
+            selected: LanguageDetector.normalizeSource(config.resolvedSourceLang, languages: config.languages)
+        )
 
         let savedTarget = UserDefaults.standard.string(forKey: Self.lastTargetLangKey) ?? config.resolvedTargetLang
         let normalizedTarget = LanguageDetector.normalizeTarget(
@@ -623,22 +974,36 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
             targetLanguages: config.targetLanguages,
             fallback: config.resolvedNativeLang
         )
-        targetLanguagePopup.removeAllItems()
-        targetLanguagePopup.addItems(withTitles: config.targetLanguages)
-        targetLanguagePopup.selectItem(withTitle: normalizedTarget)
+        populateLanguageButton(
+            targetLanguageButton,
+            kind: .target,
+            languages: config.targetLanguages,
+            selected: normalizedTarget
+        )
         recentTargets = [normalizedTarget]
-        targetLanguagePopup.target = self
-        targetLanguagePopup.action = #selector(languageSelectionChanged)
 
-        swapLanguagesButton.title = "⇄"
-        swapLanguagesButton.bezelStyle = .rounded
+        swapLanguagesButton.title = ""
+        let swapSymbol = NSImage.SymbolConfiguration(pointSize: 12, weight: .medium)
+        swapLanguagesButton.image = NSImage(
+            systemSymbolName: "arrow.left.arrow.right",
+            accessibilityDescription: "Swap languages"
+        )?.withSymbolConfiguration(swapSymbol)
+        swapLanguagesButton.imagePosition = .imageOnly
+        swapLanguagesButton.bezelStyle = .glass
+        swapLanguagesButton.controlSize = .small
         swapLanguagesButton.target = self
         swapLanguagesButton.action = #selector(swapLanguages)
+        swapLanguagesButton.toolTip = "Swap languages"
+        swapLanguagesButton.contentTintColor = NSColor.black.withAlphaComponent(0.55)
+        applyControlCornerRadius(swapLanguagesButton, radius: ChromeLayout.languageCornerRadius)
+        updatePaneLanguageLabels()
     }
 
     func textDidChange(_ notification: Notification) {
         guard notification.object as AnyObject? === inputTextView else { return }
         updateSpeakButtons()
+        updatePaneLanguageLabels()
+        reflowLayout()
     }
 
     @objc private func languageSelectionChanged() {
@@ -649,17 +1014,20 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         if selectedSourceLanguage() == "Auto detect" {
             let detected = LanguageDetector.detectedLanguage(text)
             if selectedTargetLanguage() == detected {
-                sourceLanguagePopup.selectItem(withTitle: detected)
+                selectLanguage(detected, kind: .source)
             }
         }
         let pair = resolvedLanguagePair(for: text)
         if selectedSourceLanguage() != pair.source {
-            sourceLanguagePopup.selectItem(withTitle: pair.source)
+            selectLanguage(pair.source, kind: .source)
         }
         if selectedTargetLanguage() != pair.target {
-            targetLanguagePopup.selectItem(withTitle: pair.target)
+            selectLanguage(pair.target, kind: .target)
         }
         UserDefaults.standard.set(pair.target, forKey: Self.lastTargetLangKey)
+        updatePaneLanguageLabels()
+        styleLanguageButtonTitle(sourceLanguageButton, language: selectedSourceLanguage())
+        styleLanguageButtonTitle(targetLanguageButton, language: selectedTargetLanguage())
         if !inputTextView.string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             runTranslate()
         }
@@ -672,23 +1040,28 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
             targetLanguages: config.targetLanguages,
             fallback: config.resolvedNativeLang
         )
-        sourceLanguagePopup.selectItem(withTitle: target)
+        selectLanguage(target, kind: .source)
         let swappedTarget = source == LanguageDetector.autoDetect ? config.resolvedNativeLang : source
-        targetLanguagePopup.selectItem(withTitle: LanguageDetector.normalizeTarget(
-            swappedTarget,
-            targetLanguages: config.targetLanguages,
-            fallback: config.resolvedNativeLang
-        ))
+        selectLanguage(
+            LanguageDetector.normalizeTarget(
+                swappedTarget,
+                targetLanguages: config.targetLanguages,
+                fallback: config.resolvedNativeLang
+            ),
+            kind: .target
+        )
         languageSelectionChanged()
     }
 
     private func updateSpeakButtons() {
+        let iconTint = NSColor.black.withAlphaComponent(0.4)
         speakSourceButton.title = ""
         speakSourceButton.image = NSImage(
             systemSymbolName: isSpeakingSource ? "hourglass" : "speaker.wave.2",
             accessibilityDescription: "Speak source"
         )
         speakSourceButton.imagePosition = .imageOnly
+        speakSourceButton.contentTintColor = iconTint
         let hasSourceText = !inputTextView.string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         speakSourceButton.isEnabled = hasSourceText && !isSpeakingSource
 
@@ -698,6 +1071,7 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
             accessibilityDescription: "Speak translation"
         )
         speakResultButton.imagePosition = .imageOnly
+        speakResultButton.contentTintColor = iconTint
         speakResultButton.isEnabled = PopoverFeedback.isCopyableResult(textView.string) && !isSpeakingResult
     }
 
@@ -983,8 +1357,21 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     }
 
     private func updatePinButton() {
-        pinButton.image = NSImage(systemSymbolName: isPinned ? "pin.fill" : "pin", accessibilityDescription: "Pin")
-        pinButton.contentTintColor = isPinned ? .controlAccentColor : nil
+        let symbolName = isPinned ? "pin.fill" : "pin"
+        let base = NSImage(systemSymbolName: symbolName, accessibilityDescription: "Pin")
+        if isPinned {
+            // Match Translate accent glass fill; force white glyph (contentTint alone is unreliable on glass).
+            pinButton.bezelColor = .controlAccentColor
+            let whiteSymbol = NSImage.SymbolConfiguration(paletteColors: [.white])
+                .applying(NSImage.SymbolConfiguration(pointSize: 12, weight: .semibold))
+            pinButton.image = base?.withSymbolConfiguration(whiteSymbol)
+            pinButton.contentTintColor = .white
+        } else {
+            pinButton.bezelColor = nil
+            let mutedSymbol = NSImage.SymbolConfiguration(pointSize: 12, weight: .medium)
+            pinButton.image = base?.withSymbolConfiguration(mutedSymbol)
+            pinButton.contentTintColor = NSColor.black.withAlphaComponent(0.55)
+        }
     }
 
     private func focusInputTextView() {
@@ -997,8 +1384,9 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
 
     private func updateLanguageSelection(for text: String) {
         let pair = resolvedLanguagePair(for: text)
-        sourceLanguagePopup.selectItem(withTitle: pair.source)
-        targetLanguagePopup.selectItem(withTitle: pair.target)
+        selectLanguage(pair.source, kind: .source)
+        selectLanguage(pair.target, kind: .target)
+        updatePaneLanguageLabels()
     }
 
     private func showEmptySelectionPanel() {

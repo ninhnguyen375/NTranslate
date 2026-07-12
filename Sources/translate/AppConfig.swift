@@ -172,7 +172,7 @@ struct AppConfig: Codable {
         speechSourceModelChinese: "edge-tts/zh-CN-XiaoxiaoNeural",
         speechTargetModel: "edge-tts/vi-VN-HoaiMyNeural",
         hotkey: .init(key: "D", option: true, command: false, control: false, shift: false),
-        ui: .init(width: 480, height: 320, autoCopy: false, simulateCopy: false)
+        ui: .init(width: 630, height: 320, autoCopy: false, simulateCopy: false)
     )
 
     init(
