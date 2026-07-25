@@ -185,7 +185,7 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     private var prefetchingSpeech: Set<SpeechIdentity> = []
     private var pendingSourceSpeech: [Int: PendingSourceSpeech] = [:]
     private var pendingImage: Data?
-    private let historyStore = TranslationHistoryStore()
+    private var historyStore: TranslationHistoryStore = TranslationHistoryStore(config: AppConfig.load())
     private lazy var historyWindowController = HistoryWindowController(store: historyStore)
     private var currentRecordID: UUID?
     private var requestGeneration = 0
@@ -1414,6 +1414,8 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         invalidateTranslationRequest()
         invalidateSpeech(stopPlayback: true)
         config = outcome.config
+        historyStore = TranslationHistoryStore(config: config)
+        historyWindowController = HistoryWindowController(store: historyStore)
         if let loadError = historyStore.loadError {
             setStatus(loadError, autoClearAfter: 12)
         }
