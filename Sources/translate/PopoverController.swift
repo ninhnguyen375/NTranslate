@@ -164,6 +164,7 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     private var targetLanguageOptions: [String] = []
     private let swapLanguagesButton = NSButton(frame: .zero)
     private let historyButton = NSButton(frame: .zero)
+    private let updateButton = NSButton(frame: .zero)
     private let pinButton = NSButton(frame: .zero)
     private let closeButton = NSButton(frame: .zero)
     private let translateButton = NSButton(frame: .zero)
@@ -229,6 +230,7 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         buildMenu()
         installHotKeyEventHandler()
         reloadConfig()
+        performUpdateCheck(silent: true)
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self, self.panel.isVisible else { return event }
             if event.keyCode == UInt16(kVK_Escape) {
@@ -294,6 +296,7 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         configureChromeIconButton(closeButton, symbol: "xmark", action: #selector(closePopover), label: "Close")
         configureChromeIconButton(pinButton, symbol: "pin", action: #selector(togglePin), label: "Pin")
         configureChromeIconButton(historyButton, symbol: "clock.arrow.circlepath", action: #selector(openTranslationHistory), label: "Translation History")
+        configureChromeIconButton(updateButton, symbol: "arrow.triangle.2.circlepath", action: #selector(checkForUpdatesClicked), label: "Check for Updates")
         updatePinButton()
 
         configureLanguageControls()
@@ -625,9 +628,16 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
             width: chromeIcon,
             height: chromeIcon
         )
+        updateButton.frame = NSRect(
+            x: historyButton.frame.minX - 6 - chromeIcon,
+            y: closeButton.frame.minY,
+            width: chromeIcon,
+            height: chromeIcon
+        )
         applyControlCornerRadius(closeButton, radius: chromeIcon / 2)
         applyControlCornerRadius(pinButton, radius: chromeIcon / 2)
         applyControlCornerRadius(historyButton, radius: chromeIcon / 2)
+        applyControlCornerRadius(updateButton, radius: chromeIcon / 2)
 
         splitHost.frame = NSRect(x: L.padding, y: splitY, width: contentWidth, height: splitHeight)
 
@@ -1558,6 +1568,75 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     @objc private func togglePin() {
         isPinned.toggle()
         updatePinButton()
+    }
+
+    @objc private func checkForUpdatesClicked() {
+        performUpdateCheck(silent: false)
+    }
+
+    private func performUpdateCheck(silent: Bool) {
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                if let release = try await UpdateManager.shared.checkForUpdate() {
+                    await MainActor.run {
+                        self.showUpdateAlert(release: release)
+                    }
+                } else if !silent {
+                    await MainActor.run {
+                        self.showUpToDateAlert()
+                    }
+                }
+            } catch {
+                if !silent {
+                    await MainActor.run {
+                        self.showUpdateErrorAlert(error)
+                    }
+                }
+            }
+        }
+    }
+
+    private func showUpdateAlert(release: ReleaseInfo) {
+        let alert = NSAlert()
+        alert.messageText = "Update Available: \(release.tag)"
+        alert.informativeText = "A new version of NTranslate is available.\n\nRelease Notes:\n\(release.notes)"
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: "Update & Restart")
+        alert.addButton(withTitle: "Later")
+
+        if alert.runModal() == .alertFirstButtonReturn {
+            Task { [weak self] in
+                guard let self else { return }
+                do {
+                    let dmgURL = try await UpdateManager.shared.downloadDMG(from: release.dmgURL)
+                    try UpdateManager.shared.installUpdateAndRestart(dmgURL: dmgURL)
+                } catch {
+                    await MainActor.run {
+                        self.showUpdateErrorAlert(error)
+                    }
+                }
+            }
+        }
+    }
+
+    private func showUpToDateAlert() {
+        let alert = NSAlert()
+        alert.messageText = "You're Up to Date!"
+        let currentVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0"
+        alert.informativeText = "NTranslate \(currentVersion) is currently the newest version available."
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
+    }
+
+    private func showUpdateErrorAlert(_ error: Error) {
+        let alert = NSAlert()
+        alert.messageText = "Update Check Failed"
+        alert.informativeText = error.localizedDescription
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
     }
 
     private func updatePinButton() {
