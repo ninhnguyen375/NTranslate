@@ -66,6 +66,26 @@ final class TranslatePanelWindow: NSWindow {
     override var canBecomeMain: Bool { true }
 }
 
+final class InputTextView: NSTextView {
+    var onImagePasted: ((Data) -> Void)?
+
+    override func paste(_ sender: Any?) {
+        let pb = NSPasteboard.general
+        if let data = pb.data(forType: .png) ?? pb.data(forType: .tiff) {
+            onImagePasted?(data)
+            return
+        }
+        if let image = NSImage(pasteboard: pb),
+           let tiff = image.tiffRepresentation,
+           let bitmap = NSBitmapImageRep(data: tiff),
+           let png = bitmap.representation(using: .png, properties: [:]) {
+            onImagePasted?(png)
+            return
+        }
+        super.paste(sender)
+    }
+}
+
 @MainActor
 final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelegate, NSWindowDelegate, NSMenuDelegate, @preconcurrency AVAudioPlayerDelegate {
     private struct PendingSourceSpeech {
@@ -121,7 +141,7 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     )
     private let textView = NSTextView(frame: .zero)
     private let textScrollView = NSScrollView(frame: .zero)
-    private let inputTextView = NSTextView(frame: .zero)
+    private let inputTextView = InputTextView(frame: .zero)
     private let inputScrollView = NSScrollView(frame: .zero)
     private let imagePlaceholderLabel = NSTextField(labelWithString: "[Image from clipboard]")
     /// Official Liquid Glass container — merges nearby glass views.
@@ -294,6 +314,10 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         inputTextView.isEditable = true
         inputTextView.isSelectable = true
         inputTextView.delegate = self
+        inputTextView.onImagePasted = { [weak self] imageData in
+            self?.setPendingImage(imageData)
+            self?.inputTextView.string = ""
+        }
         inputTextView.font = .systemFont(ofSize: ChromeLayout.bodyFontSize)
         inputTextView.drawsBackground = false
         inputTextView.textColor = NSColor.black.withAlphaComponent(0.88)
