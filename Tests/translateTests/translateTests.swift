@@ -262,6 +262,51 @@ struct TranslateTests {
         #expect(!text.contains("http:\\/\\/"))
     }
 
+    @Test func appConfigBackfillsHistoryDirectoryIfMissing() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let path = directory.appendingPathComponent("config.json").path
+
+        let jsonWithoutHistoryDir = """
+        {
+          "apiBaseURL": "http://localhost:20128/v1/chat/completions",
+          "apiSpeechURL": "http://localhost:20128/v1/audio/speech",
+          "apiKey": "test",
+          "model": "test",
+          "sourceLang": "Auto detect",
+          "targetLang": "Vietnamese",
+          "nativeLang": "Vietnamese",
+          "languages": ["Auto detect", "English"],
+          "targetLanguages": ["English", "Vietnamese"],
+          "maxTranslateLength": 5000,
+          "systemPrompt": "test",
+          "learnPrompt": "test",
+          "sentenceLearnPrompt": "test",
+          "grammarPrompt": "test",
+          "autoPrefetchSpeech": false,
+          "speechSourceModel": "test",
+          "speechSourceModelVietnamese": "test",
+          "speechSourceModelChinese": "test",
+          "speechTargetModel": "test",
+          "hotkey": { "key": "D", "option": true, "command": false, "control": false, "shift": false },
+          "ui": { "width": 630, "height": 320, "autoCopy": false, "simulateCopy": false }
+        }
+        """
+        try Data(jsonWithoutHistoryDir.utf8).write(to: URL(fileURLWithPath: path))
+
+        let outcome = AppConfig.loadOutcome(at: path)
+        guard case let .loaded(config) = outcome else {
+            Issue.record("Expected loaded outcome")
+            return
+        }
+        #expect(config.historyDirectory == "")
+
+        let updatedData = try Data(contentsOf: URL(fileURLWithPath: path))
+        let updatedText = String(data: updatedData, encoding: .utf8) ?? ""
+        #expect(updatedText.contains("\"historyDirectory\""))
+    }
+
     @Test func appConfigSetupIssuesReportsEmptyApiKeyAndAccessibility() {
         var config = AppConfig.default
         config.apiKey = ""

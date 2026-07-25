@@ -377,7 +377,21 @@ struct AppConfig: Codable {
 
     static func loadOutcome(at path: String = configPath, fileManager: FileManager = .default) -> LoadOutcome {
         do {
-            return decodeOutcome(data: try Data(contentsOf: URL(fileURLWithPath: path)))
+            let data = try Data(contentsOf: URL(fileURLWithPath: path))
+            let outcome = decodeOutcome(data: data)
+            if case let .loaded(config) = outcome {
+                // If historyDirectory key is missing in config file, backfill it with default ""
+                if let jsonObject = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                   jsonObject["historyDirectory"] == nil {
+                    var updatedConfig = config
+                    updatedConfig.historyDirectory = config.historyDirectory ?? ""
+                    if let updatedData = try? encodePrettyJSON(updatedConfig) {
+                        try? updatedData.write(to: URL(fileURLWithPath: path), options: [.atomic])
+                    }
+                    return .loaded(updatedConfig)
+                }
+            }
+            return outcome
         } catch CocoaError.fileReadNoSuchFile {
             switch seedConfigFileIfMissing(at: path, fileManager: fileManager) {
             case .alreadyExists:
