@@ -43,7 +43,9 @@ struct AppConfig: Codable {
     var maxTranslateLength: Int
     var systemPrompt: String
     var learnPrompt: String
+    var sentenceLearnPrompt: String
     var grammarPrompt: String
+    var autoPrefetchSpeech: Bool
     var speechSourceModel: String
     var speechSourceModelVietnamese: String
     var speechSourceModelChinese: String
@@ -80,6 +82,31 @@ struct AppConfig: Codable {
     Good output example:
     My name is Ninh.
     - Correct: are -> is (chia động từ "to be" theo chủ ngữ số ít "my name")
+    """
+
+    static let defaultSentenceLearnPrompt = """
+    You are a language learning assistant.
+    Explain the selected sentence or phrase in {{config.targetLang}} for a learner of {{config.sourceLang}}.
+
+    Return plain text only. No markdown. No intro. No commentary. No code fences.
+    Follow this format exactly:
+
+    Natural meaning: <the natural full-sentence meaning>
+
+    Important grammar and structure
+    - <concise explanation>
+
+    Useful phrases in context
+    - <phrase>: <meaning and use in this context>
+
+    Natural variation: <one natural variation with the same core meaning>
+
+    Hard rules:
+    - Explain the full sentence or phrase, not isolated dictionary entries.
+    - Include only important grammar or structure.
+    - Include useful phrases as they are used in this context.
+    - Give exactly one natural variation.
+    - Write every explanation in {{config.targetLang}}.
     """
 
     static let defaultLearnPrompt = """
@@ -167,7 +194,9 @@ struct AppConfig: Codable {
         maxTranslateLength: 5000,
         systemPrompt: "You are a translation system. Translate the selected text from {{config.sourceLang}} to {{config.targetLang}}. If source is Auto detect, detect it first. Return only the final replacement text as valid markdown, with no explanations. Preserve meaning, tone, names, numbers, URLs, line breaks, and formatting where possible. Use markdown for emphasis, lists, and structure only when it improves readability and stays faithful to the source. The output will directly replace the user's selected text.",
         learnPrompt: defaultLearnPrompt,
+        sentenceLearnPrompt: defaultSentenceLearnPrompt,
         grammarPrompt: defaultGrammarPrompt,
+        autoPrefetchSpeech: false,
         speechSourceModel: "edge-tts/en-US-AvaMultilingualNeural",
         speechSourceModelVietnamese: "edge-tts/vi-VN-HoaiMyNeural",
         speechSourceModelChinese: "edge-tts/zh-CN-XiaoxiaoNeural",
@@ -189,7 +218,9 @@ struct AppConfig: Codable {
         maxTranslateLength: Int,
         systemPrompt: String,
         learnPrompt: String,
+        sentenceLearnPrompt: String,
         grammarPrompt: String,
+        autoPrefetchSpeech: Bool,
         speechSourceModel: String,
         speechSourceModelVietnamese: String,
         speechSourceModelChinese: String,
@@ -209,7 +240,9 @@ struct AppConfig: Codable {
         self.maxTranslateLength = maxTranslateLength
         self.systemPrompt = systemPrompt
         self.learnPrompt = learnPrompt
+        self.sentenceLearnPrompt = sentenceLearnPrompt
         self.grammarPrompt = grammarPrompt
+        self.autoPrefetchSpeech = autoPrefetchSpeech
         self.speechSourceModel = speechSourceModel
         self.speechSourceModelVietnamese = speechSourceModelVietnamese
         self.speechSourceModelChinese = speechSourceModelChinese
@@ -235,7 +268,9 @@ struct AppConfig: Codable {
         maxTranslateLength = try container.decodeIfPresent(Int.self, forKey: .maxTranslateLength) ?? 5000
         systemPrompt = try container.decode(String.self, forKey: .systemPrompt)
         learnPrompt = try container.decodeIfPresent(String.self, forKey: .learnPrompt) ?? Self.defaultLearnPrompt
+        sentenceLearnPrompt = try container.decodeIfPresent(String.self, forKey: .sentenceLearnPrompt) ?? Self.defaultSentenceLearnPrompt
         grammarPrompt = try container.decodeIfPresent(String.self, forKey: .grammarPrompt) ?? Self.defaultGrammarPrompt
+        autoPrefetchSpeech = try container.decodeIfPresent(Bool.self, forKey: .autoPrefetchSpeech) ?? false
         speechSourceModel = try container.decode(String.self, forKey: .speechSourceModel)
         speechSourceModelVietnamese = try container.decode(String.self, forKey: .speechSourceModelVietnamese)
         speechSourceModelChinese = try container.decode(String.self, forKey: .speechSourceModelChinese)

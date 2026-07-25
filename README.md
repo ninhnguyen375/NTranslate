@@ -35,9 +35,11 @@ Latest: **[v1.1.5](https://github.com/ninhnguyen375/NTranslate/releases/tag/v1.1
 ## Features
 
 - Global hotkey (default `Option+D`) to translate the current selection
-- Popup near the cursor with **Translate**, **Learn**, **Copy**, **Speak Src**, **Speak Tr**
+- Popup near the cursor with **Translate**, **Learn**, **Copy**, **Save Word**, and source/result speech controls
+- Clipboard PNG/TIFF image translation through a configured vision-capable multimodal model
+- Local translation history with persistent bookmarks and optional cached audio
 - Same source/target language → grammar check instead of translation
-- TTS for source and translated text (voice models configurable)
+- TTS for source and translated text with Play/Pause/Resume (voice models configurable)
 - Configurable languages, prompts, hotkey, and UI size
 - Runtime config in Application Support (API key never needs to live in the repo)
 - Built for [9router](https://github.com/decolua/9router) (local OpenAI-compatible gateway)
@@ -127,7 +129,13 @@ After editing the Application Support file, use the menu bar item **Reload Confi
 }
 ```
 
-Prompts (`systemPrompt`, `learnPrompt`, `grammarPrompt`) and TTS model IDs are also in the example file. Placeholders like `{{config.sourceLang}}` and `{{lang}}` are substituted at request time.
+Prompts (`systemPrompt`, `learnPrompt`, `sentenceLearnPrompt`, `grammarPrompt`) and TTS model IDs are also in the example file. Learn uses `learnPrompt` for one whitespace-delimited token and `sentenceLearnPrompt` for phrases/sentences. Placeholders like `{{config.sourceLang}}` and `{{lang}}` are substituted at request time. `autoPrefetchSpeech` defaults to `false`; explicit speech always fetches on demand, and its button changes between Play, Pause, Resume, and loading.
+
+## Image translation and local history
+
+Clipboard PNG/TIFF images are normalized to PNG and sent to `apiBaseURL` as an OpenAI-compatible `image_url` data URL. The configured `model` must support vision/multimodal input. Image mode disables source language, Learn, source speech, and history recording; result speech remains available.
+
+Successful text Translate requests are stored newest-first in `~/Library/Application Support/NTranslate/history.json`. Optional speech bytes are stored under `~/Library/Application Support/NTranslate/audio/`. **Save Word** toggles a bookmark on the unchanged current translation, and **Translation History** in the status menu opens the retained local history window. Learn and image translations are not recorded.
 
 **Never commit a real `apiKey`.** Keep secrets only in Application Support or a local `config.json`.
 
@@ -194,7 +202,8 @@ Requires `gh` logged in for upload. Output lands in `dist/` (gitignored).
 
 ## Privacy
 
-- Selected text is sent to the API endpoint you configure (`apiBaseURL` / `apiSpeechURL`).
+- Selected text and clipboard image bytes are sent to the API endpoint you configure (`apiBaseURL`); speech text is sent to `apiSpeechURL`.
+- Clipboard images are not saved to history, but successful text translations, bookmarks, and optional audio are stored locally at the history paths above.
 - Accessibility is used only to read the focused selection for translation.
 - The app does not ship with cloud credentials; you bring your own API.
 

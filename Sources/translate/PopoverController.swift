@@ -10,6 +10,56 @@ extension NSAttributedString {
     }
 }
 
+struct AsyncGeneration {
+    private(set) var current = 0
+
+    mutating func advance() -> Int { current += 1; return current }
+    mutating func invalidate() { current += 1 }
+    func accepts(_ value: Int) -> Bool { value == current }
+}
+
+enum PopoverIntegrationPolicy {
+    static func sourceControlsEnabled(hasPendingImage: Bool) -> Bool { !hasPendingImage }
+
+    static func shouldPrefetchSource(enabled: Bool, hasPendingImage: Bool, text: String) -> Bool {
+        enabled && !hasPendingImage && !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    static func acceptsPrefetch(translationGeneration: Int, currentGeneration: Int) -> Bool {
+        translationGeneration == currentGeneration
+    }
+
+    static func recordedSpeechIdentity(
+        _ identity: SpeechIdentity,
+        translationGeneration: Int,
+        currentGeneration: Int,
+        recordID: UUID?
+    ) -> SpeechIdentity? {
+        guard identity.kind == .source, acceptsPrefetch(translationGeneration: translationGeneration, currentGeneration: currentGeneration), let recordID else { return nil }
+        return SpeechIdentity(kind: .source, text: identity.text, model: identity.model, recordID: recordID)
+    }
+
+    static func canAttachAudio(identity: SpeechIdentity, currentRecordID: UUID?) -> Bool {
+        identity.recordID != nil && identity.recordID == currentRecordID
+    }
+
+    static func canSave(
+        recordID: UUID?,
+        sourceText: String,
+        currentSourceText: String,
+        resultText: String,
+        currentResultText: String
+    ) -> Bool {
+        recordID != nil && sourceText == currentSourceText && resultText == currentResultText
+    }
+}
+
+enum SpeechAudioPolicy {
+    static func isValid(_ data: Data, validator: (Data) throws -> Void = { _ = try AVAudioPlayer(data: $0) }) -> Bool {
+        do { try validator(data); return true } catch { return false }
+    }
+}
+
 /// Borderless windows don't become key by default; override so the input text view can accept typing.
 final class TranslatePanelWindow: NSWindow {
     override var canBecomeKey: Bool { true }
@@ -17,15 +67,9 @@ final class TranslatePanelWindow: NSWindow {
 }
 
 @MainActor
-final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelegate, NSWindowDelegate, NSMenuDelegate {
-    private enum SpeechKind {
-        case source
-        case result
-    }
-
-    private struct PrefetchedSpeech {
-        let text: String
-        let model: String
+final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelegate, NSWindowDelegate, NSMenuDelegate, @preconcurrency AVAudioPlayerDelegate {
+    private struct PendingSourceSpeech {
+        let identity: SpeechIdentity
         let data: Data
     }
 
@@ -79,6 +123,7 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     private let textScrollView = NSScrollView(frame: .zero)
     private let inputTextView = NSTextView(frame: .zero)
     private let inputScrollView = NSScrollView(frame: .zero)
+    private let imagePlaceholderLabel = NSTextField(labelWithString: "[Image from clipboard]")
     /// Official Liquid Glass container — merges nearby glass views.
     private let glassContainer = NSGlassEffectContainerView(frame: .zero)
     private let shellGlass = NSGlassEffectView(frame: .zero)
@@ -103,6 +148,7 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     private let translateButton = NSButton(frame: .zero)
     private let learnButton = NSButton(frame: .zero)
     private let copyButton = NSButton(frame: .zero)
+    private let saveWordButton = NSButton(frame: .zero)
     private let titleLabel = NSTextField(labelWithString: "Translate")
     private let statusLabel = NSTextField(labelWithString: "")
     private let speakSourceButton = NSButton(frame: .zero)
@@ -113,8 +159,15 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     private var hotKeyEventHandlerRef: EventHandlerRef?
     private var config = AppConfig.load()
     private var audioPlayer: AVAudioPlayer?
-    private var isSpeakingSource = false
-    private var isSpeakingResult = false
+    private var speechState = SpeechPlaybackState()
+    private var speechCache: [SpeechIdentity: Data] = [:]
+    private var prefetchGeneration = 0
+    private var prefetchingSpeech: Set<SpeechIdentity> = []
+    private var pendingSourceSpeech: [Int: PendingSourceSpeech] = [:]
+    private var pendingImage: Data?
+    private let historyStore = TranslationHistoryStore()
+    private lazy var historyWindowController = HistoryWindowController(store: historyStore)
+    private var currentRecordID: UUID?
     private var requestGeneration = 0
     private var isRequestInFlight = false
     private var keyMonitor: Any?
@@ -124,7 +177,6 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     private var restoresPreviousAppOnClose = false
     private var activatesAppOnShow = false
     private var isPastingResult = false
-    private var prefetchedSpeech: [SpeechKind: PrefetchedSpeech] = [:]
     private var recentTargets: [String] = []
     private static let lastTargetLangKey = "local.ninh.ntranslate.lastTargetLang"
     private var showMousePoint: NSPoint = .zero
@@ -263,8 +315,12 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         inputScrollView.autohidesScrollers = true
         inputScrollView.scrollerStyle = .overlay
         inputScrollView.documentView = inputTextView
+        imagePlaceholderLabel.font = .systemFont(ofSize: ChromeLayout.bodyFontSize)
+        imagePlaceholderLabel.textColor = NSColor.black.withAlphaComponent(0.55)
+        imagePlaceholderLabel.isHidden = true
+        imagePlaceholderLabel.setAccessibilityLabel("Image from clipboard")
 
-        textView.isEditable = true
+        textView.isEditable = false
         textView.isSelectable = true
         textView.drawsBackground = false
         textView.font = .systemFont(ofSize: ChromeLayout.bodyFontSize)
@@ -294,8 +350,10 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         configureIconButton(speakSourceButton, symbol: "speaker.wave.2", action: #selector(speakInput), label: "Speak source")
         configureIconButton(speakResultButton, symbol: "speaker.wave.2", action: #selector(speakResult), label: "Speak translation")
         configureIconButton(copyButton, symbol: "doc.on.doc", action: #selector(copyResult), label: "Copy")
+        configureIconButton(saveWordButton, symbol: "bookmark", action: #selector(toggleSaveWord), label: "Save Word")
 
         updateSpeakButtons()
+        updateSaveWordButton()
         updateBusyState()
         languageSelectionChanged()
 
@@ -303,10 +361,12 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         sourceHeaderBar.addSubview(speakSourceButton)
         sourceCard.addSubview(sourceHeaderBar)
         sourceCard.addSubview(inputScrollView)
+        sourceCard.addSubview(imagePlaceholderLabel)
 
         resultHeaderBar.addSubview(resultHeaderLabel)
         resultHeaderBar.addSubview(speakResultButton)
         resultHeaderBar.addSubview(copyButton)
+        resultHeaderBar.addSubview(saveWordButton)
         resultCard.addSubview(resultHeaderBar)
         resultCard.addSubview(textScrollView)
 
@@ -557,7 +617,7 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
             headerLabel: resultHeaderLabel,
             scrollView: textScrollView,
             textView: textView,
-            trailingIcons: [speakResultButton, copyButton],
+            trailingIcons: [speakResultButton, copyButton, saveWordButton],
             paneWidth: panes.right,
             bodyHeight: bodyHeight
         )
@@ -645,6 +705,9 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         scrollView.frame = NSRect(x: 0, y: 0, width: paneWidth, height: bodyHeight)
         scrollView.hasVerticalScroller = true
         textView.minSize = NSSize(width: 0, height: bodyHeight)
+        if textView === inputTextView {
+            imagePlaceholderLabel.frame = NSRect(x: 12, y: 10, width: max(0, paneWidth - 24), height: 22)
+        }
     }
 
     private func currentSplitPaneHeight(paneWidth: CGFloat) -> CGFloat {
@@ -776,6 +839,7 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
 
     private func beginRequest() -> Int {
         requestGeneration += 1
+        pendingSourceSpeech = pendingSourceSpeech.filter { $0.key >= requestGeneration }
         isRequestInFlight = true
         updateBusyState()
         return requestGeneration
@@ -787,14 +851,23 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         updateBusyState()
     }
 
+    private func invalidateTranslationRequest() {
+        requestGeneration += 1
+        isRequestInFlight = false
+        pendingSourceSpeech.removeAll()
+        invalidateCurrentRecord()
+        updateBusyState()
+    }
+
     private func updateBusyState() {
         translateButton.isEnabled = !isRequestInFlight
-        learnButton.isEnabled = !isRequestInFlight
-        swapLanguagesButton.isEnabled = !isRequestInFlight
-        sourceLanguageButton.isEnabled = !isRequestInFlight
+        learnButton.isEnabled = !isRequestInFlight && pendingImage == nil
+        swapLanguagesButton.isEnabled = !isRequestInFlight && pendingImage == nil
+        sourceLanguageButton.isEnabled = !isRequestInFlight && PopoverIntegrationPolicy.sourceControlsEnabled(hasPendingImage: pendingImage != nil)
         targetLanguageButton.isEnabled = !isRequestInFlight
         updateSpeakButtons()
         updateCopyButtonEnabled()
+        updateSaveWordButton()
     }
 
     private func updateCopyButtonEnabled() {
@@ -1001,12 +1074,23 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
 
     func textDidChange(_ notification: Notification) {
         guard notification.object as AnyObject? === inputTextView else { return }
+        if pendingImage != nil { setPendingImage(nil) }
+        invalidateTranslationRequest()
+        invalidateSpeech(stopPlayback: true)
         updateSpeakButtons()
         updatePaneLanguageLabels()
         reflowLayout()
     }
 
     @objc private func languageSelectionChanged() {
+        invalidateCurrentRecord()
+        invalidateSpeech(stopPlayback: true)
+        if pendingImage != nil {
+            UserDefaults.standard.set(selectedTargetLanguage(), forKey: Self.lastTargetLangKey)
+            updatePaneLanguageLabels()
+            runTranslate()
+            return
+        }
         let text = inputTextView.string
         // User manually picked a target that matches the auto-detected source language —
         // that's a request for grammar-check mode, so pin the source dropdown to match
@@ -1054,35 +1138,53 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     }
 
     private func updateSpeakButtons() {
-        let iconTint = NSColor.black.withAlphaComponent(0.4)
-        speakSourceButton.title = ""
-        speakSourceButton.image = NSImage(
-            systemSymbolName: isSpeakingSource ? "hourglass" : "speaker.wave.2",
-            accessibilityDescription: "Speak source"
-        )
-        speakSourceButton.imagePosition = .imageOnly
-        speakSourceButton.contentTintColor = iconTint
-        let hasSourceText = !inputTextView.string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        speakSourceButton.isEnabled = hasSourceText && !isSpeakingSource
-
-        speakResultButton.title = ""
-        speakResultButton.image = NSImage(
-            systemSymbolName: isSpeakingResult ? "hourglass" : "speaker.wave.2",
-            accessibilityDescription: "Speak translation"
-        )
-        speakResultButton.imagePosition = .imageOnly
-        speakResultButton.contentTintColor = iconTint
-        speakResultButton.isEnabled = PopoverFeedback.isCopyableResult(textView.string) && !isSpeakingResult
+        updateSpeechButton(speakSourceButton, identity: sourceSpeechIdentity(), baseLabel: "source")
+        updateSpeechButton(speakResultButton, identity: resultSpeechIdentity(), baseLabel: "translation")
     }
 
-    private func setSpeaking(_ value: Bool, for kind: SpeechKind) {
-        switch kind {
-        case .source:
-            isSpeakingSource = value
-        case .result:
-            isSpeakingResult = value
+    private func updateSpeechButton(_ button: NSButton, identity: SpeechIdentity?, baseLabel: String) {
+        let action = identity.map { identity in
+            prefetchingSpeech.contains(where: { speechMatches($0, identity) })
+                ? SpeechButtonAction.loading
+                : speechState.action(for: identity)
+        } ?? .play
+        let presentation: (symbol: String, verb: String, enabled: Bool)
+        switch action {
+        case .play: presentation = ("speaker.wave.2", "Play", identity != nil)
+        case .loading: presentation = ("hourglass", "Loading", false)
+        case .pause: presentation = ("pause.fill", "Pause", true)
+        case .resume: presentation = ("play.fill", "Resume", true)
         }
-        updateSpeakButtons()
+        let label = "\(presentation.verb) \(baseLabel)"
+        button.title = ""
+        button.image = NSImage(systemSymbolName: presentation.symbol, accessibilityDescription: label)
+        button.imagePosition = .imageOnly
+        button.contentTintColor = NSColor.black.withAlphaComponent(0.4)
+        button.toolTip = label
+        button.setAccessibilityLabel(label)
+        button.isEnabled = presentation.enabled && !isRequestInFlight
+    }
+
+    private func speechMatches(_ lhs: SpeechIdentity, _ rhs: SpeechIdentity) -> Bool {
+        lhs.kind == rhs.kind && lhs.text == rhs.text && lhs.model == rhs.model
+    }
+
+    private func sourceSpeechIdentity(recordID: UUID? = nil) -> SpeechIdentity? {
+        guard pendingImage == nil else { return nil }
+        let text = inputTextView.string.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return nil }
+        return SpeechIdentity(kind: .source, text: text, model: sourceSpeechModel(for: text), recordID: recordID ?? currentRecordID)
+    }
+
+    private func resultSpeechIdentity(recordID: UUID? = nil) -> SpeechIdentity? {
+        let text = textView.string.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard PopoverFeedback.isCopyableResult(text) else { return nil }
+        return SpeechIdentity(
+            kind: .result,
+            text: text,
+            model: SpeechModelResolver.model(for: selectedTargetLanguage(), config: config),
+            recordID: recordID ?? currentRecordID
+        )
     }
 
     private func sourceSpeechModel(for text: String) -> String {
@@ -1122,6 +1224,7 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         statusMenu.addItem(versionItem)
         statusMenu.addItem(NSMenuItem.separator())
         statusMenu.addItem(withTitle: "Open Translate Panel", action: #selector(openTranslatePanelMenu), keyEquivalent: "t")
+        statusMenu.addItem(withTitle: "Translation History", action: #selector(openTranslationHistory), keyEquivalent: "h")
         statusMenu.addItem(NSMenuItem.separator())
         let accessibilityItem = NSMenuItem(title: "Grant Accessibility Access", action: #selector(requestAccessibilityPermissionMenu), keyEquivalent: "")
         accessibilityItem.tag = Self.accessibilityMenuItemTag
@@ -1166,6 +1269,10 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
 
     @objc private func openConfigFileMenu() {
         NSWorkspace.shared.open(URL(fileURLWithPath: AppConfig.configPath))
+    }
+
+    @objc private func openTranslationHistory() {
+        historyWindowController.showHistory()
     }
 
     /// Opens the translate panel and shows config/permission errors immediately when present.
@@ -1280,7 +1387,12 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     @discardableResult
     private func reloadConfig(showSuccess: Bool) -> AppConfig.LoadOutcome {
         let outcome = AppConfig.loadOutcome()
+        invalidateTranslationRequest()
+        invalidateSpeech(stopPlayback: true)
         config = outcome.config
+        if let loadError = historyStore.loadError {
+            setStatus(loadError, autoClearAfter: 12)
+        }
         reflowLayout()
         let apiKey = config.apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !apiKey.isEmpty else {
@@ -1383,16 +1495,14 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         guard panel.isVisible else { return }
         requestGeneration += 1
         isRequestInFlight = false
-        isSpeakingSource = false
-        isSpeakingResult = false
+        invalidateCurrentRecord()
+        invalidateSpeech(stopPlayback: true)
         clearStatus()
         copyFlashWorkItem?.cancel()
         copyFlashWorkItem = nil
         resetCopyButtonAppearance()
         updateBusyState()
         panel.orderOut(nil)
-        audioPlayer?.stop()
-        audioPlayer = nil
         removeOutsideClickMonitor()
         restorePreviousAppFocus()
         previousApp = nil
@@ -1447,83 +1557,102 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         updatePaneLanguageLabels()
     }
 
-    private func showEmptySelectionPanel() {
-        if !panel.isVisible {
-            showMousePoint = NSEvent.mouseLocation
-        }
+    private func showEmptySelectionPanel(message: String = PopoverFeedback.emptySelectionGuidance) {
+        if !panel.isVisible { showMousePoint = NSEvent.mouseLocation }
+        invalidateTranslationRequest()
+        invalidateSpeech(stopPlayback: true)
+        setPendingImage(nil)
         inputTextView.string = ""
-        setResultText(PopoverFeedback.emptySelectionGuidance)
+        setResultText(message)
         clearStatus()
-        prefetchedSpeech.removeAll()
         reflowLayout()
         updateBusyState()
         presentPanel(activatesApp: true, restoresPreviousAppOnCloseValue: false)
     }
 
+    private func setPendingImage(_ data: Data?) {
+        pendingImage = data
+        imagePlaceholderLabel.isHidden = data == nil
+        updateBusyState()
+    }
+
     func translateAtCursor() {
-        if !AXIsProcessTrusted() {
-            requestAccessibilityPermissionIfNeeded(forcePrompt: true)
-        }
+        if !AXIsProcessTrusted() { requestAccessibilityPermissionIfNeeded(forcePrompt: true) }
         previousApp = NSWorkspace.shared.frontmostApplication
-        guard let resolved = SelectionReader.resolveTranslatableTextWithDiagnostics(simulateCopy: config.ui.simulateCopy) else {
-            showEmptySelectionPanel()
+        let resolved: TranslatableInputResolution
+        do {
+            guard let value = try SelectionReader.resolveTranslatableInputWithDiagnostics(simulateCopy: config.ui.simulateCopy) else {
+                showEmptySelectionPanel()
+                return
+            }
+            resolved = value
+        } catch {
+            showEmptySelectionPanel(message: "Error: \(error)")
             return
         }
-        let trimmed = resolved.text
-        if trimmed.count > config.maxTranslateLength {
-            if !panel.isVisible {
-                showMousePoint = NSEvent.mouseLocation
-            }
-            inputTextView.string = trimmed
-            setResultText(PopoverFeedback.textTooLong)
-            if resolved.accessibilityError != nil {
-                setStatus(PopoverFeedback.accessibilityFallbackNote(source: resolved.source))
-            } else {
-                clearStatus()
-            }
-            reflowLayout()
-            updateBusyState()
-            presentPanel(activatesApp: true, restoresPreviousAppOnCloseValue: false)
-            return
-        }
-        inputTextView.string = trimmed
-        if !panel.isVisible {
-            showMousePoint = NSEvent.mouseLocation
-        }
+        if !panel.isVisible { showMousePoint = NSEvent.mouseLocation }
         if resolved.accessibilityError != nil {
             setStatus(PopoverFeedback.accessibilityFallbackNote(source: resolved.source))
         } else {
             clearStatus()
         }
+        invalidateTranslationRequest()
+        invalidateSpeech(stopPlayback: true)
+        switch resolved.input {
+        case let .text(text):
+            setPendingImage(nil)
+            inputTextView.string = text
+            guard text.count <= config.maxTranslateLength else {
+                setResultText(PopoverFeedback.textTooLong)
+                reflowLayout()
+                updateBusyState()
+                presentPanel(activatesApp: true, restoresPreviousAppOnCloseValue: false)
+                return
+            }
+            updateLanguageSelection(for: text)
+        case let .image(data):
+            inputTextView.string = ""
+            setPendingImage(data)
+        }
         let generation = beginRequest()
         setResultText(PopoverFeedback.translating)
         reflowLayout()
-        updateLanguageSelection(for: trimmed)
-        prefetchedSpeech.removeAll()
-        prefetchSpeech(trimmed, model: sourceSpeechModel(for: trimmed), kind: .source)
         presentPanel(activatesApp: true, restoresPreviousAppOnCloseValue: false)
         performTranslate(generation: generation)
     }
 
     @objc func runTranslate() {
+        invalidateSpeech(stopPlayback: true)
         performTranslate(generation: nil)
     }
 
     private func performTranslate(generation existingGeneration: Int?) {
+        invalidateCurrentRecord()
+        let generation = existingGeneration ?? beginRequest()
         guard let translator else {
-            if let existingGeneration {
-                finishRequest(generation: existingGeneration)
+            finishRequest(generation: generation)
+            return
+        }
+        if existingGeneration == nil {
+            setResultText(PopoverFeedback.translating)
+            reflowLayout()
+        }
+        if let image = pendingImage {
+            translator.translateImage(image, targetLang: selectedTargetLanguage()) { [weak self] result in
+                Task { @MainActor in self?.finishImageTranslation(result, generation: generation) }
             }
             return
         }
         let text = inputTextView.string.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else {
+            invalidateTranslationRequest()
             setResultText(PopoverFeedback.emptyInputHint)
             reflowLayout()
             updateBusyState()
             return
         }
         guard text.count <= config.maxTranslateLength else {
+            invalidateTranslationRequest()
             setResultText(PopoverFeedback.textTooLong)
             reflowLayout()
             updateBusyState()
@@ -1531,53 +1660,76 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         }
         let pair = resolvedLanguagePair(for: text)
         updateLanguageSelection(for: text)
-        let generation = existingGeneration ?? beginRequest()
-        if existingGeneration == nil {
-            setResultText(PopoverFeedback.translating)
-            reflowLayout()
+        if PopoverIntegrationPolicy.shouldPrefetchSource(
+            enabled: config.autoPrefetchSpeech,
+            hasPendingImage: pendingImage != nil,
+            text: text
+        ) {
+            prefetchSpeech(sourceSpeechIdentity(recordID: nil), translationGeneration: generation)
         }
         translator.translate(text, sourceLang: pair.source, targetLang: pair.target) { [weak self] result in
-            Task { @MainActor in
-                guard let self else { return }
-                defer { self.finishRequest(generation: generation) }
-                guard !PopoverFeedback.isStale(resultGeneration: generation, currentGeneration: self.requestGeneration) else { return }
-                switch result {
-                case let .success(value):
-                    self.setResultText(value)
-                    self.reflowLayout()
-                    self.textView.scrollToBeginningOfDocument(nil)
-                    self.updateBusyState()
-                    self.prefetchSpeech(value, model: SpeechModelResolver.model(for: pair.target, config: self.config), kind: .result)
-                    if self.config.ui.autoCopy {
-                        NSPasteboard.general.clearContents()
-                        NSPasteboard.general.setString(value, forType: .string)
-                        self.flashCopied()
-                    }
-                case let .failure(error):
-                    self.setResultText("Error: \(error.localizedDescription)")
-                    self.reflowLayout()
-                    self.textView.scrollToBeginningOfDocument(nil)
-                    self.updateBusyState()
-                }
-            }
+            Task { @MainActor in self?.finishTextTranslation(result, generation: generation, source: text, pair: pair) }
         }
     }
 
+    private func finishImageTranslation(_ result: Result<String, Error>, generation: Int) {
+        defer { finishRequest(generation: generation) }
+        guard generation == requestGeneration, pendingImage != nil else { return }
+        invalidateCurrentRecord()
+        switch result {
+        case let .success(value):
+            setResultText(value)
+            prefetchSpeech(resultSpeechIdentity(), translationGeneration: nil)
+        case let .failure(error):
+            setResultText("Error: \(error.localizedDescription)")
+        }
+        reflowLayout()
+        textView.scrollToBeginningOfDocument(nil)
+        updateBusyState()
+    }
+
+    private func finishTextTranslation(_ result: Result<String, Error>, generation: Int, source: String, pair: (source: String, target: String)) {
+        defer { finishRequest(generation: generation) }
+        guard generation == requestGeneration, pendingImage == nil else { return }
+        switch result {
+        case let .success(value):
+            let record = TranslationRecord(
+                id: UUID(), timestamp: Date(), sourceText: source, resultText: value,
+                sourceLanguage: pair.source, targetLanguage: pair.target,
+                sourceAudioPath: nil, resultAudioPath: nil, isSaved: false
+            )
+            setResultText(value)
+            do {
+                try historyStore.append(record)
+                currentRecordID = record.id
+                attachPendingSourceSpeech(for: generation, recordID: record.id)
+                historyWindowController.reloadHistory()
+            } catch {
+                currentRecordID = nil
+                setStatus("History failed: \(error.localizedDescription)", autoClearAfter: 12)
+            }
+            prefetchSpeech(resultSpeechIdentity(recordID: currentRecordID), translationGeneration: nil)
+            if config.ui.autoCopy {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(value, forType: .string)
+                flashCopied()
+            }
+        case let .failure(error):
+            invalidateCurrentRecord()
+            setResultText("Error: \(error.localizedDescription)")
+        }
+        reflowLayout()
+        textView.scrollToBeginningOfDocument(nil)
+        updateBusyState()
+    }
+
     @objc func runLearn() {
-        guard let translator else { return }
+        guard pendingImage == nil, let translator else { return }
+        invalidateCurrentRecord()
+        invalidateSpeech(stopPlayback: true)
         let text = inputTextView.string.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else {
-            setResultText(PopoverFeedback.emptyInputHint)
-            reflowLayout()
-            updateBusyState()
-            return
-        }
-        guard text.count <= config.maxTranslateLength else {
-            setResultText(PopoverFeedback.textTooLong)
-            reflowLayout()
-            updateBusyState()
-            return
-        }
+        guard !text.isEmpty else { setResultText(PopoverFeedback.emptyInputHint); reflowLayout(); updateBusyState(); return }
+        guard text.count <= config.maxTranslateLength else { setResultText(PopoverFeedback.textTooLong); reflowLayout(); updateBusyState(); return }
         let pair = resolvedLanguagePair(for: text)
         updateLanguageSelection(for: text)
         let generation = beginRequest()
@@ -1587,90 +1739,218 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
             Task { @MainActor in
                 guard let self else { return }
                 defer { self.finishRequest(generation: generation) }
-                guard !PopoverFeedback.isStale(resultGeneration: generation, currentGeneration: self.requestGeneration) else { return }
+                guard generation == self.requestGeneration else { return }
                 switch result {
-                case let .success(value):
-                    self.setResultText(value)
-                    self.reflowLayout()
-                    self.textView.scrollToBeginningOfDocument(nil)
-                    self.updateBusyState()
-                case let .failure(error):
-                    self.setResultText("Error: \(error.localizedDescription)")
-                    self.reflowLayout()
-                    self.textView.scrollToBeginningOfDocument(nil)
-                    self.updateBusyState()
+                case let .success(value): self.setResultText(value)
+                case let .failure(error): self.setResultText("Error: \(error.localizedDescription)")
                 }
+                self.reflowLayout()
+                self.textView.scrollToBeginningOfDocument(nil)
+                self.updateBusyState()
             }
         }
     }
 
-    private func playAudio(data: Data) {
-        do {
-            audioPlayer = try AVAudioPlayer(data: data)
-            audioPlayer?.prepareToPlay()
-            audioPlayer?.play()
-        } catch {
-            setStatus("Speak failed: \(error.localizedDescription)")
+    private func prefetchSpeech(_ identity: SpeechIdentity?, translationGeneration: Int?) {
+        guard config.autoPrefetchSpeech, let identity, let translator else { return }
+        if let data = speechCache[identity] {
+            acceptPrefetchedSpeech(data, identity: identity, translationGeneration: translationGeneration)
+            return
         }
-    }
-
-    private func prefetchSpeech(_ text: String, model: String, kind: SpeechKind) {
-        guard let translator else { return }
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        let speechModel = model.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, !speechModel.isEmpty else { return }
-        if let cached = prefetchedSpeech[kind], cached.text == trimmed, cached.model == speechModel { return }
-        let generation = requestGeneration
-        setSpeaking(true, for: kind)
-        translator.speak(trimmed, model: speechModel) { [weak self] result in
+        guard !prefetchingSpeech.contains(identity) else { return }
+        let generation = prefetchGeneration
+        prefetchingSpeech.insert(identity)
+        updateSpeakButtons()
+        translator.speak(identity.text, model: identity.model) { [weak self] result in
             Task { @MainActor in
                 guard let self else { return }
-                defer { self.setSpeaking(false, for: kind) }
-                guard !PopoverFeedback.isStale(resultGeneration: generation, currentGeneration: self.requestGeneration) else { return }
-                guard case let .success(audioData) = result else { return }
-                self.prefetchedSpeech[kind] = PrefetchedSpeech(text: trimmed, model: speechModel, data: audioData)
+                self.prefetchingSpeech.remove(identity)
+                self.updateSpeakButtons()
+                guard generation == self.prefetchGeneration, case let .success(data) = result,
+                      SpeechAudioPolicy.isValid(data)
+                else { return }
+                self.speechCache[identity] = data
+                self.acceptPrefetchedSpeech(data, identity: identity, translationGeneration: translationGeneration)
             }
         }
     }
 
-    private func playSpeech(_ text: String, model: String, kind: SpeechKind) {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        let speechModel = model.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-        guard !speechModel.isEmpty else {
-            setStatus("Speak failed: Empty speech model")
-            return
+    private func acceptPrefetchedSpeech(_ data: Data, identity: SpeechIdentity, translationGeneration: Int?) {
+        if identity.kind == .source, let translationGeneration {
+            if let recordedIdentity = PopoverIntegrationPolicy.recordedSpeechIdentity(
+                identity, translationGeneration: translationGeneration,
+                currentGeneration: requestGeneration, recordID: currentRecordID
+            ) {
+                speechCache[recordedIdentity] = data
+                attachAudio(data, identity: recordedIdentity)
+            } else {
+                pendingSourceSpeech[translationGeneration] = PendingSourceSpeech(identity: identity, data: data)
+            }
+        } else {
+            attachAudio(data, identity: identity)
         }
-        if let cached = prefetchedSpeech[kind], cached.text == trimmed, cached.model == speechModel {
-            playAudio(data: cached.data)
-            return
+    }
+
+    private func playSpeech(_ identity: SpeechIdentity?) {
+        guard let identity,
+              !prefetchingSpeech.contains(where: { speechMatches($0, identity) })
+        else { return }
+        switch speechState.action(for: identity) {
+        case .pause:
+            audioPlayer?.pause()
+            _ = speechState.pause(identity)
+            updateSpeakButtons()
+        case .resume:
+            guard audioPlayer?.play() == true else { resetSpeechPlayback(); return }
+            _ = speechState.resume(identity)
+            updateSpeakButtons()
+        case .loading: break
+        case .play:
+            stopCurrentSpeech()
+            if let data = speechCache[identity] { startPlayback(data, identity: identity) }
+            else { loadAndPlaySpeech(identity) }
         }
+    }
+
+    private func loadAndPlaySpeech(_ identity: SpeechIdentity) {
         guard let translator else { return }
-        let generation = requestGeneration
-        setSpeaking(true, for: kind)
-        translator.speak(trimmed, model: speechModel) { [weak self] result in
+        let generation = speechState.beginLoading(identity)
+        updateSpeakButtons()
+        translator.speak(identity.text, model: identity.model) { [weak self] result in
             Task { @MainActor in
-                guard let self else { return }
-                defer { self.setSpeaking(false, for: kind) }
-                guard !PopoverFeedback.isStale(resultGeneration: generation, currentGeneration: self.requestGeneration) else { return }
+                guard let self, self.speechState.accepts(generation: generation, identity: identity) else { return }
                 switch result {
-                case let .success(audioData):
-                    self.prefetchedSpeech[kind] = PrefetchedSpeech(text: trimmed, model: speechModel, data: audioData)
-                    self.playAudio(data: audioData)
+                case let .success(data):
+                    guard SpeechAudioPolicy.isValid(data),
+                          self.startPlayback(data, identity: identity, loadingGeneration: generation)
+                    else {
+                        _ = self.speechState.finishLoading(generation: generation, identity: identity)
+                        self.setStatus("Speak failed: Invalid audio response")
+                        self.updateSpeakButtons()
+                        return
+                    }
+                    self.speechCache[identity] = data
+                    self.attachAudio(data, identity: identity)
                 case let .failure(error):
+                    _ = self.speechState.finishLoading(generation: generation, identity: identity)
                     self.setStatus("Speak failed: \(error.localizedDescription)")
+                    self.updateSpeakButtons()
                 }
             }
         }
     }
 
-    @objc func speakInput() {
-        playSpeech(inputTextView.string, model: sourceSpeechModel(for: inputTextView.string), kind: .source)
+    @discardableResult
+    private func startPlayback(_ data: Data, identity: SpeechIdentity, loadingGeneration: Int? = nil) -> Bool {
+        do {
+            let player = try AVAudioPlayer(data: data)
+            player.delegate = self
+            player.prepareToPlay()
+            guard player.play() else { throw NSError(domain: "Speech", code: 2, userInfo: [NSLocalizedDescriptionKey: "Audio could not be played"]) }
+            audioPlayer = player
+            if let loadingGeneration {
+                guard speechState.markPlaying(generation: loadingGeneration, identity: identity) else { player.stop(); return false }
+            } else {
+                speechState.beginPlaying(identity)
+            }
+            updateSpeakButtons()
+            return true
+        } catch {
+            resetSpeechPlayback()
+            setStatus("Speak failed: \(error.localizedDescription)")
+            return false
+        }
     }
 
-    @objc func speakResult() {
-        let target = resolvedLanguagePair(for: inputTextView.string).target
-        playSpeech(textView.string, model: SpeechModelResolver.model(for: target, config: config), kind: .result)
+    private func stopCurrentSpeech() {
+        audioPlayer?.stop()
+        audioPlayer = nil
+        speechState.reset()
+    }
+
+    private func resetSpeechPlayback() {
+        audioPlayer = nil
+        speechState.reset()
+        updateSpeakButtons()
+    }
+
+    private func invalidateSpeech(stopPlayback: Bool) {
+        prefetchGeneration += 1
+        prefetchingSpeech.removeAll()
+        pendingSourceSpeech.removeAll()
+        speechState.invalidateRequests()
+        if stopPlayback { stopCurrentSpeech() }
+        updateSpeakButtons()
+    }
+
+    private func attachPendingSourceSpeech(for generation: Int, recordID: UUID) {
+        guard let pending = pendingSourceSpeech.removeValue(forKey: generation) else { return }
+        let identity = SpeechIdentity(kind: .source, text: pending.identity.text, model: pending.identity.model, recordID: recordID)
+        speechCache[identity] = pending.data
+        attachAudio(pending.data, identity: identity)
+    }
+
+    private func attachAudio(_ data: Data, identity: SpeechIdentity) {
+        guard PopoverIntegrationPolicy.canAttachAudio(identity: identity, currentRecordID: currentRecordID),
+              let recordID = identity.recordID,
+              let record = historyStore.records.first(where: { $0.id == recordID }),
+              identity.kind == .source ? record.sourceAudioPath == nil : record.resultAudioPath == nil
+        else { return }
+        do {
+            try historyStore.attachAudio(data, kind: identity.kind == .source ? .source : .result, recordID: recordID)
+            historyWindowController.reloadHistory()
+        } catch {
+            setStatus("History audio failed: \(error.localizedDescription)", autoClearAfter: 12)
+        }
+    }
+
+    func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
+        guard player === audioPlayer else { return }
+        resetSpeechPlayback()
+    }
+
+    func audioPlayerDecodeErrorDidOccur(_ player: AVAudioPlayer, error: Error?) {
+        guard player === audioPlayer else { return }
+        resetSpeechPlayback()
+        if let error { setStatus("Speak failed: \(error.localizedDescription)") }
+    }
+
+    @objc func speakInput() { playSpeech(sourceSpeechIdentity()) }
+    @objc func speakResult() { playSpeech(resultSpeechIdentity()) }
+
+    private func invalidateCurrentRecord() {
+        currentRecordID = nil
+        updateSaveWordButton()
+    }
+
+    private func updateSaveWordButton() {
+        let record = currentRecordID.flatMap { id in historyStore.records.first { $0.id == id } }
+        let canSave = record.map {
+            PopoverIntegrationPolicy.canSave(
+                recordID: currentRecordID,
+                sourceText: $0.sourceText,
+                currentSourceText: inputTextView.string.trimmingCharacters(in: .whitespacesAndNewlines),
+                resultText: $0.resultText,
+                currentResultText: textView.string.trimmingCharacters(in: .whitespacesAndNewlines)
+            )
+        } ?? false
+        let saved = record?.isSaved == true
+        let label = saved ? "Remove Saved Word" : "Save Word"
+        saveWordButton.image = NSImage(systemSymbolName: saved ? "bookmark.fill" : "bookmark", accessibilityDescription: label)
+        saveWordButton.toolTip = label
+        saveWordButton.setAccessibilityLabel(label)
+        saveWordButton.isEnabled = canSave && historyStore.loadError == nil && !isRequestInFlight
+    }
+
+    @objc private func toggleSaveWord() {
+        guard let recordID = currentRecordID, let record = historyStore.records.first(where: { $0.id == recordID }) else { return }
+        do {
+            try historyStore.setSaved(!record.isSaved, recordID: recordID)
+            historyWindowController.reloadHistory()
+            updateSaveWordButton()
+        } catch {
+            setStatus("Save Word failed: \(error.localizedDescription)", autoClearAfter: 12)
+        }
     }
 
     @objc func copyResult() {

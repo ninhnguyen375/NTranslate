@@ -96,6 +96,48 @@ struct TranslateTests {
         #expect(config.ui.simulateCopy == false)
     }
 
+    @Test func appConfigDefaultsIssueFields() {
+        #expect(AppConfig.default.sentenceLearnPrompt == AppConfig.defaultSentenceLearnPrompt)
+        #expect(!AppConfig.default.autoPrefetchSpeech)
+    }
+
+    @Test func appConfigDecodeDefaultsIssueFieldsWhenMissing() throws {
+        let data = try JSONEncoder().encode(AppConfig.default)
+        var object = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        object.removeValue(forKey: "sentenceLearnPrompt")
+        object.removeValue(forKey: "autoPrefetchSpeech")
+        let decoded = try JSONDecoder().decode(
+            AppConfig.self,
+            from: JSONSerialization.data(withJSONObject: object)
+        )
+        #expect(decoded.sentenceLearnPrompt == AppConfig.defaultSentenceLearnPrompt)
+        #expect(!decoded.autoPrefetchSpeech)
+    }
+
+    @Test func appConfigDecodeKeepsExplicitIssueFields() throws {
+        let data = try JSONEncoder().encode(AppConfig.default)
+        var object = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        object["sentenceLearnPrompt"] = "custom sentence prompt"
+        object["autoPrefetchSpeech"] = true
+        let decoded = try JSONDecoder().decode(
+            AppConfig.self,
+            from: JSONSerialization.data(withJSONObject: object)
+        )
+        #expect(decoded.sentenceLearnPrompt == "custom sentence prompt")
+        #expect(decoded.autoPrefetchSpeech)
+    }
+
+    @Test func learnPromptRoutesByWhitespace() {
+        var config = AppConfig.default
+        config.learnPrompt = "WORD {{config.sourceLang}} {{config.targetLang}}"
+        config.sentenceLearnPrompt = "SENTENCE {{config.sourceLang}} {{config.targetLang}}"
+
+        #expect(Translator.renderLearnPrompt(for: "can't", sourceLang: "English", targetLang: "Vietnamese", config: config) == "WORD English Vietnamese")
+        #expect(Translator.renderLearnPrompt(for: "state-of-the-art", sourceLang: "English", targetLang: "Vietnamese", config: config) == "WORD English Vietnamese")
+        #expect(Translator.renderLearnPrompt(for: "hello world", sourceLang: "English", targetLang: "Vietnamese", config: config) == "SENTENCE English Vietnamese")
+        #expect(Translator.renderLearnPrompt(for: "hello\nworld", sourceLang: "English", targetLang: "Vietnamese", config: config) == "SENTENCE English Vietnamese")
+    }
+
     @Test func languageDetectorUsesConfiguredNativeLangFallback() {
         let pair = LanguageDetector.resolvedPair(
             selectedSource: "Auto detect",
@@ -342,6 +384,260 @@ struct TranslateTests {
     @Test func selectionReadFailureIncludesAttributeAndTypes() {
         let error = SelectionReadFailure.unexpectedValue(attribute: "AXFocusedUIElement", expected: "AXUIElement", actual: "String")
         #expect(error.description == "Accessibility read failed at AXFocusedUIElement: expected AXUIElement, got String")
+    }
+
+    @Test func clipboardImageWinsOverTextAndTextFallbackIsTrimmed() throws {
+        let pasteboard = NSPasteboard(name: .init("NTranslateTests.clipboardPriority"))
+        let item = NSPasteboardItem()
+        item.setData(try testPNG(), forType: .png)
+        item.setString("  fallback text  ", forType: .string)
+        pasteboard.clearContents()
+        pasteboard.writeObjects([item])
+
+        guard case let .image(image) = try SelectionReader.translatableInput(from: pasteboard) else {
+            Issue.record("Expected image input")
+            return
+        }
+        #expect(image.starts(with: [0x89, 0x50, 0x4E, 0x47]))
+
+        pasteboard.clearContents()
+        pasteboard.setString("  fallback text\n", forType: .string)
+        #expect(try SelectionReader.translatableInput(from: pasteboard) == .text("fallback text"))
+    }
+
+    @Test func clipboardTriesEveryAdvertisedRasterBeforeFailing() throws {
+        let pasteboard = NSPasteboard(name: .init("NTranslateTests.clipboardRasterFallback"))
+        let item = NSPasteboardItem()
+        item.setData(Data("invalid png".utf8), forType: .png)
+        item.setData(try testTIFF(), forType: .tiff)
+        item.setString("text must not win", forType: .string)
+        pasteboard.clearContents()
+        pasteboard.writeObjects([item])
+
+        guard case let .image(image) = try SelectionReader.translatableInput(from: pasteboard) else {
+            Issue.record("Expected TIFF fallback image")
+            return
+        }
+        #expect(image.starts(with: [0x89, 0x50, 0x4E, 0x47]))
+    }
+
+    @Test func normalizedPNGHasSignatureAndEnforcesEncodedLimit() throws {
+        let source = try testPNG()
+        let normalized = try SelectionReader.normalizedPNG(from: source)
+        #expect(normalized.starts(with: [0x89, 0x50, 0x4E, 0x47]))
+
+        let limit = 8
+        #expect(try SelectionReader.normalizedPNG(from: source, maximumBytes: limit) { _ in Data(count: limit) }.count == limit)
+        #expect(throws: ImageInputError.self) {
+            try SelectionReader.normalizedPNG(from: source, maximumBytes: limit) { _ in Data(count: limit + 1) }
+        }
+        #expect(throws: ImageInputError.self) {
+            try SelectionReader.normalizedPNG(from: source) { _ in nil }
+        }
+    }
+
+    @Test func decodedImageSizeLimitIsOverflowSafe() {
+        #expect(SelectionReader.decodedRasterByteCount(width: 5_000, height: 5_000) == 100_000_000)
+        #expect(SelectionReader.decodedRasterByteCount(width: UInt64.max, height: 2) == nil)
+        #expect(SelectionReader.isDecodedRasterWithinLimit(width: 5_120, height: 5_120))
+        #expect(!SelectionReader.isDecodedRasterWithinLimit(width: 5_121, height: 5_120))
+        #expect(!SelectionReader.isDecodedRasterWithinLimit(width: UInt64.max, height: UInt64.max))
+    }
+
+    @Test func simulatedCopyRestoresClipboardAfterSuccessfulAndFailedParsing() throws {
+        let pasteboard = NSPasteboard(name: .init("NTranslateTests.clipboardRestore"))
+        pasteboard.clearContents()
+        pasteboard.setString("original", forType: .string)
+
+        let input = try SelectionReader.simulatedCopyInput(from: pasteboard) { _ in
+            pasteboard.clearContents()
+            pasteboard.setString(" copied ", forType: .string)
+            return true
+        }
+        #expect(input == .text("copied"))
+        #expect(pasteboard.string(forType: .string) == "original")
+
+        #expect(try SelectionReader.simulatedCopyInput(from: pasteboard) { _ in false } == nil)
+        #expect(pasteboard.string(forType: .string) == "original")
+
+        #expect(throws: ImageInputError.self) {
+            try SelectionReader.simulatedCopyInput(from: pasteboard) { _ in
+                pasteboard.clearContents()
+                pasteboard.setData(Data("invalid".utf8), forType: .png)
+                return true
+            }
+        }
+        #expect(pasteboard.string(forType: .string) == "original")
+    }
+
+    @Test func translatorTextPayloadKeepsStringContent() throws {
+        let data = try Translator.requestPayload(model: "model", systemPrompt: "system", userContent: "<selected-text>hello</selected-text>")
+        let json = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let messages = try #require(json["messages"] as? [[String: Any]])
+        #expect(messages[1]["content"] as? String == "<selected-text>hello</selected-text>")
+    }
+
+    @Test func translatorImagePayloadUsesOrderedTextAndImageParts() throws {
+        var config = AppConfig.default
+        config.sourceLang = "English"
+        config.systemPrompt = "Translate from {{config.sourceLang}} to {{config.targetLang}}."
+        let data = try Translator.imageRequestPayload(
+            pngData: Data([0x00, 0xFF]),
+            targetLang: "Vietnamese",
+            systemPrompt: Translator.imageSystemPrompt(targetLang: "Vietnamese", config: config),
+            model: "model"
+        )
+        let json = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let messages = try #require(json["messages"] as? [[String: Any]])
+        #expect(messages[0]["role"] as? String == "system")
+        #expect(messages[0]["content"] as? String == "Translate from Auto detect to Vietnamese.")
+        let content = try #require(messages[1]["content"] as? [[String: Any]])
+        #expect(content.count == 2)
+        #expect(content[0]["type"] as? String == "text")
+        #expect(content[0]["text"] as? String == "Translate all readable text in this image into Vietnamese. Return only the translation.")
+        #expect(content[1]["type"] as? String == "image_url")
+        let imageURL = try #require(content[1]["image_url"] as? [String: Any])
+        #expect(imageURL["url"] as? String == "data:image/png;base64,AP8=")
+        #expect(imageURL["detail"] == nil)
+    }
+
+    @Test func translatorResponseContentTrimsValidContentAndRejectsInvalidContent() throws {
+        let valid = try JSONSerialization.data(withJSONObject: [
+            "choices": [["message": ["content": "  xin chào \n"]]]
+        ])
+        #expect(try Translator.responseContent(from: valid) == "xin chào")
+
+        let empty = try JSONSerialization.data(withJSONObject: [
+            "choices": [["message": ["content": " \n"]]]
+        ])
+        #expect(throws: Translator.ResponseError.self) { try Translator.responseContent(from: empty) }
+        #expect(throws: Translator.ResponseError.self) { try Translator.responseContent(from: Data("{}".utf8)) }
+        #expect(throws: Translator.ResponseError.self) { try Translator.responseContent(from: Data("invalid".utf8)) }
+    }
+
+    private func testPNG() throws -> Data {
+        let bitmap = try #require(NSBitmapImageRep(
+            bitmapDataPlanes: nil,
+            pixelsWide: 1,
+            pixelsHigh: 1,
+            bitsPerSample: 8,
+            samplesPerPixel: 4,
+            hasAlpha: true,
+            isPlanar: false,
+            colorSpaceName: .deviceRGB,
+            bytesPerRow: 0,
+            bitsPerPixel: 0
+        ))
+        bitmap.setColor(.systemRed, atX: 0, y: 0)
+        return try #require(bitmap.representation(using: .png, properties: [:]))
+    }
+
+    private func testTIFF() throws -> Data {
+        try #require(NSBitmapImageRep(data: testPNG())?.tiffRepresentation)
+    }
+
+    @Test func popoverIntegrationPolicyDisablesImageOnlyControls() {
+        #expect(!PopoverIntegrationPolicy.sourceControlsEnabled(hasPendingImage: true))
+        #expect(PopoverIntegrationPolicy.sourceControlsEnabled(hasPendingImage: false))
+    }
+
+    @Test func popoverIntegrationPolicyRequiresUnchangedCurrentRecord() {
+        let id = UUID()
+        #expect(PopoverIntegrationPolicy.canSave(recordID: id, sourceText: "hello", currentSourceText: "hello", resultText: "xin chào", currentResultText: "xin chào"))
+        #expect(!PopoverIntegrationPolicy.canSave(recordID: id, sourceText: "hello", currentSourceText: "changed", resultText: "xin chào", currentResultText: "xin chào"))
+        #expect(!PopoverIntegrationPolicy.canSave(recordID: nil, sourceText: "hello", currentSourceText: "hello", resultText: "xin chào", currentResultText: "xin chào"))
+    }
+
+    @Test func popoverIntegrationPolicyPrefetchesOnlyValidTextRequests() {
+        #expect(PopoverIntegrationPolicy.shouldPrefetchSource(enabled: true, hasPendingImage: false, text: " hello "))
+        #expect(!PopoverIntegrationPolicy.shouldPrefetchSource(enabled: false, hasPendingImage: false, text: "hello"))
+        #expect(!PopoverIntegrationPolicy.shouldPrefetchSource(enabled: true, hasPendingImage: true, text: "hello"))
+        #expect(!PopoverIntegrationPolicy.shouldPrefetchSource(enabled: true, hasPendingImage: false, text: "  "))
+    }
+
+    @Test func popoverAsyncPoliciesRejectInvalidatedRequestsAndStalePrefetches() {
+        var generation = AsyncGeneration()
+        let request = generation.advance()
+        #expect(generation.accepts(request))
+        generation.invalidate()
+        #expect(!generation.accepts(request))
+        #expect(!PopoverIntegrationPolicy.acceptsPrefetch(translationGeneration: request, currentGeneration: generation.current))
+    }
+
+    @Test func popoverAsyncPolicyAttachesAudioToExactRecordIdentity() {
+        let first = UUID()
+        let second = UUID()
+        let identity = SpeechIdentity(kind: .source, text: "hello", model: "tts")
+        #expect(PopoverIntegrationPolicy.recordedSpeechIdentity(identity, translationGeneration: 7, currentGeneration: 7, recordID: first)?.recordID == first)
+        #expect(PopoverIntegrationPolicy.recordedSpeechIdentity(identity, translationGeneration: 6, currentGeneration: 7, recordID: first) == nil)
+        #expect(PopoverIntegrationPolicy.canAttachAudio(identity: SpeechIdentity(kind: .source, text: "hello", model: "tts", recordID: first), currentRecordID: second) == false)
+    }
+
+    @Test func invalidSuccessfulSpeechResponseIsNotCacheable() {
+        #expect(!SpeechAudioPolicy.isValid(Data("not audio".utf8)))
+        #expect(SpeechAudioPolicy.isValid(Data([1])) { _ in })
+        #expect(!SpeechAudioPolicy.isValid(Data([1])) { _ in throw CocoaError(.fileReadCorruptFile) })
+    }
+
+    @Test func speechPlaybackStateTransitions() {
+        let source = SpeechIdentity(kind: .source, text: "hello", model: "tts-1")
+        var state = SpeechPlaybackState()
+
+        #expect(state.action(for: source) == .play)
+        let generation = state.beginLoading(source)
+        #expect(state.action(for: source) == .loading)
+        #expect(state.action(for: SpeechIdentity(kind: .result, text: "other", model: "tts-1")) == .play)
+        #expect(state.accepts(generation: generation, identity: source))
+        let markedPlaying = state.markPlaying(generation: generation, identity: source)
+        #expect(markedPlaying)
+        #expect(state.action(for: source) == .pause)
+        let paused = state.pause(source)
+        #expect(paused)
+        #expect(state.action(for: source) == .resume)
+        let resumed = state.resume(source)
+        #expect(resumed)
+        #expect(state.action(for: source) == .pause)
+
+        state.invalidateRequests()
+        let markedPlayingAfterInvalidate = state.markPlaying(generation: generation, identity: source)
+        #expect(!markedPlayingAfterInvalidate)
+        state.reset()
+        #expect(state.action(for: source) == .play)
+    }
+
+    @Test func speechPlaybackStateKeepsPlaybackIdentity() {
+        let source = SpeechIdentity(kind: .source, text: "hello", model: "tts-1")
+        let result = SpeechIdentity(kind: .result, text: "xin chào", model: "tts-2", recordID: UUID())
+        var state = SpeechPlaybackState()
+
+        state.beginPlaying(source)
+        #expect(state.action(for: source) == .pause)
+        #expect(state.action(for: result) == .play)
+        let pausedWrongIdentity = state.pause(result)
+        #expect(!pausedWrongIdentity)
+        let resumedWhilePlaying = state.resume(source)
+        #expect(!resumedWhilePlaying)
+
+        state.beginPlaying(result)
+        #expect(state.action(for: source) == .play)
+        #expect(state.action(for: result) == .pause)
+    }
+
+    @Test func speechPlaybackStateRejectsStaleLoadingCompletion() {
+        let old = SpeechIdentity(kind: .result, text: "same", model: "tts", recordID: UUID(uuidString: "00000000-0000-0000-0000-000000000001"))
+        let current = SpeechIdentity(kind: .result, text: "same", model: "tts", recordID: UUID(uuidString: "00000000-0000-0000-0000-000000000002"))
+        var state = SpeechPlaybackState()
+
+        let oldGeneration = state.beginLoading(old)
+        let currentGeneration = state.beginLoading(current)
+        #expect(!state.accepts(generation: oldGeneration, identity: old))
+        let finishedStaleLoading = state.finishLoading(generation: oldGeneration, identity: old)
+        #expect(!finishedStaleLoading)
+        #expect(state.action(for: old) == .play)
+        #expect(state.action(for: current) == .loading)
+        let finishedCurrentLoading = state.finishLoading(generation: currentGeneration, identity: current)
+        #expect(finishedCurrentLoading)
+        #expect(state.action(for: current) == .play)
     }
 
     @Test func speechModelResolverUsesTargetLanguage() {

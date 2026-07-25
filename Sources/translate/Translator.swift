@@ -4,6 +4,11 @@ final class Translator {
     let config: AppConfig
     let apiKey: String
 
+    enum ResponseError: Error {
+        case invalidSchema
+        case emptyContent
+    }
+
     private enum RequestMode {
         case translate(sourceLang: String, targetLang: String)
         case learn(sourceLang: String, targetLang: String)
@@ -27,8 +32,11 @@ final class Translator {
             .replacingOccurrences(of: "{{config.nativeLang}}", with: config.resolvedNativeLang)
     }
 
-    private func renderLearnPrompt(sourceLang: String, targetLang: String) -> String {
-        config.learnPrompt
+    static func renderLearnPrompt(for text: String, sourceLang: String, targetLang: String, config: AppConfig) -> String {
+        let template = text.split(whereSeparator: { $0.isWhitespace }).count == 1
+            ? config.learnPrompt
+            : config.sentenceLearnPrompt
+        return template
             .replacingOccurrences(of: "{{config.sourceLang}}", with: sourceLang)
             .replacingOccurrences(of: "{{config.targetLang}}", with: targetLang)
     }
@@ -50,16 +58,23 @@ final class Translator {
         case let .translate(sourceLang, targetLang):
             systemPrompt = renderSystemPrompt(sourceLang: sourceLang, targetLang: targetLang)
         case let .learn(sourceLang, targetLang):
-            systemPrompt = renderLearnPrompt(sourceLang: sourceLang, targetLang: targetLang)
+            systemPrompt = Self.renderLearnPrompt(
+                for: text,
+                sourceLang: sourceLang,
+                targetLang: targetLang,
+                config: config
+            )
         }
-        req.httpBody = try? JSONSerialization.data(withJSONObject: [
-            "model": config.model,
-            "stream": false,
-            "messages": [
-                ["role": "system", "content": systemPrompt],
-                ["role": "user", "content": wrappedText]
-            ]
-        ])
+        do {
+            req.httpBody = try Self.requestPayload(model: config.model, systemPrompt: systemPrompt, userContent: wrappedText)
+        } catch {
+            completion(.failure(error))
+            return
+        }
+        perform(req, completion: completion)
+    }
+
+    private func perform(_ req: URLRequest, completion: @escaping @Sendable (Result<String, Error>) -> Void) {
         URLSession.shared.dataTask(with: req) { data, response, error in
             if let error { completion(.failure(error)); return }
             guard let http = response as? HTTPURLResponse, let data else {
@@ -71,10 +86,48 @@ final class Translator {
                 completion(.failure(NSError(domain: "HTTP", code: http.statusCode, userInfo: [NSLocalizedDescriptionKey: body])))
                 return
             }
-            let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
-            let content = (((obj?["choices"] as? [[String: Any]])?.first?["message"] as? [String: Any])?["content"] as? String) ?? ""
-            completion(.success(content.trimmingCharacters(in: .whitespacesAndNewlines)))
+            do {
+                completion(.success(try Self.responseContent(from: data)))
+            } catch {
+                completion(.failure(error))
+            }
         }.resume()
+    }
+
+    static func requestPayload(model: String, systemPrompt: String, userContent: Any) throws -> Data {
+        try JSONSerialization.data(withJSONObject: [
+            "model": model,
+            "stream": false,
+            "messages": [
+                ["role": "system", "content": systemPrompt],
+                ["role": "user", "content": userContent]
+            ]
+        ])
+    }
+
+    static func imageSystemPrompt(targetLang: String, config: AppConfig) -> String {
+        config.systemPrompt
+            .replacingOccurrences(of: "{{config.sourceLang}}", with: LanguageDetector.autoDetect)
+            .replacingOccurrences(of: "{{config.targetLang}}", with: targetLang)
+    }
+
+    static func imageRequestPayload(pngData: Data, targetLang: String, systemPrompt: String, model: String) throws -> Data {
+        let instruction = "Translate all readable text in this image into \(targetLang). Return only the translation."
+        return try requestPayload(model: model, systemPrompt: systemPrompt, userContent: [
+            ["type": "text", "text": instruction],
+            ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(pngData.base64EncodedString())"]]
+        ])
+    }
+
+    static func responseContent(from data: Data) throws -> String {
+        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let choices = object["choices"] as? [[String: Any]],
+              let message = choices.first?["message"] as? [String: Any],
+              let content = message["content"] as? String
+        else { throw ResponseError.invalidSchema }
+        let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { throw ResponseError.emptyContent }
+        return trimmed
     }
 
     func translate(_ text: String, sourceLang: String, targetLang: String, completion: @escaping @Sendable (Result<String, Error>) -> Void) {
@@ -83,6 +136,29 @@ final class Translator {
 
     func learn(_ text: String, sourceLang: String, targetLang: String, completion: @escaping @Sendable (Result<String, Error>) -> Void) {
         request(text, mode: .learn(sourceLang: sourceLang, targetLang: targetLang), completion: completion)
+    }
+
+    func translateImage(_ pngData: Data, targetLang: String, completion: @escaping @Sendable (Result<String, Error>) -> Void) {
+        guard let url = URL(string: config.apiBaseURL) else {
+            completion(.failure(NSError(domain: "Config", code: 1, userInfo: [NSLocalizedDescriptionKey: "Invalid apiBaseURL"])))
+            return
+        }
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        do {
+            req.httpBody = try Self.imageRequestPayload(
+                pngData: pngData,
+                targetLang: targetLang,
+                systemPrompt: Self.imageSystemPrompt(targetLang: targetLang, config: config),
+                model: config.model
+            )
+        } catch {
+            completion(.failure(error))
+            return
+        }
+        perform(req, completion: completion)
     }
 
     func speak(_ text: String, model: String, completion: @escaping @Sendable (Result<Data, Error>) -> Void) {
