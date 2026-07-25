@@ -42,6 +42,10 @@ final class TranslationHistoryStore {
     private(set) var records: [TranslationRecord] = []
     private(set) var loadError: String?
 
+    convenience init(config: AppConfig, fileManager: FileManager = .default) {
+        self.init(directoryURL: config.historyDirectoryURL, fileManager: fileManager)
+    }
+
     convenience init(fileManager: FileManager = .default) {
         let base = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("NTranslate", isDirectory: true)

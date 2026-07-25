@@ -50,8 +50,18 @@ struct AppConfig: Codable {
     var speechSourceModelVietnamese: String
     var speechSourceModelChinese: String
     var speechTargetModel: String
+    var historyDirectory: String?
     var hotkey: Hotkey
     var ui: UI
+
+    var historyDirectoryURL: URL {
+        if let historyDirectory, !historyDirectory.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            let expanded = NSString(string: historyDirectory).expandingTildeInPath
+            return URL(fileURLWithPath: expanded).standardizedFileURL
+        }
+        return FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("NTranslate", isDirectory: true).standardizedFileURL
+    }
 
     /// Runtime config lives in Application Support.
     /// Created automatically on first launch if missing; `install-app.sh` can also seed/overwrite it.
@@ -225,6 +235,7 @@ struct AppConfig: Codable {
         speechSourceModelVietnamese: String,
         speechSourceModelChinese: String,
         speechTargetModel: String,
+        historyDirectory: String? = nil,
         hotkey: Hotkey,
         ui: UI
     ) {
@@ -247,6 +258,7 @@ struct AppConfig: Codable {
         self.speechSourceModelVietnamese = speechSourceModelVietnamese
         self.speechSourceModelChinese = speechSourceModelChinese
         self.speechTargetModel = speechTargetModel
+        self.historyDirectory = historyDirectory
         self.hotkey = hotkey
         self.ui = ui
     }
@@ -275,6 +287,7 @@ struct AppConfig: Codable {
         speechSourceModelVietnamese = try container.decode(String.self, forKey: .speechSourceModelVietnamese)
         speechSourceModelChinese = try container.decode(String.self, forKey: .speechSourceModelChinese)
         speechTargetModel = try container.decode(String.self, forKey: .speechTargetModel)
+        historyDirectory = try container.decodeIfPresent(String.self, forKey: .historyDirectory)
         hotkey = try container.decode(Hotkey.self, forKey: .hotkey)
         ui = try container.decode(UI.self, forKey: .ui)
         let legacy = try decoder.container(keyedBy: LegacySpeechKeys.self)

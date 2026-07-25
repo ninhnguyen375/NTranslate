@@ -94,6 +94,15 @@ struct TranslationHistoryStoreTests {
         #expect(try store.audioData(for: item.id, kind: .source) == nil)
     }
 
+    @Test func customHistoryDirectoryIsRespected() throws {
+        let customDir = try temporaryDirectory().appendingPathComponent("custom_history")
+        var config = AppConfig.default
+        config.historyDirectory = customDir.path
+        let store = TranslationHistoryStore(config: config)
+        #expect(store.directoryURL.path == customDir.standardizedFileURL.path)
+        #expect(store.audioDirectoryURL.path == customDir.appendingPathComponent("audio").standardizedFileURL.path)
+    }
+
     @Test func rejectsTraversalAndSymlinkEscapes() throws {
         let directory = try temporaryDirectory()
         let outside = try temporaryDirectory()
