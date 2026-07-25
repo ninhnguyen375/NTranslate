@@ -41,7 +41,8 @@ final class HistoryWindowController: NSWindowController, NSTableViewDataSource, 
         reloadHistory()
         showWindow(nil)
         window?.center()
-        NSApp.activate()
+        window?.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
         if let loadError = store.loadError { presentHistoryError(loadError) }
     }
 
