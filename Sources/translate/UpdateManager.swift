@@ -1,4 +1,5 @@
 import Foundation
+import AppKit
 
 public struct ReleaseInfo: Sendable {
     public let tag: String
@@ -74,5 +75,45 @@ public final class UpdateManager: @unchecked Sendable {
         try? FileManager.default.removeItem(at: destURL)
         try FileManager.default.moveItem(at: tempURL, to: destURL)
         return destURL
+    }
+
+    public func installUpdateAndRestart(dmgURL: URL) throws {
+        let appPid = ProcessInfo.processInfo.processIdentifier
+        let appPath = Bundle.main.bundlePath
+
+        let script = #"""
+        #!/bin/bash
+        PID=\#(appPid)
+        DMG_PATH="\#(dmgURL.path)"
+        TARGET_APP="\#(appPath)"
+
+        while kill -0 $PID 2>/dev/null; do
+            sleep 0.5
+        done
+
+        MOUNT_OUTPUT=$(hdiutil attach -nobrowse -plist "$DMG_PATH")
+        MOUNT_POINT=$(echo "$MOUNT_OUTPUT" | grep -A1 '<key>mount-point</key>' | tail -n1 | sed -e 's/.*<string>\(.*\)<\/string>.*/\1/')
+
+        if [ -n "$MOUNT_POINT" ] && [ -d "$MOUNT_POINT/NTranslate.app" ]; then
+            rm -rf "$TARGET_APP"
+            cp -R "$MOUNT_POINT/NTranslate.app" "$TARGET_APP"
+            hdiutil detach "$MOUNT_POINT" -force
+            rm -f "$DMG_PATH"
+            open "$TARGET_APP"
+        fi
+        """#
+
+        let scriptURL = FileManager.default.temporaryDirectory.appendingPathComponent("install_update.sh")
+        try script.write(to: scriptURL, atomically: true, encoding: String.Encoding.utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: scriptURL.path)
+
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/bin/bash")
+        task.arguments = [scriptURL.path]
+        try task.run()
+
+        DispatchQueue.main.async {
+            NSApp.terminate(nil)
+        }
     }
 }
