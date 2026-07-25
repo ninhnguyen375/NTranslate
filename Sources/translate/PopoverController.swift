@@ -1269,6 +1269,7 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         statusMenu.addItem(NSMenuItem.separator())
         statusMenu.addItem(withTitle: "Open Translate Panel", action: #selector(openTranslatePanelMenu), keyEquivalent: "t")
         statusMenu.addItem(withTitle: "Translation History", action: #selector(openTranslationHistory), keyEquivalent: "h")
+        statusMenu.addItem(withTitle: "Check for Updates...", action: #selector(checkForUpdatesClicked), keyEquivalent: "u")
         statusMenu.addItem(NSMenuItem.separator())
         let accessibilityItem = NSMenuItem(title: "Grant Accessibility Access", action: #selector(requestAccessibilityPermissionMenu), keyEquivalent: "")
         accessibilityItem.tag = Self.accessibilityMenuItemTag
