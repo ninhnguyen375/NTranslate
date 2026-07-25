@@ -103,6 +103,18 @@ struct TranslationHistoryStoreTests {
         #expect(store.audioDirectoryURL.path == customDir.appendingPathComponent("audio").standardizedFileURL.path)
     }
 
+    @Test func filterRecords() {
+        let r1 = TranslationRecord(id: UUID(), timestamp: Date(), sourceText: "hello world", resultText: "xin chào thế giới", sourceLanguage: "en", targetLanguage: "vi", isSaved: true)
+        let r2 = TranslationRecord(id: UUID(), timestamp: Date(), sourceText: "apple", resultText: "quả táo", sourceLanguage: "en", targetLanguage: "vi", isSaved: false)
+        let records = [r1, r2]
+
+        let filteredSaved = HistoryWindowController.filter(records: records, query: "", savedOnly: true)
+        #expect(filteredSaved.count == 1 && filteredSaved[0].id == r1.id)
+
+        let filteredQuery = HistoryWindowController.filter(records: records, query: "táo", savedOnly: false)
+        #expect(filteredQuery.count == 1 && filteredQuery[0].id == r2.id)
+    }
+
     @Test func rejectsTraversalAndSymlinkEscapes() throws {
         let directory = try temporaryDirectory()
         let outside = try temporaryDirectory()

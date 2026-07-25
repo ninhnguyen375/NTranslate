@@ -2,10 +2,23 @@ import AppKit
 import AVFoundation
 
 @MainActor
-final class HistoryWindowController: NSWindowController, NSTableViewDataSource, NSTableViewDelegate, @preconcurrency AVAudioPlayerDelegate {
+final class HistoryWindowController: NSWindowController, NSTableViewDataSource, NSTableViewDelegate, NSSearchFieldDelegate, @preconcurrency AVAudioPlayerDelegate {
     private let store: TranslationHistoryStore
     private let tableView = NSTableView()
+    private let searchField = NSSearchField()
+    private let filterSegmentedControl = NSSegmentedControl(labels: ["All history", "Saved words"], trackingMode: .selectOne, target: nil, action: nil)
+    private let clearFilterButton = NSButton(title: "Clear Filter", target: nil, action: nil)
     private var audioPlayer: AVAudioPlayer?
+    private(set) var filteredRecords: [TranslationRecord] = []
+
+    static func filter(records: [TranslationRecord], query: String, savedOnly: Bool) -> [TranslationRecord] {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return records.filter { record in
+            if savedOnly && !record.isSaved { return false }
+            if trimmed.isEmpty { return true }
+            return record.sourceText.lowercased().contains(trimmed) || record.resultText.lowercased().contains(trimmed)
+        }
+    }
 
     init(store: TranslationHistoryStore) {
         self.store = store
@@ -33,20 +46,61 @@ final class HistoryWindowController: NSWindowController, NSTableViewDataSource, 
     }
 
     func reloadHistory() {
+        updateFilteredRecords()
         tableView.reloadData()
     }
 
+    private func updateFilteredRecords() {
+        let savedOnly = filterSegmentedControl.selectedSegment == 1
+        filteredRecords = Self.filter(records: store.records, query: searchField.stringValue, savedOnly: savedOnly)
+    }
+
     func numberOfRows(in tableView: NSTableView) -> Int {
-        store.records.count
+        filteredRecords.count
     }
 
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
-        guard store.records.indices.contains(row) else { return nil }
-        return rowView(for: store.records[row])
+        guard filteredRecords.indices.contains(row) else { return nil }
+        return rowView(for: filteredRecords[row])
+    }
+
+    @objc private func filterChanged() {
+        reloadHistory()
+    }
+
+    @objc private func clearFilter() {
+        searchField.stringValue = ""
+        filterSegmentedControl.selectedSegment = 0
+        reloadHistory()
+    }
+
+    func controlTextDidChange(_ obj: Notification) {
+        if (obj.object as? NSSearchField) == searchField {
+            reloadHistory()
+        }
     }
 
     private func configureContent() {
         guard let window else { return }
+        filterSegmentedControl.selectedSegment = 0
+        filterSegmentedControl.target = self
+        filterSegmentedControl.action = #selector(filterChanged)
+
+        searchField.delegate = self
+        searchField.placeholderString = "Search history..."
+        searchField.target = self
+        searchField.action = #selector(filterChanged)
+
+        clearFilterButton.target = self
+        clearFilterButton.action = #selector(clearFilter)
+        clearFilterButton.bezelStyle = .rounded
+
+        let topBar = NSStackView(views: [searchField, filterSegmentedControl, clearFilterButton])
+        topBar.orientation = .horizontal
+        topBar.spacing = 8
+        topBar.alignment = .centerY
+        topBar.translatesAutoresizingMaskIntoConstraints = false
+
         let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("History"))
         column.resizingMask = .autoresizingMask
         tableView.addTableColumn(column)
@@ -61,7 +115,25 @@ final class HistoryWindowController: NSWindowController, NSTableViewDataSource, 
         scrollView.translatesAutoresizingMaskIntoConstraints = false
         scrollView.hasVerticalScroller = true
         scrollView.documentView = tableView
-        window.contentView = scrollView
+
+        let container = NSStackView(views: [topBar, scrollView])
+        container.orientation = .vertical
+        container.spacing = 8
+        container.alignment = .leading
+        container.translatesAutoresizingMaskIntoConstraints = false
+
+        window.contentView = container
+
+        NSLayoutConstraint.activate([
+            topBar.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 12),
+            topBar.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -12),
+            topBar.topAnchor.constraint(equalTo: container.topAnchor, constant: 12),
+            scrollView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            scrollView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            scrollView.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+            searchField.widthAnchor.constraint(greaterThanOrEqualToConstant: 200)
+        ])
+        updateFilteredRecords()
     }
 
     private func rowView(for record: TranslationRecord) -> NSView {
