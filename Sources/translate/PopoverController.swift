@@ -163,6 +163,7 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     private var sourceLanguageOptions: [String] = []
     private var targetLanguageOptions: [String] = []
     private let swapLanguagesButton = NSButton(frame: .zero)
+    private let historyButton = NSButton(frame: .zero)
     private let pinButton = NSButton(frame: .zero)
     private let closeButton = NSButton(frame: .zero)
     private let translateButton = NSButton(frame: .zero)
@@ -292,6 +293,7 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
 
         configureChromeIconButton(closeButton, symbol: "xmark", action: #selector(closePopover), label: "Close")
         configureChromeIconButton(pinButton, symbol: "pin", action: #selector(togglePin), label: "Pin")
+        configureChromeIconButton(historyButton, symbol: "clock.arrow.circlepath", action: #selector(openTranslationHistory), label: "Translation History")
         updatePinButton()
 
         configureLanguageControls()
@@ -400,6 +402,7 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
 
         chromeHost.addSubview(titleLabel)
         chromeHost.addSubview(statusLabel)
+        chromeHost.addSubview(historyButton)
         chromeHost.addSubview(pinButton)
         chromeHost.addSubview(closeButton)
         chromeHost.addSubview(splitHost)
@@ -616,8 +619,15 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
             width: chromeIcon,
             height: chromeIcon
         )
+        historyButton.frame = NSRect(
+            x: pinButton.frame.minX - 6 - chromeIcon,
+            y: closeButton.frame.minY,
+            width: chromeIcon,
+            height: chromeIcon
+        )
         applyControlCornerRadius(closeButton, radius: chromeIcon / 2)
         applyControlCornerRadius(pinButton, radius: chromeIcon / 2)
+        applyControlCornerRadius(historyButton, radius: chromeIcon / 2)
 
         splitHost.frame = NSRect(x: L.padding, y: splitY, width: contentWidth, height: splitHeight)
 
