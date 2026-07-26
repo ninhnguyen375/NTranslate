@@ -52,6 +52,18 @@ enum PopoverIntegrationPolicy {
     ) -> Bool {
         recordID != nil && sourceText == currentSourceText && resultText == currentResultText
     }
+
+    static func imageSearchURL(query: String) -> URL? {
+        var components = URLComponents()
+        components.scheme = "https"
+        components.host = "www.google.com"
+        components.path = "/search"
+        components.queryItems = [
+            URLQueryItem(name: "tbm", value: "isch"),
+            URLQueryItem(name: "q", value: query)
+        ]
+        return components.url
+    }
 }
 
 enum SpeechAudioPolicy {
@@ -169,6 +181,7 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     private let closeButton = NSButton(frame: .zero)
     private let translateButton = NSButton(frame: .zero)
     private let learnButton = NSButton(frame: .zero)
+    private let imagesButton = NSButton(frame: .zero)
     private let copyButton = NSButton(frame: .zero)
     private let saveWordButton = NSButton(frame: .zero)
     private let titleLabel = NSTextField(labelWithString: "Translate")
@@ -384,6 +397,9 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         configurePrimaryButton(learnButton, title: "Learn", symbol: "brain.head.profile", action: #selector(runLearn), accent: false)
         learnButton.toolTip = "Learn"
         learnButton.setAccessibilityLabel("Learn")
+        configurePrimaryButton(imagesButton, title: "Images", symbol: "photo", action: #selector(runImages), accent: false)
+        imagesButton.toolTip = "Search Images"
+        imagesButton.setAccessibilityLabel("Search Images")
         configureIconButton(speakSourceButton, symbol: "speaker.wave.2", action: #selector(speakInput), label: "Speak source")
         configureIconButton(speakResultButton, symbol: "speaker.wave.2", action: #selector(speakResult), label: "Speak translation")
         configureIconButton(copyButton, symbol: "doc.on.doc", action: #selector(copyResult), label: "Copy")
@@ -420,6 +436,7 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         chromeHost.addSubview(sourceLanguageButton)
         chromeHost.addSubview(swapLanguagesButton)
         chromeHost.addSubview(targetLanguageButton)
+        chromeHost.addSubview(imagesButton)
         chromeHost.addSubview(learnButton)
         chromeHost.addSubview(translateButton)
 
@@ -674,15 +691,23 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
             bodyHeight: bodyHeight
         )
 
-        // Bottom bar: Learn | Translate | spacer | EN | swap | VI
+        // Bottom bar: Images | Learn | Translate | spacer | EN | swap | VI
         translateButton.sizeToFit()
         learnButton.sizeToFit()
+        imagesButton.sizeToFit()
         let btnH = L.controlHeight
         let btnY = bottomY
         let translateW = max(92, translateButton.frame.width)
         let learnW = max(72, learnButton.frame.width)
-        learnButton.frame = NSRect(
+        let imagesW = max(72, imagesButton.frame.width)
+        imagesButton.frame = NSRect(
             x: L.padding,
+            y: btnY,
+            width: imagesW,
+            height: btnH
+        )
+        learnButton.frame = NSRect(
+            x: imagesButton.frame.maxX + 5,
             y: btnY,
             width: learnW,
             height: btnH
@@ -695,6 +720,7 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         )
         applyControlCornerRadius(translateButton)
         applyControlCornerRadius(learnButton)
+        applyControlCornerRadius(imagesButton)
 
         let dropdownWidth = L.languageWidth
         let langH = L.languageControlHeight
@@ -914,6 +940,7 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     private func updateBusyState() {
         translateButton.isEnabled = !isRequestInFlight
         learnButton.isEnabled = !isRequestInFlight && pendingImage == nil
+        imagesButton.isEnabled = !isRequestInFlight && pendingImage == nil
         swapLanguagesButton.isEnabled = !isRequestInFlight && pendingImage == nil
         sourceLanguageButton.isEnabled = !isRequestInFlight && PopoverIntegrationPolicy.sourceControlsEnabled(hasPendingImage: pendingImage != nil)
         targetLanguageButton.isEnabled = !isRequestInFlight
@@ -1850,6 +1877,37 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         reflowLayout()
         textView.scrollToBeginningOfDocument(nil)
         updateBusyState()
+    }
+
+    @objc func runImages() {
+        guard pendingImage == nil, let translator else { return }
+        invalidateCurrentRecord()
+        invalidateSpeech(stopPlayback: true)
+        let text = inputTextView.string.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { setResultText(PopoverFeedback.emptyInputHint); reflowLayout(); updateBusyState(); return }
+        guard text.count <= config.maxTranslateLength else { setResultText(PopoverFeedback.textTooLong); reflowLayout(); updateBusyState(); return }
+        let generation = beginRequest()
+        setResultText("Generating search query...")
+        reflowLayout()
+        translator.imageSearchQuery(text) { [weak self] result in
+            Task { @MainActor in
+                guard let self else { return }
+                defer { self.finishRequest(generation: generation) }
+                guard generation == self.requestGeneration else { return }
+                switch result {
+                case let .success(query):
+                    let searchURL = PopoverIntegrationPolicy.imageSearchURL(query: query) ?? PopoverIntegrationPolicy.imageSearchURL(query: text)
+                    if let url = searchURL { NSWorkspace.shared.open(url) }
+                    self.setResultText(query)
+                    self.setStatus("Opened Google Images")
+                case .failure:
+                    if let url = PopoverIntegrationPolicy.imageSearchURL(query: text) { NSWorkspace.shared.open(url) }
+                    self.setStatus("Image query failed; searched source text")
+                }
+                self.reflowLayout()
+                self.updateBusyState()
+            }
+        }
     }
 
     @objc func runLearn() {

@@ -12,6 +12,7 @@ final class Translator {
     private enum RequestMode {
         case translate(sourceLang: String, targetLang: String)
         case learn(sourceLang: String, targetLang: String)
+        case imageSearch
     }
 
     init(config: AppConfig, apiKey: String) {
@@ -41,6 +42,8 @@ final class Translator {
             .replacingOccurrences(of: "{{config.targetLang}}", with: targetLang)
     }
 
+    static let imageSearchPrompt = "Return only a short, concrete English query for Google Images. No quotes, no markdown, no filler."
+
     private func request(_ text: String, mode: RequestMode, completion: @escaping @Sendable (Result<String, Error>) -> Void) {
         guard let url = URL(string: config.apiBaseURL) else {
             completion(.failure(NSError(domain: "Config", code: 1, userInfo: [NSLocalizedDescriptionKey: "Invalid apiBaseURL"])))
@@ -57,6 +60,8 @@ final class Translator {
             systemPrompt = renderGrammarPrompt(lang: targetLang)
         case let .translate(sourceLang, targetLang):
             systemPrompt = renderSystemPrompt(sourceLang: sourceLang, targetLang: targetLang)
+        case .imageSearch:
+            systemPrompt = Self.imageSearchPrompt
         case let .learn(sourceLang, targetLang):
             systemPrompt = Self.renderLearnPrompt(
                 for: text,
@@ -136,6 +141,10 @@ final class Translator {
 
     func learn(_ text: String, sourceLang: String, targetLang: String, completion: @escaping @Sendable (Result<String, Error>) -> Void) {
         request(text, mode: .learn(sourceLang: sourceLang, targetLang: targetLang), completion: completion)
+    }
+
+    func imageSearchQuery(_ text: String, completion: @escaping @Sendable (Result<String, Error>) -> Void) {
+        request(text, mode: .imageSearch, completion: completion)
     }
 
     func translateImage(_ pngData: Data, targetLang: String, completion: @escaping @Sendable (Result<String, Error>) -> Void) {

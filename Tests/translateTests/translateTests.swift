@@ -3,6 +3,19 @@ import Testing
 @testable import translate
 
 struct TranslateTests {
+    @Test func imageSearchURLPreservesUnicodeAndGoogleImagesMode() throws {
+        let url = try #require(PopoverIntegrationPolicy.imageSearchURL(query: "thiên hà xoắn ốc NASA"))
+        let components = try #require(URLComponents(url: url, resolvingAgainstBaseURL: false))
+        #expect(components.host == "www.google.com")
+        #expect(components.queryItems?.first(where: { $0.name == "tbm" })?.value == "isch")
+        #expect(components.queryItems?.first(where: { $0.name == "q" })?.value == "thiên hà xoắn ốc NASA")
+    }
+
+    @Test func imageSearchPromptRequestsOnlyConcreteQuery() {
+        #expect(Translator.imageSearchPrompt.contains("Return only"))
+        #expect(Translator.imageSearchPrompt.localizedCaseInsensitiveContains("concrete"))
+    }
+
     @Test func plainDisplayPreservesReadableText() {
         let rendered = NSAttributedString.plainDisplay("**Bold** and *italic*", font: .systemFont(ofSize: 13))
         #expect(rendered.string == "**Bold** and *italic*")
