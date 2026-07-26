@@ -216,7 +216,7 @@ struct TranslationHistoryStoreTests {
         let directory = try temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
         let store = TranslationHistoryStore(directoryURL: directory)
-        try store.append(record())
+        try store.append(record(timestamp: Date()))
 
         let controller = HistoryWindowController(store: store)
         controller.reloadHistory()
@@ -279,5 +279,20 @@ struct TranslationHistoryStoreTests {
         let filtered = HistoryWindowController.filter(records: [recent, old], query: "galaxy", savedOnly: true, timeRange: .week, now: now)
 
         #expect(filtered.map(\.id) == [recent.id])
+    }
+
+    @Test func openRecordCallbackUsesDoubleClickedRecord() throws {
+        let directory = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = TranslationHistoryStore(directoryURL: directory)
+        let item = record(timestamp: Date())
+        try store.append(item)
+        var opened: UUID?
+        let controller = HistoryWindowController(store: store) { opened = $0.id }
+
+        controller.reloadHistory()
+        controller.openRecord(at: 0)
+
+        #expect(opened == item.id)
     }
 }

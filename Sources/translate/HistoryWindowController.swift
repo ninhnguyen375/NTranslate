@@ -1,7 +1,10 @@
+import AppKit
+import AVFoundation
+
 enum HistoryTimeRange: CaseIterable {
     case today, hours24, week, month
 
-    func cutoff(now: Date, calendar: Calendar = .current) -> Date {
+    func cutoff(from now: Date, calendar: Calendar = .current) -> Date {
         switch self {
         case .today: return calendar.startOfDay(for: now)
         case .hours24: return now.addingTimeInterval(-86_400)
@@ -10,16 +13,17 @@ enum HistoryTimeRange: CaseIterable {
         }
     }
 }
-import AppKit
-import AVFoundation
 
 @MainActor
 final class HistoryWindowController: NSWindowController, NSTableViewDataSource, NSTableViewDelegate, NSSearchFieldDelegate, @preconcurrency AVAudioPlayerDelegate {
     private let store: TranslationHistoryStore
+    private let onOpenRecord: ((TranslationRecord) -> Void)?
     private let tableView = NSTableView()
     private let searchField = NSSearchField()
-    private let filterSegmentedControl = NSSegmentedControl(labels: ["All history", "Saved words"], trackingMode: .selectOne, target: nil, action: nil)
-    private let clearFilterButton = NSButton(title: "Clear Filter", target: nil, action: nil)
+    private let filterSegmentedControl = NSSegmentedControl(labels: ["History", "Saved Words"], trackingMode: .selectOne, target: nil, action: nil)
+    private let timeSegmentedControl = NSSegmentedControl(labels: ["Today", "24h", "Week", "Month"], trackingMode: .selectOne, target: nil, action: nil)
+    private let clearFilterButton = NSButton(title: "Clear", target: nil, action: nil)
+    private let deleteVisibleButton = NSButton()
     private var audioPlayer: AVAudioPlayer?
     private(set) var filteredRecords: [TranslationRecord] = []
 
@@ -27,22 +31,29 @@ final class HistoryWindowController: NSWindowController, NSTableViewDataSource, 
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         return records.filter { record in
             if savedOnly && !record.isSaved { return false }
-            if let timeRange, record.timestamp < timeRange.cutoff(now: now, calendar: calendar) { return false }
+            if let timeRange, record.timestamp < timeRange.cutoff(from: now, calendar: calendar) { return false }
             if trimmed.isEmpty { return true }
             return record.sourceText.lowercased().contains(trimmed) || record.resultText.lowercased().contains(trimmed)
         }
     }
 
-    init(store: TranslationHistoryStore) {
+    init(store: TranslationHistoryStore, onOpenRecord: ((TranslationRecord) -> Void)? = nil) {
         self.store = store
+        self.onOpenRecord = onOpenRecord
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 720, height: 520),
-            styleMask: [.titled, .closable, .resizable, .miniaturizable],
+            styleMask: [.titled, .closable, .resizable, .fullSizeContentView],
             backing: .buffered,
             defer: false
         )
         window.title = "Translation History"
         window.setFrameAutosaveName("TranslationHistoryWindow")
+
+        window.titlebarAppearsTransparent = true
+        window.titleVisibility = .hidden
+        window.isMovableByWindowBackground = true
+        window.backgroundColor = .clear
+
         super.init(window: window)
         configureContent()
     }
@@ -66,7 +77,15 @@ final class HistoryWindowController: NSWindowController, NSTableViewDataSource, 
 
     private func updateFilteredRecords() {
         let savedOnly = filterSegmentedControl.selectedSegment == 1
-        filteredRecords = Self.filter(records: store.records, query: searchField.stringValue, savedOnly: savedOnly)
+        let timeRange: HistoryTimeRange?
+        switch timeSegmentedControl.selectedSegment {
+        case 0: timeRange = .today
+        case 1: timeRange = .hours24
+        case 2: timeRange = .week
+        case 3: timeRange = .month
+        default: timeRange = nil
+        }
+        filteredRecords = Self.filter(records: store.records, query: searchField.stringValue, savedOnly: savedOnly, timeRange: timeRange)
     }
 
     func numberOfRows(in tableView: NSTableView) -> Int {
@@ -85,7 +104,29 @@ final class HistoryWindowController: NSWindowController, NSTableViewDataSource, 
     @objc private func clearFilter() {
         searchField.stringValue = ""
         filterSegmentedControl.selectedSegment = 0
+        timeSegmentedControl.selectedSegment = 0
         reloadHistory()
+    }
+
+    @objc private func confirmDeleteVisible() {
+        guard let window = window, !filteredRecords.isEmpty else { return }
+        let alert = NSAlert()
+        alert.messageText = "Delete \(filteredRecords.count) records?"
+        alert.informativeText = "This action cannot be undone."
+        alert.addButton(withTitle: "Delete")
+        alert.addButton(withTitle: "Cancel")
+        alert.alertStyle = .warning
+
+        alert.beginSheetModal(for: window) { [weak self] response in
+            guard let self, response == .alertFirstButtonReturn else { return }
+            let ids = Set(self.filteredRecords.map(\.id))
+            do {
+                try self.store.remove(recordIDs: ids)
+                self.reloadHistory()
+            } catch {
+                self.presentError(title: "Delete Failed", message: error.localizedDescription)
+            }
+        }
     }
 
     func controlTextDidChange(_ obj: Notification) {
@@ -96,9 +137,22 @@ final class HistoryWindowController: NSWindowController, NSTableViewDataSource, 
 
     private func configureContent() {
         guard let window else { return }
+
+        let visualEffect = NSVisualEffectView()
+        visualEffect.material = .hudWindow
+        visualEffect.blendingMode = .behindWindow
+        visualEffect.state = .active
+        visualEffect.wantsLayer = true
+        visualEffect.layer?.cornerRadius = 22
+        visualEffect.layer?.masksToBounds = true
+
         filterSegmentedControl.selectedSegment = 0
         filterSegmentedControl.target = self
         filterSegmentedControl.action = #selector(filterChanged)
+
+        timeSegmentedControl.selectedSegment = 0
+        timeSegmentedControl.target = self
+        timeSegmentedControl.action = #selector(filterChanged)
 
         searchField.delegate = self
         searchField.placeholderString = "Search history..."
@@ -109,7 +163,14 @@ final class HistoryWindowController: NSWindowController, NSTableViewDataSource, 
         clearFilterButton.action = #selector(clearFilter)
         clearFilterButton.bezelStyle = .rounded
 
-        let topBar = NSStackView(views: [searchField, filterSegmentedControl, clearFilterButton])
+        deleteVisibleButton.image = NSImage(systemSymbolName: "trash", accessibilityDescription: "Delete visible records")
+        deleteVisibleButton.target = self
+        deleteVisibleButton.action = #selector(confirmDeleteVisible)
+        deleteVisibleButton.bezelStyle = .regularSquare
+        deleteVisibleButton.isBordered = false
+        deleteVisibleButton.imageScaling = .scaleProportionallyUpOrDown
+
+        let topBar = NSStackView(views: [searchField, filterSegmentedControl, timeSegmentedControl, clearFilterButton, deleteVisibleButton])
         topBar.orientation = .horizontal
         topBar.spacing = 8
         topBar.alignment = .centerY
@@ -119,79 +180,123 @@ final class HistoryWindowController: NSWindowController, NSTableViewDataSource, 
         column.resizingMask = .autoresizingMask
         tableView.addTableColumn(column)
         tableView.headerView = nil
-        tableView.rowHeight = 150
-        tableView.usesAlternatingRowBackgroundColors = true
+        tableView.rowHeight = 80
+        tableView.backgroundColor = .clear
+        tableView.usesAlternatingRowBackgroundColors = false
+        tableView.intercellSpacing = NSSize(width: 0, height: 8)
         tableView.dataSource = self
         tableView.delegate = self
+        tableView.target = self
+        tableView.doubleAction = #selector(openSelectedRecord)
         tableView.setAccessibilityLabel("Translation history")
 
         let scrollView = NSScrollView()
         scrollView.translatesAutoresizingMaskIntoConstraints = false
         scrollView.hasVerticalScroller = true
         scrollView.documentView = tableView
+        scrollView.drawsBackground = false
 
         let container = NSStackView(views: [topBar, scrollView])
         container.orientation = .vertical
-        container.spacing = 8
+        container.spacing = 16
         container.alignment = .leading
         container.translatesAutoresizingMaskIntoConstraints = false
 
-        window.contentView = container
+        visualEffect.addSubview(container)
+        window.contentView = visualEffect
 
         NSLayoutConstraint.activate([
-            topBar.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 12),
-            topBar.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -12),
-            topBar.topAnchor.constraint(equalTo: container.topAnchor, constant: 12),
+            container.leadingAnchor.constraint(equalTo: visualEffect.leadingAnchor, constant: 16),
+            container.trailingAnchor.constraint(equalTo: visualEffect.trailingAnchor, constant: -16),
+            container.topAnchor.constraint(equalTo: visualEffect.topAnchor, constant: 16),
+            container.bottomAnchor.constraint(equalTo: visualEffect.bottomAnchor, constant: -16),
+
+            topBar.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            topBar.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+
             scrollView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-            scrollView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-            scrollView.bottomAnchor.constraint(equalTo: container.bottomAnchor),
-            searchField.widthAnchor.constraint(greaterThanOrEqualToConstant: 200)
+            scrollView.trailingAnchor.constraint(equalTo: container.trailingAnchor)
         ])
+
         updateFilteredRecords()
     }
 
     private func rowView(for record: TranslationRecord) -> NSView {
         let view = NSTableCellView()
+        view.wantsLayer = true
+        view.layer?.cornerRadius = 16
+        view.layer?.backgroundColor = NSColor.windowBackgroundColor.withAlphaComponent(0.2).cgColor
+
         let timestamp = record.timestamp.formatted(date: .abbreviated, time: .shortened)
         let savedState = record.isSaved ? "Saved" : "Not saved"
         let context = "\(timestamp), \(record.sourceLanguage) to \(record.targetLanguage), \(savedState)"
-        let metadata = NSTextField(labelWithString: "\(timestamp)  ·  \(record.sourceLanguage) → \(record.targetLanguage)  ·  \(savedState)")
+
+        let metadata = NSTextField(labelWithString: "\(timestamp)  ·  \(record.sourceLanguage) → \(record.targetLanguage)")
+        metadata.font = .systemFont(ofSize: 11, weight: .medium)
+        metadata.textColor = .secondaryLabelColor
+
         let source = historyTextField(record.sourceText, accessibilityLabel: "Source text for \(context): \(record.sourceText)")
+        source.font = .systemFont(ofSize: 14, weight: .regular)
         let result = historyTextField(record.resultText, accessibilityLabel: "Translation for \(context): \(record.resultText)")
-        let text = NSStackView(views: [metadata, source, result])
-        text.translatesAutoresizingMaskIntoConstraints = false
-        text.orientation = .vertical
-        text.alignment = .leading
-        text.spacing = 4
-        view.addSubview(text)
+        result.font = .systemFont(ofSize: 14, weight: .semibold)
+
+        source.toolTip = record.sourceText
+        result.toolTip = record.resultText
+
+        let textStack = NSStackView(views: [metadata, source, result])
+        textStack.translatesAutoresizingMaskIntoConstraints = false
+        textStack.orientation = .vertical
+        textStack.alignment = .leading
+        textStack.spacing = 2
+        view.addSubview(textStack)
         view.setAccessibilityLabel("Translation record, \(context), source: \(record.sourceText), translation: \(record.resultText)")
 
-        let buttons = NSStackView()
-        buttons.translatesAutoresizingMaskIntoConstraints = false
-        buttons.orientation = .horizontal
-        buttons.spacing = 6
+        let actionStack = NSStackView()
+        actionStack.translatesAutoresizingMaskIntoConstraints = false
+        actionStack.orientation = .horizontal
+        actionStack.spacing = 8
+
         if (try? store.audioExists(for: record.id, kind: .source)) == true {
-            buttons.addArrangedSubview(audioButton(record: record, kind: .source, context: context))
+            actionStack.addArrangedSubview(audioButton(record: record, kind: .source, context: context))
         }
         if (try? store.audioExists(for: record.id, kind: .result)) == true {
-            buttons.addArrangedSubview(audioButton(record: record, kind: .result, context: context))
+            actionStack.addArrangedSubview(audioButton(record: record, kind: .result, context: context))
         }
-        view.addSubview(buttons)
+
+        let bookmarkBtn = NSButton()
+        bookmarkBtn.image = NSImage(systemSymbolName: record.isSaved ? "bookmark.fill" : "bookmark", accessibilityDescription: "Toggle saved")
+        bookmarkBtn.isBordered = false
+        bookmarkBtn.target = self
+        bookmarkBtn.action = #selector(toggleBookmark(_:))
+        bookmarkBtn.identifier = NSUserInterfaceItemIdentifier(record.id.uuidString)
+        actionStack.addArrangedSubview(bookmarkBtn)
+
+        let deleteBtn = NSButton()
+        deleteBtn.image = NSImage(systemSymbolName: "trash", accessibilityDescription: "Delete record")
+        deleteBtn.isBordered = false
+        deleteBtn.target = self
+        deleteBtn.action = #selector(deleteRecord(_:))
+        deleteBtn.identifier = NSUserInterfaceItemIdentifier(record.id.uuidString)
+        actionStack.addArrangedSubview(deleteBtn)
+
+        view.addSubview(actionStack)
 
         NSLayoutConstraint.activate([
-            text.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 10),
-            text.topAnchor.constraint(equalTo: view.topAnchor, constant: 8),
-            text.trailingAnchor.constraint(equalTo: buttons.leadingAnchor, constant: -8),
-            text.bottomAnchor.constraint(lessThanOrEqualTo: view.bottomAnchor, constant: -8),
-            buttons.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -10),
-            buttons.centerYAnchor.constraint(equalTo: view.centerYAnchor)
+            textStack.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 12),
+            textStack.topAnchor.constraint(equalTo: view.topAnchor, constant: 8),
+            textStack.trailingAnchor.constraint(equalTo: actionStack.leadingAnchor, constant: -12),
+            textStack.bottomAnchor.constraint(lessThanOrEqualTo: view.bottomAnchor, constant: -8),
+
+            actionStack.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -12),
+            actionStack.centerYAnchor.constraint(equalTo: view.centerYAnchor)
         ])
+
         return view
     }
 
     private func historyTextField(_ value: String, accessibilityLabel: String) -> NSTextField {
         let field = NSTextField(labelWithString: value)
-        field.maximumNumberOfLines = 3
+        field.maximumNumberOfLines = 1
         field.lineBreakMode = .byTruncatingTail
         field.setAccessibilityLabel(accessibilityLabel)
         return field
@@ -199,8 +304,11 @@ final class HistoryWindowController: NSWindowController, NSTableViewDataSource, 
 
     private func audioButton(record: TranslationRecord, kind: TranslationAudioKind, context: String) -> NSButton {
         let title = kind == .source ? "Play source" : "Play result"
-        let button = NSButton(title: title, target: self, action: #selector(playAudio(_:)))
-        button.bezelStyle = .rounded
+        let button = NSButton()
+        button.image = NSImage(systemSymbolName: "speaker.wave.2", accessibilityDescription: title)
+        button.isBordered = false
+        button.target = self
+        button.action = #selector(playAudio(_:))
         button.identifier = NSUserInterfaceItemIdentifier("\(record.id.uuidString)|\(kind.rawValue)")
         button.setAccessibilityLabel("\(title) audio for \(context), record \(record.id.uuidString)")
         return button
@@ -222,6 +330,37 @@ final class HistoryWindowController: NSWindowController, NSTableViewDataSource, 
         } catch {
             presentAudioError(error.localizedDescription)
         }
+    }
+
+    @objc private func toggleBookmark(_ sender: NSButton) {
+        guard let idString = sender.identifier?.rawValue, let id = UUID(uuidString: idString) else { return }
+        do {
+            try store.toggleSaved(recordID: id)
+            reloadHistory()
+        } catch {
+            presentError(title: "Save Failed", message: error.localizedDescription)
+        }
+    }
+
+    @objc private func deleteRecord(_ sender: NSButton) {
+        guard let idString = sender.identifier?.rawValue, let id = UUID(uuidString: idString) else { return }
+        do {
+            try store.remove(recordID: id)
+            reloadHistory()
+        } catch {
+            presentError(title: "Delete Failed", message: error.localizedDescription)
+        }
+    }
+
+    @objc private func openSelectedRecord() {
+        let row = tableView.clickedRow
+        guard row >= 0 else { return }
+        openRecord(at: row)
+    }
+
+    func openRecord(at index: Int) {
+        guard filteredRecords.indices.contains(index) else { return }
+        onOpenRecord?(filteredRecords[index])
     }
 
     private func presentAudioError(_ message: String) {

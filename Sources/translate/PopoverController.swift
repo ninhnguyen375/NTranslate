@@ -188,7 +188,15 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     private var pendingSourceSpeech: [Int: PendingSourceSpeech] = [:]
     private var pendingImage: Data?
     private var historyStore: TranslationHistoryStore = TranslationHistoryStore(config: AppConfig.load())
-    private lazy var historyWindowController = HistoryWindowController(store: historyStore)
+        private lazy var historyWindowController: HistoryWindowController = {
+        let controller = HistoryWindowController(store: historyStore) { [weak self] record in
+            guard let self else { return }
+            self.historyWindowController.close()
+            self.openTranslatePanelShowingSetupStatus()
+            self.openHistoryRecord(record)
+        }
+        return controller
+    }()
     private var currentRecordID: UUID?
     private var requestGeneration = 0
     private var isRequestInFlight = false
@@ -1436,7 +1444,12 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         invalidateSpeech(stopPlayback: true)
         config = outcome.config
         historyStore = TranslationHistoryStore(config: config)
-        historyWindowController = HistoryWindowController(store: historyStore)
+                historyWindowController = HistoryWindowController(store: historyStore) { [weak self] record in
+            guard let self else { return }
+            self.historyWindowController.close()
+            self.openTranslatePanelShowingSetupStatus()
+            self.openHistoryRecord(record)
+        }
         if let loadError = historyStore.loadError {
             setStatus(loadError, autoClearAfter: 12)
         }
@@ -2137,5 +2150,19 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     @objc private func closePopover() {
         restoresPreviousAppOnClose = true
         closePanel()
+    }
+    private func openHistoryRecord(_ record: TranslationRecord) {
+        invalidateTranslationRequest()
+        invalidateSpeech(stopPlayback: true)
+
+        inputTextView.string = record.sourceText
+        setResultText(record.resultText)
+
+        currentRecordID = record.id
+        updateSaveWordButton()
+        updatePaneLanguageLabels()
+
+        focusInputTextView()
+        reflowLayout()
     }
 }
