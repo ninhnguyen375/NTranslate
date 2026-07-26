@@ -749,11 +749,20 @@ struct TranslateTests {
             acknowledgedReportName: report.lastPathComponent
         ))
     }
-}
 
     @Test func validResultCanBeSavedWithoutExistingRecord() {
         #expect(PopoverIntegrationPolicy.canSave(sourceText: "Galaxy", resultText: "Thiên hà", isRequestInFlight: false))
         #expect(!PopoverIntegrationPolicy.canSave(sourceText: "Galaxy", resultText: PopoverFeedback.learning, isRequestInFlight: false))
+    }
+
+    @Test func mismatchedCurrentRecordMustCreateANewSavedRecord() {
+        let record = TranslationRecord(
+            id: UUID(), timestamp: Date(), sourceText: "Galaxy", resultText: "Thiên hà",
+            sourceLanguage: "English", targetLanguage: "Vietnamese",
+            sourceAudioPath: nil, resultAudioPath: nil, isSaved: false
+        )
+        #expect(PopoverIntegrationPolicy.matches(record, sourceText: "Galaxy", resultText: "Thiên hà"))
+        #expect(!PopoverIntegrationPolicy.matches(record, sourceText: "Universe", resultText: "Vũ trụ"))
     }
 
     @Test func swappingAutoDetectedEnglishUsesEnglishAsTarget() {
@@ -761,3 +770,10 @@ struct TranslateTests {
         #expect(pair.source == "Vietnamese")
         #expect(pair.target == "English")
     }
+
+    @Test func speechRateUsesSharedPersistedRange() {
+        #expect(SpeechRatePolicy.defaultsKey == "local.ninh.ntranslate.speechRate")
+        #expect(SpeechRatePolicy.options == [0.5, 0.6, 0.7, 0.8, 0.9, 1, 1.1, 1.2, 1.3, 1.4, 1.5])
+        #expect(SpeechRatePolicy.resolved(0) == 1)
+    }
+}

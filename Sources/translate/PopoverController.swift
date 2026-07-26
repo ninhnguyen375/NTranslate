@@ -49,6 +49,11 @@ enum PopoverIntegrationPolicy {
             && PopoverFeedback.isCopyableResult(resultText)
     }
 
+    static func matches(_ record: TranslationRecord, sourceText: String, resultText: String) -> Bool {
+        record.sourceText == sourceText.trimmingCharacters(in: .whitespacesAndNewlines)
+            && record.resultText == resultText.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     static func imageSearchURL(query: String) -> URL? {
         var components = URLComponents()
         components.scheme = "https"
@@ -74,6 +79,15 @@ enum PopoverIntegrationPolicy {
 enum SpeechAudioPolicy {
     static func isValid(_ data: Data, validator: (Data) throws -> Void = { _ = try AVAudioPlayer(data: $0) }) -> Bool {
         do { try validator(data); return true } catch { return false }
+    }
+}
+
+enum SpeechRatePolicy {
+    static let defaultsKey = "local.ninh.ntranslate.speechRate"
+    static let options = (5...15).map { Float($0) / 10 }
+
+    static func resolved(_ storedRate: Float) -> Float {
+        options.contains(storedRate) ? storedRate : 1
     }
 }
 
@@ -233,6 +247,26 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     private var isPinned = false
     private var statusClearWorkItem: DispatchWorkItem?
     private var copyFlashWorkItem: DispatchWorkItem?
+
+    private var speechRate: Float {
+        get { SpeechRatePolicy.resolved(UserDefaults.standard.float(forKey: SpeechRatePolicy.defaultsKey)) }
+        set { UserDefaults.standard.set(newValue, forKey: SpeechRatePolicy.defaultsKey) }
+    }
+    private let speechRatePopUp = NSPopUpButton()
+
+    override init() {
+        super.init()
+        speechRatePopUp.isBordered = false
+        speechRatePopUp.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
+        speechRatePopUp.setAccessibilityLabel("Speech rate")
+        for rate in SpeechRatePolicy.options {
+            let item = NSMenuItem(title: String(format: "%.1fx", rate), action: #selector(speechRateChanged(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = rate
+            speechRatePopUp.menu?.addItem(item)
+        }
+        speechRatePopUp.selectItem(withTitle: String(format: "%.1fx", speechRate))
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         if let icon = NSImage(systemSymbolName: "translate", accessibilityDescription: "NTranslate") {
@@ -416,6 +450,7 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         languageSelectionChanged()
 
         sourceHeaderBar.addSubview(sourceHeaderLabel)
+        sourceHeaderBar.addSubview(speechRatePopUp)
         sourceHeaderBar.addSubview(speakSourceButton)
         sourceCard.addSubview(sourceHeaderBar)
         sourceCard.addSubview(inputScrollView)
@@ -784,6 +819,10 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         for button in trailingIcons.reversed() {
             button.frame = NSRect(x: iconX, y: headerIconY, width: icon, height: icon)
             iconX -= icon + 4
+        }
+        if headerBar === sourceHeaderBar {
+            speechRatePopUp.sizeToFit()
+            speechRatePopUp.frame = NSRect(x: iconX - speechRatePopUp.frame.width, y: headerIconY + (icon - speechRatePopUp.frame.height) / 2, width: speechRatePopUp.frame.width, height: speechRatePopUp.frame.height)
         }
         scrollView.frame = NSRect(x: 0, y: 0, width: paneWidth, height: bodyHeight)
         scrollView.hasVerticalScroller = true
@@ -1202,23 +1241,33 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     }
 
     @objc private func swapLanguages() {
-        let source = LanguageDetector.normalizeSource(selectedSourceLanguage(), languages: config.languages)
-        let target = LanguageDetector.normalizeTarget(
-            selectedTargetLanguage(),
+        let text = inputTextView.string.trimmingCharacters(in: .whitespacesAndNewlines)
+        let pair = LanguageDetector.swappedPair(
+            selectedSource: selectedSourceLanguage(),
+            selectedTarget: selectedTargetLanguage(),
+            text: text,
+            languages: config.languages,
             targetLanguages: config.targetLanguages,
-            fallback: config.resolvedNativeLang
+            nativeLang: config.resolvedNativeLang
         )
-        selectLanguage(target, kind: .source)
-        let swappedTarget = source == LanguageDetector.autoDetect ? config.resolvedNativeLang : source
-        selectLanguage(
-            LanguageDetector.normalizeTarget(
-                swappedTarget,
-                targetLanguages: config.targetLanguages,
-                fallback: config.resolvedNativeLang
-            ),
-            kind: .target
-        )
-        languageSelectionChanged()
+
+        sourceLanguageSelection = pair.source
+        targetLanguageSelection = pair.target
+
+        styleLanguageButtonTitle(sourceLanguageButton, language: sourceLanguageSelection)
+        styleLanguageButtonTitle(targetLanguageButton, language: targetLanguageSelection)
+        updatePaneLanguageLabels()
+
+        let oldSourceText = inputTextView.string
+        inputTextView.string = textView.string
+        setResultText(oldSourceText)
+
+        invalidateTranslationRequest()
+        invalidateSpeech(stopPlayback: true)
+        UserDefaults.standard.set(pair.target, forKey: Self.lastTargetLangKey)
+        updatePaneLanguageLabels()
+        updateBusyState()
+        reflowLayout()
     }
 
     private func updateSpeakButtons() {
@@ -2032,6 +2081,8 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         do {
             let player = try AVAudioPlayer(data: data)
             player.delegate = self
+            player.enableRate = true
+            player.rate = speechRate
             player.prepareToPlay()
             guard player.play() else { throw NSError(domain: "Speech", code: 2, userInfo: [NSLocalizedDescriptionKey: "Audio could not be played"]) }
             audioPlayer = player
@@ -2105,6 +2156,12 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     @objc func speakInput() { playSpeech(sourceSpeechIdentity()) }
     @objc func speakResult() { playSpeech(resultSpeechIdentity()) }
 
+    @objc private func speechRateChanged(_ sender: NSMenuItem) {
+        guard let rate = sender.representedObject as? Float else { return }
+        speechRate = rate
+        audioPlayer?.rate = rate
+    }
+
     private func invalidateCurrentRecord() {
         currentRecordID = nil
         updateSaveWordButton()
@@ -2113,23 +2170,43 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     private func updateSaveWordButton() {
         let reqInFlight = isRequestInFlight
         let canSave = PopoverIntegrationPolicy.canSave(
-            sourceText: inputTextView.string, 
-            resultText: textView.string, 
+            sourceText: inputTextView.string,
+            resultText: textView.string,
             isRequestInFlight: reqInFlight
         )
-        let isSaved = currentRecordID != nil
-        
+        let isSaved = currentRecordID.flatMap { id in historyStore.records.first { $0.id == id } }
+            .map { PopoverIntegrationPolicy.matches($0, sourceText: inputTextView.string, resultText: textView.string) && $0.isSaved } == true
+
         saveWordButton.isHidden = !canSave
+        saveWordButton.isEnabled = canSave && historyStore.loadError == nil && !isRequestInFlight
         if !saveWordButton.isHidden {
+            let label = isSaved ? "Remove Saved Word" : "Save Word"
+            saveWordButton.image = NSImage(systemSymbolName: isSaved ? "bookmark.fill" : "bookmark", accessibilityDescription: label)
+            saveWordButton.toolTip = label
+            saveWordButton.setAccessibilityLabel(label)
             saveWordButton.contentTintColor = isSaved ? .controlAccentColor : .secondaryLabelColor
-            saveWordButton.image = NSImage(systemSymbolName: isSaved ? "bookmark.fill" : "bookmark", accessibilityDescription: "Save word")
         }
     }
 
     @objc private func toggleSaveWord() {
-        guard let recordID = currentRecordID, let record = historyStore.records.first(where: { $0.id == recordID }) else { return }
+        let source = inputTextView.string.trimmingCharacters(in: .whitespacesAndNewlines)
+        let result = textView.string.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard PopoverIntegrationPolicy.canSave(sourceText: source, resultText: result, isRequestInFlight: isRequestInFlight) else { return }
         do {
-            try historyStore.setSaved(!record.isSaved, recordID: recordID)
+            if let recordID = currentRecordID,
+               let record = historyStore.records.first(where: { $0.id == recordID }),
+               PopoverIntegrationPolicy.matches(record, sourceText: source, resultText: result) {
+                try historyStore.setSaved(!record.isSaved, recordID: recordID)
+            } else {
+                let pair = resolvedLanguagePair(for: source)
+                let record = TranslationRecord(
+                    id: UUID(), timestamp: Date(), sourceText: source, resultText: result,
+                    sourceLanguage: pair.source, targetLanguage: pair.target,
+                    sourceAudioPath: nil, resultAudioPath: nil, isSaved: true
+                )
+                try historyStore.append(record)
+                currentRecordID = record.id
+            }
             historyWindowController.reloadHistory()
             updateSaveWordButton()
         } catch {
@@ -2210,8 +2287,10 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         invalidateTranslationRequest()
         invalidateSpeech(stopPlayback: true)
 
-        selectLanguage(record.sourceLanguage, kind: .source)
-        selectLanguage(record.targetLanguage, kind: .target)
+        sourceLanguageSelection = record.sourceLanguage
+        targetLanguageSelection = record.targetLanguage
+        styleLanguageButtonTitle(sourceLanguageButton, language: sourceLanguageSelection)
+        styleLanguageButtonTitle(targetLanguageButton, language: targetLanguageSelection)
 
         inputTextView.string = record.sourceText
         setResultText(record.resultText)
