@@ -11,6 +11,17 @@ struct TranslateTests {
         #expect(components.queryItems?.first(where: { $0.name == "q" })?.value == "thiên hà xoắn ốc NASA")
     }
 
+    @Test func resolvedImageSearchURLPrefersSuccessQueryOverFallback() throws {
+        let url = try #require(PopoverIntegrationPolicy.resolvedImageSearchURL(queryResult: .success("success_query"), fallbackText: "fallback_text"))
+        #expect(url.absoluteString.contains("q=success_query"))
+        #expect(!url.absoluteString.contains("fallback"))
+    }
+
+    @Test func resolvedImageSearchURLFallsBackOnFailure() throws {
+        let url = try #require(PopoverIntegrationPolicy.resolvedImageSearchURL(queryResult: .failure(NSError(domain: "", code: 0)), fallbackText: "fallback_text"))
+        #expect(url.absoluteString.contains("q=fallback_text"))
+    }
+
     @Test func imageSearchPromptRequestsOnlyConcreteQuery() {
         #expect(Translator.imageSearchPrompt.contains("Return only"))
         #expect(Translator.imageSearchPrompt.localizedCaseInsensitiveContains("concrete"))

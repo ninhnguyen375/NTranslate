@@ -64,6 +64,15 @@ enum PopoverIntegrationPolicy {
         ]
         return components.url
     }
+
+    static func resolvedImageSearchURL(queryResult: Result<String, Error>, fallbackText: String) -> URL? {
+        switch queryResult {
+        case let .success(query):
+            return imageSearchURL(query: query) ?? imageSearchURL(query: fallbackText)
+        case .failure:
+            return imageSearchURL(query: fallbackText)
+        }
+    }
 }
 
 enum SpeechAudioPolicy {
@@ -1881,30 +1890,25 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
 
     @objc func runImages() {
         guard pendingImage == nil, let translator else { return }
-        invalidateCurrentRecord()
-        invalidateSpeech(stopPlayback: true)
         let text = inputTextView.string.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { setResultText(PopoverFeedback.emptyInputHint); reflowLayout(); updateBusyState(); return }
-        guard text.count <= config.maxTranslateLength else { setResultText(PopoverFeedback.textTooLong); reflowLayout(); updateBusyState(); return }
+        guard !text.isEmpty else { return }
+        guard text.count <= config.maxTranslateLength else { setStatus(PopoverFeedback.textTooLong); return }
         let generation = beginRequest()
-        setResultText("Generating search query...")
-        reflowLayout()
+        setStatus("Generating search query...")
         translator.imageSearchQuery(text) { [weak self] result in
             Task { @MainActor in
                 guard let self else { return }
                 defer { self.finishRequest(generation: generation) }
                 guard generation == self.requestGeneration else { return }
+                if let url = PopoverIntegrationPolicy.resolvedImageSearchURL(queryResult: result, fallbackText: text) {
+                    NSWorkspace.shared.open(url)
+                }
                 switch result {
-                case let .success(query):
-                    let searchURL = PopoverIntegrationPolicy.imageSearchURL(query: query) ?? PopoverIntegrationPolicy.imageSearchURL(query: text)
-                    if let url = searchURL { NSWorkspace.shared.open(url) }
-                    self.setResultText(query)
+                case .success:
                     self.setStatus("Opened Google Images")
                 case .failure:
-                    if let url = PopoverIntegrationPolicy.imageSearchURL(query: text) { NSWorkspace.shared.open(url) }
                     self.setStatus("Image query failed; searched source text")
                 }
-                self.reflowLayout()
                 self.updateBusyState()
             }
         }
