@@ -610,12 +610,7 @@ struct TranslateTests {
         #expect(PopoverIntegrationPolicy.sourceControlsEnabled(hasPendingImage: false))
     }
 
-    @Test func popoverIntegrationPolicyRequiresUnchangedCurrentRecord() {
-        let id = UUID()
-        #expect(PopoverIntegrationPolicy.canSave(recordID: id, sourceText: "hello", currentSourceText: "hello", resultText: "xin chào", currentResultText: "xin chào"))
-        #expect(!PopoverIntegrationPolicy.canSave(recordID: id, sourceText: "hello", currentSourceText: "changed", resultText: "xin chào", currentResultText: "xin chào"))
-        #expect(!PopoverIntegrationPolicy.canSave(recordID: nil, sourceText: "hello", currentSourceText: "hello", resultText: "xin chào", currentResultText: "xin chào"))
-    }
+
 
     @Test func popoverIntegrationPolicyPrefetchesOnlyValidTextRequests() {
         #expect(PopoverIntegrationPolicy.shouldPrefetchSource(enabled: true, hasPendingImage: false, text: " hello "))
@@ -755,3 +750,14 @@ struct TranslateTests {
         ))
     }
 }
+
+    @Test func validResultCanBeSavedWithoutExistingRecord() {
+        #expect(PopoverIntegrationPolicy.canSave(sourceText: "Galaxy", resultText: "Thiên hà", isRequestInFlight: false))
+        #expect(!PopoverIntegrationPolicy.canSave(sourceText: "Galaxy", resultText: PopoverFeedback.learning, isRequestInFlight: false))
+    }
+
+    @Test func swappingAutoDetectedEnglishUsesEnglishAsTarget() {
+        let pair = LanguageDetector.swappedPair(selectedSource: LanguageDetector.autoDetect, selectedTarget: "Vietnamese", text: "Galaxy", languages: AppConfig.defaultLanguages, targetLanguages: AppConfig.defaultTargetLanguages, nativeLang: "Vietnamese")
+        #expect(pair.source == "Vietnamese")
+        #expect(pair.target == "English")
+    }

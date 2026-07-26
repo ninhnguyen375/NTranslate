@@ -43,14 +43,10 @@ enum PopoverIntegrationPolicy {
         identity.recordID != nil && identity.recordID == currentRecordID
     }
 
-    static func canSave(
-        recordID: UUID?,
-        sourceText: String,
-        currentSourceText: String,
-        resultText: String,
-        currentResultText: String
-    ) -> Bool {
-        recordID != nil && sourceText == currentSourceText && resultText == currentResultText
+    static func canSave(sourceText: String, resultText: String, isRequestInFlight: Bool) -> Bool {
+        !isRequestInFlight
+            && !sourceText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && PopoverFeedback.isCopyableResult(resultText)
     }
 
     static func imageSearchURL(query: String) -> URL? {
@@ -2115,22 +2111,19 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     }
 
     private func updateSaveWordButton() {
-        let record = currentRecordID.flatMap { id in historyStore.records.first { $0.id == id } }
-        let canSave = record.map {
-            PopoverIntegrationPolicy.canSave(
-                recordID: currentRecordID,
-                sourceText: $0.sourceText,
-                currentSourceText: inputTextView.string.trimmingCharacters(in: .whitespacesAndNewlines),
-                resultText: $0.resultText,
-                currentResultText: textView.string.trimmingCharacters(in: .whitespacesAndNewlines)
-            )
-        } ?? false
-        let saved = record?.isSaved == true
-        let label = saved ? "Remove Saved Word" : "Save Word"
-        saveWordButton.image = NSImage(systemSymbolName: saved ? "bookmark.fill" : "bookmark", accessibilityDescription: label)
-        saveWordButton.toolTip = label
-        saveWordButton.setAccessibilityLabel(label)
-        saveWordButton.isEnabled = canSave && historyStore.loadError == nil && !isRequestInFlight
+        let reqInFlight = isRequestInFlight
+        let canSave = PopoverIntegrationPolicy.canSave(
+            sourceText: inputTextView.string, 
+            resultText: textView.string, 
+            isRequestInFlight: reqInFlight
+        )
+        let isSaved = currentRecordID != nil
+        
+        saveWordButton.isHidden = !canSave
+        if !saveWordButton.isHidden {
+            saveWordButton.contentTintColor = isSaved ? .controlAccentColor : .secondaryLabelColor
+            saveWordButton.image = NSImage(systemSymbolName: isSaved ? "bookmark.fill" : "bookmark", accessibilityDescription: "Save word")
+        }
     }
 
     @objc private func toggleSaveWord() {

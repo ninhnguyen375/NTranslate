@@ -67,6 +67,15 @@ enum LanguageDetector {
         return (source, target)
     }
 
+    static func swappedPair(selectedSource: String, selectedTarget: String, text: String, languages: [String], targetLanguages: [String], nativeLang: String) -> (source: String, target: String) {
+        let (source, target) = resolvedPair(selectedSource: selectedSource, selectedTarget: selectedTarget, text: text, languages: languages, targetLanguages: targetLanguages, nativeLang: nativeLang)
+        
+        let newSource = normalizeSource(target, languages: languages)
+        let newTarget = normalizeTarget(source == autoDetect ? "English" : source, targetLanguages: targetLanguages, fallback: nativeLang)
+        
+        return (newSource, newTarget)
+    }
+
     static func fallbackTarget(detected: String, targetLanguages: [String], nativeLang: String) -> String {
         if detected == nativeLang {
             return targetLanguages.first { $0 != nativeLang } ?? "English"
