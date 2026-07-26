@@ -50,8 +50,8 @@ enum PopoverIntegrationPolicy {
     }
 
     static func matches(_ record: TranslationRecord, sourceText: String, resultText: String) -> Bool {
-        record.sourceText == sourceText.trimmingCharacters(in: .whitespacesAndNewlines)
-            && record.resultText == resultText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trim: (String) -> String = { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+        return trim(record.sourceText) == trim(sourceText) && trim(record.resultText) == trim(resultText)
     }
 
     static func imageSearchURL(query: String) -> URL? {
@@ -2286,6 +2286,7 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     private func openHistoryRecord(_ record: TranslationRecord) {
         invalidateTranslationRequest()
         invalidateSpeech(stopPlayback: true)
+        setPendingImage(nil)
 
         sourceLanguageSelection = record.sourceLanguage
         targetLanguageSelection = record.targetLanguage

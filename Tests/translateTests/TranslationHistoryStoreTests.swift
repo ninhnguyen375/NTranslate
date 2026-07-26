@@ -288,11 +288,13 @@ struct TranslationHistoryStoreTests {
         let item = record(timestamp: Date())
         try store.append(item)
         var opened: UUID?
-        let controller = HistoryWindowController(store: store) { opened = $0.id }
+        var events: [String] = []
+        let controller = HistoryWindowController(store: store) { opened = $0.id; events.append("open") }
 
         controller.reloadHistory()
-        controller.openRecord(at: 0)
+        controller.openRecord(at: 0, stopAudio: { events.append("stop") })
 
         #expect(opened == item.id)
+        #expect(events == ["stop", "open"])
     }
 }

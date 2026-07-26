@@ -358,9 +358,15 @@ final class HistoryWindowController: NSWindowController, NSTableViewDataSource, 
         openRecord(at: row)
     }
 
-    func openRecord(at index: Int) {
+    func openRecord(at index: Int, stopAudio: (() -> Void)? = nil) {
         guard filteredRecords.indices.contains(index) else { return }
+        (stopAudio ?? stopAudioPlayback)()
         onOpenRecord?(filteredRecords[index])
+    }
+
+    func stopAudioPlayback() {
+        audioPlayer?.stop()
+        audioPlayer = nil
     }
 
     private func presentAudioError(_ message: String) {

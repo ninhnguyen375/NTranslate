@@ -75,17 +75,12 @@ enum LanguageDetector {
         targetLanguages: [String] = defaultTargetLanguages,
         nativeLang: String = "Vietnamese"
     ) -> (source: String, target: String) {
-        let pair = resolvedPair(
-            selectedSource: selectedSource,
-            selectedTarget: selectedTarget,
-            text: text,
-            languages: languages,
-            targetLanguages: targetLanguages,
-            nativeLang: nativeLang
-        )
-        let newSource = normalizeSource(pair.target, languages: languages)
-        let swappedTarget = pair.source == autoDetect ? "English" : pair.source
-        let newTarget = normalizeTarget(swappedTarget, targetLanguages: targetLanguages, fallback: nativeLang)
+        let source = normalizeSource(selectedSource, languages: languages)
+        let target = normalizeTarget(selectedTarget, targetLanguages: targetLanguages, fallback: nativeLang)
+        let newSource = normalizeSource(target, languages: languages)
+        let newTarget = source == autoDetect
+            ? detectedLanguage(text)
+            : normalizeTarget(source, targetLanguages: targetLanguages, fallback: nativeLang)
         return (newSource, newTarget)
     }
 

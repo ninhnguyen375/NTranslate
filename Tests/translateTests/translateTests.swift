@@ -757,7 +757,7 @@ struct TranslateTests {
 
     @Test func mismatchedCurrentRecordMustCreateANewSavedRecord() {
         let record = TranslationRecord(
-            id: UUID(), timestamp: Date(), sourceText: "Galaxy", resultText: "Thiên hà",
+            id: UUID(), timestamp: Date(), sourceText: " Galaxy \n", resultText: " Thiên hà ",
             sourceLanguage: "English", targetLanguage: "Vietnamese",
             sourceAudioPath: nil, resultAudioPath: nil, isSaved: false
         )
@@ -765,10 +765,29 @@ struct TranslateTests {
         #expect(!PopoverIntegrationPolicy.matches(record, sourceText: "Universe", resultText: "Vũ trụ"))
     }
 
+    @Test func swappingAutoDetectedEnglishKeepsSelectedTargetAsNewSource() {
+        let pair = LanguageDetector.swappedPair(
+            selectedSource: LanguageDetector.autoDetect,
+            selectedTarget: "Chinese",
+            text: "Galaxy",
+            languages: AppConfig.defaultLanguages,
+            targetLanguages: AppConfig.defaultTargetLanguages + ["Chinese"],
+            nativeLang: "Vietnamese"
+        )
+        #expect(pair.source == "Chinese")
+        #expect(pair.target == "English")
+    }
+
     @Test func swappingAutoDetectedEnglishUsesEnglishAsTarget() {
         let pair = LanguageDetector.swappedPair(selectedSource: LanguageDetector.autoDetect, selectedTarget: "Vietnamese", text: "Galaxy", languages: AppConfig.defaultLanguages, targetLanguages: AppConfig.defaultTargetLanguages, nativeLang: "Vietnamese")
         #expect(pair.source == "Vietnamese")
         #expect(pair.target == "English")
+    }
+
+    @Test func swappingAutoDetectedChineseUsesChineseAsTarget() {
+        let pair = LanguageDetector.swappedPair(selectedSource: LanguageDetector.autoDetect, selectedTarget: "English", text: "你好", languages: AppConfig.defaultLanguages, targetLanguages: AppConfig.defaultTargetLanguages, nativeLang: "Vietnamese")
+        #expect(pair.source == "English")
+        #expect(pair.target == "Chinese")
     }
 
     @Test func speechRateUsesSharedPersistedRange() {
