@@ -2155,6 +2155,9 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         invalidateTranslationRequest()
         invalidateSpeech(stopPlayback: true)
 
+        selectLanguage(record.sourceLanguage, kind: .source)
+        selectLanguage(record.targetLanguage, kind: .target)
+
         inputTextView.string = record.sourceText
         setResultText(record.resultText)
 
