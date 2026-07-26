@@ -253,4 +253,31 @@ struct TranslationHistoryStoreTests {
         encoder.dateEncodingStrategy = .iso8601
         return try encoder.encode(records)
     }
+    @Test func removesRecordsAndReferencedAudio() throws {
+        let directory = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = TranslationHistoryStore(directoryURL: directory)
+        let first = record(source: "first")
+        let second = record(source: "second")
+        try store.append(first)
+        try store.append(second)
+        try store.attachAudio(Data([1, 2]), kind: .source, recordID: first.id)
+        let audioPath = try #require(store.records.first(where: { $0.id == first.id })?.sourceAudioPath)
+
+        try store.remove(recordIDs: [first.id])
+
+        #expect(store.records.map(\.id) == [second.id])
+        #expect(!FileManager.default.fileExists(atPath: directory.appendingPathComponent(audioPath).path))
+        #expect(TranslationHistoryStore(directoryURL: directory).records.map(\.id) == [second.id])
+    }
+
+    @Test func filtersBySavedQueryAndTimeRange() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let recent = TranslationRecord(id: UUID(), timestamp: now.addingTimeInterval(-3600), sourceText: "Galaxy", resultText: "Thiên hà", sourceLanguage: "English", targetLanguage: "Vietnamese", isSaved: true)
+        let old = TranslationRecord(id: UUID(), timestamp: now.addingTimeInterval(-8 * 86_400), sourceText: "Old", resultText: "Cũ", sourceLanguage: "English", targetLanguage: "Vietnamese", isSaved: true)
+
+        let filtered = HistoryWindowController.filter(records: [recent, old], query: "galaxy", savedOnly: true, timeRange: .week, now: now)
+
+        #expect(filtered.map(\.id) == [recent.id])
+    }
 }

@@ -186,4 +186,27 @@ final class TranslationHistoryStore {
     private static func hasContent(_ text: String) -> Bool {
         !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
+    func remove(recordID: UUID) throws {
+        try remove(recordIDs: [recordID])
+    }
+
+    func remove(recordIDs: Set<UUID>) throws {
+        try ensureWritable()
+        let count = records.count
+        let updated = records.filter { !recordIDs.contains($0.id) }
+        guard updated.count < count else { throw StoreError.recordNotFound }
+        
+        let removed = records.filter { recordIDs.contains($0.id) }
+        try persist(updated)
+        records = updated
+        
+        for record in removed {
+            if let path = record.sourceAudioPath, let url = try? containedAudioURL(for: path) {
+                try? fileManager.removeItem(at: url)
+            }
+            if let path = record.resultAudioPath, let url = try? containedAudioURL(for: path) {
+                try? fileManager.removeItem(at: url)
+            }
+        }
+    }
 }

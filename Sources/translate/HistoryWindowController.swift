@@ -1,3 +1,15 @@
+enum HistoryTimeRange: CaseIterable {
+    case today, hours24, week, month
+
+    func cutoff(now: Date, calendar: Calendar = .current) -> Date {
+        switch self {
+        case .today: return calendar.startOfDay(for: now)
+        case .hours24: return now.addingTimeInterval(-86_400)
+        case .week: return now.addingTimeInterval(-7 * 86_400)
+        case .month: return calendar.date(byAdding: .month, value: -1, to: now) ?? .distantPast
+        }
+    }
+}
 import AppKit
 import AVFoundation
 
@@ -11,10 +23,11 @@ final class HistoryWindowController: NSWindowController, NSTableViewDataSource, 
     private var audioPlayer: AVAudioPlayer?
     private(set) var filteredRecords: [TranslationRecord] = []
 
-    static func filter(records: [TranslationRecord], query: String, savedOnly: Bool) -> [TranslationRecord] {
+    static func filter(records: [TranslationRecord], query: String, savedOnly: Bool, timeRange: HistoryTimeRange? = nil, now: Date = Date(), calendar: Calendar = .current) -> [TranslationRecord] {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         return records.filter { record in
             if savedOnly && !record.isSaved { return false }
+            if let timeRange, record.timestamp < timeRange.cutoff(now: now, calendar: calendar) { return false }
             if trimmed.isEmpty { return true }
             return record.sourceText.lowercased().contains(trimmed) || record.resultText.lowercased().contains(trimmed)
         }
