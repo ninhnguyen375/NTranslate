@@ -26,7 +26,7 @@ Select text anywhere → press `Option+D` → popup near the cursor.
 
 Prebuilt Apple Silicon (arm64) builds are on **[Releases](https://github.com/ninhnguyen375/NTranslate/releases)**.
 
-Latest: **[v1.2.0](https://github.com/ninhnguyen375/NTranslate/releases/tag/v1.2.0)** — download `NTranslate-1.2.0-arm64.dmg`, drag the app into Applications, then:
+Latest: **[v1.2.1](https://github.com/ninhnguyen375/NTranslate/releases/tag/v1.2.1)** — download `NTranslate-1.2.1-arm64.dmg`, drag the app into Applications, then:
 
 1. First open: Right-click → **Open** if Gatekeeper warns (Development signature, not notarized)
 2. Grant **Accessibility** in System Settings
