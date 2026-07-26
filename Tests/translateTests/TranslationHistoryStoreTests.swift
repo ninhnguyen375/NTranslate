@@ -281,6 +281,15 @@ struct TranslationHistoryStoreTests {
         #expect(filtered.map(\.id) == [recent.id])
     }
 
+    @Test func deleteVisibleSnapshotKeepsConfirmedCountAndIDs() {
+        let first = record(source: "first")
+        let second = record(source: "second")
+        let snapshot = HistoryWindowController.deleteSnapshot(records: [first, second])
+
+        #expect(snapshot.count == 2)
+        #expect(snapshot.ids == Set([first.id, second.id]))
+    }
+
     @Test func openRecordCallbackUsesDoubleClickedRecord() throws {
         let directory = try temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }

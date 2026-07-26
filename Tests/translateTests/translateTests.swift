@@ -608,6 +608,8 @@ struct TranslateTests {
     @Test func popoverIntegrationPolicyDisablesImageOnlyControls() {
         #expect(!PopoverIntegrationPolicy.sourceControlsEnabled(hasPendingImage: true))
         #expect(PopoverIntegrationPolicy.sourceControlsEnabled(hasPendingImage: false))
+        #expect(!PopoverIntegrationPolicy.imagesEnabled(isRequestInFlight: false, hasPendingImage: false, sourceText: " \n "))
+        #expect(PopoverIntegrationPolicy.imagesEnabled(isRequestInFlight: false, hasPendingImage: false, sourceText: " galaxy "))
     }
 
 

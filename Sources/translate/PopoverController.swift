@@ -21,6 +21,10 @@ struct AsyncGeneration {
 enum PopoverIntegrationPolicy {
     static func sourceControlsEnabled(hasPendingImage: Bool) -> Bool { !hasPendingImage }
 
+    static func imagesEnabled(isRequestInFlight: Bool, hasPendingImage: Bool, sourceText: String) -> Bool {
+        !isRequestInFlight && !hasPendingImage && !sourceText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
     static func shouldPrefetchSource(enabled: Bool, hasPendingImage: Bool, text: String) -> Bool {
         enabled && !hasPendingImage && !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
@@ -984,7 +988,11 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     private func updateBusyState() {
         translateButton.isEnabled = !isRequestInFlight
         learnButton.isEnabled = !isRequestInFlight && pendingImage == nil
-        imagesButton.isEnabled = !isRequestInFlight && pendingImage == nil
+        imagesButton.isEnabled = PopoverIntegrationPolicy.imagesEnabled(
+            isRequestInFlight: isRequestInFlight,
+            hasPendingImage: pendingImage != nil,
+            sourceText: inputTextView.string
+        )
         swapLanguagesButton.isEnabled = !isRequestInFlight && pendingImage == nil
         sourceLanguageButton.isEnabled = !isRequestInFlight && PopoverIntegrationPolicy.sourceControlsEnabled(hasPendingImage: pendingImage != nil)
         targetLanguageButton.isEnabled = !isRequestInFlight

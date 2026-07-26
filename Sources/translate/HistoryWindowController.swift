@@ -15,7 +15,7 @@ enum HistoryTimeRange: CaseIterable {
 }
 
 @MainActor
-final class HistoryWindowController: NSWindowController, NSTableViewDataSource, NSTableViewDelegate, NSSearchFieldDelegate, @preconcurrency AVAudioPlayerDelegate {
+final class HistoryWindowController: NSWindowController, NSWindowDelegate, NSTableViewDataSource, NSTableViewDelegate, NSSearchFieldDelegate, @preconcurrency AVAudioPlayerDelegate {
     private let store: TranslationHistoryStore
     private let onOpenRecord: ((TranslationRecord) -> Void)?
     private let tableView = NSTableView()
@@ -37,6 +37,10 @@ final class HistoryWindowController: NSWindowController, NSTableViewDataSource, 
         }
     }
 
+    static func deleteSnapshot(records: [TranslationRecord]) -> (ids: Set<UUID>, count: Int) {
+        (Set(records.map(\.id)), records.count)
+    }
+
     init(store: TranslationHistoryStore, onOpenRecord: ((TranslationRecord) -> Void)? = nil) {
         self.store = store
         self.onOpenRecord = onOpenRecord
@@ -55,6 +59,7 @@ final class HistoryWindowController: NSWindowController, NSTableViewDataSource, 
         window.backgroundColor = .clear
 
         super.init(window: window)
+        window.delegate = self
         configureContent()
     }
 
@@ -110,8 +115,9 @@ final class HistoryWindowController: NSWindowController, NSTableViewDataSource, 
 
     @objc private func confirmDeleteVisible() {
         guard let window = window, !filteredRecords.isEmpty else { return }
+        let snapshot = Self.deleteSnapshot(records: filteredRecords)
         let alert = NSAlert()
-        alert.messageText = "Delete \(filteredRecords.count) records?"
+        alert.messageText = "Delete \(snapshot.count) records?"
         alert.informativeText = "This action cannot be undone."
         alert.addButton(withTitle: "Delete")
         alert.addButton(withTitle: "Cancel")
@@ -119,9 +125,8 @@ final class HistoryWindowController: NSWindowController, NSTableViewDataSource, 
 
         alert.beginSheetModal(for: window) { [weak self] response in
             guard let self, response == .alertFirstButtonReturn else { return }
-            let ids = Set(self.filteredRecords.map(\.id))
             do {
-                try self.store.remove(recordIDs: ids)
+                try self.store.remove(recordIDs: snapshot.ids)
                 self.reloadHistory()
             } catch {
                 self.presentError(title: "Delete Failed", message: error.localizedDescription)
@@ -136,7 +141,7 @@ final class HistoryWindowController: NSWindowController, NSTableViewDataSource, 
     }
 
     private func configureContent() {
-        guard let window else { return }
+        guard let window, let contentLayoutGuide = window.contentLayoutGuide as? NSLayoutGuide else { return }
 
         let visualEffect = NSVisualEffectView()
         visualEffect.material = .hudWindow
@@ -208,7 +213,7 @@ final class HistoryWindowController: NSWindowController, NSTableViewDataSource, 
         NSLayoutConstraint.activate([
             container.leadingAnchor.constraint(equalTo: visualEffect.leadingAnchor, constant: 16),
             container.trailingAnchor.constraint(equalTo: visualEffect.trailingAnchor, constant: -16),
-            container.topAnchor.constraint(equalTo: visualEffect.topAnchor, constant: 16),
+            container.topAnchor.constraint(equalTo: contentLayoutGuide.topAnchor, constant: 16),
             container.bottomAnchor.constraint(equalTo: visualEffect.bottomAnchor, constant: -16),
 
             topBar.leadingAnchor.constraint(equalTo: container.leadingAnchor),
@@ -367,6 +372,10 @@ final class HistoryWindowController: NSWindowController, NSTableViewDataSource, 
     func stopAudioPlayback() {
         audioPlayer?.stop()
         audioPlayer = nil
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        stopAudioPlayback()
     }
 
     private func presentAudioError(_ message: String) {
