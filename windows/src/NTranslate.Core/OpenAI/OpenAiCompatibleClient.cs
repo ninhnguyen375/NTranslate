@@ -10,21 +10,22 @@ public sealed class OpenAiCompatibleClient(HttpClient httpClient)
 
     public async Task<string> CompleteChatAsync(Uri endpoint, string apiKey, ChatCompletionRequest request, CancellationToken cancellationToken)
     {
-        ValidateEndpointAndKey(endpoint, apiKey);
+        string normalizedApiKey = ValidateAndNormalizeEndpointAndKey(endpoint, apiKey);
         ArgumentNullException.ThrowIfNull(request);
         RequireText(request.Model, nameof(request.Model));
         RequireText(request.SystemPrompt, nameof(request.SystemPrompt));
         ValidateInput(request.Input);
 
-        using var message = CreateRequest(endpoint, apiKey, WriteChatBody(request));
+        using var message = CreateRequest(endpoint, normalizedApiKey, WriteChatBody(request));
         using var response = await httpClient.SendAsync(message, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
-        await EnsureSuccessAsync(response, apiKey, cancellationToken).ConfigureAwait(false);
+        await EnsureSuccessAsync(response, normalizedApiKey, cancellationToken).ConfigureAwait(false);
 
         try
         {
             await using var content = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
             using var document = await JsonDocument.ParseAsync(content, cancellationToken: cancellationToken).ConfigureAwait(false);
-            if (!document.RootElement.TryGetProperty("choices", out var choices)
+            if (document.RootElement.ValueKind != JsonValueKind.Object
+                || !document.RootElement.TryGetProperty("choices", out var choices)
                 || choices.ValueKind != JsonValueKind.Array
                 || choices.GetArrayLength() == 0
                 || choices[0].ValueKind != JsonValueKind.Object
@@ -49,14 +50,14 @@ public sealed class OpenAiCompatibleClient(HttpClient httpClient)
 
     public async Task<byte[]> SynthesizeSpeechAsync(Uri endpoint, string apiKey, SpeechRequest request, CancellationToken cancellationToken)
     {
-        ValidateEndpointAndKey(endpoint, apiKey);
+        string normalizedApiKey = ValidateAndNormalizeEndpointAndKey(endpoint, apiKey);
         ArgumentNullException.ThrowIfNull(request);
         RequireText(request.Model, nameof(request.Model));
         RequireText(request.Input, nameof(request.Input));
 
-        using var message = CreateRequest(endpoint, apiKey, WriteSpeechBody(request));
+        using var message = CreateRequest(endpoint, normalizedApiKey, WriteSpeechBody(request));
         using var response = await httpClient.SendAsync(message, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
-        await EnsureSuccessAsync(response, apiKey, cancellationToken).ConfigureAwait(false);
+        await EnsureSuccessAsync(response, normalizedApiKey, cancellationToken).ConfigureAwait(false);
         return await response.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false);
     }
 
@@ -67,7 +68,7 @@ public sealed class OpenAiCompatibleClient(HttpClient httpClient)
             Content = new ByteArrayContent(body)
         };
         message.Content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
-        message.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey.Trim());
+        message.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
         return message;
     }
 
@@ -168,7 +169,7 @@ public sealed class OpenAiCompatibleClient(HttpClient httpClient)
     private static string Redact(string value, string secret) =>
         value.Replace(secret, "[REDACTED]", StringComparison.Ordinal);
 
-    private static void ValidateEndpointAndKey(Uri endpoint, string apiKey)
+    private static string ValidateAndNormalizeEndpointAndKey(Uri endpoint, string apiKey)
     {
         ArgumentNullException.ThrowIfNull(endpoint);
         if (!endpoint.IsAbsoluteUri
@@ -177,6 +178,7 @@ public sealed class OpenAiCompatibleClient(HttpClient httpClient)
             throw new ArgumentException("Endpoint must use HTTPS, except for HTTP loopback endpoints.", nameof(endpoint));
         }
         RequireText(apiKey, nameof(apiKey));
+        return apiKey.Trim();
     }
 
     private static void ValidateInput(ChatInput input)

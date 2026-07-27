@@ -102,6 +102,10 @@ public sealed class OpenAiCompatibleClientTests
     [InlineData("{}", OpenAiErrorCode.InvalidResponse)]
     [InlineData("{\"choices\":{}}", OpenAiErrorCode.InvalidResponse)]
     [InlineData("{\"choices\":[null]}", OpenAiErrorCode.InvalidResponse)]
+    [InlineData("[]", OpenAiErrorCode.InvalidResponse)]
+    [InlineData("null", OpenAiErrorCode.InvalidResponse)]
+    [InlineData("\"string\"", OpenAiErrorCode.InvalidResponse)]
+    [InlineData("42", OpenAiErrorCode.InvalidResponse)]
     [InlineData("not-json", OpenAiErrorCode.InvalidResponse)]
     public async Task CompleteChatAsyncRejectsInvalidSuccessfulResponse(string responseBody, OpenAiErrorCode expectedCode)
     {
@@ -139,21 +143,24 @@ public sealed class OpenAiCompatibleClientTests
     }
 
     [Fact]
-    public async Task HttpErrorResponseBodyRedactsApiKey()
+    public async Task HttpErrorResponseBodyRedactsNormalizedApiKeySentInHeader()
     {
-        const string key = "key-must-not-leak";
-        var client = CreateClient(new HttpResponseMessage(HttpStatusCode.BadRequest)
+        const string apiKey = "  key-must-not-leak  ";
+        const string sentKey = "key-must-not-leak";
+        var handler = new CapturingHandler(request => new HttpResponseMessage(HttpStatusCode.BadRequest)
         {
-            Content = new StringContent($"upstream echoed Bearer {key} and {key}")
+            Content = new StringContent($"upstream echoed Bearer {request.Headers.Authorization?.Parameter}")
         });
+        var client = new OpenAiCompatibleClient(new HttpClient(handler));
 
         var error = await Assert.ThrowsAsync<OpenAiClientException>(() => client.CompleteChatAsync(
             Endpoint,
-            key,
+            apiKey,
             new ChatCompletionRequest("model", "prompt", new TextChatInput("text")),
             CancellationToken.None));
 
-        Assert.DoesNotContain(key, error.ToString(), StringComparison.Ordinal);
+        Assert.Equal(sentKey, handler.Request!.Headers.Authorization?.Parameter);
+        Assert.DoesNotContain(sentKey, error.ToString(), StringComparison.Ordinal);
         Assert.Contains("[REDACTED]", error.ResponseBody, StringComparison.Ordinal);
     }
 
