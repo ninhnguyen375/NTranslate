@@ -47,8 +47,10 @@ public sealed record AppConfig(
             issues.Add(new(nameof(TargetLang), "Must be present in TargetLanguages."));
         if (!Contains(Languages, NativeLang))
             issues.Add(new(nameof(NativeLang), "Must be present in Languages."));
-        if (string.IsNullOrWhiteSpace(Hotkey.Key) || Hotkey.Key.Length != 1 || !char.IsLetter(Hotkey.Key[0]))
-            issues.Add(new("Hotkey.Key", "Must be one letter."));
+        if (string.IsNullOrWhiteSpace(Hotkey.Key) || Hotkey.Key.Length != 1 || !char.IsAsciiLetter(Hotkey.Key[0]))
+            issues.Add(new("Hotkey.Key", "Must be one ASCII letter A-Z."));
+        if (Hotkey.Command)
+            issues.Add(new("Hotkey.Command", "Command is not supported on Windows."));
         if (!(Hotkey.Option || Hotkey.Command || Hotkey.Control || Hotkey.Shift))
             issues.Add(new("Hotkey.Modifiers", "At least one modifier is required."));
         if (Ui.Width <= 0)

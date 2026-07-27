@@ -92,6 +92,14 @@ public sealed class AppConfigTests
     }
 
     [Fact]
+    public void ValidationRejectsWindowsOnlyHotkeyValues()
+    {
+        var config = AppConfig.Default with { Hotkey = new("Đ", false, true, false, false) };
+
+        Assert.Equal(["Hotkey.Key", "Hotkey.Command"], config.Validate().Select(issue => issue.Field));
+    }
+
+    [Fact]
     public void ValidationRejectsDuplicateAndUnknownLanguages()
     {
         var config = AppConfig.Default with

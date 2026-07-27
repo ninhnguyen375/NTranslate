@@ -9,6 +9,7 @@ internal delegate nint WindowProcedure(nint window, uint message, nint wParam, n
 
 internal interface INativeWindowApi
 {
+    uint GetWindowThreadId(nint window);
     nint SetWindowProcedure(nint window, WindowProcedure procedure);
     bool RestoreWindowProcedure(nint window, nint procedure);
     nint CallWindowProcedure(nint procedure, nint window, uint message, nint wParam, nint lParam);
@@ -19,6 +20,7 @@ internal interface INativeWindowApi
 
 internal sealed class NativeWindowApi : INativeWindowApi
 {
+    public uint GetWindowThreadId(nint window) => GetWindowThreadProcessId(window, out _);
     public nint SetWindowProcedure(nint window, WindowProcedure procedure)
     {
         Marshal.SetLastPInvokeError(0);
@@ -33,6 +35,7 @@ internal sealed class NativeWindowApi : INativeWindowApi
     public bool RegisterHotkey(nint window, nint id, HotkeyModifiers modifiers, uint virtualKey) => RegisterHotKey(window, id, (uint)modifiers, virtualKey);
     public bool UnregisterHotkey(nint window, nint id) => UnregisterHotKey(window, id);
     public int GetLastError() => Marshal.GetLastPInvokeError();
+    [DllImport("user32.dll", SetLastError = true)] private static extern uint GetWindowThreadProcessId(nint hWnd, out uint lpdwProcessId);
     [DllImport("user32.dll", SetLastError = true)] private static extern nint SetWindowLongPtr(nint hWnd, int nIndex, nint dwNewLong);
     [DllImport("user32.dll")] private static extern nint CallWindowProc(nint lpPrevWndFunc, nint hWnd, uint msg, nint wParam, nint lParam);
     [DllImport("user32.dll", SetLastError = true)] private static extern bool RegisterHotKey(nint hWnd, nint id, uint fsModifiers, uint vk);
@@ -40,28 +43,17 @@ internal sealed class NativeWindowApi : INativeWindowApi
 }
 
 public sealed record HotkeyRegistrationResult(bool IsRegistered, string? Error);
+public sealed class HotkeyOperationException(string message) : InvalidOperationException(message);
 public interface IGlobalHotkey : IDisposable
 {
     event EventHandler? Pressed;
     HotkeyRegistrationResult Register(HotkeyConfig config);
-    HotkeyRegistrationResult Unregister();
+    void Unregister();
 }
 
 internal readonly record struct ParsedHotkey(HotkeyModifiers Modifiers, uint VirtualKey);
-
-public static class WindowsHotkeyValidation
+internal static class WindowsHotkeyValidation
 {
-    public static IReadOnlyList<ConfigValidationIssue> Validate(HotkeyConfig config)
-    {
-        try { Parse(config); return []; }
-        catch (ArgumentException error)
-        {
-            var field = error.Message.StartsWith("Hotkey.Command", StringComparison.Ordinal) ? "Hotkey.Command" :
-                error.Message.StartsWith("Hotkey.Key", StringComparison.Ordinal) ? "Hotkey.Key" : "Hotkey.Modifiers";
-            return [new(field, field["Hotkey.".Length..] + error.Message[field.Length..])];
-        }
-    }
-
     internal static ParsedHotkey Parse(HotkeyConfig config)
     {
         ArgumentNullException.ThrowIfNull(config);
@@ -92,10 +84,12 @@ internal sealed class WindowMessageRouter : IDisposable
         _window = window;
         _native = native ?? throw new ArgumentNullException(nameof(native));
         _ownerThreadId = Environment.CurrentManagedThreadId;
+        if (_native.GetWindowThreadId(window) != (uint)_ownerThreadId)
+            throw new InvalidOperationException("HWND belongs to a different thread.");
         _procedure = ProcessMessage;
         _previousProcedure = _native.SetWindowProcedure(window, _procedure);
         if (_previousProcedure == 0 && _native.GetLastError() != 0)
-            throw new InvalidOperationException($"SetWindowLongPtr failed (Win32 error {_native.GetLastError()}).");
+            throw new HotkeyOperationException($"SetWindowLongPtr failed (Win32 error {_native.GetLastError()}).");
     }
 
     internal nint Dispatch(uint message, nint wParam, nint lParam) => ProcessMessage(_window, message, wParam, lParam);
@@ -104,7 +98,7 @@ internal sealed class WindowMessageRouter : IDisposable
         VerifyOwnerThread();
         if (_disposed) return;
         if (!_native.RestoreWindowProcedure(_window, _previousProcedure))
-            throw new InvalidOperationException($"SetWindowLongPtr restore failed (Win32 error {_native.GetLastError()}).");
+            throw new HotkeyOperationException($"SetWindowLongPtr restore failed (Win32 error {_native.GetLastError()}).");
         _disposed = true;
         GC.SuppressFinalize(this);
     }
@@ -159,11 +153,7 @@ public sealed class GlobalHotkey : IGlobalHotkey
         _router.VerifyOwnerThread();
         ObjectDisposedException.ThrowIf(_disposed, this);
         var parsed = WindowsHotkeyValidation.Parse(config);
-        if (_registered)
-        {
-            var unregistered = Unregister();
-            if (!unregistered.IsRegistered) return unregistered;
-        }
+        if (_registered) Unregister();
         if (_native.RegisterHotkey(_router.Window, Id, parsed.Modifiers | HotkeyModifiers.NoRepeat, parsed.VirtualKey))
         {
             _registered = true;
@@ -172,24 +162,27 @@ public sealed class GlobalHotkey : IGlobalHotkey
         return new(false, $"RegisterHotKey failed (Win32 error {_native.GetLastError()}).");
     }
 
-    public HotkeyRegistrationResult Unregister()
+    public void Unregister()
     {
         _router.VerifyOwnerThread();
-        if (!_registered) return new(true, null);
+        if (!_registered) return;
         if (!_native.UnregisterHotkey(_router.Window, Id))
-            return new(false, $"UnregisterHotKey failed (Win32 error {_native.GetLastError()}).");
+            throw new HotkeyOperationException($"UnregisterHotKey failed (Win32 error {_native.GetLastError()}).");
         _registered = false;
-        return new(true, null);
     }
 
     public void Dispose()
     {
         _router.VerifyOwnerThread();
         if (_disposed) return;
-        var unregistered = Unregister();
-        if (!unregistered.IsRegistered) throw new InvalidOperationException(unregistered.Error);
+        try { Unregister(); }
+        catch (HotkeyOperationException) { return; }
         _router.MessageReceived -= HandleMessage;
-        if (_ownsRouter) _router.Dispose();
+        if (_ownsRouter)
+        {
+            try { _router.Dispose(); }
+            catch (HotkeyOperationException) { _router.MessageReceived += HandleMessage; return; }
+        }
         _disposed = true;
         GC.SuppressFinalize(this);
     }
