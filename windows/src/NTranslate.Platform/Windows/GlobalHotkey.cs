@@ -53,7 +53,9 @@ internal sealed class NativeMessageWindow : IMessageWindow
     private nint _handle;
     private uint _threadId;
     private Exception? _startError;
-    private int _lastError;
+    private readonly object _commandsGate = new();
+    private readonly HashSet<Command> _commands = [];
+    private Exception? _terminalError;
     public event EventHandler<NativeMessageEventArgs>? MessageReceived;
     public nint Handle => _handle;
 
@@ -66,37 +68,55 @@ internal sealed class NativeMessageWindow : IMessageWindow
         if (_startError is not null) throw new HotkeyOperationException(_startError.Message);
     }
 
-    public bool RegisterHotkey(nint id, HotkeyModifiers modifiers, uint key) => Invoke(() => Capture(RegisterHotKey(_handle, id, (uint)modifiers, key)));
-    public bool UnregisterHotkey(nint id) => Invoke(() => Capture(UnregisterHotKey(_handle, id)));
+    public bool RegisterHotkey(nint id, HotkeyModifiers modifiers, uint key) => Invoke(() => RegisterHotKey(_handle, id, (uint)modifiers, key));
+    public bool UnregisterHotkey(nint id) => Invoke(() => UnregisterHotKey(_handle, id));
     public bool Destroy() => Invoke(() =>
     {
-        var destroyed = Capture(DestroyWindow(_handle));
+        var destroyed = DestroyWindow(_handle);
         if (destroyed) PostQuitMessage(0);
         return destroyed;
     });
-    public int GetLastError() => _lastError;
+    public int GetLastError() => throw new NotSupportedException("Error belongs to each command result.");
 
-    private bool Capture(bool result)
-    {
-        _lastError = Marshal.GetLastPInvokeError();
-        return result;
-    }
-
-    private T Invoke<T>(Func<T> action)
+    private bool Invoke(Func<bool> action)
     {
         if (GetCurrentThreadId() == _threadId) return action();
-        T? result = default;
-        Exception? error = null;
-        using var done = new ManualResetEventSlim();
-        var work = GCHandle.Alloc(new Action(() => { try { result = action(); } catch (Exception e) { error = e; } finally { done.Set(); } }));
-        if (!PostThreadMessage(_threadId, WmWork, 0, GCHandle.ToIntPtr(work)))
+        var command = new Command(action);
+        lock (_commandsGate)
         {
-            work.Free();
-            throw new HotkeyOperationException($"PostThreadMessage failed (Win32 error {Marshal.GetLastPInvokeError()}).");
+            if (_terminalError is not null) throw new HotkeyOperationException(_terminalError.Message);
+            _commands.Add(command);
         }
-        done.Wait();
-        if (error is not null) throw error;
-        return result!;
+        var handle = GCHandle.Alloc(command);
+        if (!PostThreadMessage(_threadId, WmWork, 0, GCHandle.ToIntPtr(handle)))
+        {
+            handle.Free();
+            Complete(command, null, new HotkeyOperationException($"PostThreadMessage failed (Win32 error {Marshal.GetLastPInvokeError()})."));
+        }
+        if (!command.Done.Wait(TimeSpan.FromSeconds(5)))
+        {
+            command.Cancelled = true;
+            throw new HotkeyOperationException("Hotkey command timed out.");
+        }
+        if (command.Error is not null) throw command.Error;
+        return command.Result!.Value;
+    }
+
+    private void Complete(Command command, bool? result, Exception? error)
+    {
+        command.Result = result;
+        command.Error = error;
+        command.Done.Set();
+        lock (_commandsGate) _commands.Remove(command);
+    }
+
+    private sealed class Command(Func<bool> action)
+    {
+        public readonly Func<bool> Action = action;
+        public readonly ManualResetEventSlim Done = new();
+        public bool Cancelled;
+        public bool? Result;
+        public Exception? Error;
     }
 
     private void Run(ManualResetEventSlim ready)
@@ -107,27 +127,48 @@ internal sealed class NativeMessageWindow : IMessageWindow
             _handle = CreateWindowEx(0, "STATIC", "", 0, 0, 0, 0, 0, new nint(-3), 0, 0, 0);
             if (_handle == 0) throw new InvalidOperationException($"CreateWindowEx failed (Win32 error {Marshal.GetLastPInvokeError()}).");
             ready.Set();
-            while (GetMessage(out var message, 0, 0, 0) > 0)
+            while (true)
             {
+                var status = GetMessage(out var message, 0, 0, 0);
+                if (status == 0) break;
+                if (status == -1) throw new HotkeyOperationException($"GetMessage failed (Win32 error {Marshal.GetLastPInvokeError()}).");
                 if (message.message == WmWork)
                 {
-                    var work = GCHandle.FromIntPtr(message.lParam);
-                    ((Action)work.Target!).Invoke();
-                    work.Free();
+                    var handle = GCHandle.FromIntPtr(message.lParam);
+                    var command = (Command)handle.Target!;
+                    handle.Free();
+                    if (!command.Cancelled)
+                    {
+                        try { Complete(command, command.Action(), null); }
+                        catch (Exception error) { Complete(command, null, error); }
+                    }
+                    else Complete(command, null, new HotkeyOperationException("Hotkey command timed out."));
                     continue;
                 }
                 if (message.hwnd == _handle && message.message == WmHotkey) Dispatch(message.message, message.wParam);
                 TranslateMessage(ref message);
                 DispatchMessage(ref message);
             }
+            Terminal(new HotkeyOperationException("Hotkey message window has stopped."));
         }
-        catch (Exception error) { _startError = error; ready.Set(); }
+        catch (Exception error) { _startError = error; ready.Set(); Terminal(error); }
+    }
+
+    private void Terminal(Exception error)
+    {
+        Command[] pending;
+        lock (_commandsGate)
+        {
+            _terminalError = error;
+            pending = _commands.ToArray();
+        }
+        foreach (var command in pending) Complete(command, null, error);
     }
 
     private void Dispatch(uint message, nint wParam)
     {
         foreach (EventHandler<NativeMessageEventArgs> handler in MessageReceived?.GetInvocationList() ?? [])
-            try { handler(this, new(message, wParam)); } catch { }
+            _ = Task.Run(() => { try { handler(this, new(message, wParam)); } catch { } });
     }
 
     [StructLayout(LayoutKind.Sequential)] private struct Msg { public nint hwnd; public uint message; public nint wParam; public nint lParam; public uint time; public nint pt; }
@@ -192,6 +233,6 @@ public sealed class GlobalHotkey : IGlobalHotkey
     {
         if (message.Message != WmHotkey || message.WParam != Id) return;
         foreach (EventHandler handler in Pressed?.GetInvocationList() ?? [])
-            try { handler(this, EventArgs.Empty); } catch { }
+            _ = Task.Run(() => { try { handler(this, EventArgs.Empty); } catch { } });
     }
 }

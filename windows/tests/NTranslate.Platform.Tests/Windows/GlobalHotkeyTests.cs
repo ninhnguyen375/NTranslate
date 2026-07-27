@@ -41,6 +41,7 @@ public sealed class GlobalHotkeyTests
         hotkey.Register(new("D", false, false, true, false));
         owner.Dispatch(0x0312, 1);
         owner.Dispatch(0x0312, 0x4E54);
+        SpinWait.SpinUntil(() => Volatile.Read(ref pressed) == 1, TimeSpan.FromSeconds(1));
         Assert.Equal(1, pressed);
     }
 
