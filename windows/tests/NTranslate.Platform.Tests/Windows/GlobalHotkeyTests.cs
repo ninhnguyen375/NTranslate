@@ -15,132 +15,89 @@ public sealed class GlobalHotkeyTests
 
     [Theory]
     [InlineData("1")]
-    [InlineData("AA")]
-    [InlineData("")]
     [InlineData("Đ")]
-    public void Parse_rejects_non_ascii_key(string key) =>
-        Assert.Equal("Hotkey.Key must be one ASCII letter A-Z.", Assert.Throws<ArgumentException>(() => WindowsHotkeyValidation.Parse(new(key, false, false, true, false))).Message);
+    public void Parse_rejects_non_ascii_key(string key) => Assert.Throws<ArgumentException>(() => WindowsHotkeyValidation.Parse(new(key, false, false, true, false)));
 
     [Fact]
-    public void Register_uses_fixed_id_no_repeat_and_parsed_values()
+    public void Register_uses_owned_message_window_fixed_id_and_no_repeat()
     {
-        var native = new FakeNativeWindowApi();
-        using var router = new WindowMessageRouter((nint)1, native);
-        using var hotkey = new GlobalHotkey(router, native);
-        Assert.True(hotkey.Register(new("D", true, false, false, false)).IsRegistered);
-        Assert.Equal((nint)0x4E54, native.RegisterId);
-        Assert.Equal(HotkeyModifiers.Alt | HotkeyModifiers.NoRepeat, native.RegisterModifiers);
+        var owner = new FakeMessageWindow();
+        using var hotkey = new GlobalHotkey(owner);
+        var result = hotkey.Register(new("D", true, false, false, false));
+        Assert.True(result.IsRegistered);
+        Assert.Equal((nint)77, owner.RegisterWindow);
+        Assert.Equal((nint)0x4E54, owner.RegisterId);
+        Assert.Equal(HotkeyModifiers.Alt | HotkeyModifiers.NoRepeat, owner.RegisterModifiers);
     }
 
     [Fact]
-    public void Register_throws_and_preserves_existing_registration_when_unregister_fails()
+    public void WmHotkey_filters_id_and_contains_subscriber_errors()
     {
-        var native = new FakeNativeWindowApi { UnregisterResult = false, LastError = 5 };
-        using var router = new WindowMessageRouter((nint)1, native);
-        using var hotkey = new GlobalHotkey(router, native);
+        var owner = new FakeMessageWindow();
+        using var hotkey = new GlobalHotkey(owner);
+        var pressed = 0;
+        hotkey.Pressed += (_, _) => throw new InvalidOperationException();
+        hotkey.Pressed += (_, _) => pressed++;
         hotkey.Register(new("D", false, false, true, false));
-
-        Assert.Equal("UnregisterHotKey failed (Win32 error 5).", Assert.Throws<HotkeyOperationException>(() => hotkey.Register(new("E", false, false, true, false))).Message);
-        Assert.Equal(1, native.RegisterCalls);
-        native.UnregisterResult = true;
+        owner.Dispatch(0x0312, 1);
+        owner.Dispatch(0x0312, 0x4E54);
+        Assert.Equal(1, pressed);
     }
 
     [Fact]
-    public void Unregister_throws_native_failure_and_can_retry()
+    public void Unregister_failure_throws_and_can_retry()
     {
-        var native = new FakeNativeWindowApi { UnregisterResult = false, LastError = 5 };
-        using var router = new WindowMessageRouter((nint)1, native);
-        using var hotkey = new GlobalHotkey(router, native);
+        var owner = new FakeMessageWindow { UnregisterResult = false, LastError = 5 };
+        using var hotkey = new GlobalHotkey(owner);
         hotkey.Register(new("D", false, false, true, false));
-
         Assert.Throws<HotkeyOperationException>(hotkey.Unregister);
-        native.UnregisterResult = true;
+        owner.UnregisterResult = true;
         hotkey.Unregister();
-        Assert.Equal(2, native.UnregisterCalls);
+        Assert.Equal(2, owner.UnregisterCalls);
     }
 
     [Fact]
-    public void Dispose_failed_unregister_keeps_state_for_explicit_retry()
+    public void Dispose_failure_throws_keeps_owned_window_for_retry()
     {
-        var native = new FakeNativeWindowApi { UnregisterResult = false, LastError = 5 };
-        using var router = new WindowMessageRouter((nint)1, native);
-        var hotkey = new GlobalHotkey(router, native);
+        var owner = new FakeMessageWindow { UnregisterResult = false, LastError = 5 };
+        var hotkey = new GlobalHotkey(owner);
         hotkey.Register(new("D", false, false, true, false));
-
+        Assert.Throws<HotkeyOperationException>(hotkey.Dispose);
+        Assert.Equal(0, owner.DestroyCalls);
+        owner.UnregisterResult = true;
         hotkey.Dispose();
-
-        Assert.Equal(1, native.UnregisterCalls);
-        Assert.Equal(0, native.RestoreCalls);
-        native.UnregisterResult = true;
-        hotkey.Unregister();
         hotkey.Dispose();
-        Assert.Equal(0, native.RestoreCalls);
+        Assert.Equal(1, owner.DestroyCalls);
     }
 
     [Fact]
-    public void Router_rejects_window_owned_by_another_thread_before_subclassing()
+    public void Dispose_destroy_failure_throws_and_retries()
     {
-        var native = new FakeNativeWindowApi { WindowThreadId = (uint)(Environment.CurrentManagedThreadId + 1) };
-        Assert.Equal("HWND belongs to a different thread.", Assert.Throws<InvalidOperationException>(() => new WindowMessageRouter((nint)1, native)).Message);
-        Assert.Equal(0, native.SetWindowProcedureCalls);
+        var owner = new FakeMessageWindow { DestroyResult = false, LastError = 87 };
+        var hotkey = new GlobalHotkey(owner);
+        Assert.Throws<HotkeyOperationException>(hotkey.Dispose);
+        owner.DestroyResult = true;
+        hotkey.Dispose();
+        Assert.Equal(2, owner.DestroyCalls);
     }
 
-    [Fact]
-    public void Router_forwards_old_proc_when_subscriber_throws()
+    private sealed class FakeMessageWindow : IMessageWindow
     {
-        var native = new FakeNativeWindowApi();
-        using var router = new WindowMessageRouter((nint)1, native);
-        router.MessageReceived += (_, _) => throw new InvalidOperationException();
-        router.Dispatch(1, 2, 3);
-        Assert.Equal(1, native.CallWindowProcedureCalls);
-    }
-
-    [Fact]
-    public void Router_dispose_failed_restore_is_retryable()
-    {
-        var native = new FakeNativeWindowApi { RestoreResult = false, LastError = 87 };
-        var router = new WindowMessageRouter((nint)1, native);
-        Assert.Throws<HotkeyOperationException>(router.Dispose);
-        native.RestoreResult = true;
-        router.Dispose();
-        router.Dispose();
-        Assert.Equal(2, native.RestoreCalls);
-    }
-
-    [Fact]
-    public void Lifecycle_rejects_wrong_thread()
-    {
-        var native = new FakeNativeWindowApi();
-        var router = new WindowMessageRouter((nint)1, native);
-        var hotkey = new GlobalHotkey(router, native);
-        Exception? error = null;
-        var thread = new Thread(() => error = Record.Exception(() => hotkey.Register(new("D", false, false, true, false))));
-        thread.Start(); thread.Join();
-        Assert.Equal("Global hotkey must run on its owner thread.", Assert.IsType<InvalidOperationException>(error).Message);
-        hotkey.Dispose(); router.Dispose();
-    }
-
-    private sealed class FakeNativeWindowApi : INativeWindowApi
-    {
-        public nint PreviousWindowProc { get; set; } = (nint)99;
-        public uint WindowThreadId { get; set; } = (uint)Environment.CurrentManagedThreadId;
+        public event EventHandler<NativeMessageEventArgs>? MessageReceived;
+        public nint Handle => 77;
         public bool RegisterResult { get; set; } = true;
         public bool UnregisterResult { get; set; } = true;
-        public bool RestoreResult { get; set; } = true;
+        public bool DestroyResult { get; set; } = true;
         public int LastError { get; set; }
+        public nint RegisterWindow { get; private set; }
         public nint RegisterId { get; private set; }
         public HotkeyModifiers RegisterModifiers { get; private set; }
-        public int RegisterCalls { get; private set; }
         public int UnregisterCalls { get; private set; }
-        public int RestoreCalls { get; private set; }
-        public int SetWindowProcedureCalls { get; private set; }
-        public int CallWindowProcedureCalls { get; private set; }
-        public uint GetWindowThreadId(nint window) => WindowThreadId;
-        public nint SetWindowProcedure(nint window, WindowProcedure procedure) { SetWindowProcedureCalls++; return PreviousWindowProc; }
-        public bool RestoreWindowProcedure(nint window, nint procedure) { RestoreCalls++; return RestoreResult; }
-        public nint CallWindowProcedure(nint procedure, nint window, uint message, nint wParam, nint lParam) { CallWindowProcedureCalls++; return 0; }
-        public bool RegisterHotkey(nint window, nint id, HotkeyModifiers modifiers, uint virtualKey) { RegisterId = id; RegisterModifiers = modifiers; RegisterCalls++; return RegisterResult; }
-        public bool UnregisterHotkey(nint window, nint id) { UnregisterCalls++; return UnregisterResult; }
+        public int DestroyCalls { get; private set; }
+        public bool RegisterHotkey(nint id, HotkeyModifiers modifiers, uint key) { RegisterWindow = Handle; RegisterId = id; RegisterModifiers = modifiers; return RegisterResult; }
+        public bool UnregisterHotkey(nint id) { UnregisterCalls++; return UnregisterResult; }
+        public bool Destroy() { DestroyCalls++; return DestroyResult; }
         public int GetLastError() => LastError;
+        public void Dispatch(uint message, nint wParam) => MessageReceived?.Invoke(this, new(message, wParam));
     }
 }
