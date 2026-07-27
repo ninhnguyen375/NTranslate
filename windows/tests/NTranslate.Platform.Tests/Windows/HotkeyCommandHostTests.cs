@@ -33,6 +33,21 @@ public sealed class HotkeyCommandHostTests
     }
 
     [Fact]
+    public async Task Parallel_runners_select_only_one_command()
+    {
+        var host = new HotkeyCommandHost();
+        using var started = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim();
+        host.Enqueue(() => { started.Set(); release.Wait(); return new NativeCommandResult<bool>(true, 0); });
+
+        var first = Task.Run(host.RunNext);
+        started.Wait();
+        Assert.False(host.RunNext());
+        release.Set();
+        Assert.True(await first);
+    }
+
+    [Fact]
     public void Terminal_completes_pending_and_rejects_future_commands()
     {
         var host = new HotkeyCommandHost();

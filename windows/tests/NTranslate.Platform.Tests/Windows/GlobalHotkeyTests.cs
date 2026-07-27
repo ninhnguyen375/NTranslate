@@ -36,13 +36,14 @@ public sealed class GlobalHotkeyTests
         var owner = new FakeMessageWindow();
         using var hotkey = new GlobalHotkey(owner);
         var pressed = 0;
+        using var delivered = new ManualResetEventSlim();
         hotkey.Pressed += (_, _) => throw new InvalidOperationException();
-        hotkey.Pressed += (_, _) => pressed++;
+        hotkey.Pressed += (_, _) => { Interlocked.Increment(ref pressed); delivered.Set(); };
         hotkey.Register(new("D", false, false, true, false));
         owner.Dispatch(0x0312, 1);
         owner.Dispatch(0x0312, 0x4E54);
-        SpinWait.SpinUntil(() => Volatile.Read(ref pressed) == 1, TimeSpan.FromSeconds(1));
-        Assert.Equal(1, pressed);
+        Assert.True(delivered.Wait(TimeSpan.FromSeconds(5)));
+        Assert.Equal(1, Volatile.Read(ref pressed));
     }
 
     [Fact]
