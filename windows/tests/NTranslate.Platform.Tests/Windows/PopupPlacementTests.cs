@@ -107,6 +107,24 @@ public sealed class PopupPlacementTests
         Assert.Throws<ArgumentOutOfRangeException>(() => PopupPlacement.ToPhysicalPixels(-1, 100, 96));
     }
 
+    [Theory]
+    [InlineData(double.NaN)]
+    [InlineData(double.PositiveInfinity)]
+    [InlineData(double.NegativeInfinity)]
+    public void ToPhysicalPixels_rejects_non_finite_width(double width)
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => PopupPlacement.ToPhysicalPixels(width, 100, 96));
+    }
+
+    [Theory]
+    [InlineData(double.NaN)]
+    [InlineData(double.PositiveInfinity)]
+    [InlineData(double.NegativeInfinity)]
+    public void ToPhysicalPixels_rejects_non_finite_height(double height)
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => PopupPlacement.ToPhysicalPixels(100, height, 96));
+    }
+
     private static ScreenPoint Place(ScreenPoint cursor, PopupSize popup, ScreenRect workArea) =>
         PopupPlacement.Place(cursor, popup, workArea);
 }

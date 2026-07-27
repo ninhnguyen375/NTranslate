@@ -47,7 +47,9 @@ public static class PopupPlacement
 
     private static int ToPhysicalPixels(double value, uint dpi)
     {
-        ArgumentOutOfRangeException.ThrowIfNegative(value);
+        if (!double.IsFinite(value) || value < 0)
+            throw new ArgumentOutOfRangeException(nameof(value));
+
         return Saturate(Math.Round(value * dpi / 96, MidpointRounding.AwayFromZero));
     }
 
