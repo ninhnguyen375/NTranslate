@@ -5,24 +5,14 @@
   "type": "object",
   "required": [
     "apiBaseURL",
-    "apiSpeechURL",
     "model",
     "sourceLang",
     "targetLang",
-    "nativeLang",
-    "languages",
-    "targetLanguages",
-    "maxTranslateLength",
     "systemPrompt",
-    "learnPrompt",
-    "sentenceLearnPrompt",
-    "grammarPrompt",
-    "autoPrefetchSpeech",
     "speechSourceModel",
     "speechSourceModelVietnamese",
     "speechSourceModelChinese",
     "speechTargetModel",
-    "historyDirectory",
     "hotkey",
     "ui"
   ],
@@ -60,7 +50,7 @@
     },
     "ui": {
       "type": "object",
-      "required": ["width", "height", "autoCopy", "simulateCopy"],
+      "required": ["width", "height", "autoCopy"],
       "properties": {
         "width": { "type": "number", "exclusiveMinimum": 0 },
         "height": { "type": "number", "exclusiveMinimum": 0 },

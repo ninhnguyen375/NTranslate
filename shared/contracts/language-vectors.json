@@ -12,7 +12,7 @@
       "text": "hello",
       "recentTargets": ["English", "Vietnamese"],
       "targetLanguages": ["English", "Vietnamese"],
-      "expectedSource": "English",
+      "expectedSource": "Auto detect",
       "expectedTarget": "Vietnamese"
     },
     {

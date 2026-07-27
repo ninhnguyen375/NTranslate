@@ -7,7 +7,7 @@
       "targetLang": "Vietnamese",
       "nativeLang": "Vietnamese",
       "lang": "English",
-      "expected": "Translate English to Vietnamese for Vietnamese; keep {{unknown}}."
+      "expected": "Translate English to Vietnamese for {{config.nativeLang}}; keep {{unknown}}."
     },
     {
       "name": "grammar language placeholder",
