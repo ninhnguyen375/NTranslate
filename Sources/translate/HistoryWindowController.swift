@@ -20,9 +20,8 @@ final class HistoryWindowController: NSWindowController, NSWindowDelegate, NSTab
     private let onOpenRecord: ((TranslationRecord) -> Void)?
     private let tableView = NSTableView()
     private let searchField = NSSearchField()
-    private let filterSegmentedControl = NSSegmentedControl(labels: ["History", "Saved Words"], trackingMode: .selectOne, target: nil, action: nil)
+    private let filterSegmentedControl = NSSegmentedControl(labels: ["History", "Saved"], trackingMode: .selectOne, target: nil, action: nil)
     private let timeSegmentedControl = NSSegmentedControl(labels: ["Today", "24h", "Week", "Month"], trackingMode: .selectOne, target: nil, action: nil)
-    private let clearFilterButton = NSButton(title: "Clear", target: nil, action: nil)
     private let deleteVisibleButton = NSButton()
     private var audioPlayer: AVAudioPlayer?
     private(set) var filteredRecords: [TranslationRecord] = []
@@ -106,13 +105,6 @@ final class HistoryWindowController: NSWindowController, NSWindowDelegate, NSTab
         reloadHistory()
     }
 
-    @objc private func clearFilter() {
-        searchField.stringValue = ""
-        filterSegmentedControl.selectedSegment = 0
-        timeSegmentedControl.selectedSegment = 0
-        reloadHistory()
-    }
-
     @objc private func confirmDeleteVisible() {
         guard let window = window, !filteredRecords.isEmpty else { return }
         let snapshot = Self.deleteSnapshot(records: filteredRecords)
@@ -154,6 +146,14 @@ final class HistoryWindowController: NSWindowController, NSWindowDelegate, NSTab
         filterSegmentedControl.selectedSegment = 0
         filterSegmentedControl.target = self
         filterSegmentedControl.action = #selector(filterChanged)
+        filterSegmentedControl.setImage(
+            NSImage(systemSymbolName: "clock.arrow.circlepath", accessibilityDescription: "History"),
+            forSegment: 0
+        )
+        filterSegmentedControl.setImage(
+            NSImage(systemSymbolName: "bookmark.fill", accessibilityDescription: "Saved"),
+            forSegment: 1
+        )
 
         timeSegmentedControl.selectedSegment = 0
         timeSegmentedControl.target = self
@@ -164,10 +164,6 @@ final class HistoryWindowController: NSWindowController, NSWindowDelegate, NSTab
         searchField.target = self
         searchField.action = #selector(filterChanged)
 
-        clearFilterButton.target = self
-        clearFilterButton.action = #selector(clearFilter)
-        clearFilterButton.bezelStyle = .rounded
-
         deleteVisibleButton.image = NSImage(systemSymbolName: "trash", accessibilityDescription: "Delete visible records")
         deleteVisibleButton.target = self
         deleteVisibleButton.action = #selector(confirmDeleteVisible)
@@ -175,7 +171,7 @@ final class HistoryWindowController: NSWindowController, NSWindowDelegate, NSTab
         deleteVisibleButton.isBordered = false
         deleteVisibleButton.imageScaling = .scaleProportionallyUpOrDown
 
-        let topBar = NSStackView(views: [searchField, filterSegmentedControl, timeSegmentedControl, clearFilterButton, deleteVisibleButton])
+        let topBar = NSStackView(views: [searchField, filterSegmentedControl, timeSegmentedControl, deleteVisibleButton])
         topBar.orientation = .horizontal
         topBar.spacing = 8
         topBar.alignment = .centerY
@@ -184,8 +180,9 @@ final class HistoryWindowController: NSWindowController, NSWindowDelegate, NSTab
         let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("History"))
         column.resizingMask = .autoresizingMask
         tableView.addTableColumn(column)
+        tableView.columnAutoresizingStyle = .firstColumnOnlyAutoresizingStyle
         tableView.headerView = nil
-        tableView.rowHeight = 80
+        tableView.rowHeight = 88
         tableView.backgroundColor = .clear
         tableView.usesAlternatingRowBackgroundColors = false
         tableView.intercellSpacing = NSSize(width: 0, height: 8)
@@ -223,6 +220,8 @@ final class HistoryWindowController: NSWindowController, NSWindowDelegate, NSTab
             scrollView.trailingAnchor.constraint(equalTo: container.trailingAnchor)
         ])
 
+        visualEffect.layoutSubtreeIfNeeded()
+        tableView.sizeLastColumnToFit()
         updateFilteredRecords()
     }
 
@@ -236,9 +235,13 @@ final class HistoryWindowController: NSWindowController, NSWindowDelegate, NSTab
         let savedState = record.isSaved ? "Saved" : "Not saved"
         let context = "\(timestamp), \(record.sourceLanguage) to \(record.targetLanguage), \(savedState)"
 
-        let metadata = NSTextField(labelWithString: "\(timestamp)  ·  \(record.sourceLanguage) → \(record.targetLanguage)")
+        let metadata = historyTextField(
+            "\(timestamp)  ·  \(record.sourceLanguage) → \(record.targetLanguage)",
+            accessibilityLabel: "Metadata for \(context)"
+        )
         metadata.font = .systemFont(ofSize: 11, weight: .medium)
         metadata.textColor = .secondaryLabelColor
+        metadata.toolTip = metadata.stringValue
 
         let source = historyTextField(record.sourceText, accessibilityLabel: "Source text for \(context): \(record.sourceText)")
         source.font = .systemFont(ofSize: 14, weight: .regular)
@@ -251,8 +254,14 @@ final class HistoryWindowController: NSWindowController, NSWindowDelegate, NSTab
         let textStack = NSStackView(views: [metadata, source, result])
         textStack.translatesAutoresizingMaskIntoConstraints = false
         textStack.orientation = .vertical
-        textStack.alignment = .leading
-        textStack.spacing = 2
+        textStack.alignment = .width
+        textStack.spacing = 3
+        [metadata, source, result].forEach {
+            $0.leadingAnchor.constraint(equalTo: textStack.leadingAnchor).isActive = true
+            $0.trailingAnchor.constraint(equalTo: textStack.trailingAnchor).isActive = true
+        }
+        textStack.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        textStack.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         view.addSubview(textStack)
         view.setAccessibilityLabel("Translation record, \(context), source: \(record.sourceText), translation: \(record.resultText)")
 
@@ -260,6 +269,8 @@ final class HistoryWindowController: NSWindowController, NSWindowDelegate, NSTab
         actionStack.translatesAutoresizingMaskIntoConstraints = false
         actionStack.orientation = .horizontal
         actionStack.spacing = 8
+        actionStack.setContentHuggingPriority(.required, for: .horizontal)
+        actionStack.setContentCompressionResistancePriority(.required, for: .horizontal)
 
         if (try? store.audioExists(for: record.id, kind: .source)) == true {
             actionStack.addArrangedSubview(audioButton(record: record, kind: .source, context: context))
@@ -283,14 +294,24 @@ final class HistoryWindowController: NSWindowController, NSWindowDelegate, NSTab
         deleteBtn.action = #selector(deleteRecord(_:))
         deleteBtn.identifier = NSUserInterfaceItemIdentifier(record.id.uuidString)
         actionStack.addArrangedSubview(deleteBtn)
+        actionStack.widthAnchor.constraint(equalToConstant: actionStack.fittingSize.width).isActive = true
 
+        let separator = NSBox()
+        separator.boxType = .separator
+        separator.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(separator)
         view.addSubview(actionStack)
 
         NSLayoutConstraint.activate([
             textStack.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 12),
             textStack.topAnchor.constraint(equalTo: view.topAnchor, constant: 8),
-            textStack.trailingAnchor.constraint(equalTo: actionStack.leadingAnchor, constant: -12),
-            textStack.bottomAnchor.constraint(lessThanOrEqualTo: view.bottomAnchor, constant: -8),
+            textStack.trailingAnchor.constraint(equalTo: separator.leadingAnchor, constant: -12),
+            textStack.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -8),
+
+            separator.widthAnchor.constraint(equalToConstant: 1),
+            separator.topAnchor.constraint(equalTo: view.topAnchor, constant: 12),
+            separator.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -12),
+            separator.trailingAnchor.constraint(equalTo: actionStack.leadingAnchor, constant: -12),
 
             actionStack.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -12),
             actionStack.centerYAnchor.constraint(equalTo: view.centerYAnchor)
@@ -300,9 +321,17 @@ final class HistoryWindowController: NSWindowController, NSWindowDelegate, NSTab
     }
 
     private func historyTextField(_ value: String, accessibilityLabel: String) -> NSTextField {
-        let field = NSTextField(labelWithString: value)
+        let line = value.components(separatedBy: .newlines).joined(separator: " ")
+        let field = NSTextField(labelWithString: line)
         field.maximumNumberOfLines = 1
         field.lineBreakMode = .byTruncatingTail
+        field.alignment = .left
+        field.cell?.wraps = false
+        field.cell?.truncatesLastVisibleLine = true
+        field.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        field.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        field.setContentHuggingPriority(.required, for: .vertical)
+        field.setContentCompressionResistancePriority(.required, for: .vertical)
         field.setAccessibilityLabel(accessibilityLabel)
         return field
     }

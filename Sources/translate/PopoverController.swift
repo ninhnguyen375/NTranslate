@@ -216,6 +216,8 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     private var hotKeyRef: EventHotKeyRef?
     private var hotKeyEventHandlerRef: EventHandlerRef?
     private var config = AppConfig.load()
+    private var apiKey = ""
+    private var settingsWindowController: SettingsWindowController?
     private var audioPlayer: AVAudioPlayer?
     private var speechState = SpeechPlaybackState()
     private var speechCache: [SpeechIdentity: Data] = [:]
@@ -224,7 +226,7 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     private var pendingSourceSpeech: [Int: PendingSourceSpeech] = [:]
     private var pendingImage: Data?
     private var historyStore: TranslationHistoryStore = TranslationHistoryStore(config: AppConfig.load())
-        private lazy var historyWindowController: HistoryWindowController = {
+    private lazy var historyWindowController: HistoryWindowController = {
         let controller = HistoryWindowController(store: historyStore) { [weak self] record in
             guard let self else { return }
             self.historyWindowController.close()
@@ -293,6 +295,11 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         buildPopover()
         buildMenu()
         installHotKeyEventHandler()
+        do {
+            try AppConfig.migrateLegacyAPIKey()
+        } catch {
+            setResultText("Error: Could not migrate API key to Keychain: \(error.localizedDescription)")
+        }
         reloadConfig()
         performUpdateCheck(silent: true)
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
@@ -1371,8 +1378,7 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         let accessibilityItem = NSMenuItem(title: "Grant Accessibility Access", action: #selector(requestAccessibilityPermissionMenu), keyEquivalent: "")
         accessibilityItem.tag = Self.accessibilityMenuItemTag
         statusMenu.addItem(accessibilityItem)
-        statusMenu.addItem(withTitle: "Open Config File", action: #selector(openConfigFileMenu), keyEquivalent: "")
-        statusMenu.addItem(withTitle: "Reload Config", action: #selector(reloadConfigMenu), keyEquivalent: "r")
+        statusMenu.addItem(withTitle: "Settings…", action: #selector(openSettingsMenu), keyEquivalent: ",")
         statusMenu.addItem(NSMenuItem.separator())
         statusMenu.addItem(withTitle: "Quit", action: #selector(quitApp), keyEquivalent: "q")
         statusMenu.items.forEach { $0.target = self }
@@ -1398,19 +1404,52 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         openTranslatePanelShowingSetupStatus(loadMessage: outcome.message)
     }
 
-    @objc private func reloadConfigMenu() {
-        let outcome = reloadConfig(showSuccess: true)
-        let issues = outcome.config.setupIssues(
-            loadMessage: outcome.message,
-            accessibilityTrusted: AXIsProcessTrusted()
-        )
-        if !issues.isEmpty {
-            openTranslatePanelShowingSetupStatus(loadMessage: outcome.message)
+    @objc private func openSettingsMenu() {
+        let outcome = AppConfig.loadOutcome()
+        let key: String
+        do {
+            key = try APIKeyStore.shared.load() ?? ""
+        } catch {
+            setResultText("Error: \(error.localizedDescription)")
+            openTranslatePanelShowingSetupStatus(loadMessage: error.localizedDescription)
+            return
         }
+
+        if let controller = settingsWindowController {
+            controller.showSettings(config: outcome.config, apiKey: key)
+            return
+        }
+
+        let controller = SettingsWindowController(config: outcome.config, apiKey: key) { [weak self] config, key in
+            try self?.saveSettings(config: config, apiKey: key)
+        }
+        settingsWindowController = controller
+        controller.showSettings(config: outcome.config, apiKey: key)
     }
 
-    @objc private func openConfigFileMenu() {
-        NSWorkspace.shared.open(URL(fileURLWithPath: AppConfig.configPath))
+    private func saveSettings(config: AppConfig, apiKey newAPIKey: String) throws {
+        let previousKey = try APIKeyStore.shared.load()
+        try APIKeyStore.shared.save(newAPIKey)
+        do {
+            try AppConfig.write(config)
+        } catch {
+            let configError = error
+            do {
+                if let previousKey {
+                    try APIKeyStore.shared.save(previousKey)
+                } else {
+                    try APIKeyStore.shared.delete()
+                }
+            } catch {
+                throw NSError(
+                    domain: "NTranslate.Settings",
+                    code: 1,
+                    userInfo: [NSLocalizedDescriptionKey: "Could not save config (\(configError.localizedDescription)) or restore the previous API key (\(error.localizedDescription))."]
+                )
+            }
+            throw configError
+        }
+        _ = reloadConfig(showSuccess: true)
     }
 
     @objc private func openTranslationHistory() {
@@ -1429,6 +1468,7 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         }
 
         let issues = config.setupIssues(
+            apiKey: apiKey,
             loadMessage: loadMessage,
             accessibilityTrusted: AXIsProcessTrusted()
         )
@@ -1445,7 +1485,7 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
             clearStatus()
         } else {
             setResultText(AppConfig.formatSetupIssues(issues))
-            setStatus("Fix the errors above, then Reload Config")
+            setStatus("Fix the errors above, then open Settings…")
         }
 
         reflowLayout()
@@ -1532,8 +1572,16 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         invalidateTranslationRequest()
         invalidateSpeech(stopPlayback: true)
         config = outcome.config
+        do {
+            apiKey = try APIKeyStore.shared.load() ?? ""
+        } catch {
+            apiKey = ""
+            translator = nil
+            setResultText("Error: \(error.localizedDescription)")
+            return outcome
+        }
         historyStore = TranslationHistoryStore(config: config)
-                historyWindowController = HistoryWindowController(store: historyStore) { [weak self] record in
+        historyWindowController = HistoryWindowController(store: historyStore) { [weak self] record in
             guard let self else { return }
             self.historyWindowController.close()
             self.openTranslatePanelShowingSetupStatus()
@@ -1543,21 +1591,13 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
             setStatus(loadError, autoClearAfter: 12)
         }
         reflowLayout()
-        let apiKey = config.apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !apiKey.isEmpty else {
+        let trimmedAPIKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedAPIKey.isEmpty else {
             translator = nil
-            if outcome.didSeedConfig {
-                setResultText(
-                    "Error: Created \(AppConfig.configPath). Set apiKey (from 9router), then menu → Reload Config."
-                )
-            } else if let message = outcome.message {
-                setResultText("Error: \(message)")
-            } else {
-                setResultText("Error: apiKey is empty — edit \(AppConfig.configPath)")
-            }
+            setResultText("Error: API key is empty — open Settings… and enter your 9router API key.")
             return outcome
         }
-        translator = Translator(config: config, apiKey: apiKey)
+        translator = Translator(config: config, apiKey: trimmedAPIKey)
         configureLanguageControls()
         registerHotKey()
         assert(URL(string: config.apiBaseURL) != nil)
@@ -2305,7 +2345,7 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         setResultText(record.resultText)
 
         currentRecordID = record.id
-        updateSaveWordButton()
+        updateBusyState()
         updatePaneLanguageLabels()
 
         focusInputTextView()
