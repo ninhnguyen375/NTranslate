@@ -8,3 +8,5 @@ DerivedData/
 .netrc
 config.json
 /dist/
+/.claude/worktrees/
+/.superpowers/
