@@ -54,11 +54,7 @@ public sealed class SelectionCaptureService : ISelectionCaptureService
         }
 
         if (simulateCopy)
-        {
-            var copied = await CaptureSimulatedCopyAsync(diagnostic, token).ConfigureAwait(false);
-            if (copied is not null)
-                return copied;
-        }
+            return await CaptureSimulatedCopyAsync(diagnostic, token).ConfigureAwait(false);
 
         token.ThrowIfCancellationRequested();
         var clipboardText = Normalize(_clipboard.ReadUnicodeText());
@@ -73,6 +69,7 @@ public sealed class SelectionCaptureService : ISelectionCaptureService
             using var snapshot = _clipboard.CaptureSnapshot();
             var originalSequence = snapshot.SequenceNumber;
             uint? copiedSequence = null;
+            string? copiedText = null;
 
             try
             {
@@ -92,11 +89,9 @@ public sealed class SelectionCaptureService : ISelectionCaptureService
                         continue;
                     }
 
-                    var copiedText = Normalize(_clipboard.ReadUnicodeText());
-                    return copiedText is null ? null : new(copiedText, SelectionSource.SimulatedCopy, diagnostic);
+                    copiedText = Normalize(_clipboard.ReadUnicodeText());
+                    break;
                 }
-
-                return null;
             }
             finally
             {
@@ -106,6 +101,12 @@ public sealed class SelectionCaptureService : ISelectionCaptureService
                 if (copiedSequence is uint sequence)
                     _clipboard.RestoreIfUnchanged(snapshot, sequence);
             }
+
+            if (copiedText is not null)
+                return new(copiedText, SelectionSource.SimulatedCopy, diagnostic);
+
+            var clipboardText = Normalize(_clipboard.ReadUnicodeText());
+            return clipboardText is null ? null : new(clipboardText, SelectionSource.Clipboard, diagnostic);
         }
         finally
         {

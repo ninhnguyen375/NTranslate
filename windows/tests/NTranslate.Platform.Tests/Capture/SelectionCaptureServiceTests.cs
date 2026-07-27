@@ -145,6 +145,70 @@ public sealed class SelectionCaptureServiceTests
     }
 
     [Fact]
+    public async Task Concurrent_timeouts_read_clipboard_before_serialized_transaction_ends()
+    {
+        var clipboard = new FakeClipboard(null, 10);
+        var firstDelayEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseFirstDelay = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var delayCount = 0;
+        var service = CreateService(
+            new FakeUiaReader(null),
+            clipboard,
+            new FakeCopyCommand(),
+            timeout: TimeSpan.FromMilliseconds(10),
+            pollInterval: TimeSpan.FromMilliseconds(10),
+            delay: async (_, token) =>
+            {
+                if (Interlocked.Increment(ref delayCount) == 1)
+                {
+                    firstDelayEntered.SetResult();
+                    await releaseFirstDelay.Task.WaitAsync(token);
+                }
+            });
+
+        var first = service.CaptureAsync(simulateCopy: true, CancellationToken.None);
+        await firstDelayEntered.Task;
+        var second = service.CaptureAsync(simulateCopy: true, CancellationToken.None);
+        releaseFirstDelay.SetResult();
+
+        var captures = await Task.WhenAll(first, second);
+        Assert.All(captures, Assert.Null);
+        Assert.Equal(0, clipboard.ReadsOutsideSnapshot);
+    }
+
+    [Fact]
+    public async Task Concurrent_whitespace_copies_read_restored_clipboard_before_transaction_ends()
+    {
+        var clipboard = new FakeClipboard(" \t ", 10);
+        var firstDelayEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseFirstDelay = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var delayCount = 0;
+        var copy = new FakeCopyCommand(() => clipboard.SetExternalText(" \t "));
+        var service = CreateService(
+            new FakeUiaReader(null),
+            clipboard,
+            copy,
+            delay: async (_, token) =>
+            {
+                if (Interlocked.Increment(ref delayCount) == 1)
+                {
+                    firstDelayEntered.SetResult();
+                    await releaseFirstDelay.Task.WaitAsync(token);
+                }
+            });
+
+        var first = service.CaptureAsync(simulateCopy: true, CancellationToken.None);
+        await firstDelayEntered.Task;
+        var second = service.CaptureAsync(simulateCopy: true, CancellationToken.None);
+        releaseFirstDelay.SetResult();
+
+        var captures = await Task.WhenAll(first, second);
+        Assert.All(captures, Assert.Null);
+        Assert.Equal(0, clipboard.ReadsOutsideSnapshot);
+        Assert.Equal(2, clipboard.RestoreCount);
+    }
+
+    [Fact]
     public async Task Send_copy_throw_after_mutation_restores_clipboard()
     {
         var clipboard = new FakeClipboard("original", 10);
@@ -221,6 +285,8 @@ public sealed class SelectionCaptureServiceTests
         public int RestoreCount { get; private set; }
         public int CaptureCount { get; private set; }
         public int SequenceReadCount { get; private set; }
+        public int ReadsOutsideSnapshot { get; private set; }
+        private int _activeSnapshots;
 
         public uint GetSequenceNumber()
         {
@@ -231,12 +297,15 @@ public sealed class SelectionCaptureServiceTests
         public IClipboardSnapshot CaptureSnapshot()
         {
             CaptureCount++;
-            return new Snapshot(sequenceNumber, Text);
+            _activeSnapshots++;
+            return new Snapshot(sequenceNumber, Text, () => _activeSnapshots--);
         }
 
         public string? ReadUnicodeText()
         {
             ReadCount++;
+            if (_activeSnapshots == 0)
+                ReadsOutsideSnapshot++;
             return Text;
         }
 
@@ -260,11 +329,11 @@ public sealed class SelectionCaptureServiceTests
             sequenceNumber++;
         }
 
-        private sealed class Snapshot(uint sequenceNumber, string? text) : IClipboardSnapshot
+        private sealed class Snapshot(uint sequenceNumber, string? text, Action onDispose) : IClipboardSnapshot
         {
             public uint SequenceNumber { get; } = sequenceNumber;
             public string? Text { get; } = text;
-            public void Dispose() { }
+            public void Dispose() => onDispose();
         }
     }
 }
