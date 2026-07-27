@@ -32,7 +32,7 @@ The Windows edition does not need to reproduce macOS-only visuals, Accessibility
 
 ## Supported Platform and Distribution
 
-- Windows 11 22H2 or newer
+- Windows 10 22H2 (build 19045) or newer; Windows 11 uses the same implementation with native Fluent behavior where available
 - x64 initial architecture
 - C# and WinUI 3 on current supported .NET and Windows App SDK versions available during implementation
 - MSIX distributed through GitHub Releases
@@ -347,7 +347,7 @@ Work is complete when:
 - Windows UI follows Fluent conventions and remains keyboard/accessibility usable
 - all .NET tests pass
 - release x64 MSIX builds and has a valid signature
-- MSIX installs or updates successfully on this Windows 11 machine
+- MSIX installs or updates successfully on this Windows 10 22H2 machine
 - installed app launches and critical smoke checks pass
 - live checks blocked by external credentials/services are listed with exact reason
 - Windows build, certificate installation, configuration, privacy, update, and troubleshooting documentation is complete
