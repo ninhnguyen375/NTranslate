@@ -48,6 +48,38 @@ public sealed class HotkeyCommandHostTests
     }
 
     [Fact]
+    public void Terminal_signals_every_queued_command()
+    {
+        var host = new HotkeyCommandHost();
+        var commands = Enumerable.Range(0, 3).Select(_ => host.Enqueue(() => new NativeCommandResult<bool>(true, 0))).ToArray();
+
+        host.Terminal(new HotkeyOperationException("stopped"));
+
+        Assert.All(commands, command => Assert.True(command.Done.Wait(TimeSpan.Zero)));
+        Assert.All(commands, command => Assert.Throws<HotkeyOperationException>(() => command.GetResult()));
+    }
+
+    [Fact]
+    public async Task Runner_and_terminal_complete_running_and_queued_commands()
+    {
+        var host = new HotkeyCommandHost();
+        using var started = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim();
+        var running = host.Enqueue(() => { started.Set(); release.Wait(); return new NativeCommandResult<int>(1, 0); });
+        var queued = host.Enqueue(() => new NativeCommandResult<int>(2, 0));
+        var runner = Task.Run(host.RunNext);
+        started.Wait();
+
+        host.Terminal(new HotkeyOperationException("stopped"));
+        release.Set();
+        await runner;
+
+        Assert.Equal(1, running.GetResult().Value);
+        Assert.True(queued.Done.Wait(TimeSpan.Zero));
+        Assert.Throws<HotkeyOperationException>(() => queued.GetResult());
+    }
+
+    [Fact]
     public void Terminal_completes_pending_and_rejects_future_commands()
     {
         var host = new HotkeyCommandHost();
