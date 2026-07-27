@@ -48,6 +48,31 @@ public sealed class HotkeyCommandHostTests
     }
 
     [Fact]
+    public async Task Concurrent_enqueue_and_terminal_never_leaves_command_incomplete()
+    {
+        var host = new HotkeyCommandHost();
+        using var gate = new Barrier(2);
+        HotkeyCommand<bool>? command = null;
+        Exception? enqueueError = null;
+
+        var enqueue = Task.Run(() =>
+        {
+            gate.SignalAndWait();
+            try { command = host.Enqueue(() => new NativeCommandResult<bool>(true, 0)); }
+            catch (Exception error) { enqueueError = error; }
+        });
+        var terminal = Task.Run(() => { gate.SignalAndWait(); host.Terminal(new HotkeyOperationException("stopped")); });
+        await Task.WhenAll(enqueue, terminal);
+
+        if (command is not null)
+        {
+            Assert.True(command.Done.Wait(TimeSpan.FromSeconds(1)));
+            Assert.Throws<HotkeyOperationException>(() => command.GetResult());
+        }
+        else Assert.IsType<HotkeyOperationException>(enqueueError);
+    }
+
+    [Fact]
     public void Terminal_signals_every_queued_command()
     {
         var host = new HotkeyCommandHost();
