@@ -1,7 +1,8 @@
 ## Workflow
 
-- Luôn chạy `./install-app.sh` sau khi hoàn thành task (build + sign + install vào `/Applications/NTranslate.app`).
-- Luôn báo user số version vừa build (in ra từ output install-app.sh) để user biết và test.
+- Chỉ chạy `./install-app.sh` sau khi hoàn thành task có thay đổi source, resource, metadata, hoặc build/release script ảnh hưởng đến `NTranslate.app`.
+- Không chạy script cho task chỉ đọc, phân tích, review, lập plan, hoặc chỉ sửa tài liệu; tránh build/install và bump version không cần thiết.
+- Khi đã chạy script, luôn báo user version/build từ output để user test.
 
 ## Release (DMG → GitHub Releases)
 
