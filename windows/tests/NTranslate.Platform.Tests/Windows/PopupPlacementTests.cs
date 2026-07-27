@@ -68,6 +68,45 @@ public sealed class PopupPlacementTests
         Assert.Equal(new ScreenPoint(0, 0), point);
     }
 
+    [Fact]
+    public void Place_accepts_popup_ending_at_exclusive_right_and_bottom_edges()
+    {
+        var point = Place(cursor: new(900, 888), popup: new(100, 100), workArea: new(0, 0, 1000, 1000));
+
+        Assert.Equal(new ScreenPoint(900, 900), point);
+    }
+
+    [Fact]
+    public void Place_saturates_candidates_at_int_extremes()
+    {
+        var point = Place(
+            cursor: new(int.MaxValue, 100),
+            popup: new(1, 10),
+            workArea: new(0, 0, int.MaxValue, int.MaxValue));
+
+        Assert.Equal(new ScreenPoint(int.MaxValue - 13, 100), point);
+    }
+
+    [Fact]
+    public void ToPhysicalPixels_rounds_half_pixels_away_from_zero()
+    {
+        var size = PopupPlacement.ToPhysicalPixels(1, 100, 144);
+
+        Assert.Equal(new PopupSize(2, 150), size);
+    }
+
+    [Fact]
+    public void ToPhysicalPixels_rejects_zero_dpi()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => PopupPlacement.ToPhysicalPixels(100, 100, 0));
+    }
+
+    [Fact]
+    public void ToPhysicalPixels_rejects_negative_dimensions()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => PopupPlacement.ToPhysicalPixels(-1, 100, 96));
+    }
+
     private static ScreenPoint Place(ScreenPoint cursor, PopupSize popup, ScreenRect workArea) =>
         PopupPlacement.Place(cursor, popup, workArea);
 }
