@@ -1,5 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <ItemGroup>
+    <FrameworkReference Include="Microsoft.WindowsDesktop.App.WPF" />
+    <InternalsVisibleTo Include="NTranslate.Platform.Tests" />
     <ProjectReference Include="..\NTranslate.Core\NTranslate.Core.csproj" />
   </ItemGroup>
   <PropertyGroup>
