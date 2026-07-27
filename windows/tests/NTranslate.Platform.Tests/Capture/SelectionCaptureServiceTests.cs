@@ -109,6 +109,76 @@ public sealed class SelectionCaptureServiceTests
     }
 
     [Fact]
+    public async Task Concurrent_simulated_captures_serialize_snapshot_through_restore()
+    {
+        var clipboard = new FakeClipboard("original", 10);
+        var firstDelayEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseFirstDelay = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var delayCount = 0;
+        var copy = new FakeCopyCommand(() => clipboard.SetExternalText($"copy {clipboard.CaptureCount}"));
+        var service = CreateService(
+            new FakeUiaReader(null),
+            clipboard,
+            copy,
+            delay: async (_, token) =>
+            {
+                if (Interlocked.Increment(ref delayCount) == 1)
+                {
+                    firstDelayEntered.SetResult();
+                    await releaseFirstDelay.Task.WaitAsync(token);
+                }
+            });
+
+        var first = service.CaptureAsync(simulateCopy: true, CancellationToken.None);
+        await firstDelayEntered.Task;
+        var second = service.CaptureAsync(simulateCopy: true, CancellationToken.None);
+        await Task.Yield();
+
+        Assert.Equal(1, clipboard.CaptureCount);
+        Assert.Equal(1, copy.SendCount);
+        releaseFirstDelay.SetResult();
+
+        var captures = await Task.WhenAll(first, second);
+        Assert.Equal(new[] { "copy 1", "copy 2" }, captures.Select(capture => capture!.Text));
+        Assert.Equal("original", clipboard.Text);
+        Assert.Equal(2, clipboard.RestoreCount);
+    }
+
+    [Fact]
+    public async Task Send_copy_throw_after_mutation_restores_clipboard()
+    {
+        var clipboard = new FakeClipboard("original", 10);
+        var copy = new FakeCopyCommand(() =>
+        {
+            clipboard.SetExternalText("private selected text");
+            throw new InvalidOperationException("send failed");
+        });
+        var service = CreateService(new FakeUiaReader(null), clipboard, copy);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => service.CaptureAsync(simulateCopy: true, CancellationToken.None));
+        Assert.Equal("original", clipboard.Text);
+        Assert.Equal(1, clipboard.RestoreCount);
+    }
+
+    [Fact]
+    public async Task Snapshot_sequence_is_coherent_without_second_baseline_read()
+    {
+        var clipboard = new FakeClipboard("original", 10);
+        var copy = new FakeCopyCommand(() =>
+        {
+            Assert.Equal(0, clipboard.SequenceReadCount);
+            clipboard.SetExternalText("copied");
+        });
+        var service = CreateService(new FakeUiaReader(null), clipboard, copy);
+
+        var capture = await service.CaptureAsync(simulateCopy: true, CancellationToken.None);
+
+        Assert.Equal("copied", capture!.Text);
+        Assert.Equal("original", clipboard.Text);
+    }
+
+    [Fact]
     public void Production_timing_is_250ms_timeout_with_10ms_polling()
     {
         Assert.Equal(TimeSpan.FromMilliseconds(250), SelectionCaptureService.CopyTimeout);
@@ -149,10 +219,20 @@ public sealed class SelectionCaptureServiceTests
         public string? Text { get; private set; } = text;
         public int ReadCount { get; private set; }
         public int RestoreCount { get; private set; }
+        public int CaptureCount { get; private set; }
+        public int SequenceReadCount { get; private set; }
 
-        public uint GetSequenceNumber() => sequenceNumber;
+        public uint GetSequenceNumber()
+        {
+            SequenceReadCount++;
+            return sequenceNumber;
+        }
 
-        public IClipboardSnapshot CaptureSnapshot() => new Snapshot(sequenceNumber, Text);
+        public IClipboardSnapshot CaptureSnapshot()
+        {
+            CaptureCount++;
+            return new Snapshot(sequenceNumber, Text);
+        }
 
         public string? ReadUnicodeText()
         {

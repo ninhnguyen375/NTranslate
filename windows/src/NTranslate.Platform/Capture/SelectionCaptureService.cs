@@ -8,6 +8,8 @@ public sealed class SelectionCaptureService : ISelectionCaptureService
     public static readonly TimeSpan CopyTimeout = TimeSpan.FromMilliseconds(250);
     public static readonly TimeSpan CopyPollInterval = TimeSpan.FromMilliseconds(10);
 
+    private static readonly SemaphoreSlim SimulatedCopyMutex = new(1, 1);
+
     private readonly IUiAutomationSelectionReader _uiAutomation;
     private readonly IClipboardService _clipboard;
     private readonly ISimulatedCopyCommand _copy;
@@ -65,41 +67,49 @@ public sealed class SelectionCaptureService : ISelectionCaptureService
 
     private async Task<SelectionCapture?> CaptureSimulatedCopyAsync(string? diagnostic, CancellationToken token)
     {
-        using var snapshot = _clipboard.CaptureSnapshot();
-        var originalSequence = _clipboard.GetSequenceNumber();
-        _copy.SendCopy();
-        uint? copiedSequence = null;
-
+        await SimulatedCopyMutex.WaitAsync(token).ConfigureAwait(false);
         try
         {
-            var elapsed = TimeSpan.Zero;
-            while (elapsed < _copyTimeout)
-            {
-                token.ThrowIfCancellationRequested();
-                var delay = _copyTimeout - elapsed < _pollInterval ? _copyTimeout - elapsed : _pollInterval;
-                await _delay(delay, token).ConfigureAwait(false);
-                elapsed += delay;
+            using var snapshot = _clipboard.CaptureSnapshot();
+            var originalSequence = snapshot.SequenceNumber;
+            uint? copiedSequence = null;
 
-                copiedSequence = _clipboard.GetSequenceNumber();
-                if (copiedSequence == originalSequence)
+            try
+            {
+                _copy.SendCopy();
+                var elapsed = TimeSpan.Zero;
+                while (elapsed < _copyTimeout)
                 {
-                    copiedSequence = null;
-                    continue;
+                    token.ThrowIfCancellationRequested();
+                    var delay = _copyTimeout - elapsed < _pollInterval ? _copyTimeout - elapsed : _pollInterval;
+                    await _delay(delay, token).ConfigureAwait(false);
+                    elapsed += delay;
+
+                    copiedSequence = _clipboard.GetSequenceNumber();
+                    if (copiedSequence == originalSequence)
+                    {
+                        copiedSequence = null;
+                        continue;
+                    }
+
+                    var copiedText = Normalize(_clipboard.ReadUnicodeText());
+                    return copiedText is null ? null : new(copiedText, SelectionSource.SimulatedCopy, diagnostic);
                 }
 
-                var copiedText = Normalize(_clipboard.ReadUnicodeText());
-                return copiedText is null ? null : new(copiedText, SelectionSource.SimulatedCopy, diagnostic);
+                return null;
             }
-
-            return null;
+            finally
+            {
+                copiedSequence ??= _clipboard.GetSequenceNumber() is var current && current != originalSequence
+                    ? current
+                    : null;
+                if (copiedSequence is uint sequence)
+                    _clipboard.RestoreIfUnchanged(snapshot, sequence);
+            }
         }
         finally
         {
-            copiedSequence ??= _clipboard.GetSequenceNumber() is var current && current != originalSequence
-                ? current
-                : null;
-            if (copiedSequence is uint sequence)
-                _clipboard.RestoreIfUnchanged(snapshot, sequence);
+            SimulatedCopyMutex.Release();
         }
     }
 
