@@ -1,0 +1,29 @@
+{
+  "detection": [
+    { "text": "hello", "expected": "English" },
+    { "text": "xin chào", "expected": "Vietnamese" },
+    { "text": "你好", "expected": "Chinese" }
+  ],
+  "resolution": [
+    {
+      "sourceLang": "Auto detect",
+      "targetLang": "English",
+      "nativeLang": "Vietnamese",
+      "text": "hello",
+      "recentTargets": ["English", "Vietnamese"],
+      "targetLanguages": ["English", "Vietnamese"],
+      "expectedSource": "English",
+      "expectedTarget": "Vietnamese"
+    },
+    {
+      "sourceLang": "English",
+      "targetLang": "English",
+      "nativeLang": "Vietnamese",
+      "text": "hello",
+      "recentTargets": [],
+      "targetLanguages": ["English", "Vietnamese"],
+      "expectedSource": "English",
+      "expectedTarget": "English"
+    }
+  ]
+}

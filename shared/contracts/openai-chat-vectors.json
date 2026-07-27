@@ -1,0 +1,30 @@
+{
+  "requests": [
+    {
+      "name": "text chat",
+      "model": "test-model",
+      "systemPrompt": "Translate to Vietnamese.",
+      "input": { "kind": "text", "text": "hello" },
+      "selectedTextWrapper": "<selected-text>hello</selected-text>",
+      "stream": false
+    },
+    {
+      "name": "image chat",
+      "model": "test-model",
+      "systemPrompt": "Read image.",
+      "input": {
+        "kind": "image",
+        "targetLanguage": "Vietnamese",
+        "pngBase64": "iVBORw0KGgo=",
+        "orderedParts": ["text", "image_url"]
+      },
+      "stream": false
+    }
+  ],
+  "responses": [
+    { "name": "trim completion", "status": 200, "body": { "choices": [{ "message": { "content": "  xin chào  " } }] }, "expected": "xin chào" },
+    { "name": "blank completion", "status": 200, "body": { "choices": [{ "message": { "content": "   " } }] }, "error": "blank_completion" },
+    { "name": "unauthorized", "status": 401, "body": { "error": { "message": "unauthorized" } }, "error": "http_401" },
+    { "name": "rate limited", "status": 429, "body": { "error": { "message": "rate limited" } }, "error": "http_429" }
+  ]
+}

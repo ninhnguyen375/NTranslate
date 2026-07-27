@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/NTranslate.Core/NTranslate.Core.csproj" />
+    <Project Path="src/NTranslate.Platform/NTranslate.Platform.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/NTranslate.Core.Tests/NTranslate.Core.Tests.csproj" />
+    <Project Path="tests/NTranslate.Platform.Tests/NTranslate.Platform.Tests.csproj" />
+  </Folder>
+</Solution>

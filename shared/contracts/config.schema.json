@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ntranslate.local/contracts/config.schema.json",
+  "title": "NTranslate configuration",
+  "type": "object",
+  "required": [
+    "apiBaseURL",
+    "apiSpeechURL",
+    "model",
+    "sourceLang",
+    "targetLang",
+    "nativeLang",
+    "languages",
+    "targetLanguages",
+    "maxTranslateLength",
+    "systemPrompt",
+    "learnPrompt",
+    "sentenceLearnPrompt",
+    "grammarPrompt",
+    "autoPrefetchSpeech",
+    "speechSourceModel",
+    "speechSourceModelVietnamese",
+    "speechSourceModelChinese",
+    "speechTargetModel",
+    "historyDirectory",
+    "hotkey",
+    "ui"
+  ],
+  "properties": {
+    "apiBaseURL": { "type": "string", "format": "uri" },
+    "apiSpeechURL": { "type": "string", "format": "uri" },
+    "model": { "type": "string", "minLength": 1 },
+    "sourceLang": { "type": "string", "minLength": 1 },
+    "targetLang": { "type": "string", "minLength": 1 },
+    "nativeLang": { "type": "string", "minLength": 1 },
+    "languages": { "type": "array", "items": { "type": "string" }, "minItems": 1, "uniqueItems": true },
+    "targetLanguages": { "type": "array", "items": { "type": "string" }, "minItems": 1, "uniqueItems": true },
+    "maxTranslateLength": { "type": "integer", "minimum": 1 },
+    "systemPrompt": { "type": "string" },
+    "learnPrompt": { "type": "string" },
+    "sentenceLearnPrompt": { "type": "string" },
+    "grammarPrompt": { "type": "string" },
+    "autoPrefetchSpeech": { "type": "boolean" },
+    "speechSourceModel": { "type": "string" },
+    "speechSourceModelVietnamese": { "type": "string" },
+    "speechSourceModelChinese": { "type": "string" },
+    "speechTargetModel": { "type": "string" },
+    "historyDirectory": { "type": ["string", "null"] },
+    "hotkey": {
+      "type": "object",
+      "required": ["key", "option", "command", "control", "shift"],
+      "properties": {
+        "key": { "type": "string", "minLength": 1 },
+        "option": { "type": "boolean" },
+        "command": { "type": "boolean" },
+        "control": { "type": "boolean" },
+        "shift": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "ui": {
+      "type": "object",
+      "required": ["width", "height", "autoCopy", "simulateCopy"],
+      "properties": {
+        "width": { "type": "number", "exclusiveMinimum": 0 },
+        "height": { "type": "number", "exclusiveMinimum": 0 },
+        "autoCopy": { "type": "boolean" },
+        "simulateCopy": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": true
+}

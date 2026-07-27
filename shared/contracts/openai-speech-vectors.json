@@ -1,0 +1,14 @@
+{
+  "requests": [
+    {
+      "name": "speech request",
+      "model": "test-speech-model",
+      "input": "hello"
+    }
+  ],
+  "responses": [
+    { "name": "speech bytes", "status": 200, "bytesBase64": "SUQzBAAAAAA=" },
+    { "name": "unauthorized", "status": 401, "body": { "error": { "message": "unauthorized" } }, "error": "http_401" },
+    { "name": "rate limited", "status": 429, "body": { "error": { "message": "rate limited" } }, "error": "http_429" }
+  ]
+}

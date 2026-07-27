@@ -1,0 +1,28 @@
+{
+  "replacement": [
+    {
+      "name": "translation placeholders",
+      "template": "Translate {{config.sourceLang}} to {{config.targetLang}} for {{config.nativeLang}}; keep {{unknown}}.",
+      "sourceLang": "English",
+      "targetLang": "Vietnamese",
+      "nativeLang": "Vietnamese",
+      "lang": "English",
+      "expected": "Translate English to Vietnamese for Vietnamese; keep {{unknown}}."
+    },
+    {
+      "name": "grammar language placeholder",
+      "template": "Check {{lang}}; explain in {{config.nativeLang}}.",
+      "sourceLang": "English",
+      "targetLang": "English",
+      "nativeLang": "Vietnamese",
+      "lang": "English",
+      "expected": "Check English; explain in Vietnamese."
+    }
+  ],
+  "mode": [
+    { "text": "hello", "sourceLang": "English", "targetLang": "Vietnamese", "learn": false, "expected": "Translate" },
+    { "text": "hello", "sourceLang": "English", "targetLang": "English", "learn": false, "expected": "Grammar" },
+    { "text": "word", "sourceLang": "English", "targetLang": "Vietnamese", "learn": true, "expected": "LearnWord" },
+    { "text": "two words", "sourceLang": "English", "targetLang": "Vietnamese", "learn": true, "expected": "LearnSentence" }
+  ]
+}
