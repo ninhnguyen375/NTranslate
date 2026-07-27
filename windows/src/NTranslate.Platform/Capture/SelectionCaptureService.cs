@@ -74,6 +74,10 @@ public sealed class SelectionCaptureService : ISelectionCaptureService
             try
             {
                 _copy.SendCopy();
+                copiedSequence = _clipboard.GetSequenceNumber();
+                if (copiedSequence == originalSequence)
+                    copiedSequence = null;
+
                 var elapsed = TimeSpan.Zero;
                 while (elapsed < _copyTimeout)
                 {
@@ -95,9 +99,6 @@ public sealed class SelectionCaptureService : ISelectionCaptureService
             }
             finally
             {
-                copiedSequence ??= _clipboard.GetSequenceNumber() is var current && current != originalSequence
-                    ? current
-                    : null;
                 if (copiedSequence is uint sequence)
                     _clipboard.RestoreIfUnchanged(snapshot, sequence);
             }

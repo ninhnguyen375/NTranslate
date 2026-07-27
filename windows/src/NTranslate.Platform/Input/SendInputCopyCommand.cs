@@ -10,9 +10,15 @@ public sealed class SendInputCopyCommand : ISimulatedCopyCommand
     public void SendCopy()
     {
         var inputs = CreateCopyInputs().Select(input => (NativeInput)input).ToArray();
-        if (SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<NativeInput>()) != inputs.Length)
-            throw new InvalidOperationException("SendInput did not send all copy events.");
+        var sent = SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<NativeInput>());
+        if (sent != inputs.Length)
+            throw new InvalidOperationException(CreateFailureMessage(sent, sent == 0 ? Marshal.GetLastWin32Error() : 0));
+
     }
+
+    internal static string CreateFailureMessage(uint sent, int win32Error) => sent == 0
+        ? $"SendInput sent 0 of 4 copy events (Win32 error {win32Error})."
+        : $"SendInput sent {sent} of 4 copy events.";
 
     internal static CopyInput[] CreateCopyInputs() =>
     [

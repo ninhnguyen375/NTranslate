@@ -209,20 +209,20 @@ public sealed class SelectionCaptureServiceTests
     }
 
     [Fact]
-    public async Task Send_copy_throw_after_mutation_restores_clipboard()
+    public async Task Send_copy_throw_does_not_restore_external_clipboard_change()
     {
         var clipboard = new FakeClipboard("original", 10);
         var copy = new FakeCopyCommand(() =>
         {
-            clipboard.SetExternalText("private selected text");
+            clipboard.SetExternalText("external clipboard change");
             throw new InvalidOperationException("send failed");
         });
         var service = CreateService(new FakeUiaReader(null), clipboard, copy);
 
         await Assert.ThrowsAsync<InvalidOperationException>(
             () => service.CaptureAsync(simulateCopy: true, CancellationToken.None));
-        Assert.Equal("original", clipboard.Text);
-        Assert.Equal(1, clipboard.RestoreCount);
+        Assert.Equal("external clipboard change", clipboard.Text);
+        Assert.Equal(0, clipboard.RestoreCount);
     }
 
     [Fact]

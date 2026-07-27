@@ -1,6 +1,6 @@
-using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
 using System.Windows;
+using System.Windows.Threading;
 using WpfClipboard = System.Windows.Clipboard;
 
 namespace NTranslate.Platform.Clipboard;
@@ -46,16 +46,13 @@ public sealed class OleClipboardService : IClipboardService
     [DllImport("ole32.dll")]
     private static extern int OleFlushClipboard();
 
-    private static void SetClipboard(object dataObject)
-    {
-        var hResult = OleSetClipboard(dataObject);
-        if (hResult < 0 && hResult != unchecked((int)0x800401D4))
-            Marshal.ThrowExceptionForHR(hResult);
-    }
+    private static void SetClipboard(object dataObject) => IgnoreClipboardCloseFailure(() => OleSetClipboard(dataObject));
 
-    private static void FlushClipboard()
+    private static void FlushClipboard() => IgnoreClipboardCloseFailure(OleFlushClipboard);
+
+    private static void IgnoreClipboardCloseFailure(Func<int> operation)
     {
-        var hResult = OleFlushClipboard();
+        var hResult = operation();
         if (hResult < 0 && hResult != unchecked((int)0x800401D4))
             Marshal.ThrowExceptionForHR(hResult);
     }
@@ -73,32 +70,24 @@ public sealed class OleClipboardService : IClipboardService
 
 internal static class StaClipboardThread
 {
-    private static readonly BlockingCollection<Action> Queue = [];
-    private static readonly Thread Thread = Start();
+    private static readonly Dispatcher Dispatcher = Start();
 
-    public static T Invoke<T>(Func<T> operation)
+    public static T Invoke<T>(Func<T> operation) => Dispatcher.Invoke(operation);
+
+    public static void Invoke(Action operation) => Dispatcher.Invoke(operation);
+
+    private static Dispatcher Start()
     {
-        var completion = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
-        Queue.Add(() =>
-        {
-            try { completion.SetResult(operation()); }
-            catch (Exception exception) { completion.SetException(exception); }
-        });
-        return completion.Task.GetAwaiter().GetResult();
-    }
-
-    public static void Invoke(Action operation) => Invoke(() => { operation(); return true; });
-
-    private static Thread Start()
-    {
+        var ready = new TaskCompletionSource<Dispatcher>(TaskCreationOptions.RunContinuationsAsynchronously);
         var thread = new Thread(() =>
         {
-            foreach (var operation in Queue.GetConsumingEnumerable())
-                operation();
+            var dispatcher = Dispatcher.CurrentDispatcher;
+            ready.SetResult(dispatcher);
+            Dispatcher.Run();
         }) { IsBackground = true, Name = "NTranslate clipboard STA" };
         thread.SetApartmentState(ApartmentState.STA);
         thread.Start();
-        return thread;
+        return ready.Task.GetAwaiter().GetResult();
     }
 }
 
