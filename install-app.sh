@@ -112,29 +112,29 @@ cp "$PLIST" "$APP_DST/Contents/Info.plist"
 if [ -f "$APP_ICON_DST" ]; then
   cp "$APP_ICON_DST" "$APP_DST/Contents/Resources/NTranslate.icns"
 fi
-codesign --force --deep --sign "$SIGN_IDENTITY" "$APP_DST"
+codesign --force --deep --options runtime --sign "$SIGN_IDENTITY" "$APP_DST"
 codesign -vv "$APP_DST"
-codesign -dv --verbose=4 "$APP_DST" 2>&1 | grep -E 'Identifier=|Authority=|TeamIdentifier=' || true
+codesign -dv --verbose=4 "$APP_DST" 2>&1 | grep -E 'Identifier=|Authority=|TeamIdentifier=|flags=' || true
+FLAGS=$(codesign -dv --verbose=4 "$APP_DST" 2>&1 | grep 'flags=' || true)
+if [[ "$FLAGS" != *"runtime"* ]]; then
+  echo "Error: Hardened Runtime is not enabled" >&2
+  exit 1
+fi
 touch "$APP_DST"
 
 # Seed runtime config into Application Support when missing.
 # The app also auto-creates this file on first launch; FORCE_CONFIG=1 still overwrites from the project seed.
 CONFIG_SUPPORT_DIR="${HOME}/Library/Application Support/NTranslate"
 CONFIG_DST="$CONFIG_SUPPORT_DIR/config.json"
-CONFIG_SRC=""
-if [ -f "$PROJECT_DIR/config.json" ]; then
-  CONFIG_SRC="$PROJECT_DIR/config.json"
-elif [ -f "$PROJECT_DIR/config.json.example" ]; then
-  CONFIG_SRC="$PROJECT_DIR/config.json.example"
-fi
+CONFIG_SRC="$PROJECT_DIR/config.json.example"
 mkdir -p "$CONFIG_SUPPORT_DIR"
-if [ -z "$CONFIG_SRC" ]; then
-  echo "Warning: no config.json or config.json.example in project; skipped seeding $CONFIG_DST" >&2
+if [ ! -f "$CONFIG_SRC" ]; then
+  echo "Warning: no config.json.example in project; app will create defaults on launch" >&2
 elif [ -f "$CONFIG_DST" ] && [ "${FORCE_CONFIG:-0}" != "1" ]; then
   echo "Config exists (leave as-is): $CONFIG_DST"
-  echo "  Tip: FORCE_CONFIG=1 ./install-app.sh to overwrite from $CONFIG_SRC"
 else
   cp "$CONFIG_SRC" "$CONFIG_DST"
+  chmod 600 "$CONFIG_DST"
   echo "Config seeded: $CONFIG_SRC -> $CONFIG_DST"
 fi
 

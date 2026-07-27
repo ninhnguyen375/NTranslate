@@ -225,15 +225,98 @@ struct TranslationHistoryStoreTests {
         #expect(controller.numberOfRows(in: NSTableView()) == 1)
     }
 
+    @Test func historyColumnFillsTableWidth() throws {
+        let directory = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let controller = HistoryWindowController(store: TranslationHistoryStore(directoryURL: directory))
+        let tableView = try #require(Mirror(reflecting: controller).descendant("tableView") as? NSTableView)
+        let columnRect = tableView.rect(ofColumn: 0)
+
+        #expect(abs(columnRect.minX - (tableView.bounds.maxX - columnRect.maxX)) < 1)
+    }
+
+
+    @Test func historyToolbarUsesIconSegmentsWithoutClearButton() throws {
+        let directory = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let controller = HistoryWindowController(store: TranslationHistoryStore(directoryURL: directory))
+        let controls = descendantViews(of: try #require(controller.window?.contentView))
+        let filter = try #require(controls.compactMap { $0 as? NSSegmentedControl }.first {
+            $0.segmentCount == 2
+        })
+
+        #expect(filter.label(forSegment: 0) == "History")
+        #expect(filter.label(forSegment: 1) == "Saved")
+        #expect(filter.image(forSegment: 0) != nil)
+        #expect(filter.image(forSegment: 1) != nil)
+        #expect(!controls.compactMap { $0 as? NSButton }.contains { $0.title == "Clear" })
+    }
+
+    @Test func historyRowsReserveThreeReadableLinesAndTrailingActions() throws {
+        let directory = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = TranslationHistoryStore(directoryURL: directory)
+        try store.append(record(
+            timestamp: Date(),
+            source: "first source line\nsecond source line\nthird source line",
+            result: "first result line\nsecond result line\nthird result line"
+        ))
+        let controller = HistoryWindowController(store: store)
+        controller.reloadHistory()
+        let cell = try #require(controller.tableView(NSTableView(), viewFor: nil, row: 0))
+        cell.frame = NSRect(x: 0, y: 0, width: 1_000, height: 88)
+        cell.layoutSubtreeIfNeeded()
+        let descendants = descendantViews(of: cell)
+        let fields = descendants.compactMap { $0 as? NSTextField }
+        let actions = try #require(descendants.compactMap { $0 as? NSStackView }.first {
+            $0.orientation == .horizontal && !$0.arrangedSubviews.compactMap { $0 as? NSButton }.isEmpty
+        })
+        let buttons = actions.arrangedSubviews.compactMap { $0 as? NSButton }
+
+        #expect(fields.count == 3)
+        #expect(fields.allSatisfy { $0.maximumNumberOfLines == 1 })
+        #expect(fields.allSatisfy { $0.lineBreakMode == .byTruncatingTail })
+        #expect(fields.allSatisfy { $0.toolTip?.isEmpty == false })
+        #expect(fields.allSatisfy { $0.alignment == .left })
+        #expect(fields.allSatisfy { $0.frame.height > 0 })
+        #expect(fields.allSatisfy { $0.frame.height < 22 })
+        #expect(fields.allSatisfy { !$0.stringValue.contains("\n") })
+        let fieldLeadingEdges = fields.map { $0.convert($0.bounds, to: cell).minX }
+        #expect(fieldLeadingEdges.allSatisfy { abs($0 - fieldLeadingEdges[0]) <= 1 })
+        #expect(fieldLeadingEdges[0] <= 13)
+        #expect(abs(buttons.map { $0.convert($0.bounds, to: cell).maxX }.max()! - (cell.bounds.maxX - 12)) <= 1)
+        #expect(controller.window != nil)
+    }
+
+    @Test func settingsTabsFillWindowContentWidth() throws {
+        let controller = SettingsWindowController(config: .default, apiKey: "") { _, _ in }
+        let content = try #require(controller.window?.contentView)
+        let tabs = try #require(descendantViews(of: content).compactMap { $0 as? NSTabView }.first)
+        let root = try #require(tabs.superview as? NSStackView)
+
+        #expect(root.arrangedSubviews.contains(tabs))
+        #expect(root.constraints.contains {
+            Set([$0.firstItem as? NSObject, $0.secondItem as? NSObject].compactMap { $0 }) == Set([tabs, root])
+                && $0.firstAttribute == .width
+                && $0.secondAttribute == .width
+                && $0.isActive
+        })
+    }
+
+    private func descendantViews(of view: NSView) -> [NSView] {
+        view.subviews.flatMap { [$0] + descendantViews(of: $0) }
+    }
+
     private func record(
         timestamp: Date = Date(timeIntervalSince1970: 1),
-        source: String = "hello"
+        source: String = "hello",
+        result: String = "xin chào"
     ) -> TranslationRecord {
         TranslationRecord(
             id: UUID(),
             timestamp: timestamp,
             sourceText: source,
-            resultText: "xin chào",
+            resultText: result,
             sourceLanguage: "English",
             targetLanguage: "Vietnamese",
             sourceAudioPath: nil,

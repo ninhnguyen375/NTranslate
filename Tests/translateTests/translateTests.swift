@@ -253,7 +253,6 @@ struct TranslateTests {
         let data = try Data(contentsOf: URL(fileURLWithPath: path))
         let decoded = try JSONDecoder().decode(AppConfig.self, from: data)
         #expect(decoded.apiBaseURL == AppConfig.default.apiBaseURL)
-        #expect(decoded.apiKey.isEmpty)
     }
 
     @Test func appConfigLoadOutcomeSeedsMissingFileThenLoads() throws {
@@ -332,18 +331,14 @@ struct TranslateTests {
     }
 
     @Test func appConfigSetupIssuesReportsEmptyApiKeyAndAccessibility() {
-        var config = AppConfig.default
-        config.apiKey = ""
-        let issues = config.setupIssues(accessibilityTrusted: false)
-        #expect(issues.contains(where: { $0.contains("apiKey is empty") }))
+        let issues = AppConfig.default.setupIssues(apiKey: "", accessibilityTrusted: false)
+        #expect(issues.contains(where: { $0.contains("API key is empty") }))
         #expect(issues.contains(where: { $0.contains("Accessibility") }))
         #expect(AppConfig.formatSetupIssues(issues).hasPrefix("Error:"))
     }
 
     @Test func appConfigSetupIssuesEmptyWhenReady() {
-        var config = AppConfig.default
-        config.apiKey = "sk-test"
-        #expect(config.setupIssues(accessibilityTrusted: true).isEmpty)
+        #expect(AppConfig.default.setupIssues(apiKey: "sk-test", accessibilityTrusted: true).isEmpty)
     }
 
     @Test func popoverFeedbackTreatsSetupErrorsAsErrorStyle() {

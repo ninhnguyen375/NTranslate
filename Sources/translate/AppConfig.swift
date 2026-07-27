@@ -33,7 +33,6 @@ struct AppConfig: Codable {
 
     var apiBaseURL: String
     var apiSpeechURL: String
-    var apiKey: String
     var model: String
     var sourceLang: String
     var targetLang: String
@@ -194,7 +193,6 @@ struct AppConfig: Codable {
     static let `default` = AppConfig(
         apiBaseURL: "http://localhost:20128/v1/chat/completions",
         apiSpeechURL: "http://localhost:20128/v1/audio/speech",
-        apiKey: "",
         model: "9r-gemini-low",
         sourceLang: "Auto detect",
         targetLang: "Vietnamese",
@@ -218,7 +216,6 @@ struct AppConfig: Codable {
     init(
         apiBaseURL: String,
         apiSpeechURL: String,
-        apiKey: String,
         model: String,
         sourceLang: String,
         targetLang: String,
@@ -241,7 +238,6 @@ struct AppConfig: Codable {
     ) {
         self.apiBaseURL = apiBaseURL
         self.apiSpeechURL = apiSpeechURL
-        self.apiKey = apiKey
         self.model = model
         self.sourceLang = sourceLang
         self.targetLang = targetLang
@@ -270,7 +266,6 @@ struct AppConfig: Codable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         apiBaseURL = try container.decode(String.self, forKey: .apiBaseURL)
-        apiKey = try container.decode(String.self, forKey: .apiKey)
         model = try container.decode(String.self, forKey: .model)
         sourceLang = try container.decode(String.self, forKey: .sourceLang)
         targetLang = try container.decode(String.self, forKey: .targetLang)
@@ -346,6 +341,51 @@ struct AppConfig: Codable {
         return try encoder.encode(config)
     }
 
+    static func write(
+        _ config: AppConfig,
+        at path: String = configPath,
+        fileManager: FileManager = .default
+    ) throws {
+        let directory = (path as NSString).deletingLastPathComponent
+        try fileManager.createDirectory(atPath: directory, withIntermediateDirectories: true)
+        try encodePrettyJSON(config).write(to: URL(fileURLWithPath: path), options: .atomic)
+        try fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: path)
+    }
+
+    @discardableResult
+    static func migrateLegacyAPIKey(
+        at path: String = configPath,
+        fileManager: FileManager = .default,
+        keyStore: APIKeyStore = .shared
+    ) throws -> Bool {
+        let url = URL(fileURLWithPath: path)
+        let data: Data
+        do {
+            data = try Data(contentsOf: url)
+        } catch CocoaError.fileReadNoSuchFile {
+            return false
+        }
+
+        guard var object = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              object.keys.contains("apiKey")
+        else { return false }
+
+        let legacyKey = (object["apiKey"] as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if try keyStore.load() == nil, !legacyKey.isEmpty {
+            try keyStore.save(legacyKey)
+        }
+
+        object.removeValue(forKey: "apiKey")
+        let sanitized = try JSONSerialization.data(
+            withJSONObject: object,
+            options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+        )
+        try sanitized.write(to: url, options: .atomic)
+        try fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: path)
+        return true
+    }
+
     /// Creates `~/Library/Application Support/NTranslate/config.json` when missing.
     static func seedConfigFileIfMissing(
         at path: String = configPath,
@@ -358,9 +398,7 @@ struct AppConfig: Codable {
         do {
             let directory = (path as NSString).deletingLastPathComponent
             try fileManager.createDirectory(atPath: directory, withIntermediateDirectories: true)
-            let data = try encodePrettyJSON(config)
-            let url = URL(fileURLWithPath: path)
-            try data.write(to: url, options: [.atomic])
+            try write(config, at: path, fileManager: fileManager)
             return .created
         } catch {
             return .failed(error.localizedDescription)
@@ -385,9 +423,7 @@ struct AppConfig: Codable {
                    jsonObject["historyDirectory"] == nil {
                     var updatedConfig = config
                     updatedConfig.historyDirectory = config.historyDirectory ?? ""
-                    if let updatedData = try? encodePrettyJSON(updatedConfig) {
-                        try? updatedData.write(to: URL(fileURLWithPath: path), options: [.atomic])
-                    }
+                    try? write(updatedConfig, at: path, fileManager: fileManager)
                     return .loaded(updatedConfig)
                 }
             }
@@ -440,8 +476,41 @@ struct AppConfig: Codable {
         return trimmed.isEmpty ? "Vietnamese" : trimmed
     }
 
+    func validationIssues() -> [String] {
+        var issues: [String] = []
+        for (name, value) in [("API base URL", apiBaseURL), ("Speech URL", apiSpeechURL)] {
+            guard let url = URL(string: value),
+                  let scheme = url.scheme?.lowercased(),
+                  ["http", "https"].contains(scheme),
+                  url.host != nil
+            else {
+                issues.append("\(name) must be a valid http:// or https:// URL.")
+                continue
+            }
+        }
+        if model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            issues.append("Model cannot be empty.")
+        }
+        if languages.isEmpty { issues.append("Languages cannot be empty.") }
+        if targetLanguages.isEmpty { issues.append("Target languages cannot be empty.") }
+        if Set(languages).count != languages.count { issues.append("Languages contain duplicates.") }
+        if Set(targetLanguages).count != targetLanguages.count { issues.append("Target languages contain duplicates.") }
+        if !languages.contains(sourceLang) { issues.append("Source language must exist in Languages.") }
+        if !targetLanguages.contains(targetLang) { issues.append("Target language must exist in Target Languages.") }
+        if maxTranslateLength <= 0 { issues.append("Maximum translation length must be greater than zero.") }
+        if ui.width <= 0 || ui.height <= 0 { issues.append("Panel width and height must be greater than zero.") }
+        let key = hotkey.key.uppercased()
+        if key.count != 1 || !key.unicodeScalars.allSatisfy({ (65...90).contains(Int($0.value)) }) {
+            issues.append("Hotkey must be one letter from A to Z.")
+        }
+        if !hotkey.option && !hotkey.command && !hotkey.control && !hotkey.shift {
+            issues.append("Hotkey requires at least one modifier.")
+        }
+        return issues
+    }
+
     /// User-facing setup problems that block translation (empty key, bad URLs, missing Accessibility).
-    func setupIssues(loadMessage: String? = nil, accessibilityTrusted: Bool) -> [String] {
+    func setupIssues(apiKey: String, loadMessage: String? = nil, accessibilityTrusted: Bool) -> [String] {
         var issues: [String] = []
         if let loadMessage {
             let trimmed = loadMessage.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -450,9 +519,7 @@ struct AppConfig: Codable {
             }
         }
         if apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            issues.append(
-                "apiKey is empty. Menu → Open Config File, set your 9router API key, then Reload Config."
-            )
+            issues.append("API key is empty. Menu → Settings…, enter your 9router API key, then Save.")
         }
         if apiBaseURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || URL(string: apiBaseURL) == nil {
             issues.append("apiBaseURL is invalid: \(apiBaseURL)")
@@ -464,9 +531,7 @@ struct AppConfig: Codable {
             issues.append("model is empty.")
         }
         if !accessibilityTrusted {
-            issues.append(
-                "Accessibility permission is missing. Menu → Grant Accessibility Access (needed to read selected text)."
-            )
+            issues.append("Accessibility permission is missing. Menu → Grant Accessibility Access (needed to read selected text).")
         }
         return issues
     }
