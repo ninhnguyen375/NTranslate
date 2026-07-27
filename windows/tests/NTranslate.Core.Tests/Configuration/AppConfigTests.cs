@@ -45,6 +45,25 @@ public sealed class AppConfigTests
     }
 
     [Fact]
+    public void ExplicitNullCollectionsAndNestedObjectsUseDefaults()
+    {
+        var config = ConfigJson.Parse("""
+            {
+              "languages": null,
+              "targetLanguages": null,
+              "hotkey": null,
+              "ui": null
+            }
+            """).Config;
+
+        Assert.Equal(AppConfig.Default.Languages, config.Languages);
+        Assert.Equal(AppConfig.Default.TargetLanguages, config.TargetLanguages);
+        Assert.Equal(AppConfig.Default.Hotkey, config.Hotkey);
+        Assert.Equal(AppConfig.Default.Ui, config.Ui);
+        Assert.Empty(config.Validate());
+    }
+
+    [Fact]
     public void LegacyKeyIsExtractedButNeverSerialized()
     {
         var json = """{"apiBaseURL":"http://localhost/v1/chat/completions","apiKey":"legacy-secret"}""";
@@ -131,7 +150,7 @@ public sealed class AppConfigTests
         while (directory is not null)
         {
             var path = Path.Combine(directory.FullName, name);
-            if (Directory.Exists(Path.Combine(directory.FullName, ".git")) && File.Exists(path))
+            if (File.Exists(path) && (Directory.Exists(Path.Combine(directory.FullName, ".git")) || File.Exists(Path.Combine(directory.FullName, ".git"))))
                 return path;
             directory = directory.Parent;
         }

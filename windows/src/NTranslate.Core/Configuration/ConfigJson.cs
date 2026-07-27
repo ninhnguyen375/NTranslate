@@ -28,8 +28,11 @@ public static class ConfigJson
             ?? throw new JsonException("Configuration root must be an object.");
         var hasLegacyKey = RemoveProperty(input, "apiKey", out var key);
         var legacyKey = key is JsonValue value && value.TryGetValue<string>(out var text) ? text.Trim() : null;
+        var deriveSpeechUrl = IsExplicitNull(input, "apiSpeechURL");
         var merged = (JsonObject)DefaultJson.Value.DeepClone();
         Merge(merged, input);
+        if (deriveSpeechUrl)
+            merged[FindPropertyName(merged, "apiSpeechURL")!] = null;
         var config = merged.Deserialize<AppConfig>(Options)?.WithDerivedSpeechUrl()
             ?? throw new JsonException("Configuration could not be parsed.");
         return new(config, string.IsNullOrWhiteSpace(legacyKey) ? null : legacyKey, hasLegacyKey);
@@ -52,11 +55,19 @@ public static class ConfigJson
         foreach (var property in source.ToArray())
         {
             var targetName = FindPropertyName(target, property.Key) ?? property.Key;
+            if (property.Value is null)
+                continue;
             if (property.Value is JsonObject sourceObject && target[targetName] is JsonObject targetObject)
                 Merge(targetObject, sourceObject);
             else
-                target[targetName] = property.Value?.DeepClone();
+                target[targetName] = property.Value.DeepClone();
         }
+    }
+
+    private static bool IsExplicitNull(JsonObject json, string name)
+    {
+        var propertyName = FindPropertyName(json, name);
+        return propertyName is not null && json[propertyName] is null;
     }
 
     private static bool RemoveProperty(JsonObject json, string name, out JsonNode? value)
