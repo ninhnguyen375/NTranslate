@@ -23,13 +23,7 @@ public static class PromptRenderer
             .Replace("{{lang}}", language, StringComparison.Ordinal);
 
     public static string RenderLearn(string text, AppConfig config) =>
-        Render(SelectLearnMode(text) == PromptMode.LearnWord ? config.LearnPrompt : config.SentenceLearnPrompt,
-            config.SourceLang, config.TargetLang, config.NativeLang, config.SourceLang);
-
-    private static string Render(string template, string source, string target, string native, string language) =>
-        template
-            .Replace("{{config.sourceLang}}", source, StringComparison.Ordinal)
-            .Replace("{{config.targetLang}}", target, StringComparison.Ordinal)
-            .Replace("{{config.nativeLang}}", native, StringComparison.Ordinal)
-            .Replace("{{lang}}", language, StringComparison.Ordinal);
+        (SelectLearnMode(text) == PromptMode.LearnWord ? config.LearnPrompt : config.SentenceLearnPrompt)
+            .Replace("{{config.sourceLang}}", config.SourceLang, StringComparison.Ordinal)
+            .Replace("{{config.targetLang}}", config.TargetLang, StringComparison.Ordinal);
 }

@@ -15,7 +15,13 @@ public sealed class LanguagePolicyTests
     }
 
     [Fact]
-    public void ResolvesAutoSourceAndAvoidsDetectedSourceInRecentTargets()
+    public void DetectsVietnameseAcrossWholeMixedLanguageTextBeforeChinese()
+    {
+        Assert.Equal("Vietnamese", LanguagePolicy.Detect("你好 xin chào"));
+    }
+
+    [Fact]
+    public void ResolvesAutoSourceUsingOnlySupportedRecentTargetDifferentFromDetectedSource()
     {
         var config = AppConfig.Default with
         {
@@ -25,7 +31,7 @@ public sealed class LanguagePolicyTests
             TargetLanguages = ["English", "Vietnamese"]
         };
 
-        var pair = LanguagePolicy.ResolvePair("hello", config, ["English", "Vietnamese"]);
+        var pair = LanguagePolicy.ResolvePair("hello", config, ["Chinese", "English", "Vietnamese"]);
 
         Assert.Equal(new LanguagePair("Auto detect", "Vietnamese"), pair);
     }
@@ -47,7 +53,7 @@ public sealed class LanguagePolicyTests
     }
 
     [Fact]
-    public void FallsBackToNativeThenFirstTargetWhenConfiguredTargetMatchesSource()
+    public void FallsBackToNativeThenFirstTargetDifferentFromDetectedSource()
     {
         var nativeConfig = AppConfig.Default with
         {
@@ -60,6 +66,20 @@ public sealed class LanguagePolicyTests
 
         Assert.Equal(new LanguagePair("Auto detect", "Vietnamese"), LanguagePolicy.ResolvePair("hello", nativeConfig, []));
         Assert.Equal(new LanguagePair("Auto detect", "English"), LanguagePolicy.ResolvePair("你好", firstConfig, []));
+    }
+
+    [Fact]
+    public void FallbackSkipsFirstTargetWhenItMatchesDetectedSource()
+    {
+        var config = AppConfig.Default with
+        {
+            SourceLang = "Auto detect",
+            TargetLang = "Chinese",
+            NativeLang = "Chinese",
+            TargetLanguages = ["Chinese", "English"]
+        };
+
+        Assert.Equal(new LanguagePair("Auto detect", "English"), LanguagePolicy.ResolvePair("你好", config, []));
     }
 
     [Fact]

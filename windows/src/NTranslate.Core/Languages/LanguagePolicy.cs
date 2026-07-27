@@ -12,14 +12,11 @@ public static class LanguagePolicy
 
     public static string Detect(string text)
     {
-        foreach (var character in text.Normalize(NormalizationForm.FormD))
-        {
-            if (character is >= '一' and <= '鿿')
-                return "Chinese";
-            if (VietnameseDiacritics.Contains(char.ToLowerInvariant(character)))
-                return "Vietnamese";
-        }
-
+        var normalized = text.Normalize(NormalizationForm.FormD);
+        if (normalized.Any(character => VietnameseDiacritics.Contains(char.ToLowerInvariant(character))))
+            return "Vietnamese";
+        if (text.Any(character => character is >= '一' and <= '鿿'))
+            return "Chinese";
         return "English";
     }
 
@@ -29,9 +26,10 @@ public static class LanguagePolicy
             return new(config.SourceLang, config.TargetLang);
 
         var detectedSource = Detect(text);
-        var target = FirstDifferent(recentTargets, detectedSource)
+        var target = FirstDifferent(recentTargets.Where(recent => config.TargetLanguages.Contains(recent, StringComparer.OrdinalIgnoreCase)), detectedSource)
             ?? Different(config.TargetLang, detectedSource)
             ?? Different(config.NativeLang, detectedSource)
+            ?? FirstDifferent(config.TargetLanguages, detectedSource)
             ?? config.TargetLanguages.FirstOrDefault()
             ?? config.TargetLang;
         return new(config.SourceLang, target);

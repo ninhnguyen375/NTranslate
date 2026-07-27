@@ -45,17 +45,17 @@ public sealed class PromptRendererTests
     }
 
     [Fact]
-    public void RendersWordAndSentenceLearnTemplates()
+    public void RendersWordAndSentenceLearnTemplatesWithoutReplacingNativeOrLanguagePlaceholders()
     {
         var config = AppConfig.Default with
         {
             SourceLang = "English",
             TargetLang = "Vietnamese",
-            LearnPrompt = "word {{config.sourceLang}} {{config.targetLang}}",
-            SentenceLearnPrompt = "sentence {{config.sourceLang}} {{config.targetLang}}"
+            LearnPrompt = "word {{config.sourceLang}} {{config.targetLang}} {{config.nativeLang}} {{lang}}",
+            SentenceLearnPrompt = "sentence {{config.sourceLang}} {{config.targetLang}} {{config.nativeLang}} {{lang}}"
         };
 
-        Assert.Equal("word English Vietnamese", PromptRenderer.RenderLearn("word", config));
-        Assert.Equal("sentence English Vietnamese", PromptRenderer.RenderLearn("two words", config));
+        Assert.Equal("word English Vietnamese {{config.nativeLang}} {{lang}}", PromptRenderer.RenderLearn("word", config));
+        Assert.Equal("sentence English Vietnamese {{config.nativeLang}} {{lang}}", PromptRenderer.RenderLearn("two words", config));
     }
 }
