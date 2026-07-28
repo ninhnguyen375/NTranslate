@@ -3,6 +3,16 @@ using NTranslate.Core.Configuration;
 
 namespace NTranslate.App;
 
+internal static class CaptureRouting
+{
+    public static string? SourceText(NTranslate.Platform.Capture.SelectionCapture? capture) => capture?.Source switch
+    {
+        NTranslate.Platform.Capture.SelectionSource.UiAutomation or
+        NTranslate.Platform.Capture.SelectionSource.SimulatedCopy => capture.Text,
+        _ => null,
+    };
+}
+
 internal sealed class PopupRouter(Action cancelCapture, Action showManual)
 {
     public void ShowManual()

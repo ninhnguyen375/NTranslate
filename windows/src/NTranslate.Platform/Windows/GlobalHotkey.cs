@@ -230,12 +230,23 @@ public sealed class GlobalHotkey : IGlobalHotkey
     public void Dispose()
     {
         if (_disposed) return;
-        Unregister();
-        var result = _window.Destroy();
-        if (!result.Value) throw new HotkeyOperationException($"DestroyWindow failed (Win32 error {result.LastError}).");
-        _window.MessageReceived -= HandleMessage;
-        _disposed = true;
-        GC.SuppressFinalize(this);
+        List<Exception> errors = [];
+        try { Unregister(); }
+        catch (Exception error) { errors.Add(error); }
+        try
+        {
+            var result = _window.Destroy();
+            if (!result.Value) errors.Add(new HotkeyOperationException($"DestroyWindow failed (Win32 error {result.LastError})."));
+        }
+        catch (Exception error) { errors.Add(error); }
+        finally
+        {
+            _window.MessageReceived -= HandleMessage;
+            _disposed = true;
+            GC.SuppressFinalize(this);
+        }
+        if (errors.Count == 1) throw errors[0];
+        if (errors.Count > 1) throw new AggregateException("Hotkey cleanup failed.", errors);
     }
 
     private void HandleMessage(object? sender, NativeMessageEventArgs message)

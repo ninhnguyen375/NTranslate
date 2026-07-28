@@ -71,28 +71,28 @@ public sealed class GlobalHotkeyTests
     }
 
     [Fact]
-    public void Dispose_failure_throws_keeps_owned_window_for_retry()
+    public void Dispose_unregister_failure_still_destroys_owned_window_once()
     {
         var owner = new FakeMessageWindow { UnregisterResult = false, LastError = 5 };
         var hotkey = new GlobalHotkey(owner);
         hotkey.Register(new("D", false, false, true, false));
+
         Assert.Throws<HotkeyOperationException>(hotkey.Dispose);
-        Assert.Equal(0, owner.DestroyCalls);
-        owner.UnregisterResult = true;
         hotkey.Dispose();
-        hotkey.Dispose();
+
+        Assert.Equal(1, owner.UnregisterCalls);
         Assert.Equal(1, owner.DestroyCalls);
     }
 
     [Fact]
-    public void Dispose_destroy_failure_throws_and_retries()
+    public void Dispose_destroy_failure_throws_and_remains_idempotent()
     {
         var owner = new FakeMessageWindow { DestroyResult = false, LastError = 87 };
         var hotkey = new GlobalHotkey(owner);
         Assert.Throws<HotkeyOperationException>(hotkey.Dispose);
         owner.DestroyResult = true;
         hotkey.Dispose();
-        Assert.Equal(2, owner.DestroyCalls);
+        Assert.Equal(1, owner.DestroyCalls);
     }
 
     private sealed class FakeMessageWindow : IMessageWindow

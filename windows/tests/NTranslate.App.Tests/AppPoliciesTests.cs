@@ -1,5 +1,6 @@
 using NTranslate.App;
 using NTranslate.Core.Configuration;
+using NTranslate.Platform.Capture;
 
 namespace NTranslate.App.Tests;
 
@@ -13,6 +14,19 @@ public sealed class AppPoliciesTests
         router.ShowManual();
         Assert.Equal(["cancel", "show"], calls);
     }
+
+    [Theory]
+    [InlineData(SelectionSource.UiAutomation, "selected", "selected")]
+    [InlineData(SelectionSource.SimulatedCopy, "copied", "copied")]
+    [InlineData(SelectionSource.Clipboard, "stale", null)]
+    public void CaptureRouting_ForwardsOnlyConfirmedSelection(SelectionSource source, string text, string? expected)
+    {
+        Assert.Equal(expected, CaptureRouting.SourceText(new(text, source, null)));
+    }
+
+    [Fact]
+    public void CaptureRouting_EmptyCaptureUsesManualEntry() =>
+        Assert.Null(CaptureRouting.SourceText(null));
 
     [Fact]
     public void ActivationGate_DrainsQueuedActivationOnceReady()

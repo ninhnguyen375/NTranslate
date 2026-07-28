@@ -38,6 +38,7 @@ public sealed class TranslationViewModel : INotifyPropertyChanged
     private string _targetLang;
     private string _resultText = string.Empty;
     private string? _statusMessage;
+    private string? _persistentGuidance;
     private PopupState _state = PopupState.Guidance;
 
     public TranslationViewModel(
@@ -85,8 +86,22 @@ public sealed class TranslationViewModel : INotifyPropertyChanged
     /// <summary>Guidance text (blank/too-long) or error message, depending on <see cref="State"/>.</summary>
     public string? StatusMessage
     {
-        get => _statusMessage;
-        private set => Set(ref _statusMessage, value);
+        get => _statusMessage ?? PersistentGuidance;
+        private set
+        {
+            if (Set(ref _statusMessage, value))
+                OnPropertyChanged(nameof(StatusMessage));
+        }
+    }
+
+    public string? PersistentGuidance
+    {
+        get => _persistentGuidance;
+        private set
+        {
+            if (Set(ref _persistentGuidance, value))
+                OnPropertyChanged(nameof(StatusMessage));
+        }
     }
 
     public PopupState State
@@ -120,11 +135,7 @@ public sealed class TranslationViewModel : INotifyPropertyChanged
         (SourceLang, TargetLang) = (TargetLang, SourceLang);
     }
 
-    internal void SetStartupGuidance(string? guidance)
-    {
-        if (guidance is not null)
-            RejectWithGuidance(guidance);
-    }
+    internal void SetStartupGuidance(string? guidance) => PersistentGuidance = guidance;
 
     public void Cancel()
     {

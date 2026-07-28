@@ -88,7 +88,7 @@ internal sealed class AppComposition : IDisposable
             Enqueue(() =>
             {
                 if (generation == Volatile.Read(ref _captureGeneration))
-                    Show(capture?.Text);
+                    Show(CaptureRouting.SourceText(capture));
             });
     }
 

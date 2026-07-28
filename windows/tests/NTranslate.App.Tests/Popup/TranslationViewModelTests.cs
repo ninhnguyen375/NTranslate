@@ -12,6 +12,18 @@ public sealed class TranslationViewModelTests
     private static AppConfig Config => AppConfig.Default with { MaxTranslateLength = 10 };
 
     [Fact]
+    public void StartupGuidance_PersistsWhenCapturedSourceArrives()
+    {
+        var vm = CreateViewModel(ScriptedHandler.Sync(_ => JsonResponse("unused")), new FakeClipboardService());
+        vm.SetStartupGuidance("Configuration is malformed. Using defaults.");
+
+        vm.SourceText = "captured";
+
+        Assert.Equal("Configuration is malformed. Using defaults.", vm.PersistentGuidance);
+        Assert.Equal("Configuration is malformed. Using defaults.", vm.StatusMessage);
+    }
+
+    [Fact]
     public void SwapLanguages_DoesNotSetTargetToAutoDetect()
     {
         var vm = CreateViewModel(ScriptedHandler.Sync(_ => JsonResponse("unused")), new FakeClipboardService());
