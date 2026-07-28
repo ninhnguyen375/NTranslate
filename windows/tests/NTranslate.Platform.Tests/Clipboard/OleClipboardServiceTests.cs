@@ -12,29 +12,32 @@ public sealed class OleClipboardServiceTests
         const string temporary = "NTranslate clipboard integration test";
         var service = new OleClipboardService();
         using var userSnapshot = service.CaptureSnapshot();
+        uint cleanupSequence = 0;
 
         try
         {
             service.WriteUnicodeText(syntheticOriginal);
+            cleanupSequence = service.GetSequenceNumber();
             using var syntheticSnapshot = service.CaptureSnapshot();
             uint writtenSequence = 0;
 
             try
             {
                 service.WriteUnicodeText(temporary);
-                writtenSequence = service.GetSequenceNumber();
+                writtenSequence = cleanupSequence = service.GetSequenceNumber();
                 Assert.Equal(temporary, service.ReadUnicodeText());
             }
             finally
             {
                 Assert.True(service.RestoreIfUnchanged(syntheticSnapshot, writtenSequence));
+                cleanupSequence = service.GetSequenceNumber();
             }
 
             Assert.Equal(syntheticOriginal, service.ReadUnicodeText());
         }
         finally
         {
-            service.RestoreIfUnchanged(userSnapshot, service.GetSequenceNumber());
+            service.RestoreIfUnchanged(userSnapshot, cleanupSequence);
         }
     }
 
@@ -46,17 +49,19 @@ public sealed class OleClipboardServiceTests
         using var userSnapshot = service.CaptureSnapshot();
         const string temporary = "NTranslate changed sequence test";
         uint writtenSequence = 0;
+        uint cleanupSequence = 0;
 
         try
         {
             service.WriteUnicodeText(temporary);
-            writtenSequence = service.GetSequenceNumber();
+            writtenSequence = cleanupSequence = service.GetSequenceNumber();
             service.WriteUnicodeText(temporary + " external");
+            cleanupSequence = service.GetSequenceNumber();
             Assert.False(service.RestoreIfUnchanged(userSnapshot, writtenSequence));
         }
         finally
         {
-            service.RestoreIfUnchanged(userSnapshot, service.GetSequenceNumber());
+            service.RestoreIfUnchanged(userSnapshot, cleanupSequence);
         }
     }
 }
