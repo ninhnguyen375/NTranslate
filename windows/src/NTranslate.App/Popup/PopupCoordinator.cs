@@ -11,6 +11,7 @@ internal sealed class PopupCoordinator
     private readonly Window _window;
     private readonly AppWindow _appWindow;
     private readonly PopupLifecycle _lifecycle;
+    private readonly PopupForeground _foreground = new(new Win32PopupForegroundNative());
     private readonly double _width;
     private readonly double _height;
 
@@ -47,7 +48,7 @@ internal sealed class PopupCoordinator
             new(cursor.X, cursor.Y), size,
             new(info.Work.Left, info.Work.Top, info.Work.Right, info.Work.Bottom));
         _appWindow.Move(new(point.X, point.Y));
-        _window.Activate();
+        _foreground.Raise(hwnd, _window.Activate);
     }
 
     public void Close() => _lifecycle.Close();

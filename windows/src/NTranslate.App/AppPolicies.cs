@@ -22,12 +22,8 @@ internal static class GuidancePolicy
 
 internal static class CaptureRouting
 {
-    public static string? SourceText(NTranslate.Platform.Capture.SelectionCapture? capture) => capture?.Source switch
-    {
-        NTranslate.Platform.Capture.SelectionSource.UiAutomation or
-        NTranslate.Platform.Capture.SelectionSource.SimulatedCopy => capture.Text,
-        _ => null,
-    };
+    public static string? SourceText(NTranslate.Platform.Capture.SelectionCapture? capture) =>
+        string.IsNullOrWhiteSpace(capture?.Text) ? null : capture.Text;
 }
 
 internal sealed class PopupRouter(Action cancelCapture, Action showManual)

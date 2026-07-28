@@ -18,15 +18,18 @@ public sealed class AppPoliciesTests
     [Theory]
     [InlineData(SelectionSource.UiAutomation, "selected", "selected")]
     [InlineData(SelectionSource.SimulatedCopy, "copied", "copied")]
-    [InlineData(SelectionSource.Clipboard, "stale", null)]
-    public void CaptureRouting_ForwardsOnlyConfirmedSelection(SelectionSource source, string text, string? expected)
+    [InlineData(SelectionSource.Clipboard, "clipboard fallback", "clipboard fallback")]
+    public void CaptureRouting_ForwardsCapturedText(SelectionSource source, string text, string? expected)
     {
         Assert.Equal(expected, CaptureRouting.SourceText(new(text, source, null)));
     }
 
     [Fact]
-    public void CaptureRouting_EmptyCaptureUsesManualEntry() =>
+    public void CaptureRouting_EmptyOrMissingCaptureUsesManualEntry()
+    {
+        Assert.Null(CaptureRouting.SourceText(new(string.Empty, SelectionSource.Clipboard, null)));
         Assert.Null(CaptureRouting.SourceText(null));
+    }
 
     [Fact]
     public void ClosePopup_InvalidatesBlockedCaptureBeforeLateCompletion()

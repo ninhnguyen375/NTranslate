@@ -15,6 +15,7 @@
             <RowDefinition Height="*" />
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
         <Grid x:Name="TitleDragRegion" ColumnSpacing="8" PointerPressed="TitleDragRegion_PointerPressed" PointerMoved="TitleDragRegion_PointerMoved" PointerReleased="TitleDragRegion_PointerReleased">
@@ -34,10 +35,11 @@
         <TextBox x:Name="SourceTextBox" Grid.Row="2" Text="{x:Bind ViewModel.SourceText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" TextWrapping="Wrap" AutomationProperties.Name="Source text" />
         <TextBox x:Name="ResultTextBox" Grid.Row="3" Text="{x:Bind ViewModel.ResultText, Mode=OneWay}" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" AutomationProperties.Name="Translation result" AutomationProperties.LiveSetting="Polite" />
 
-        <StackPanel Grid.Row="4" Orientation="Horizontal" Spacing="8">
+        <TextBlock x:Name="StatusTextBlock" Grid.Row="4" Text="{x:Bind ViewModel.StatusMessage, Mode=OneWay}" TextWrapping="Wrap" AutomationProperties.Name="Status" AutomationProperties.LiveSetting="Polite" />
+
+        <StackPanel x:Name="ButtonPanel" Grid.Row="5" Orientation="Horizontal" Spacing="8">
             <Button x:Name="TranslateButton" Content="Translate" AutomationProperties.Name="Translate" Command="{x:Bind ViewModel.TranslateCommand}" />
             <Button x:Name="CopyButton" Content="Copy" AutomationProperties.Name="Copy result" Command="{x:Bind ViewModel.CopyCommand}" />
-            <TextBlock Text="{x:Bind ViewModel.StatusMessage, Mode=OneWay}" VerticalAlignment="Center" AutomationProperties.Name="Status" AutomationProperties.LiveSetting="Polite" />
         </StackPanel>
     </Grid>
 </Window>

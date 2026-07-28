@@ -56,6 +56,21 @@ public sealed class TranslationWindowXamlTests
     }
 
     [Fact]
+    public void Status_HasDedicatedFullWidthWrappedPoliteLiveRow()
+    {
+        var status = FindNamed("StatusTextBlock");
+        Assert.Equal("{x:Bind ViewModel.StatusMessage, Mode=OneWay}", Attribute(status, "Text"));
+        Assert.Equal("Wrap", Attribute(status, "TextWrapping"));
+        Assert.Equal("Polite", Attribute(status, "AutomationProperties.LiveSetting"));
+        Assert.Equal("4", Attribute(status, "Grid.Row"));
+        Assert.Null(Attribute(status, "Grid.Column"));
+
+        var buttonPanel = FindNamed("ButtonPanel");
+        Assert.Equal("5", Attribute(buttonPanel, "Grid.Row"));
+        Assert.DoesNotContain(status, buttonPanel.Descendants());
+    }
+
+    [Fact]
     public void Popup_DefinesRequiredKeyboardAccelerators()
     {
         var document = XDocument.Load(XamlPath);

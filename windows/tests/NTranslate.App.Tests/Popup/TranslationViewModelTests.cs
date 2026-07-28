@@ -261,7 +261,27 @@ public sealed class TranslationViewModelTests
 
         Assert.Equal("hello", vm.SourceText);
         Assert.Equal(PopupState.Error, vm.State);
+        Assert.False(string.IsNullOrEmpty(vm.StatusMessage));
         Assert.False(vm.CanCopy);
+    }
+
+    [Fact]
+    public async Task MissingApiKeyShowsSafeGuidanceWithoutSendingRequest()
+    {
+        var handler = ScriptedHandler.Sync(_ => throw new InvalidOperationException("Network must not be called."));
+        var client = new OpenAiCompatibleClient(new HttpClient(handler));
+        var vm = new TranslationViewModel(
+            Config,
+            client,
+            new FakeClipboardService(),
+            _ => throw new InvalidOperationException("API key missing. Store key in Windows Credential Locker before translating."));
+        vm.SourceText = "hello";
+
+        await vm.TranslateCommand.ExecuteAsync();
+
+        Assert.Equal(PopupState.Error, vm.State);
+        Assert.Equal("API key missing. Store key in Windows Credential Locker before translating.", vm.StatusMessage);
+        Assert.Equal(0, handler.CallCount);
     }
 
     [Fact]
