@@ -29,6 +29,8 @@ Build requirements:
 
 NTranslate for Windows uses a strict no-Visual-Studio-workloads build process to ensure clean, predictable CLI builds.
 
+Crash diagnostics redact structured secret/content fields and use fixed UTF-8 ceilings: message 8 KiB, stack trace 64 KiB, serialized file 80 KiB. Only newest 10 crash files are retained.
+
 ### Build and Test
 
 ```powershell

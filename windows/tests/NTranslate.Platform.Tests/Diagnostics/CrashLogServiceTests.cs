@@ -34,6 +34,36 @@ public sealed class CrashLogServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task Redacts_complete_structured_fields_and_enforces_utf8_ceilings()
+    {
+        var service = new CrashLogService(_root, new AtomicFileWriter());
+        var message = "password: multi word value\nsourceText: private words here\n" + new string('界', 20_000);
+        var error = new Exception(message);
+
+        await service.RecordAsync(error, CancellationToken.None);
+
+        var path = Assert.Single(Directory.GetFiles(Path.Combine(_root, "Logs"), "crash-*.json"));
+        var bytes = await File.ReadAllBytesAsync(path);
+        var json = System.Text.Encoding.UTF8.GetString(bytes);
+        Assert.DoesNotContain("multi word value", json, StringComparison.Ordinal);
+        Assert.DoesNotContain("private words here", json, StringComparison.Ordinal);
+        Assert.True(bytes.Length <= 80 * 1024);
+        using var document = JsonDocument.Parse(bytes);
+        Assert.True(System.Text.Encoding.UTF8.GetByteCount(document.RootElement.GetProperty("message").GetString()!) <= 8 * 1024);
+    }
+
+    [Fact]
+    public async Task Retains_newest_ten_crash_files()
+    {
+        var service = new CrashLogService(_root, new AtomicFileWriter());
+
+        for (var index = 0; index < 12; index++)
+            await service.RecordAsync(new Exception($"failure {index}"), CancellationToken.None);
+
+        Assert.Equal(10, Directory.GetFiles(Path.Combine(_root, "Logs"), "crash-*.json").Length);
+    }
+
+    [Fact]
     public async Task Ignores_malformed_json_and_selects_newest_unacknowledged()
     {
         var logs = Path.Combine(_root, "Logs");

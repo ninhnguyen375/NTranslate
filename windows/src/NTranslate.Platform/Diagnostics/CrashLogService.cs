@@ -16,6 +16,11 @@ public interface ICrashLogService
 
 public sealed partial class CrashLogService : ICrashLogService
 {
+    public const int MessageByteLimit = 8 * 1024;
+    public const int StackTraceByteLimit = 64 * 1024;
+    public const int FileByteLimit = 80 * 1024;
+    public const int RetainedFileLimit = 10;
+
     private readonly IAtomicFileWriter _writer;
     private readonly string _statePath;
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
@@ -37,9 +42,18 @@ public sealed partial class CrashLogService : ICrashLogService
         {
             token.ThrowIfCancellationRequested();
             var timestamp = DateTimeOffset.UtcNow;
-            var payload = new CrashPayload(timestamp, exception.GetType().FullName ?? exception.GetType().Name, Redact(exception.Message)!, Redact(exception.StackTrace));
+            var message = TruncateUtf8(Redact(exception.Message), MessageByteLimit) ?? string.Empty;
+            var stackTrace = TruncateUtf8(Redact(exception.StackTrace), StackTraceByteLimit);
+            var payload = new CrashPayload(timestamp, exception.GetType().FullName ?? exception.GetType().Name, message, stackTrace);
+            var data = JsonSerializer.SerializeToUtf8Bytes(payload, JsonOptions);
+            while (data.Length > FileByteLimit && stackTrace?.Length > 0)
+            {
+                stackTrace = TruncateUtf8(stackTrace, Math.Max(0, Encoding.UTF8.GetByteCount(stackTrace) - (data.Length - FileByteLimit) - 64));
+                data = JsonSerializer.SerializeToUtf8Bytes(payload with { StackTrace = stackTrace }, JsonOptions);
+            }
             var path = Path.Combine(LogsDirectory, $"crash-{timestamp:yyyyMMddTHHmmssfffffffZ}-{Guid.NewGuid():N}.json");
-            await _writer.WriteAsync(path, JsonSerializer.SerializeToUtf8Bytes(payload, JsonOptions), token).ConfigureAwait(false);
+            await _writer.WriteAsync(path, data, token).ConfigureAwait(false);
+            RetainNewest();
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested) { }
         catch (Exception) { }
@@ -89,20 +103,41 @@ public sealed partial class CrashLogService : ICrashLogService
         catch (UnauthorizedAccessException) { return null; }
     }
 
+    private void RetainNewest()
+    {
+        foreach (var path in Directory.EnumerateFiles(LogsDirectory, "crash-*.json")
+                     .OrderByDescending(Path.GetFileName, StringComparer.Ordinal)
+                     .Skip(RetainedFileLimit))
+        {
+            try { File.Delete(path); }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+        }
+    }
+
+    private static string? TruncateUtf8(string? value, int byteLimit)
+    {
+        if (value is null || Encoding.UTF8.GetByteCount(value) <= byteLimit) return value;
+        var bytes = Encoding.UTF8.GetBytes(value);
+        var length = byteLimit;
+        while (length > 0 && (bytes[length] & 0xC0) == 0x80) length--;
+        return Encoding.UTF8.GetString(bytes, 0, length);
+    }
+
     private static string? Redact(string? value)
     {
         if (value is null) return null;
-        value = ContentFieldRegex().Replace(value, "[REDACTED]");
-        value = BearerRegex().Replace(value, "$1[REDACTED]");
-        return SecretRegex().Replace(value, "$1[REDACTED]");
+        value = ContentFieldLineRegex().Replace(value, "[REDACTED]");
+        value = StructuredFieldRegex().Replace(value, "$1[REDACTED]");
+        return BearerRegex().Replace(value, "$1[REDACTED]");
     }
 
+    [GeneratedRegex("(?im)\\\"?(?:clipboard(?:Text|Content)?|translation|sourceText|resultText)\\\"?\\s*[:=]\\s*(?:\\\"(?:\\\\.|[^\\\"])*\\\"|[^\\r\\n,;}]+)")]
+    private static partial Regex ContentFieldLineRegex();
     [GeneratedRegex(@"(?i)(\bBearer\s+)[^\s,;]+")]
     private static partial Regex BearerRegex();
-    [GeneratedRegex(@"(?i)(\b(?:api[_-]?key|key|password|token)\b\s*[:=]?\s*)[^\s,;]+")]
-    private static partial Regex SecretRegex();
-    [GeneratedRegex(@"(?i)\b(?:clipboard(?:Text|Content)?|translation|sourceText|resultText)\b\s*[:=]?\s*[^\s,;]+")]
-    private static partial Regex ContentFieldRegex();
+    [GeneratedRegex("(?im)(\\\"?(?:api[_-]?key|key|password|token|clipboard(?:Text|Content)?|translation|sourceText|resultText)\\\"?\\s*[:=]\\s*)(?:\\\"(?:\\\\.|[^\\\"])*\\\"|[^\\r\\n,;}]+)")]
+    private static partial Regex StructuredFieldRegex();
 
     private sealed record CrashPayload(DateTimeOffset Timestamp, string ExceptionType, string Message, string? StackTrace);
     private sealed record RecoveryState(string AcknowledgedFileName);
