@@ -1,6 +1,9 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media.Imaging;
 using System.Runtime.InteropServices;
+using System.Runtime.InteropServices.WindowsRuntime;
+using Windows.ApplicationModel.DataTransfer;
 
 namespace NTranslate.App.Popup;
 
@@ -8,6 +11,7 @@ public sealed partial class TranslationWindow : Window
 {
     private readonly PopupCoordinator _coordinator;
     private readonly Microsoft.UI.Windowing.AppWindow _appWindow;
+    private CancellationTokenSource _lifetimeCancellation = new();
     private bool _shuttingDown;
     private readonly TitleDragPolicy _drag = new(4);
 
@@ -28,13 +32,23 @@ public sealed partial class TranslationWindow : Window
 
     internal TranslationViewModel ViewModel { get; }
 
-    internal void ShowPopup(string? sourceText) => _coordinator.Show(sourceText);
+    internal void ShowPopup(string? sourceText)
+    {
+        if (_lifetimeCancellation.IsCancellationRequested)
+        {
+            _lifetimeCancellation.Dispose();
+            _lifetimeCancellation = new();
+        }
+        ViewModel.EnterTextMode();
+        _coordinator.Show(sourceText);
+    }
 
     internal void RestoreWindowProcedure() => _coordinator.RestoreWindowProcedure();
 
     internal void CloseForShutdown()
     {
         _shuttingDown = true;
+        CancelOperations();
         Close();
     }
 
@@ -42,7 +56,14 @@ public sealed partial class TranslationWindow : Window
     {
         if (_shuttingDown) return;
         args.Cancel = true;
+        CancelOperations();
         _coordinator.Close();
+    }
+
+    private void CancelOperations()
+    {
+        _lifetimeCancellation.Cancel();
+        ViewModel.WindowChanged();
     }
 
     private void TitleDragRegion_PointerPressed(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs args)
@@ -67,10 +88,40 @@ public sealed partial class TranslationWindow : Window
     [DllImport("user32.dll")] private static extern bool ReleaseCapture();
     [DllImport("user32.dll")] private static extern nint SendMessage(nint hwnd, uint message, nint wParam, nint lParam);
 
-    private void CloseButton_Click(object sender, RoutedEventArgs e) => _coordinator.Close();
+    private void CloseButton_Click(object sender, RoutedEventArgs e) { CancelOperations(); _coordinator.Close(); }
     private void PinButton_Click(object sender, RoutedEventArgs e) => _coordinator.IsPinned = PinButton.IsChecked == true;
     private void SwapButton_Click(object sender, RoutedEventArgs e) => ViewModel.SwapLanguages();
-    private void CloseAccelerator_Invoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args) { _coordinator.Close(); args.Handled = true; }
+    private async void LearnButton_Click(object sender, RoutedEventArgs e) => await ViewModel.LearnAsync(_lifetimeCancellation.Token);
+    private async void ImagesButton_Click(object sender, RoutedEventArgs e) => await ViewModel.SearchImagesAsync(_lifetimeCancellation.Token);
+    private async void SourceSpeechButton_Click(object sender, RoutedEventArgs e)
+    {
+        try { await ViewModel.SpeakSourceAsync(_lifetimeCancellation.Token); }
+        catch (Exception ex) when (ex is not OperationCanceledException) { }
+    }
+    private async void ResultSpeechButton_Click(object sender, RoutedEventArgs e)
+    {
+        try { await ViewModel.SpeakResultAsync(_lifetimeCancellation.Token); }
+        catch (Exception ex) when (ex is not OperationCanceledException) { }
+    }
+
+    private async void ImageTranslateButton_Click(object sender, RoutedEventArgs e)
+    {
+        var content = Clipboard.GetContent();
+        if (!content.Contains(StandardDataFormats.Bitmap)) return;
+        var reference = await content.GetBitmapAsync();
+        using var input = await reference.OpenReadAsync();
+        using var image = new MemoryStream();
+        await input.AsStreamForRead().CopyToAsync(image, _lifetimeCancellation.Token);
+        image.Position = 0;
+        var preview = new BitmapImage();
+        await preview.SetSourceAsync(image.AsRandomAccessStream());
+        ImagePreview.Source = preview;
+        image.Position = 0;
+        await ViewModel.TranslateImageAsync(image, _lifetimeCancellation.Token);
+    }
+
+    private void CloseAccelerator_Invoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args) { CancelOperations(); _coordinator.Close(); args.Handled = true; }
     private void TranslateAccelerator_Invoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args) { if (ViewModel.TranslateCommand.CanExecute(null)) ViewModel.TranslateCommand.Execute(null); args.Handled = true; }
+    private async void LearnAccelerator_Invoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args) { args.Handled = true; await ViewModel.LearnAsync(_lifetimeCancellation.Token); }
     private void CopyAccelerator_Invoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args) { if (ViewModel.CopyCommand.CanExecute(null)) ViewModel.CopyCommand.Execute(null); args.Handled = true; }
 }

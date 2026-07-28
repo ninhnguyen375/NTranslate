@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Window
+    x:Class="NTranslate.App.Settings.SettingsWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="Settings">
+    <Grid Padding="24" RowSpacing="12">
+        <Grid.RowDefinitions><RowDefinition Height="*" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+        <NavigationView Grid.Row="0" IsBackButtonVisible="Collapsed" IsSettingsVisible="False" PaneDisplayMode="Left" SelectionChanged="Navigation_SelectionChanged">
+            <NavigationView.MenuItems>
+                <NavigationViewItem Content="General" Tag="General" IsSelected="True" />
+                <NavigationViewItem Content="Prompts" Tag="Prompts" />
+                <NavigationViewItem Content="Languages" Tag="Languages" />
+                <NavigationViewItem Content="Advanced" Tag="Advanced" />
+            </NavigationView.MenuItems>
+            <ScrollViewer>
+                <Grid>
+                    <StackPanel x:Name="GeneralSection" Spacing="10">
+                        <PasswordBox Header="API key" AutomationProperties.Name="API key" Password="{Binding Draft.ApiKey, Mode=TwoWay}" />
+                        <TextBox Header="API base URL" Text="{Binding Draft.ApiBaseUrl, Mode=TwoWay}" />
+                        <TextBox Header="Speech API URL" Text="{Binding Draft.ApiSpeechUrl, Mode=TwoWay}" />
+                        <TextBox Header="Model" Text="{Binding Draft.Model, Mode=TwoWay}" />
+                        <NumberBox Header="Speech rate" Minimum="0.5" Maximum="1.5" SmallChange="0.1" Value="{Binding Draft.SpeechRate, Mode=TwoWay}" />
+                        <CheckBox Content="Auto-copy" IsChecked="{Binding Draft.UiAutoCopy, Mode=TwoWay}" />
+                        <CheckBox Content="Simulate copy" IsChecked="{Binding Draft.UiSimulateCopy, Mode=TwoWay}" />
+                        <CheckBox Content="Auto-prefetch speech" IsChecked="{Binding Draft.AutoPrefetchSpeech, Mode=TwoWay}" />
+                        <CheckBox Content="Start with Windows" IsChecked="{Binding Draft.StartWithWindows, Mode=TwoWay}" />
+                    </StackPanel>
+                    <StackPanel x:Name="PromptsSection" Spacing="10" Visibility="Collapsed">
+                        <TextBox Header="System prompt" Text="{Binding Draft.SystemPrompt, Mode=TwoWay}" AcceptsReturn="True" />
+                        <TextBox Header="Learn prompt" Text="{Binding Draft.LearnPrompt, Mode=TwoWay}" AcceptsReturn="True" />
+                        <TextBox Header="Sentence learn prompt" Text="{Binding Draft.SentenceLearnPrompt, Mode=TwoWay}" AcceptsReturn="True" />
+                        <TextBox Header="Grammar prompt" Text="{Binding Draft.GrammarPrompt, Mode=TwoWay}" AcceptsReturn="True" />
+                    </StackPanel>
+                    <StackPanel x:Name="LanguagesSection" Spacing="10" Visibility="Collapsed">
+                        <TextBox Header="Source language" Text="{Binding Draft.SourceLang, Mode=TwoWay}" />
+                        <TextBox Header="Target language" Text="{Binding Draft.TargetLang, Mode=TwoWay}" />
+                        <TextBox Header="Native language" Text="{Binding Draft.NativeLang, Mode=TwoWay}" />
+                        <TextBox Header="New language" Text="{Binding NewLanguage, Mode=TwoWay}" />
+                        <Button Content="Add" AutomationProperties.Name="Add language" Click="AddLanguage_Click" />
+                        <ListView x:Name="LanguagesList" Header="Languages" ItemsSource="{Binding Draft.Languages}" />
+                        <Button Content="Remove" AutomationProperties.Name="Remove language" Click="RemoveLanguage_Click" />
+                        <TextBox Header="New target language" Text="{Binding NewTargetLanguage, Mode=TwoWay}" />
+                        <Button Content="Add" AutomationProperties.Name="Add target language" Click="AddTargetLanguage_Click" />
+                        <ListView x:Name="TargetLanguagesList" Header="Target languages" ItemsSource="{Binding Draft.TargetLanguages}" />
+                        <Button Content="Remove" AutomationProperties.Name="Remove target language" Click="RemoveTargetLanguage_Click" />
+                    </StackPanel>
+                    <StackPanel x:Name="AdvancedSection" Spacing="10" Visibility="Collapsed">
+                        <NumberBox Header="Maximum translation length" Value="{Binding Draft.MaxTranslateLength, Mode=TwoWay}" />
+                        <TextBox Header="Speech source model" Text="{Binding Draft.SpeechSourceModel, Mode=TwoWay}" />
+                        <TextBox Header="Vietnamese speech source model" Text="{Binding Draft.SpeechSourceModelVietnamese, Mode=TwoWay}" />
+                        <TextBox Header="Chinese speech source model" Text="{Binding Draft.SpeechSourceModelChinese, Mode=TwoWay}" />
+                        <TextBox Header="Speech target model" Text="{Binding Draft.SpeechTargetModel, Mode=TwoWay}" />
+                        <TextBox Header="History directory" Text="{Binding Draft.HistoryDirectory, Mode=TwoWay}" />
+                        <Button Content="Browse" AutomationProperties.Name="Browse history directory" Click="Browse_Click" />
+                        <TextBox Header="Hotkey" Text="{Binding Draft.HotkeyKey, Mode=TwoWay}" />
+                        <CheckBox Content="Option" AutomationProperties.Name="Option hotkey modifier" IsChecked="{Binding Draft.HotkeyOption, Mode=TwoWay}" />
+                        <CheckBox Content="Control" AutomationProperties.Name="Control hotkey modifier" IsChecked="{Binding Draft.HotkeyControl, Mode=TwoWay}" />
+                        <CheckBox Content="Shift" AutomationProperties.Name="Shift hotkey modifier" IsChecked="{Binding Draft.HotkeyShift, Mode=TwoWay}" />
+                        <NumberBox Header="Window width" Value="{Binding Draft.UiWidth, Mode=TwoWay}" />
+                        <NumberBox Header="Window height" Value="{Binding Draft.UiHeight, Mode=TwoWay}" />
+                    </StackPanel>
+                </Grid>
+            </ScrollViewer>
+        </NavigationView>
+        <InfoBar Grid.Row="1" Message="{Binding ErrorMessage}" IsOpen="{Binding HasError}" Severity="Error" IsClosable="False" />
+        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+            <Button Content="Revert" AutomationProperties.Name="Revert" Click="Revert_Click" />
+            <Button Content="Cancel" AutomationProperties.Name="Cancel" Click="Cancel_Click" />
+            <Button Content="Save" AutomationProperties.Name="Save settings" Style="{StaticResource AccentButtonStyle}" Click="Save_Click">
+                <Button.KeyboardAccelerators><KeyboardAccelerator Key="S" Modifiers="Control" Invoked="SaveAccelerator_Invoked" /></Button.KeyboardAccelerators>
+            </Button>
+        </StackPanel>
+    </Grid>
+</Window>

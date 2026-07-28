@@ -24,7 +24,9 @@
   "speechSourceModelVietnamese": "edge-tts/vi-VN-HoaiMyNeural",
   "speechSourceModelChinese": "edge-tts/zh-CN-XiaoxiaoNeural",
   "speechTargetModel": "edge-tts/vi-VN-HoaiMyNeural",
+  "speechRate": 1.0,
   "historyDirectory": "",
+  "startWithWindows": false,
   "autoPrefetchSpeech": false,
   "hotkey": {
     "key": "D",

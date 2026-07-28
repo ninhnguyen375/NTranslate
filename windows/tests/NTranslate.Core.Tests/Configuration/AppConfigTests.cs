@@ -16,6 +16,8 @@ public sealed class AppConfigTests
         Assert.Equal(["Auto detect", "English", "Vietnamese", "Chinese"], config.Languages);
         Assert.Equal(["English", "Vietnamese"], config.TargetLanguages);
         Assert.Equal(5000, config.MaxTranslateLength);
+        Assert.Equal(1d, config.SpeechRate);
+        Assert.False(config.StartWithWindows);
         Assert.Equal(new("D", true, false, false, false), config.Hotkey);
         Assert.Equal(new(720, 320, false, false), config.Ui);
         Assert.DoesNotContain("apiKey", ConfigJson.Serialize(config), StringComparison.OrdinalIgnoreCase);
@@ -89,6 +91,26 @@ public sealed class AppConfigTests
         Assert.Equal(
             ["ApiBaseUrl", "Model", "MaxTranslateLength", "Hotkey.Key", "Hotkey.Modifiers", "Ui.Width", "Ui.Height"],
             config.Validate().Select(issue => issue.Field));
+    }
+
+    [Theory]
+    [InlineData(0.49)]
+    [InlineData(1.51)]
+    public void ValidationRejectsSpeechRateOutsideSupportedRange(double rate)
+    {
+        var config = AppConfig.Default with { SpeechRate = rate };
+
+        Assert.Equal(["SpeechRate"], config.Validate().Select(issue => issue.Field));
+    }
+
+    [Fact]
+    public void OldConfigUsesIntegratedDefaults()
+    {
+        var config = ConfigJson.Parse("{}").Config;
+
+        Assert.Equal(1d, config.SpeechRate);
+        Assert.False(config.StartWithWindows);
+        Assert.DoesNotContain("apiKey", ConfigJson.Serialize(config), StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

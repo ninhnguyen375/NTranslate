@@ -14,11 +14,13 @@
     <EnableDefaultPageItems>false</EnableDefaultPageItems>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.3.1" />
+    <PackageReference Include="Microsoft.WindowsAppSDK" />
   </ItemGroup>
   <ItemGroup>
     <ApplicationDefinition Include="App.xaml" />
+    <Page Include="History\HistoryWindow.xaml" />
     <Page Include="Popup\TranslationWindow.xaml" />
+    <Page Include="Settings\SettingsWindow.xaml" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\NTranslate.Platform\NTranslate.Platform.csproj" />

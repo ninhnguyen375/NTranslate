@@ -9,6 +9,8 @@ public partial class App : Application
     private AppComposition? _composition;
     private readonly UiActivationGate _activationGate;
 
+    internal XamlRoot? ContentRoot => _composition?.ContentRoot;
+
     public App()
     {
         InitializeComponent();

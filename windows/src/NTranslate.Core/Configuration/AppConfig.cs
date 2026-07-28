@@ -23,7 +23,9 @@ public sealed record AppConfig(
     string SpeechSourceModelVietnamese,
     string SpeechSourceModelChinese,
     string SpeechTargetModel,
+    double SpeechRate,
     string? HistoryDirectory,
+    bool StartWithWindows,
     HotkeyConfig Hotkey,
     UiConfig Ui)
 {
@@ -37,6 +39,8 @@ public sealed record AppConfig(
         AddBlank(Model, nameof(Model), issues);
         if (MaxTranslateLength < 1)
             issues.Add(new(nameof(MaxTranslateLength), "Must be greater than zero."));
+        if (SpeechRate is < 0.5 or > 1.5)
+            issues.Add(new(nameof(SpeechRate), "Must be between 0.5 and 1.5."));
         if (HasDuplicates(Languages))
             issues.Add(new(nameof(Languages), "Must not contain duplicates."));
         if (HasDuplicates(TargetLanguages))

@@ -3,7 +3,11 @@ using System.Text;
 using NTranslate.App.Popup;
 using NTranslate.Core.Configuration;
 using NTranslate.Core.OpenAI;
+using NTranslate.Core.Speech;
+using NTranslate.Core.Translation;
 using NTranslate.Platform.Clipboard;
+using NTranslate.Platform.Images;
+using NTranslate.Platform.Shell;
 
 namespace NTranslate.App.Tests.Popup;
 
@@ -490,7 +494,322 @@ public sealed class TranslationViewModelTests
         Assert.Null(clipboard.LastWritten);
     }
 
+    [Fact]
+    public async Task OpenHistoryRecordRestoresAcceptedStateWithoutApi()
+    {
+        var handler = ScriptedHandler.Sync(_ => throw new InvalidOperationException("Network must not be called."));
+        var speech = new RecordingSpeech();
+        var vm = CreateAdvancedViewModel(handler, speech: speech);
+        var id = Guid.NewGuid();
+        var record = new NTranslate.Core.History.TranslationRecord(
+            id, DateTimeOffset.UtcNow, "offline source", "offline result", "English", "Vietnamese", null, null, true);
+
+        vm.OpenHistoryRecord(record);
+        await vm.SpeakResultAsync(CancellationToken.None);
+
+        Assert.Equal(0, handler.CallCount);
+        Assert.Equal("offline source", vm.SourceText);
+        Assert.Equal("offline result", vm.ResultText);
+        Assert.Equal("English", vm.SourceLang);
+        Assert.Equal("Vietnamese", vm.TargetLang);
+        Assert.Equal(PopupState.Result, vm.State);
+        Assert.True(vm.CanCopy);
+        Assert.Equal(id, Assert.Single(speech.Playbacks).Identity.HistoryRecordId);
+    }
+
+    [Fact]
+    public async Task HistoryAppendFailureDoesNotExposeOrCopyResult()
+    {
+        var clipboard = new FakeClipboardService();
+        var vm = new TranslationViewModel(
+            Config with { Ui = Config.Ui with { AutoCopy = true } },
+            new OpenAiCompatibleClient(new HttpClient(ScriptedHandler.Sync(_ => JsonResponse("translated")))),
+            clipboard,
+            _ => Task.FromResult("test-api-key"),
+            recordHistory: (_, _) => throw new IOException("history unavailable"));
+        vm.SourceText = "hello";
+
+        await vm.TranslateAsync(CancellationToken.None);
+
+        Assert.Equal(PopupState.Error, vm.State);
+        Assert.Equal(string.Empty, vm.ResultText);
+        Assert.Null(clipboard.LastWritten);
+        Assert.False(vm.CanCopy);
+        Assert.Equal("history unavailable", vm.StatusMessage);
+    }
+
+    [Fact]
+    public async Task AutoDetectedVietnameseUsesResolvedEnglishTargetForHistoryAndResultSpeech()
+    {
+        var history = new RecordingHistory();
+        var speech = new RecordingSpeech();
+        var vm = CreateAdvancedViewModel(ScriptedHandler.Sync(_ => JsonResponse("hello")), history: history, speech: speech);
+        vm.SourceLang = "Auto detect";
+        vm.TargetLang = "Vietnamese";
+        vm.SourceText = "xin chào";
+
+        await vm.TranslateAsync(CancellationToken.None);
+        await vm.SpeakResultAsync(CancellationToken.None);
+
+        Assert.Equal("English", Assert.Single(history.Records).TargetLanguage);
+        Assert.Equal(Config.SpeechSourceModel, Assert.Single(speech.Playbacks).Identity.CacheKey.Model);
+    }
+
+    [Fact]
+    public void ManualPopupAfterImageModeRestoresSourceEditorMode()
+    {
+        var vm = CreateAdvancedViewModel(ScriptedHandler.Sync(_ => JsonResponse("unused")));
+        vm.EnterImageMode();
+
+        vm.EnterTextMode();
+
+        Assert.False(vm.IsImageMode);
+    }
+
+    [Fact]
+    public void ManualTextAfterImageModeRestoresSourceEditorMode()
+    {
+        var vm = CreateAdvancedViewModel(ScriptedHandler.Sync(_ => JsonResponse("unused")));
+        vm.EnterImageMode();
+
+        vm.SourceText = "manual text";
+
+        Assert.False(vm.IsImageMode);
+        Assert.Equal("manual text", vm.SourceText);
+    }
+
+    [Fact]
+    public async Task SameLanguageTranslateUsesGrammarPromptAndRecordsHistory()
+    {
+        var history = new RecordingHistory();
+        var handler = ScriptedHandler.Sync(_ => JsonResponse("fixed"));
+        var vm = CreateAdvancedViewModel(handler, history: history);
+        vm.SourceLang = "English";
+        vm.TargetLang = "English";
+        vm.SourceText = "bad";
+
+        await vm.TranslateAsync(CancellationToken.None);
+
+        Assert.Contains(Config.GrammarPrompt.Split(' ')[0], handler.LastBody, StringComparison.Ordinal);
+        Assert.Single(history.Records);
+        Assert.Equal(TranslationMode.Translate, history.Records[0].Mode);
+        Assert.True(history.Records[0].IsGrammar);
+    }
+
+    [Theory]
+    [InlineData("token", "LearnWord")]
+    [InlineData("two tokens", "LearnSentence")]
+    public async Task LearnSelectsPromptAndNeverRecordsHistory(string text, string expectedPrompt)
+    {
+        var history = new RecordingHistory();
+        var handler = ScriptedHandler.Sync(_ => JsonResponse("lesson"));
+        var vm = CreateAdvancedViewModel(handler, history: history);
+        vm.SourceText = text;
+
+        await vm.LearnAsync(CancellationToken.None);
+
+        Assert.Contains(expectedPrompt, handler.LastBody, StringComparison.Ordinal);
+        Assert.Empty(history.Records);
+    }
+
+    [Fact]
+    public async Task ImageModeClearsSourceAssociationAndKeepsTargetAndResultSpeech()
+    {
+        var speech = new RecordingSpeech();
+        var vm = CreateAdvancedViewModel(ScriptedHandler.Sync(_ => JsonResponse("image-result")), speech: speech);
+        vm.SourceText = "old source";
+
+        await vm.TranslateImageAsync(new MemoryStream([1, 2, 3]), CancellationToken.None);
+
+        Assert.True(vm.IsImageMode);
+        Assert.Equal(string.Empty, vm.SourceText);
+        Assert.False(vm.CanSelectSourceLanguage);
+        Assert.False(vm.CanLearn);
+        Assert.False(vm.CanSpeakSource);
+        Assert.False(vm.CreatesHistory);
+        Assert.True(vm.CanSpeakResult);
+        Assert.Equal("image-result", vm.ResultText);
+    }
+
+    [Fact]
+    public async Task ImageSearchFallsBackToSourceOnApiFailure()
+    {
+        var browser = new RecordingBrowser();
+        var handler = ScriptedHandler.Sync(_ => new HttpResponseMessage(HttpStatusCode.InternalServerError));
+        var vm = CreateAdvancedViewModel(handler, browser: browser);
+        vm.SourceText = "red panda";
+
+        await vm.SearchImagesAsync(CancellationToken.None);
+
+        Assert.Equal("red panda", browser.OpenedUri?.Query.Split("q=")[1].Replace("%20", " "));
+    }
+
+    [Fact]
+    public async Task CancelledImageSearchNeverOpensBrowser()
+    {
+        var browser = new RecordingBrowser();
+        var gate = new TaskCompletionSource();
+        var handler = new ScriptedHandler(async _ => { await gate.Task; return JsonResponse("query"); });
+        var vm = CreateAdvancedViewModel(handler, browser: browser);
+        vm.SourceText = "source";
+        using var cancellation = new CancellationTokenSource();
+
+        var search = vm.SearchImagesAsync(cancellation.Token);
+        cancellation.Cancel();
+        gate.SetResult();
+        await search;
+
+        Assert.Null(browser.OpenedUri);
+    }
+
+    [Theory]
+    [InlineData("source")]
+    [InlineData("language")]
+    [InlineData("image")]
+    [InlineData("window")]
+    public async Task ContextChangesCancelTranslationAndBothSpeechChannels(string change)
+    {
+        var speech = new RecordingSpeech();
+        var gate = new TaskCompletionSource();
+        CancellationToken requestToken = default;
+        var handler = new ScriptedHandler(async token => { requestToken = token; await gate.Task; return JsonResponse("late"); });
+        var vm = CreateAdvancedViewModel(handler, speech: speech);
+        vm.SourceText = "source";
+        var translation = vm.TranslateForTestAsync();
+        speech.InvalidatedChannels.Clear();
+
+        switch (change)
+        {
+            case "source": vm.SourceText = "changed"; break;
+            case "language": vm.TargetLang = "Chinese"; break;
+            case "image": vm.EnterImageMode(); break;
+            case "window": vm.WindowChanged(); break;
+        }
+
+        Assert.True(requestToken.IsCancellationRequested);
+        Assert.Equal(2, speech.InvalidatedChannels.Count);
+        gate.SetResult();
+        await translation;
+        Assert.NotEqual("late", vm.ResultText);
+    }
+
+    [Fact]
+    public async Task SpeechFailureSurfacesRetryStateWithoutEscapingHandlerBoundary()
+    {
+        var speech = new RecordingSpeech { Error = new IOException("speech unavailable") };
+        var vm = CreateAdvancedViewModel(ScriptedHandler.Sync(_ => JsonResponse("unused")), speech: speech);
+        vm.SourceText = "hello";
+
+        await vm.SpeakSourceAsync(CancellationToken.None);
+
+        Assert.Equal("Retry source speech", vm.SourceSpeechActionText);
+        Assert.Equal("speech unavailable", vm.SpeechError);
+        Assert.True(vm.CanUseSourceSpeech);
+    }
+
+    [Fact]
+    public async Task SpeakSourceUsesResolvedSourceModelAndIndependentChannel()
+    {
+        var speech = new RecordingSpeech();
+        var vm = CreateAdvancedViewModel(ScriptedHandler.Sync(_ => JsonResponse("unused")), speech: speech);
+        vm.SourceLang = "Vietnamese";
+        vm.SourceText = "xin chào";
+
+        await vm.SpeakSourceAsync(CancellationToken.None);
+
+        var playback = Assert.Single(speech.Playbacks);
+        Assert.Equal(SpeechChannel.Source, playback.Identity.CacheKey.Channel);
+        Assert.Equal("xin chào", playback.Identity.CacheKey.Text);
+        Assert.Equal(Config.SpeechSourceModelVietnamese, playback.Identity.CacheKey.Model);
+        Assert.Equal(1d, playback.Rate);
+    }
+
+    [Fact]
+    public async Task SpeakResultUsesAcceptedResultIdentityAndIndependentChannel()
+    {
+        var speech = new RecordingSpeech();
+        var history = new RecordingHistory();
+        var vm = CreateAdvancedViewModel(ScriptedHandler.Sync(_ => JsonResponse("translated")), history: history, speech: speech);
+        vm.SourceText = "hello";
+        await vm.TranslateAsync(CancellationToken.None);
+
+        await vm.SpeakResultAsync(CancellationToken.None);
+
+        var playback = Assert.Single(speech.Playbacks);
+        Assert.Equal(SpeechChannel.Result, playback.Identity.CacheKey.Channel);
+        Assert.Equal("translated", playback.Identity.CacheKey.Text);
+        Assert.Equal(Config.SpeechSourceModelVietnamese, playback.Identity.CacheKey.Model);
+        Assert.Equal(history.LastId, playback.Identity.HistoryRecordId);
+        Assert.Equal(1d, playback.Rate);
+    }
+
+    [Fact]
+    public async Task SpeechPrefetchOccursOnlyAfterAcceptedSuccessfulTextTranslation()
+    {
+        var speech = new RecordingSpeech();
+        var vm = CreateAdvancedViewModel(ScriptedHandler.Sync(_ => JsonResponse("translated")), speech: speech, autoPrefetch: true);
+        vm.SourceText = "hello";
+
+        await vm.TranslateAsync(CancellationToken.None);
+
+        Assert.Equal([SpeechChannel.Source, SpeechChannel.Result], speech.Prefetched.Select(x => x.CacheKey.Channel));
+    }
+
+    [Fact]
+    public async Task SecondAdvancedRequestWinsWhenFirstCompletesLastWithoutSideEffects()
+    {
+        var history = new RecordingHistory();
+        var speech = new RecordingSpeech();
+        var firstGate = new TaskCompletionSource();
+        var calls = 0;
+        var handler = new ScriptedHandler(async _ => ++calls == 1
+            ? await CompleteAfter(firstGate.Task, "first")
+            : JsonResponse("second"));
+        var vm = CreateAdvancedViewModel(handler, history: history, speech: speech, autoPrefetch: true);
+        vm.SourceText = "hello";
+
+        var first = vm.TranslateForTestAsync();
+        var second = vm.TranslateForTestAsync();
+        await second;
+        firstGate.SetResult();
+        await first;
+
+        Assert.Equal("second", vm.ResultText);
+        Assert.Single(history.Records);
+        Assert.Equal(2, speech.Prefetched.Count);
+    }
+
     public static TheoryData<string> NonResultStates => ["guidance", "loading", "error"];
+
+    private static async Task<HttpResponseMessage> CompleteAfter(Task gate, string result)
+    {
+        await gate;
+        return JsonResponse(result);
+    }
+
+    private static TranslationViewModel CreateAdvancedViewModel(
+        ScriptedHandler handler,
+        RecordingHistory? history = null,
+        RecordingSpeech? speech = null,
+        RecordingBrowser? browser = null,
+        bool autoPrefetch = false)
+    {
+        var config = Config with
+        {
+            AutoPrefetchSpeech = autoPrefetch,
+            LearnPrompt = "LearnWord {{config.sourceLang}} {{config.targetLang}}",
+            SentenceLearnPrompt = "LearnSentence {{config.sourceLang}} {{config.targetLang}}"
+        };
+        return new TranslationViewModel(
+            config,
+            new OpenAiCompatibleClient(new HttpClient(handler)),
+            new FakeClipboardService(),
+            _ => Task.FromResult("test-api-key"),
+            imageNormalizer: new PassThroughNormalizer(),
+            browserLauncher: browser ?? new RecordingBrowser(),
+            speech: speech ?? new RecordingSpeech(),
+            recordHistory: (history ?? new RecordingHistory()).RecordAsync);
+    }
 
     private static TranslationViewModel CreateViewModel(ScriptedHandler handler, IClipboardService clipboard, bool autoCopy = false)
     {
@@ -551,6 +870,62 @@ public sealed class TranslationViewModelTests
             LastWritten = text;
         }
         public bool RestoreIfUnchanged(IClipboardSnapshot snapshot, uint copiedSequenceNumber) => false;
+    }
+
+    private sealed class RecordingHistory
+    {
+        public List<TranslationHistoryEntry> Records { get; } = [];
+        public Guid? LastId { get; private set; }
+        public Task<Guid?> RecordAsync(TranslationHistoryEntry entry, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            Records.Add(entry);
+            LastId = Guid.NewGuid();
+            return Task.FromResult(LastId);
+        }
+    }
+
+    private sealed class RecordingSpeech : ITranslationSpeech
+    {
+        public Exception? Error { get; set; }
+        public List<SpeechIdentity> Prefetched { get; } = [];
+        public List<(SpeechIdentity Identity, double Rate)> Playbacks { get; } = [];
+        public List<SpeechChannel> InvalidatedChannels { get; } = [];
+        public Task PrefetchAsync(SpeechIdentity identity, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            Prefetched.Add(identity);
+            return Task.CompletedTask;
+        }
+        public Task TogglePlaybackAsync(SpeechIdentity identity, double rate, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (Error is not null) throw Error;
+            Playbacks.Add((identity, rate));
+            return Task.CompletedTask;
+        }
+        public void Invalidate(SpeechChannel channel, bool stopPlayback) => InvalidatedChannels.Add(channel);
+    }
+
+    private sealed class RecordingBrowser : IBrowserLauncher
+    {
+        public Uri? OpenedUri { get; private set; }
+        public Task OpenAsync(Uri uri, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            OpenedUri = uri;
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class PassThroughNormalizer : IImageNormalizer
+    {
+        public async Task<NormalizedImage> NormalizePngAsync(Stream source, CancellationToken cancellationToken)
+        {
+            using var output = new MemoryStream();
+            await source.CopyToAsync(output, cancellationToken);
+            return new(output.ToArray(), 1, 1);
+        }
     }
 
     private sealed class FakeClipboardService : IClipboardService

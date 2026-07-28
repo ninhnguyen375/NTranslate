@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Window
+    x:Class="NTranslate.App.History.HistoryWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="Translation history">
+    <Grid Padding="24" RowSpacing="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+        <TextBox Grid.Row="0" PlaceholderText="Search history" AutomationProperties.Name="Search history" Text="{Binding Query, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+        <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="12">
+            <RadioButton Content="All history" IsChecked="True" AutomationProperties.Name="All history" Click="AllHistory_Click" />
+            <RadioButton Content="Saved" AutomationProperties.Name="Saved" Click="Saved_Click" />
+            <ComboBox Header="Time range" AutomationProperties.Name="Time range" SelectedIndex="0" SelectionChanged="TimeRange_SelectionChanged">
+                <x:String>All</x:String>
+                <x:String>Today</x:String>
+                <x:String>Last 24 hours</x:String>
+                <x:String>Week</x:String>
+                <x:String>Month</x:String>
+            </ComboBox>
+            <Button Content="Delete visible" AutomationProperties.Name="Delete visible" Click="DeleteVisible_Click" IsEnabled="{Binding CanMutate}" />
+        </StackPanel>
+        <InfoBar Grid.Row="2" Message="{Binding ErrorMessage}" IsOpen="{Binding HasError}" Severity="Error" IsClosable="False" />
+        <ListView x:Name="HistoryList" Grid.Row="3" SelectionMode="Single" DoubleTapped="History_DoubleTapped" ItemsSource="{Binding VisibleRecords}" AutomationProperties.Name="Translation history">
+            <ListView.KeyboardAccelerators>
+                <KeyboardAccelerator Key="Enter" Invoked="HistoryEnter_Invoked" />
+            </ListView.KeyboardAccelerators>
+            <ListView.ItemTemplate>
+                <DataTemplate>
+                    <Grid Padding="8" ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock Text="{Binding SourceText}" TextWrapping="Wrap" />
+                            <TextBlock Text="{Binding ResultText}" TextWrapping="Wrap" />
+                            <TextBlock Text="{Binding Timestamp}" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal">
+                            <Button AutomationProperties.Name="Play source audio" ToolTipService.ToolTip="Play source audio" Click="PlaySource_Click" Tag="{Binding}" />
+                            <Button AutomationProperties.Name="Play result audio" ToolTipService.ToolTip="Play result audio" Click="PlayResult_Click" Tag="{Binding}" />
+                            <ToggleButton AutomationProperties.Name="Saved translation" ToolTipService.ToolTip="Save translation" IsChecked="{Binding IsSaved, Mode=OneWay}" Click="ToggleSaved_Click" Tag="{Binding}" IsEnabled="{Binding DataContext.CanMutate, ElementName=HistoryList}" />
+                            <Button AutomationProperties.Name="Delete translation" ToolTipService.ToolTip="Delete translation" Click="Delete_Click" Tag="{Binding}" IsEnabled="{Binding DataContext.CanMutate, ElementName=HistoryList}" />
+                        </StackPanel>
+                    </Grid>
+                </DataTemplate>
+            </ListView.ItemTemplate>
+        </ListView>
+    </Grid>
+</Window>

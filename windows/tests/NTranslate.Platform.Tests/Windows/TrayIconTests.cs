@@ -9,6 +9,15 @@ public sealed class TrayIconTests
         => Assert.Equal(TrayCommand.Open, TrayMenuCommands.Resolve(1001));
 
     [Fact]
+    public void Resolve_maps_integrated_command_ids()
+    {
+        Assert.Equal(TrayCommand.History, TrayMenuCommands.Resolve(1002));
+        Assert.Equal(TrayCommand.Settings, TrayMenuCommands.Resolve(1003));
+        Assert.Equal(TrayCommand.CheckForUpdates, TrayMenuCommands.Resolve(1004));
+        Assert.Equal(TrayCommand.StartWithWindows, TrayMenuCommands.Resolve(1005));
+    }
+
+    [Fact]
     public void Resolve_maps_exit_command_id()
         => Assert.Equal(TrayCommand.Exit, TrayMenuCommands.Resolve(1099));
 
