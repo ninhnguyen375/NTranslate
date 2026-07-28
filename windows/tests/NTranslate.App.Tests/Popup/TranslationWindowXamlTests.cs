@@ -18,6 +18,13 @@ public sealed class TranslationWindowXamlTests
         Assert.Contains("SwapButton", names);
         Assert.Contains("TranslateButton", names);
         Assert.Contains("CopyButton", names);
+        Assert.Contains("LearnButton", names);
+        Assert.Contains("ImagesButton", names);
+        Assert.Contains("SourceSpeechButton", names);
+        Assert.Contains("ResultSpeechButton", names);
+        Assert.Contains("ImageTranslateButton", names);
+        Assert.Contains("ImagePreview", names);
+        Assert.Contains("ProgressRing", names);
         Assert.Contains("PinButton", names);
         Assert.Contains("CloseButton", names);
         Assert.DoesNotContain(document.Descendants(), element =>
@@ -34,6 +41,15 @@ public sealed class TranslationWindowXamlTests
         Assert.Equal("True", Attribute(FindNamed("ResultTextBox"), "IsReadOnly"));
         Assert.Equal("{x:Bind ViewModel.TranslateCommand}", Attribute(FindNamed("TranslateButton"), "Command"));
         Assert.Equal("{x:Bind ViewModel.CopyCommand}", Attribute(FindNamed("CopyButton"), "Command"));
+        Assert.Equal("LearnButton_Click", Attribute(FindNamed("LearnButton"), "Click"));
+        Assert.Equal("ImagesButton_Click", Attribute(FindNamed("ImagesButton"), "Click"));
+        Assert.Equal("SourceSpeechButton_Click", Attribute(FindNamed("SourceSpeechButton"), "Click"));
+        Assert.Equal("ResultSpeechButton_Click", Attribute(FindNamed("ResultSpeechButton"), "Click"));
+        Assert.Equal("ImageTranslateButton_Click", Attribute(FindNamed("ImageTranslateButton"), "Click"));
+        Assert.Equal("{x:Bind ViewModel.CanSpeakSource, Mode=OneWay}", Attribute(FindNamed("SourceSpeechButton"), "IsEnabled"));
+        Assert.Equal("{x:Bind ViewModel.CanSpeakResult, Mode=OneWay}", Attribute(FindNamed("ResultSpeechButton"), "IsEnabled"));
+        Assert.Equal("Image preview", Attribute(FindNamed("ImagePreview"), "AutomationProperties.Name"));
+        Assert.Equal("{x:Bind ViewModel.IsLoading, Mode=OneWay}", Attribute(FindNamed("ProgressRing"), "IsActive"));
         Assert.Equal("TitleDragRegion_PointerPressed", Attribute(FindNamed("TitleDragRegion"), "PointerPressed"));
         Assert.Equal("TitleDragRegion_PointerMoved", Attribute(FindNamed("TitleDragRegion"), "PointerMoved"));
         Assert.Equal("TitleDragRegion_PointerReleased", Attribute(FindNamed("TitleDragRegion"), "PointerReleased"));
@@ -46,6 +62,8 @@ public sealed class TranslationWindowXamlTests
         var codeBehind = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "TranslationWindow.xaml.cs"));
         Assert.Contains("_appWindow.Closing += AppWindow_Closing", codeBehind, StringComparison.Ordinal);
         Assert.Contains("args.Cancel = true", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("_lifetimeCancellation.Cancel()", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("ViewModel.WindowChanged()", codeBehind, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -79,6 +97,7 @@ public sealed class TranslationWindowXamlTests
         Assert.Contains(("Escape", "None"), accelerators);
         Assert.Contains(("Enter", "Control"), accelerators);
         Assert.Contains(("C", "Control,Shift"), accelerators);
+        Assert.Contains(("L", "Control,Shift"), accelerators);
     }
 
     private static XElement FindNamed(string name) => XDocument.Load(XamlPath).Descendants()

@@ -69,6 +69,8 @@ public sealed class TranslationViewModel : INotifyPropertyChanged
     private string? _persistentGuidance;
     private PopupState _state = PopupState.Guidance;
     private bool _isImageMode;
+    private SpeechIdentity? _sourceSpeechIdentity;
+    private SpeechIdentity? _resultSpeechIdentity;
 
     public TranslationViewModel(
         AppConfig config,
@@ -173,6 +175,7 @@ public sealed class TranslationViewModel : INotifyPropertyChanged
         {
             if (Set(ref _state, value))
             {
+                OnPropertyChanged(nameof(IsLoading));
                 OnPropertyChanged(nameof(CanCopy));
                 CopyCommand.RaiseCanExecuteChanged();
             }
@@ -181,6 +184,7 @@ public sealed class TranslationViewModel : INotifyPropertyChanged
 
     /// <summary>Copy is only ever actionable for an accepted, non-stale, successful translation.</summary>
     public bool CanCopy => State == PopupState.Result && ResultText.Length > 0;
+    public bool IsLoading => State == PopupState.Loading;
     public bool IsImageMode => _isImageMode;
     public bool CanSelectSourceLanguage => !IsImageMode;
     public bool CanLearn => !IsImageMode;
@@ -210,6 +214,22 @@ public sealed class TranslationViewModel : INotifyPropertyChanged
     public Task TranslateAsync(CancellationToken cancellationToken) => TranslateTextAsync(TranslationMode.Translate, cancellationToken);
 
     public Task LearnAsync(CancellationToken cancellationToken) => TranslateTextAsync(TranslationMode.Learn, cancellationToken);
+
+    public Task SpeakSourceAsync(CancellationToken cancellationToken)
+    {
+        if (_speech is null || !CanSpeakSource) return Task.CompletedTask;
+        var identity = SpeechIdentityFor(SpeechChannel.Source, SourceText, SourceLang, _sourceSpeechIdentity?.HistoryRecordId);
+        _sourceSpeechIdentity = identity;
+        return _speech.TogglePlaybackAsync(identity, 1d, cancellationToken);
+    }
+
+    public Task SpeakResultAsync(CancellationToken cancellationToken)
+    {
+        if (_speech is null || !CanSpeakResult) return Task.CompletedTask;
+        var identity = SpeechIdentityFor(SpeechChannel.Result, ResultText, TargetLang, _resultSpeechIdentity?.HistoryRecordId);
+        _resultSpeechIdentity = identity;
+        return _speech.TogglePlaybackAsync(identity, 1d, cancellationToken);
+    }
 
     public async Task TranslateImageAsync(Stream image, CancellationToken cancellationToken)
     {
@@ -394,11 +414,21 @@ public sealed class TranslationViewModel : INotifyPropertyChanged
             historyId = await _recordHistory(new(historySource, result, SourceLang, TargetLang, mode), cancellationToken).ConfigureAwait(false);
             if (!_coordinator.Accepts(generation)) return;
         }
+        if (mode == TranslationMode.Translate)
+        {
+            _sourceSpeechIdentity = SpeechIdentityFor(SpeechChannel.Source, historySource!, SourceLang, historyId);
+            _resultSpeechIdentity = SpeechIdentityFor(SpeechChannel.Result, result, TargetLang, historyId);
+        }
+        else
+        {
+            _sourceSpeechIdentity = null;
+            _resultSpeechIdentity = SpeechIdentityFor(SpeechChannel.Result, result, TargetLang, null);
+        }
         if (_config.AutoPrefetchSpeech && _speech is not null && mode == TranslationMode.Translate)
         {
-            await _speech.PrefetchAsync(SpeechIdentityFor(SpeechChannel.Source, historySource!, SourceLang, historyId), cancellationToken).ConfigureAwait(false);
+            await _speech.PrefetchAsync(_sourceSpeechIdentity!, cancellationToken).ConfigureAwait(false);
             if (!_coordinator.Accepts(generation)) return;
-            await _speech.PrefetchAsync(SpeechIdentityFor(SpeechChannel.Result, result, TargetLang, historyId), cancellationToken).ConfigureAwait(false);
+            await _speech.PrefetchAsync(_resultSpeechIdentity!, cancellationToken).ConfigureAwait(false);
         }
     }
 
@@ -419,6 +449,8 @@ public sealed class TranslationViewModel : INotifyPropertyChanged
     {
         _coordinator.CancelCurrent();
         _inFlight?.Cancel();
+        _sourceSpeechIdentity = null;
+        _resultSpeechIdentity = null;
         _speech?.Invalidate(SpeechChannel.Source, true);
         _speech?.Invalidate(SpeechChannel.Result, true);
     }

@@ -609,6 +609,42 @@ public sealed class TranslationViewModelTests
     }
 
     [Fact]
+    public async Task SpeakSourceUsesResolvedSourceModelAndIndependentChannel()
+    {
+        var speech = new RecordingSpeech();
+        var vm = CreateAdvancedViewModel(ScriptedHandler.Sync(_ => JsonResponse("unused")), speech: speech);
+        vm.SourceLang = "Vietnamese";
+        vm.SourceText = "xin chào";
+
+        await vm.SpeakSourceAsync(CancellationToken.None);
+
+        var playback = Assert.Single(speech.Playbacks);
+        Assert.Equal(SpeechChannel.Source, playback.Identity.CacheKey.Channel);
+        Assert.Equal("xin chào", playback.Identity.CacheKey.Text);
+        Assert.Equal(Config.SpeechSourceModelVietnamese, playback.Identity.CacheKey.Model);
+        Assert.Equal(1d, playback.Rate);
+    }
+
+    [Fact]
+    public async Task SpeakResultUsesAcceptedResultIdentityAndIndependentChannel()
+    {
+        var speech = new RecordingSpeech();
+        var history = new RecordingHistory();
+        var vm = CreateAdvancedViewModel(ScriptedHandler.Sync(_ => JsonResponse("translated")), history: history, speech: speech);
+        vm.SourceText = "hello";
+        await vm.TranslateAsync(CancellationToken.None);
+
+        await vm.SpeakResultAsync(CancellationToken.None);
+
+        var playback = Assert.Single(speech.Playbacks);
+        Assert.Equal(SpeechChannel.Result, playback.Identity.CacheKey.Channel);
+        Assert.Equal("translated", playback.Identity.CacheKey.Text);
+        Assert.Equal(Config.SpeechTargetModel, playback.Identity.CacheKey.Model);
+        Assert.Equal(history.LastId, playback.Identity.HistoryRecordId);
+        Assert.Equal(1d, playback.Rate);
+    }
+
+    [Fact]
     public async Task SpeechPrefetchOccursOnlyAfterAcceptedSuccessfulTextTranslation()
     {
         var speech = new RecordingSpeech();
@@ -740,17 +776,20 @@ public sealed class TranslationViewModelTests
     private sealed class RecordingHistory
     {
         public List<TranslationHistoryEntry> Records { get; } = [];
+        public Guid? LastId { get; private set; }
         public Task<Guid?> RecordAsync(TranslationHistoryEntry entry, CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
             Records.Add(entry);
-            return Task.FromResult<Guid?>(Guid.NewGuid());
+            LastId = Guid.NewGuid();
+            return Task.FromResult(LastId);
         }
     }
 
     private sealed class RecordingSpeech : ITranslationSpeech
     {
         public List<SpeechIdentity> Prefetched { get; } = [];
+        public List<(SpeechIdentity Identity, double Rate)> Playbacks { get; } = [];
         public List<SpeechChannel> InvalidatedChannels { get; } = [];
         public Task PrefetchAsync(SpeechIdentity identity, CancellationToken cancellationToken)
         {
@@ -758,7 +797,12 @@ public sealed class TranslationViewModelTests
             Prefetched.Add(identity);
             return Task.CompletedTask;
         }
-        public Task TogglePlaybackAsync(SpeechIdentity identity, double rate, CancellationToken cancellationToken) => Task.CompletedTask;
+        public Task TogglePlaybackAsync(SpeechIdentity identity, double rate, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            Playbacks.Add((identity, rate));
+            return Task.CompletedTask;
+        }
         public void Invalidate(SpeechChannel channel, bool stopPlayback) => InvalidatedChannels.Add(channel);
     }
 
