@@ -8,6 +8,7 @@ using NTranslate.Core.History;
 using NTranslate.Core.OpenAI;
 using NTranslate.Core.Settings;
 using NTranslate.Core.Speech;
+using NTranslate.Platform.Diagnostics;
 using NTranslate.Platform.Media;
 using NTranslate.Platform.Storage;
 

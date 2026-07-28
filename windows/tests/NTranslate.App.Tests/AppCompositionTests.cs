@@ -6,7 +6,8 @@ public sealed class AppCompositionTests
     public void CompositionRegistersIntegratedRuntimeSurfaces()
     {
         var root = FindRepositoryRoot();
-        var composition = File.ReadAllText(Path.Combine(root, "windows", "src", "NTranslate.App", "AppComposition.cs"));
+        var composition = File.ReadAllText(Path.Combine(root, "windows", "src", "NTranslate.App", "AppComposition.cs"))
+            + File.ReadAllText(Path.Combine(root, "windows", "src", "NTranslate.App", "IntegrationAdapters.cs"));
         var project = File.ReadAllText(Path.Combine(root, "windows", "src", "NTranslate.App", "NTranslate.App.csproj"));
 
         foreach (var required in new[]
