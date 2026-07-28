@@ -1,6 +1,6 @@
 # NTranslate for Windows
 
-Native Windows tray app that translates selected text with a global hotkey. Calls an OpenAI-compatible chat/TTS API and shows a popup near the cursor. 
+Native Windows tray app that translates selected text with a global hotkey. Calls an OpenAI-compatible chat/TTS API and shows a popup near the cursor.
 
 Built with .NET 10 and WinUI 3 (Windows App SDK), packaged as an MSIX, and deployed via App Installer.
 
@@ -11,7 +11,7 @@ Built with .NET 10 and WinUI 3 (Windows App SDK), packaged as an MSIX, and deplo
 
 ## Installation
 
-Download the latest `NTranslate-*-win-x64.msix` from [Releases](https://github.com/ninhnguyen375/NTranslate/releases) and double-click to install via Windows App Installer. 
+Download the latest `NTranslate-*-win-x64.msix` from [Releases](https://github.com/ninhnguyen375/NTranslate/releases) and double-click to install via Windows App Installer.
 
 If this is a local development build or unsigned test build, you may need to trust the certificate first (see Development below). Official releases will be properly signed.
 
@@ -42,7 +42,7 @@ dotnet test .\windows\NTranslate.slnx -c Release --no-build --no-restore
 
 ### Packaging and Installation
 
-The `install-app.ps1` script handles full build, packaging, self-signing, and installation. 
+The `install-app.ps1` script handles full build, packaging, self-signing, and installation.
 
 > **Security Warning:** The script will create a self-signed code signing certificate and add it to your `CurrentUser\TrustedPeople` store to allow App Installer to work. Only do this on development machines. There is no signature-disable workaround for MSIX.
 
@@ -75,7 +75,7 @@ Use tools like Accessibility Insights for Windows to verify the application tree
 
 ## Release Process
 
-The build system creates an MSIX package signed with Authenticode. 
+The build system creates an MSIX package signed with Authenticode.
 
 To inspect a generated package signature:
 ```powershell
