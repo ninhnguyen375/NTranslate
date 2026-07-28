@@ -63,7 +63,7 @@
                 </Grid>
             </ScrollViewer>
         </NavigationView>
-        <InfoBar Grid.Row="1" Severity="Error" IsClosable="False" />
+        <InfoBar Grid.Row="1" Message="{Binding ErrorMessage}" IsOpen="{Binding HasError}" Severity="Error" IsClosable="False" />
         <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
             <Button Content="Revert" AutomationProperties.Name="Revert" Click="Revert_Click" />
             <Button Content="Cancel" AutomationProperties.Name="Cancel" Click="Cancel_Click" />

@@ -47,8 +47,15 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
     public string? ErrorMessage
     {
         get => _errorMessage;
-        private set { _errorMessage = value; PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ErrorMessage))); }
+        private set
+        {
+            if (_errorMessage == value) return;
+            _errorMessage = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ErrorMessage)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(HasError)));
+        }
     }
+    public bool HasError => !string.IsNullOrWhiteSpace(ErrorMessage);
 
     public void Revert()
     {

@@ -75,9 +75,16 @@ public sealed class HistoryViewModel : INotifyPropertyChanged, IAsyncDisposable
     public string? ErrorMessage
     {
         get => _errorMessage;
-        private set { _errorMessage = value; OnPropertyChanged(); }
+        private set
+        {
+            if (_errorMessage == value) return;
+            _errorMessage = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(HasError));
+        }
     }
 
+    public bool HasError => !string.IsNullOrWhiteSpace(ErrorMessage);
     public bool CanMutate => !_disposed && _store.LoadError is null;
 
     public async Task ReloadAsync(CancellationToken token)

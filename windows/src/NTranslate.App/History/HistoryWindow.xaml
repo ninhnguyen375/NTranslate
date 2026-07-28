@@ -22,12 +22,12 @@
                 <x:String>Week</x:String>
                 <x:String>Month</x:String>
             </ComboBox>
-            <Button Content="Delete visible" AutomationProperties.Name="Delete visible" Click="DeleteVisible_Click" />
+            <Button Content="Delete visible" AutomationProperties.Name="Delete visible" Click="DeleteVisible_Click" IsEnabled="{Binding CanMutate}" />
         </StackPanel>
-        <InfoBar Grid.Row="2" IsOpen="False" Severity="Error" IsClosable="False" />
-        <ListView Grid.Row="3" SelectionMode="Single" IsItemClickEnabled="True" ItemClick="History_ItemClick" ItemsSource="{Binding VisibleRecords}" AutomationProperties.Name="Translation history">
+        <InfoBar Grid.Row="2" Message="{Binding ErrorMessage}" IsOpen="{Binding HasError}" Severity="Error" IsClosable="False" />
+        <ListView x:Name="HistoryList" Grid.Row="3" SelectionMode="Single" DoubleTapped="History_DoubleTapped" ItemsSource="{Binding VisibleRecords}" AutomationProperties.Name="Translation history">
             <ListView.KeyboardAccelerators>
-                <KeyboardAccelerator Key="Enter" />
+                <KeyboardAccelerator Key="Enter" Invoked="HistoryEnter_Invoked" />
             </ListView.KeyboardAccelerators>
             <ListView.ItemTemplate>
                 <DataTemplate>
@@ -39,13 +39,13 @@
                         <StackPanel>
                             <TextBlock Text="{Binding SourceText}" TextWrapping="Wrap" />
                             <TextBlock Text="{Binding ResultText}" TextWrapping="Wrap" />
-                            <TextBlock Text="{Binding TimestampText}" />
+                            <TextBlock Text="{Binding Timestamp}" />
                         </StackPanel>
                         <StackPanel Grid.Column="1" Orientation="Horizontal">
                             <Button AutomationProperties.Name="Play source audio" ToolTipService.ToolTip="Play source audio" Click="PlaySource_Click" Tag="{Binding}" />
                             <Button AutomationProperties.Name="Play result audio" ToolTipService.ToolTip="Play result audio" Click="PlayResult_Click" Tag="{Binding}" />
-                            <Button AutomationProperties.Name="Toggle saved" ToolTipService.ToolTip="Toggle saved" Click="ToggleSaved_Click" Tag="{Binding}" />
-                            <Button AutomationProperties.Name="Delete translation" ToolTipService.ToolTip="Delete translation" Click="Delete_Click" Tag="{Binding}" />
+                            <ToggleButton AutomationProperties.Name="Saved translation" ToolTipService.ToolTip="Save translation" IsChecked="{Binding IsSaved, Mode=OneWay}" Click="ToggleSaved_Click" Tag="{Binding}" IsEnabled="{Binding DataContext.CanMutate, ElementName=HistoryList}" />
+                            <Button AutomationProperties.Name="Delete translation" ToolTipService.ToolTip="Delete translation" Click="Delete_Click" Tag="{Binding}" IsEnabled="{Binding DataContext.CanMutate, ElementName=HistoryList}" />
                         </StackPanel>
                     </Grid>
                 </DataTemplate>

@@ -7,13 +7,40 @@ namespace NTranslate.App.Settings;
 public sealed partial class SettingsWindow : Window
 {
     private readonly SettingsViewModel _viewModel;
-    private readonly CancellationTokenSource _lifetime = new();
+    private readonly Microsoft.UI.Windowing.AppWindow _appWindow;
+    private CancellationTokenSource _lifetime = new();
+    private bool _shuttingDown;
 
     public SettingsWindow(SettingsViewModel viewModel)
     {
         _viewModel = viewModel;
         InitializeComponent();
         if (Content is FrameworkElement content) content.DataContext = viewModel;
+        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+        _appWindow = Microsoft.UI.Windowing.AppWindow.GetFromWindowId(Microsoft.UI.Win32Interop.GetWindowIdFromWindow(hwnd));
+        _appWindow.Closing += AppWindow_Closing;
+    }
+
+    internal void PrepareToShow()
+    {
+        if (!_lifetime.IsCancellationRequested) return;
+        _lifetime.Dispose();
+        _lifetime = new();
+    }
+
+    internal void CloseForShutdown()
+    {
+        _shuttingDown = true;
+        _lifetime.Cancel();
+        Close();
+    }
+
+    private void AppWindow_Closing(Microsoft.UI.Windowing.AppWindow sender, Microsoft.UI.Windowing.AppWindowClosingEventArgs args)
+    {
+        if (_shuttingDown) return;
+        args.Cancel = true;
+        _lifetime.Cancel();
+        _appWindow.Hide();
     }
 
     private void Navigation_SelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
