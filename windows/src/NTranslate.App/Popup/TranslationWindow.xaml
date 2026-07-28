@@ -7,6 +7,7 @@
         <Grid.KeyboardAccelerators>
             <KeyboardAccelerator Key="Escape" Modifiers="None" Invoked="CloseAccelerator_Invoked" />
             <KeyboardAccelerator Key="Enter" Modifiers="Control" Invoked="TranslateAccelerator_Invoked" />
+            <KeyboardAccelerator Key="L" Modifiers="Control,Shift" Invoked="LearnAccelerator_Invoked" />
             <KeyboardAccelerator Key="C" Modifiers="Control,Shift" Invoked="CopyAccelerator_Invoked" />
         </Grid.KeyboardAccelerators>
         <Grid.RowDefinitions>
@@ -32,13 +33,22 @@
             <ComboBox x:Name="TargetLanguageBox" Grid.Column="2" ItemsSource="{x:Bind ViewModel.TargetLanguages}" SelectedItem="{x:Bind ViewModel.TargetLang, Mode=TwoWay}" AutomationProperties.Name="Target language" />
         </Grid>
 
-        <TextBox x:Name="SourceTextBox" Grid.Row="2" Text="{x:Bind ViewModel.SourceText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" TextWrapping="Wrap" AutomationProperties.Name="Source text" />
+        <Grid Grid.Row="2">
+            <TextBox x:Name="SourceTextBox" Text="{x:Bind ViewModel.SourceText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" TextWrapping="Wrap" AutomationProperties.Name="Source text" />
+            <Image x:Name="ImagePreview" Visibility="Collapsed" Stretch="Uniform" AutomationProperties.Name="Image preview" />
+            <ProgressRing x:Name="ProgressRing" HorizontalAlignment="Center" VerticalAlignment="Center" IsActive="{x:Bind ViewModel.IsLoading, Mode=OneWay}" AutomationProperties.Name="Translation progress" />
+        </Grid>
         <TextBox x:Name="ResultTextBox" Grid.Row="3" Text="{x:Bind ViewModel.ResultText, Mode=OneWay}" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" AutomationProperties.Name="Translation result" AutomationProperties.LiveSetting="Polite" />
 
         <TextBlock x:Name="StatusTextBlock" Grid.Row="4" Text="{x:Bind ViewModel.StatusMessage, Mode=OneWay}" TextWrapping="Wrap" AutomationProperties.Name="Status" AutomationProperties.LiveSetting="Polite" />
 
         <StackPanel x:Name="ButtonPanel" Grid.Row="5" Orientation="Horizontal" Spacing="8">
             <Button x:Name="TranslateButton" Content="Translate" AutomationProperties.Name="Translate" Command="{x:Bind ViewModel.TranslateCommand}" />
+            <Button x:Name="LearnButton" Content="Learn" AutomationProperties.Name="Learn" Click="LearnButton_Click" />
+            <Button x:Name="ImagesButton" Content="Images" AutomationProperties.Name="Search images" Click="ImagesButton_Click" />
+            <Button x:Name="ImageTranslateButton" Content="Image" AutomationProperties.Name="Translate clipboard image" Click="ImageTranslateButton_Click" />
+            <Button x:Name="SourceSpeechButton" Content="Speak source" AutomationProperties.Name="Speak source" IsEnabled="{x:Bind ViewModel.CanSpeakSource, Mode=OneWay}" Click="SourceSpeechButton_Click" />
+            <Button x:Name="ResultSpeechButton" Content="Speak result" AutomationProperties.Name="Speak result" IsEnabled="{x:Bind ViewModel.CanSpeakResult, Mode=OneWay}" Click="ResultSpeechButton_Click" />
             <Button x:Name="CopyButton" Content="Copy" AutomationProperties.Name="Copy result" Command="{x:Bind ViewModel.CopyCommand}" />
         </StackPanel>
     </Grid>
