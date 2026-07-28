@@ -132,9 +132,59 @@ public sealed class TranslationViewModelTests
         var second = vm.TranslateForTestAsync();
         await second;
         firstGate.SetResult();
-        await Task.WhenAny(first, Task.Delay(1000));
+        var completed = await Task.WhenAny(first, Task.Delay(1000));
+        Assert.Same(first, completed);
+        await first;
 
         Assert.Equal("second-result", vm.ResultText);
+    }
+
+    [Theory]
+    [InlineData("source")]
+    [InlineData("language")]
+    public async Task EditingAcceptedInputInvalidatesResultAndDisablesCopy(string edit)
+    {
+        var clipboard = new FakeClipboardService();
+        var vm = CreateViewModel(ScriptedHandler.Sync(_ => JsonResponse("old-result")), clipboard);
+        vm.SourceText = "hello";
+        await vm.TranslateCommand.ExecuteAsync();
+        Assert.True(vm.CanCopy);
+
+        if (edit == "source")
+            vm.SourceText = "new source";
+        else
+            vm.TargetLang = "Chinese";
+
+        Assert.Equal(edit == "source" ? "new source" : "hello", vm.SourceText);
+        Assert.Equal(string.Empty, vm.ResultText);
+        Assert.Equal(PopupState.Guidance, vm.State);
+        Assert.False(vm.CanCopy);
+        Assert.False(vm.CopyCommand.CanExecute(null));
+        await vm.CopyCommand.ExecuteAsync();
+        Assert.Null(clipboard.LastWritten);
+    }
+
+    [Fact]
+    public async Task StaleSuccessfulCompletionDoesNotAutoCopy()
+    {
+        var gate = new TaskCompletionSource();
+        var handler = new ScriptedHandler(async _ =>
+        {
+            await gate.Task; // Simulate transport completing despite cancellation.
+            return JsonResponse("stale-result");
+        });
+        var clipboard = new FakeClipboardService();
+        var vm = CreateViewModel(handler, clipboard, autoCopy: true);
+        vm.SourceText = "hello";
+        var stale = vm.TranslateCommand.ExecuteAsync();
+
+        vm.SourceText = "changed";
+        gate.SetResult();
+        await stale;
+
+        Assert.Null(clipboard.LastWritten);
+        Assert.Equal(string.Empty, vm.ResultText);
+        Assert.Equal(PopupState.Guidance, vm.State);
     }
 
     [Fact]

@@ -199,8 +199,9 @@ public sealed class TranslationViewModel : INotifyPropertyChanged
         // late completion for the old request can never apply.
         _coordinator.Invalidate();
         _inFlight?.Cancel();
-        if (State == PopupState.Loading)
-            State = PopupState.Guidance;
+        ResultText = string.Empty;
+        StatusMessage = null;
+        State = PopupState.Guidance;
     }
 
     private bool Set<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)
