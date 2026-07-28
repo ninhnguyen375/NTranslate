@@ -13,6 +13,12 @@ public sealed class SpeechPlaybackState
         return state.Generation;
     }
 
+    public bool IsLoading(SpeechIdentity identity, long generation)
+    {
+        var state = State(identity.CacheKey.Channel);
+        return state.Phase == SpeechPhase.Loading && state.Identity == identity && state.Generation == generation;
+    }
+
     public bool MarkPlaying(SpeechIdentity identity, long generation) =>
         TransitionLoading(identity, generation, SpeechPhase.Playing);
 
