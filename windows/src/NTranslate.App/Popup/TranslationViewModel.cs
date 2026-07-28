@@ -115,7 +115,15 @@ public sealed class TranslationViewModel : INotifyPropertyChanged
 
     public void SwapLanguages()
     {
+        if (!_config.TargetLanguages.Contains(SourceLang, StringComparer.OrdinalIgnoreCase))
+            return;
         (SourceLang, TargetLang) = (TargetLang, SourceLang);
+    }
+
+    internal void SetStartupGuidance(string? guidance)
+    {
+        if (guidance is not null)
+            RejectWithGuidance(guidance);
     }
 
     public void Cancel()

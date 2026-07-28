@@ -108,10 +108,9 @@ public sealed class GlobalHotkeyTests
         public HotkeyModifiers RegisterModifiers { get; private set; }
         public int UnregisterCalls { get; private set; }
         public int DestroyCalls { get; private set; }
-        public bool RegisterHotkey(nint id, HotkeyModifiers modifiers, uint key) { RegisterWindow = Handle; RegisterId = id; RegisterModifiers = modifiers; return RegisterResult; }
-        public bool UnregisterHotkey(nint id) { UnregisterCalls++; return UnregisterResult; }
-        public bool Destroy() { DestroyCalls++; return DestroyResult; }
-        public int GetLastError() => LastError;
+        public NativeCommandResult<bool> RegisterHotkey(nint id, HotkeyModifiers modifiers, uint key) { RegisterWindow = Handle; RegisterId = id; RegisterModifiers = modifiers; return new(RegisterResult, RegisterResult ? 0 : LastError); }
+        public NativeCommandResult<bool> UnregisterHotkey(nint id) { UnregisterCalls++; return new(UnregisterResult, UnregisterResult ? 0 : LastError); }
+        public NativeCommandResult<bool> Destroy() { DestroyCalls++; return new(DestroyResult, DestroyResult ? 0 : LastError); }
         public void Dispatch(uint message, nint wParam) => MessageReceived?.Invoke(this, new(message, wParam));
     }
 }

@@ -27,6 +27,26 @@ public sealed class TranslationWindowXamlTests
     }
 
     [Fact]
+    public void Popup_HasExactBindingsAndDedicatedTitleDragSurface()
+    {
+        Assert.Equal("{x:Bind ViewModel.SourceText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}", Attribute(FindNamed("SourceTextBox"), "Text"));
+        Assert.Equal("{x:Bind ViewModel.ResultText, Mode=OneWay}", Attribute(FindNamed("ResultTextBox"), "Text"));
+        Assert.Equal("True", Attribute(FindNamed("ResultTextBox"), "IsReadOnly"));
+        Assert.Equal("{x:Bind ViewModel.TranslateCommand}", Attribute(FindNamed("TranslateButton"), "Command"));
+        Assert.Equal("{x:Bind ViewModel.CopyCommand}", Attribute(FindNamed("CopyButton"), "Command"));
+        Assert.Equal("TitleDragRegion_PointerPressed", Attribute(FindNamed("TitleDragRegion"), "PointerPressed"));
+        Assert.Null(Attribute(FindNamed("RootGrid"), "PointerMoved"));
+    }
+
+    [Fact]
+    public void Window_WiresClosingCancellation()
+    {
+        var codeBehind = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "TranslationWindow.xaml.cs"));
+        Assert.Contains("_appWindow.Closing += AppWindow_Closing", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("args.Cancel = true", codeBehind, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Result_IsPoliteLiveRegion()
     {
         var result = FindNamed("ResultTextBox");

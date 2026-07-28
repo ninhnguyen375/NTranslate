@@ -12,6 +12,19 @@ public sealed class TranslationViewModelTests
     private static AppConfig Config => AppConfig.Default with { MaxTranslateLength = 10 };
 
     [Fact]
+    public void SwapLanguages_DoesNotSetTargetToAutoDetect()
+    {
+        var vm = CreateViewModel(ScriptedHandler.Sync(_ => JsonResponse("unused")), new FakeClipboardService());
+        vm.SourceLang = "Auto detect";
+        vm.TargetLang = "Vietnamese";
+
+        vm.SwapLanguages();
+
+        Assert.Equal("Auto detect", vm.SourceLang);
+        Assert.Equal("Vietnamese", vm.TargetLang);
+    }
+
+    [Fact]
     public async Task BlankSourceTextProducesNoRequestAndShowsGuidance()
     {
         var handler = ScriptedHandler.Sync(_ => throw new InvalidOperationException("Network must not be called."));

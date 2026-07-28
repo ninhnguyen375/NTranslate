@@ -1,36 +1,28 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Input;
+using System.Runtime.InteropServices;
 
 namespace NTranslate.App.Popup;
 
 public sealed partial class TranslationWindow : Window
 {
     private readonly PopupCoordinator _coordinator;
-    private Windows.Foundation.Point? _dragStart;
+    private readonly Microsoft.UI.Windowing.AppWindow _appWindow;
+    private bool _shuttingDown;
 
     internal TranslationWindow(TranslationViewModel viewModel, double width, double height)
     {
         ViewModel = viewModel;
         InitializeComponent();
         _coordinator = new PopupCoordinator(this, viewModel, width, height);
+        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+        _appWindow = Microsoft.UI.Windowing.AppWindow.GetFromWindowId(Microsoft.UI.Win32Interop.GetWindowIdFromWindow(hwnd));
+        _appWindow.Closing += AppWindow_Closing;
         Activated += (_, args) =>
         {
             if (args.WindowActivationState == WindowActivationState.Deactivated)
                 _coordinator.Deactivate();
         };
-        RootGrid.PointerPressed += (_, args) => _dragStart = args.GetCurrentPoint(RootGrid).Position;
-        RootGrid.PointerMoved += (_, args) =>
-        {
-            if (_dragStart is not { } start || !args.GetCurrentPoint(RootGrid).Properties.IsLeftButtonPressed)
-                return;
-            var current = args.GetCurrentPoint(RootGrid).Position;
-            if (Math.Abs(current.X - start.X) + Math.Abs(current.Y - start.Y) < 4)
-                return;
-            _coordinator.Drag();
-            PinButton.IsChecked = true;
-            _dragStart = null;
-        };
-        RootGrid.PointerReleased += (_, _) => _dragStart = null;
     }
 
     internal TranslationViewModel ViewModel { get; }
@@ -38,6 +30,31 @@ public sealed partial class TranslationWindow : Window
     internal void ShowPopup(string? sourceText) => _coordinator.Show(sourceText);
 
     internal void RestoreWindowProcedure() => _coordinator.RestoreWindowProcedure();
+
+    internal void CloseForShutdown()
+    {
+        _shuttingDown = true;
+        Close();
+    }
+
+    private void AppWindow_Closing(Microsoft.UI.Windowing.AppWindow sender, Microsoft.UI.Windowing.AppWindowClosingEventArgs args)
+    {
+        if (_shuttingDown) return;
+        args.Cancel = true;
+        _coordinator.Close();
+    }
+
+    private void TitleDragRegion_PointerPressed(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs args)
+    {
+        if (!args.GetCurrentPoint(TitleDragRegion).Properties.IsLeftButtonPressed) return;
+        _coordinator.Drag();
+        PinButton.IsChecked = true;
+        ReleaseCapture();
+        SendMessage(WinRT.Interop.WindowNative.GetWindowHandle(this), 0x00A1, 2, 0); // WM_NCLBUTTONDOWN, HTCAPTION
+    }
+
+    [DllImport("user32.dll")] private static extern bool ReleaseCapture();
+    [DllImport("user32.dll")] private static extern nint SendMessage(nint hwnd, uint message, nint wParam, nint lParam);
 
     private void CloseButton_Click(object sender, RoutedEventArgs e) => _coordinator.Close();
     private void PinButton_Click(object sender, RoutedEventArgs e) => _coordinator.IsPinned = PinButton.IsChecked == true;

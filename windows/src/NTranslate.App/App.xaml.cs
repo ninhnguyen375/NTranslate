@@ -7,29 +7,19 @@ namespace NTranslate.App;
 public partial class App : Application
 {
     private AppComposition? _composition;
-    private readonly Queue<AppActivationArguments> _pendingActivations = [];
+    private readonly UiActivationGate _activationGate;
 
     public App()
     {
         InitializeComponent();
-        AppInstance.GetCurrent().Activated += (_, activatedArgs) => OnActivationDispatched(activatedArgs);
+        _activationGate = new UiActivationGate(Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread(), () => _composition!.ShowManual());
+        AppInstance.GetCurrent().Activated += (_, _) => _activationGate.Activate();
     }
 
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
         _composition = new AppComposition(Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread());
         _composition.Start();
-        while (_pendingActivations.TryDequeue(out _))
-            _composition.ShowManual();
-    }
-
-    private void OnActivationDispatched(AppActivationArguments activatedArgs)
-    {
-        if (_composition is null)
-        {
-            _pendingActivations.Enqueue(activatedArgs);
-            return;
-        }
-        _composition.ShowManual();
+        _activationGate.Ready();
     }
 }
