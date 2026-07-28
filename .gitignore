@@ -16,3 +16,14 @@ bin/
 obj/
 .vs/
 *.user
+/windows/artifacts/
+/windows/packaging/layout/
+/windows/packaging/packages/
+/windows/packaging/publish/
+/windows/packaging/certificates/
+*.msix
+*.msixbundle
+*.appx
+*.appxbundle
+*.pfx
+*.cer

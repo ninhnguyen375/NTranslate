@@ -1,12 +1,21 @@
 # NTranslate
 
-Native macOS menu bar app that translates selected text with a global hotkey. Reads the selection via Accessibility (clipboard fallback), calls an OpenAI-compatible chat/TTS API, and shows a popup near the cursor.
+Native macOS and Windows app that translates selected text with a global hotkey. Reads the selection, calls an OpenAI-compatible chat/TTS API, and shows a popup near the cursor.
 
-Designed to work with **[9router](https://github.com/decolua/9router)** — a local OpenAI-compatible AI gateway (`http://localhost:20128/v1`) that routes chat and speech to many upstream providers. Default `config.json.example` points at 9router’s chat and TTS endpoints; any other OpenAI-compatible API also works.
+Designed to work with **[9router](https://github.com/decolua/9router)** — a local OpenAI-compatible AI gateway (`http://localhost:20128/v1`) that routes chat and speech to many upstream providers. Any other OpenAI-compatible API also works.
 
 NTranslate does **not** auto-replace the selected text.
 
-## Screenshots
+## Platforms
+
+- **[macOS](README.md#macos)** (Menu bar app, Swift)
+- **[Windows](windows/README.md)** (Tray app, WinUI 3)
+
+---
+
+## macOS
+
+### Screenshots
 
 Select text anywhere → press `Option+D` → popup near the cursor.
 
@@ -22,7 +31,7 @@ Select text anywhere → press `Option+D` → popup near the cursor.
 
 <p align="center"><em>Learn — vocabulary breakdown (IPA, synonyms, examples, quick tips)</em></p>
 
-## Download
+### Download
 
 Prebuilt Apple Silicon (arm64) builds are on **[Releases](https://github.com/ninhnguyen375/NTranslate/releases)**.
 
@@ -32,7 +41,7 @@ Latest: **[v1.2.2](https://github.com/ninhnguyen375/NTranslate/releases/tag/v1.2
 2. Grant **Accessibility** in System Settings
 3. Run [9router](https://github.com/decolua/9router), open **Open Config File** from the menu bar (auto-created on first launch), set `apiKey`, then **Reload Config**
 
-## Features
+### Features
 
 - Global hotkey (default `Option+D`) to translate the current selection
 - Popup near the cursor with **Translate**, **Learn**, **Copy**, **Save Word**, and source/result speech controls
@@ -44,7 +53,7 @@ Latest: **[v1.2.2](https://github.com/ninhnguyen375/NTranslate/releases/tag/v1.2
 - Runtime config in Application Support (API key never needs to live in the repo)
 - Built for [9router](https://github.com/decolua/9router) (local OpenAI-compatible gateway)
 
-## Requirements
+### Requirements
 
 - macOS 26+ (see `Package.swift`)
 - Swift 6.3 toolchain (`swift-tools-version: 6.3`)
@@ -52,7 +61,7 @@ Latest: **[v1.2.2](https://github.com/ninhnguyen375/NTranslate/releases/tag/v1.2
 - Accessibility permission (to read selected text from other apps)
 - Optional: Apple code-signing identity for installing into `/Applications`
 
-## Quick start
+### Quick start
 
 1. Install and start [9router](https://github.com/decolua/9router) (default API: `http://localhost:20128/v1`).
 2. Create an API key in the 9router dashboard and note a chat model (+ TTS model if you use Speak).
@@ -72,7 +81,7 @@ Then grant Accessibility:
 
 Use the installed app at `/Applications/NTranslate.app` (not a Terminal-run binary) so TCC attaches to the right client.
 
-### Dev run (without installing)
+#### Dev run (without installing)
 
 ```bash
 swift build -c release
@@ -81,7 +90,7 @@ swift build -c release
 
 macOS may treat a Terminal-launched binary as a different Accessibility client than the installed app bundle.
 
-## Configuration
+### Configuration
 
 | Location | Role |
 | --- | --- |
@@ -99,7 +108,7 @@ FORCE_CONFIG=1 ./install-app.sh
 
 After editing the Application Support file, use the menu bar item **Reload Config**. Set `apiKey` (from the 9router dashboard) before translating.
 
-### Important keys
+#### Important keys
 
 ```json
 {
@@ -131,7 +140,7 @@ After editing the Application Support file, use the menu bar item **Reload Confi
 
 Prompts (`systemPrompt`, `learnPrompt`, `sentenceLearnPrompt`, `grammarPrompt`) and TTS model IDs are also in the example file. Learn uses `learnPrompt` for one whitespace-delimited token and `sentenceLearnPrompt` for phrases/sentences. Placeholders like `{{config.sourceLang}}` and `{{lang}}` are substituted at request time. `autoPrefetchSpeech` defaults to `false`; explicit speech always fetches on demand, and its button changes between Play, Pause, Resume, and loading.
 
-## Image translation and local history
+### Image translation and local history
 
 Clipboard PNG/TIFF images are normalized to PNG and sent to `apiBaseURL` as an OpenAI-compatible `image_url` data URL. The configured `model` must support vision/multimodal input. Image mode disables source language, Learn, source speech, and history recording; result speech remains available.
 
@@ -139,7 +148,7 @@ Successful text Translate requests are stored newest-first in `~/Library/Applica
 
 **Never commit a real `apiKey`.** Keep secrets only in Application Support or a local `config.json`.
 
-## How it works
+### How it works
 
 1. Select text in another app.
 2. Press the configured hotkey (default `Option+D`).
@@ -147,7 +156,7 @@ Successful text Translate requests are stored newest-first in `~/Library/Applica
 4. Text is sent to `apiBaseURL` with `Authorization: Bearer <apiKey>`.
 5. A popup appears near the cursor with the result.
 
-## Accessibility troubleshooting
+### Accessibility troubleshooting
 
 If permission looks stuck after reinstall / rename / bundle id changes:
 
@@ -159,7 +168,7 @@ tccutil reset Accessibility local.ninh.ntranslate
 2. Open `/Applications/NTranslate.app`  
 3. Grant Accessibility again  
 
-## Project layout
+### Project layout
 
 ```
 Sources/translate/   Swift sources (menu bar app, selection, API, UI)
@@ -170,7 +179,7 @@ install-app.sh       Build, sign, install to /Applications
 Package.swift
 ```
 
-## Build / install script
+### Build / install script
 
 `./install-app.sh` will:
 
@@ -188,7 +197,7 @@ Set your signing identity before install (see Security notes below). Version bum
 VERSION_BUMP=minor ./install-app.sh
 ```
 
-## Release DMG
+### Release DMG
 
 Package a signed DMG (and optionally upload to GitHub Releases):
 
@@ -200,19 +209,19 @@ VERSION_BUMP=minor ./release-dmg.sh
 
 Requires `gh` logged in for upload. Output lands in `dist/` (gitignored).
 
-## Privacy
+### Privacy
 
 - Selected text and clipboard image bytes are sent to the API endpoint you configure (`apiBaseURL`); speech text is sent to `apiSpeechURL`.
 - Clipboard images are not saved to history, but successful text translations, bookmarks, and optional audio are stored locally at the history paths above.
 - Accessibility is used only to read the focused selection for translation.
 - The app does not ship with cloud credentials; you bring your own API.
 
-## Security notes for contributors
+### Security notes for contributors
 
 - `config.json` is gitignored — do not force-add it.
 - Do not commit real API keys, `.env`, or signing certificates.
 - Prefer not to commit built binaries under `NTranslate.app/Contents/MacOS/`.
 
-## License
+### License
 
 Choose and add a `LICENSE` file before publishing (e.g. MIT). Until then, all rights reserved by the author.
