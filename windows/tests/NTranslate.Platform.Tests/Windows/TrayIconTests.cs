@@ -19,6 +19,13 @@ public sealed class TrayIconTests
     public void Resolve_returns_null_for_unknown_id(int id)
         => Assert.Null(TrayMenuCommands.Resolve(id));
 
+    [Theory]
+    [InlineData(0x0400)] // NIN_SELECT
+    [InlineData(0x0401)] // NIN_KEYSELECT
+    [InlineData(0x0203)] // WM_LBUTTONDBLCLK fallback
+    public void Resolve_callback_maps_activation_messages(uint message)
+        => Assert.Equal(TrayCallbackAction.Open, TrayCallbackMessages.Resolve(message));
+
     [Fact]
     public void Show_add_and_dispose_delete_icon_without_throwing()
     {

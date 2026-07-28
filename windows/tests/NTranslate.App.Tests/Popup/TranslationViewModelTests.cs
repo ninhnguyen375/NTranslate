@@ -125,6 +125,36 @@ public sealed class TranslationViewModelTests
     }
 
     [Fact]
+    public async Task BackgroundCompletionDispatchesUiStateBeforeApplyingResult()
+    {
+        var handler = new ScriptedHandler(async _ =>
+        {
+            await Task.Run(() => { });
+            return JsonResponse("translated");
+        });
+        var dispatches = 0;
+        var client = new OpenAiCompatibleClient(new HttpClient(handler));
+        var vm = new TranslationViewModel(
+            Config,
+            client,
+            new FakeClipboardService(),
+            _ => Task.FromResult("test-api-key"),
+            action =>
+            {
+                dispatches++;
+                action();
+                return Task.CompletedTask;
+            });
+        vm.SourceText = "hello";
+
+        await vm.TranslateCommand.ExecuteAsync();
+
+        Assert.True(dispatches > 0);
+        Assert.Equal("translated", vm.ResultText);
+        Assert.Equal(PopupState.Result, vm.State);
+    }
+
+    [Fact]
     public async Task ChangingSourceTextMidFlightCancelsAndInvalidatesLateCompletion()
     {
         var gate = new TaskCompletionSource();

@@ -38,7 +38,18 @@ internal sealed class AppComposition : IDisposable
         _tray = new TrayIcon();
         var credentials = new CredentialLockerApiKeyStore();
         _viewModel = new TranslationViewModel(_config, new OpenAiCompatibleClient(new HttpClient()), _clipboard,
-            async token => await credentials.LoadAsync(token).ConfigureAwait(false) ?? throw new InvalidOperationException("API key missing. Store key in Windows Credential Locker before translating."));
+            async token => await credentials.LoadAsync(token).ConfigureAwait(false) ?? throw new InvalidOperationException("API key missing. Store key in Windows Credential Locker before translating."),
+            action =>
+            {
+                var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                if (!_dispatcher.TryEnqueue(() =>
+                    {
+                        try { action(); completion.SetResult(); }
+                        catch (Exception error) { completion.SetException(error); }
+                    }))
+                    completion.SetException(new InvalidOperationException("UI dispatcher is unavailable."));
+                return completion.Task;
+            });
         _viewModel.SetStartupGuidance(startup.Guidance);
         _window = new TranslationWindow(_viewModel, _config.Ui.Width, _config.Ui.Height, CancelPopupWork);
         _router = new PopupRouter(CancelCapture, () => Show(null));

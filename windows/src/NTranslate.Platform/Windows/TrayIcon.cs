@@ -3,6 +3,23 @@ using System.Runtime.InteropServices;
 namespace NTranslate.Platform.Windows;
 
 internal enum TrayCommand { Open, Exit }
+internal enum TrayCallbackAction { Open, ContextMenu }
+
+internal static class TrayCallbackMessages
+{
+    private const uint NinSelect = 0x0400;
+    private const uint NinKeySelect = 0x0401;
+    private const uint WmLButtonDblClk = 0x0203;
+    private const uint WmContextMenu = 0x007B;
+    private const uint WmRButtonUp = 0x0205;
+
+    internal static TrayCallbackAction? Resolve(uint message) => message switch
+    {
+        NinSelect or NinKeySelect or WmLButtonDblClk => TrayCallbackAction.Open,
+        WmContextMenu or WmRButtonUp => TrayCallbackAction.ContextMenu,
+        _ => null,
+    };
+}
 
 internal static class TrayMenuCommands
 {
@@ -28,10 +45,7 @@ public sealed class TrayIcon : ITrayIcon
 {
     private const uint WmCallback = 0x8000 + 1; // WM_APP + 1
     private const uint WmWork = 0x8000 + 2; // WM_APP + 2
-    private const uint WmLButtonDblClk = 0x0203;
     private const uint WmCommand = 0x0111;
-    private const uint WmContextMenu = 0x007B;
-    private const uint WmRButtonUp = 0x0205;
     private const uint IconId = 1;
     private const uint NimAdd = 0, NimDelete = 2, NimSetVersion = 4;
     private const uint NifMessage = 1, NifIcon = 2, NifTip = 4;
@@ -190,9 +204,11 @@ public sealed class TrayIcon : ITrayIcon
 
     private void HandleCallback(nint lParam)
     {
-        var mouseMessage = (uint)(lParam.ToInt64() & 0xFFFF);
-        if (mouseMessage == WmLButtonDblClk) Raise(OpenTranslatorRequested);
-        else if (mouseMessage == WmContextMenu || mouseMessage == WmRButtonUp) ShowContextMenu();
+        switch (TrayCallbackMessages.Resolve((uint)(lParam.ToInt64() & 0xFFFF)))
+        {
+            case TrayCallbackAction.Open: Raise(OpenTranslatorRequested); break;
+            case TrayCallbackAction.ContextMenu: ShowContextMenu(); break;
+        }
     }
 
     private void ShowContextMenu()

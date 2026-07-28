@@ -30,6 +30,7 @@ public sealed class TranslationViewModel : INotifyPropertyChanged
     private readonly OpenAiCompatibleClient _client;
     private readonly IClipboardService _clipboard;
     private readonly Func<CancellationToken, Task<string>> _resolveApiKey;
+    private readonly Func<Action, Task> _dispatchUi;
     private readonly RequestCoordinator _coordinator = new();
 
     private CancellationTokenSource? _inFlight;
@@ -45,12 +46,14 @@ public sealed class TranslationViewModel : INotifyPropertyChanged
         AppConfig config,
         OpenAiCompatibleClient client,
         IClipboardService clipboard,
-        Func<CancellationToken, Task<string>> resolveApiKey)
+        Func<CancellationToken, Task<string>> resolveApiKey,
+        Func<Action, Task>? dispatchUi = null)
     {
         _config = config;
         _client = client;
         _clipboard = clipboard;
         _resolveApiKey = resolveApiKey;
+        _dispatchUi = dispatchUi ?? (action => { action(); return Task.CompletedTask; });
         _sourceLang = config.SourceLang;
         _targetLang = config.TargetLang;
         TranslateCommand = new AsyncRelayCommand(TranslateAsync);
@@ -177,25 +180,28 @@ public sealed class TranslationViewModel : INotifyPropertyChanged
             var effectiveConfig = _config with { SourceLang = pair.SourceLang, TargetLang = pair.TargetLang };
             string systemPrompt = PromptRenderer.RenderTranslation(effectiveConfig);
             var request = new ChatCompletionRequest(_config.Model, systemPrompt, new TextChatInput(text));
-            string result = await _client.CompleteChatAsync(new Uri(_config.ApiBaseUrl), apiKey, request, cancellation.Token).ConfigureAwait(true);
+            string result = await _client.CompleteChatAsync(new Uri(_config.ApiBaseUrl), apiKey, request, cancellation.Token).ConfigureAwait(false);
 
-            if (!_coordinator.IsCurrent(generation))
-                return; // superseded or invalidated: discard silently, no error.
-
-            ResultText = result;
-            StatusMessage = null;
-            State = PopupState.Result;
-            if (_config.Ui.AutoCopy)
+            await _dispatchUi(() =>
             {
-                try
+                if (!_coordinator.IsCurrent(generation))
+                    return; // superseded or invalidated: discard silently, no error.
+
+                ResultText = result;
+                StatusMessage = null;
+                State = PopupState.Result;
+                if (_config.Ui.AutoCopy)
                 {
-                    _clipboard.WriteUnicodeText(result);
+                    try
+                    {
+                        _clipboard.WriteUnicodeText(result);
+                    }
+                    catch
+                    {
+                        StatusMessage = "Clipboard unavailable. Try Copy again.";
+                    }
                 }
-                catch
-                {
-                    StatusMessage = "Clipboard unavailable. Try Copy again.";
-                }
-            }
+            }).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
@@ -203,11 +209,14 @@ public sealed class TranslationViewModel : INotifyPropertyChanged
         }
         catch (Exception ex)
         {
-            if (!_coordinator.IsCurrent(generation))
-                return; // stale failure: discard, never surface, never touch SourceText.
+            await _dispatchUi(() =>
+            {
+                if (!_coordinator.IsCurrent(generation))
+                    return; // stale failure: discard, never surface, never touch SourceText.
 
-            StatusMessage = ex.Message;
-            State = PopupState.Error;
+                StatusMessage = ex.Message;
+                State = PopupState.Error;
+            }).ConfigureAwait(false);
         }
         finally
         {
