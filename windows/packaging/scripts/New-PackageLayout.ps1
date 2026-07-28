@@ -14,11 +14,14 @@ if ($parts | Where-Object { [uint64]$_ -gt 65535 }) { throw 'Version components 
 if (-not (Test-Path -LiteralPath (Join-Path $PublishPath 'NTranslate.App.exe') -PathType Leaf)) { throw 'Publish output lacks NTranslate.App.exe.' }
 
 $manifestSource = Join-Path $PSScriptRoot '..\manifest\AppxManifest.xml'
+$assetsSource = Join-Path $PSScriptRoot '..\Assets'
 if (-not (Test-Path -LiteralPath $manifestSource -PathType Leaf)) { throw 'Canonical manifest missing.' }
+if (-not (Test-Path -LiteralPath $assetsSource -PathType Container)) { throw 'Canonical package assets missing.' }
 
 if (Test-Path -LiteralPath $LayoutPath) { Remove-Item -LiteralPath $LayoutPath -Recurse -Force }
 New-Item -ItemType Directory -Path $LayoutPath | Out-Null
-Copy-Item -LiteralPath (Join-Path $PublishPath '*') -Destination $LayoutPath -Recurse -Force
+Copy-Item -Path (Join-Path $PublishPath '*') -Destination $LayoutPath -Recurse -Force
+Copy-Item -LiteralPath $assetsSource -Destination $LayoutPath -Recurse -Force
 [xml]$manifest = Get-Content -LiteralPath $manifestSource -Raw
 $identity = $manifest.SelectSingleNode('/*[local-name()="Package"]/*[local-name()="Identity"]')
 $identity.Version = "$Version.0"

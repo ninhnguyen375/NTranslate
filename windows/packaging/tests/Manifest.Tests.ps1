@@ -34,6 +34,13 @@ try {
     [xml]$generated = Get-Content -LiteralPath (Join-Path $layout 'AppxManifest.xml') -Raw
     $generatedIdentity = $generated.SelectSingleNode('/*[local-name()="Package"]/*[local-name()="Identity"]')
     if ($generatedIdentity.Version -ne '2.3.4.0') { throw 'Semantic version conversion failed.' }
+    $resourcePaths = @(
+        $generated.SelectSingleNode('/*[local-name()="Package"]/*[local-name()="Properties"]/*[local-name()="Logo"]').InnerText,
+        $generated.SelectSingleNode('/*[local-name()="Package"]/*[local-name()="Applications"]/*[local-name()="Application"]/*[local-name()="VisualElements"]/@Square150x150Logo').Value,
+        $generated.SelectSingleNode('/*[local-name()="Package"]/*[local-name()="Applications"]/*[local-name()="Application"]/*[local-name()="VisualElements"]/@Square44x44Logo').Value)
+    foreach ($resourcePath in $resourcePaths) {
+        if (-not (Test-Path -LiteralPath (Join-Path $layout $resourcePath) -PathType Leaf)) { throw "Manifest resource missing from layout: $resourcePath" }
+    }
     try { & $layoutScript -Version '2.3' -PublishPath $publish -LayoutPath $layout; throw 'Malformed version accepted.' } catch { if ($_.Exception.Message -eq 'Malformed version accepted.') { throw } }
 } finally {
     Remove-Item -LiteralPath $temp -Recurse -Force -ErrorAction SilentlyContinue

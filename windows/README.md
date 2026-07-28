@@ -44,6 +44,8 @@ dotnet test .\windows\NTranslate.slnx -c Release --no-build --no-restore
 
 The `install-app.ps1` script handles full build, packaging, self-signing, and installation.
 
+`Add-AppxPackage` owns transactional behavior until deployment commits. After commit, identity verification or launch failure leaves new package installed because script does not retain prior MSIX for downgrade. Retry launch from Start. To recover by uninstalling, run `Get-AppxPackage -Name NinhNguyen375.NTranslate | Remove-AppxPackage`, then reinstall known-good package.
+
 > **Security Warning:** The script will create a self-signed code signing certificate and add it to your `CurrentUser\TrustedPeople` store to allow App Installer to work. Only do this on development machines. There is no signature-disable workaround for MSIX.
 
 ```powershell
@@ -58,7 +60,7 @@ The script manages the certificate under `%LOCALAPPDATA%\NTranslate\Signing`.
 After installation, run the UI automation tests to verify package behavior:
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\windows\packaging\scripts\Invoke-InstalledAppSmoke.ps1 -PackageName NinhNguyen375.NTranslate -ExpectedVersion 1.0.0.0 -ResultsPath .\windows\artifacts\smoke
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\windows\packaging\scripts\Invoke-InstalledAppSmoke.ps1 -PackageName NinhNguyen375.NTranslate -PackagePath .\windows\artifacts\packages\NTranslate-1.0.0-win-x64.msix -ExpectedVersion 1.0.0.0 -ResultsPath .\windows\artifacts\smoke
 ```
 
 ## Accessibility

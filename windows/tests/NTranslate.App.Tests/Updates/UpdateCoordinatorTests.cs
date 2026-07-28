@@ -97,6 +97,28 @@ public sealed class UpdateCoordinatorTests
         Assert.Equal(UpdateState.Error, coordinator.State);
     }
 
+    [Fact]
+    public async Task ManualFlowInstallsOnlyAfterExplicitConfirmation()
+    {
+        var update = new WindowsUpdate(new(2, 0, 0), "v2.0.0", "notes", new Uri("https://github.com/update.msix"), "NTranslate-2.0.0-win-x64.msix");
+        var installs = 0;
+        var coordinator = new UpdateCoordinator(new(1, 0, 0), _ => Task.FromResult<IReadOnlyList<WindowsUpdate>>([update]), (_, _, _) => { installs++; return Task.CompletedTask; }, new RejectingVerifier(), _ => { });
+        var dialog = new RecordingUpdateDialog(confirmInstall: false);
+
+        await new ManualUpdateFlow(coordinator, dialog).RunAsync(CancellationToken.None);
+
+        Assert.Equal(0, installs);
+        Assert.Contains(dialog.States, state => state.State == UpdateState.Checking);
+        Assert.Contains(dialog.States, state => state.State == UpdateState.Available && state.ReleaseNotes == "notes");
+    }
+
+    [Fact]
+    public void MapsPackagedVersionAndFallsBackForUnpackagedRuntime()
+    {
+        Assert.Equal(new SemanticVersion(2, 3, 4), CurrentVersionResolver.Resolve(() => new Version(2, 3, 4, 5), new Version(1, 0, 0)));
+        Assert.Equal(new SemanticVersion(1, 0, 0), CurrentVersionResolver.Resolve(() => throw new InvalidOperationException(), new Version(1, 0, 0)));
+    }
+
     private static UpdateCoordinator Coordinator(IReadOnlyList<WindowsUpdate> updates, out bool downloaded, out bool launched)
     {
         var download = false;
@@ -104,6 +126,16 @@ public sealed class UpdateCoordinatorTests
         downloaded = download;
         launched = launch;
         return new(new(1, 0, 0), _ => Task.FromResult(updates), (_, _, _) => { download = true; return Task.CompletedTask; }, new RejectingVerifier(), _ => launch = true);
+    }
+
+    private sealed class RecordingUpdateDialog(bool confirmInstall) : IUpdateDialog
+    {
+        public List<(UpdateState State, string? Message, string? ReleaseNotes)> States { get; } = [];
+        public Task<bool> ShowAsync(UpdateState state, string? message, string? releaseNotes, CancellationToken token)
+        {
+            States.Add((state, message, releaseNotes));
+            return Task.FromResult(confirmInstall && state == UpdateState.Available);
+        }
     }
 
     private sealed class AcceptingVerifier : IMsixPackageVerifier

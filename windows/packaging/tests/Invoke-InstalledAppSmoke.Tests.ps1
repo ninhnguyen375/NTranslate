@@ -3,50 +3,29 @@ $ErrorActionPreference = 'Stop'
 
 $scriptPath = Join-Path $PSScriptRoot '..\scripts\Invoke-InstalledAppSmoke.ps1'
 $resultsPath = Join-Path ([IO.Path]::GetTempPath()) ('ntranslate-smoke-' + [guid]::NewGuid().ToString('N'))
-$launcherCalls = [Collections.Generic.List[string]]::new()
-$state = [pscustomobject]@{ Stopped = $false }
-
+$packagePath = Join-Path $resultsPath 'NTranslate.msix'
+$state = [pscustomobject]@{ SignaturePath = $null }
+$launchCalls = [Collections.Generic.List[string]]::new()
+$scenarioCalls = [Collections.Generic.List[string]]::new()
 try {
-    & $scriptPath `
-        -PackageName 'NinhNguyen375.NTranslate' `
-        -ExpectedVersion '1.0.0.0' `
-        -ResultsPath $resultsPath `
-        -GetPackage {
-            [pscustomobject]@{
-                Name = 'NinhNguyen375.NTranslate'
-                Version = [version]'1.0.0.0'
-                Architecture = 'X64'
-                Publisher = 'CN=Ninh Nguyen'
-                PackageFamilyName = 'NinhNguyen375.NTranslate_test'
-                InstallLocation = [pscustomobject]@{ Path = 'C:\Program Files\WindowsApps\fixture' }
-            }
-        } `
-        -GetSignature {
-            [pscustomobject]@{
-                Status = 'Valid'
-                SignerCertificate = [pscustomobject]@{ Subject = 'CN=Ninh Nguyen' }
-            }
-        } `
-        -StartProcess {
-            param($FilePath, $ArgumentList)
-            $launcherCalls.Add("$FilePath|$ArgumentList")
-            [pscustomobject]@{ Id = 42 }
-        } `
-        -StopProcess {
-            param($Process)
-            if ($Process.Id -ne 42) { throw 'Unexpected process.' }
-            $state.Stopped = $true
-        }
+    New-Item -ItemType Directory -Path $resultsPath | Out-Null
+    Set-Content -LiteralPath $packagePath -Value 'fixture'
+    & $scriptPath -PackageName 'NinhNguyen375.NTranslate' -PackagePath $packagePath -ExpectedVersion '1.0.0.0' -ResultsPath $resultsPath `
+        -GetPackage { [pscustomobject]@{ Name='NinhNguyen375.NTranslate'; Version=[version]'1.0.0.0'; Architecture='X64'; Publisher='CN=Ninh Nguyen'; PackageFamilyName='NinhNguyen375.NTranslate_test'; InstallLocation=[pscustomobject]@{ Path='C:\Program Files\WindowsApps\fixture' } } } `
+        -GetSignature { param($Path) $state.SignaturePath=$Path; [pscustomobject]@{ Status='Valid'; SignerCertificate=[pscustomobject]@{ Subject='CN=Ninh Nguyen' } } } `
+        -GetExecutable { param($Root) 'C:\Program Files\WindowsApps\fixture\NTranslate.App.exe' } `
+        -ActivateApp { param($AppId) $launchCalls.Add($AppId) } `
+        -InvokeScenario { param($Name, $Executable, $ResultRoot) $scenarioCalls.Add($Name) }
 
-    if ($launcherCalls.Count -ne 1) { throw 'Expected one injected launch.' }
-    if ($launcherCalls[0] -ne 'explorer.exe|shell:AppsFolder\NinhNguyen375.NTranslate_test!App') { throw 'Unsafe or unexpected launch arguments.' }
-    if (-not $state.Stopped) { throw 'Injected process was not stopped.' }
-
+    if ($state.SignaturePath -ne $packagePath) { throw 'Signature callback did not receive generated MSIX path.' }
+    if ($launchCalls.Count -ne 2 -or $launchCalls[0] -ne 'NinhNguyen375.NTranslate_test!App') { throw 'AppsFolder activation missing.' }
+    foreach ($required in @('tray','manual-translation','copy','history','bookmark','settings-secret-exclusion','update-fixture','invalid-package-rejection','app-exit','log-redaction')) {
+        if ($required -notin $scenarioCalls) { throw "Missing injected smoke scenario: $required" }
+    }
     $report = Get-Content -LiteralPath (Join-Path $resultsPath 'installed-smoke.json') -Raw | ConvertFrom-Json
     if (@($report.Checks | Where-Object Status -ne 'PASS').Count -ne 0) { throw 'Expected all fixture checks to pass.' }
-    if (@($report.Checks).Count -ne 4) { throw 'Expected four smoke checks.' }
-    Write-Output 'PASS: installed smoke uses injected package, signature, launch, and stop tools.'
-}
-finally {
+    if (@($report.Checks).Count -ne 14) { throw 'Expected fourteen named smoke checks.' }
+    Write-Output 'PASS: installed smoke verifies MSIX and all required named scenarios without stopping Explorer.'
+} finally {
     if (Test-Path -LiteralPath $resultsPath) { Remove-Item -LiteralPath $resultsPath -Recurse -Force -Confirm:$false }
 }

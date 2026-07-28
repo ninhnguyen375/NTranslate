@@ -8,6 +8,7 @@ public sealed class UpdateClientException(string message, Exception? innerExcept
 
 public sealed class GitHubReleaseClient
 {
+    public const long MaximumMsixBytes = 512L * 1024 * 1024;
     private static readonly HashSet<string> AllowedDownloadHosts = new(StringComparer.OrdinalIgnoreCase)
     {
         "github.com",
@@ -70,10 +71,22 @@ public sealed class GitHubReleaseClient
             request.Headers.UserAgent.ParseAdd("NTranslate-Windows-Updater");
             using var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, token).ConfigureAwait(false);
             EnsureSuccess(response);
+            ValidateDownloadUrl(response.RequestMessage?.RequestUri ?? downloadUrl);
+            if (response.Content.Headers.ContentLength > MaximumMsixBytes)
+                throw new UpdateClientException("Update package exceeds the 512 MiB limit.");
             await using (var source = await response.Content.ReadAsStreamAsync(token).ConfigureAwait(false))
             await using (var destination = new FileStream(partialPath, FileMode.CreateNew, FileAccess.Write, FileShare.None, 81920, FileOptions.Asynchronous | FileOptions.WriteThrough))
             {
-                await source.CopyToAsync(destination, token).ConfigureAwait(false);
+                var buffer = new byte[81920];
+                long total = 0;
+                int read;
+                while ((read = await source.ReadAsync(buffer, token).ConfigureAwait(false)) != 0)
+                {
+                    total += read;
+                    if (total > MaximumMsixBytes)
+                        throw new UpdateClientException("Update package exceeds the 512 MiB limit.");
+                    await destination.WriteAsync(buffer.AsMemory(0, read), token).ConfigureAwait(false);
+                }
                 await destination.FlushAsync(token).ConfigureAwait(false);
             }
             File.Move(partialPath, fullDestination, true);

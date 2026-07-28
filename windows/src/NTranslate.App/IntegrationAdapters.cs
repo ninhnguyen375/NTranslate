@@ -11,6 +11,7 @@ using NTranslate.Core.Speech;
 using NTranslate.Platform.Diagnostics;
 using NTranslate.Platform.Media;
 using NTranslate.Platform.Storage;
+using NTranslate.App.Updates;
 
 namespace NTranslate.App;
 
@@ -108,6 +109,28 @@ internal sealed class RecoveryNotice(Func<XamlRoot?> resolveRoot) : IRecoveryNot
         return await dialog.ShowAsync().AsTask(token) == ContentDialogResult.Primary
             ? RecoveryNoticeChoice.OpenLogs
             : RecoveryNoticeChoice.Dismiss;
+    }
+}
+
+internal sealed class UpdateDialog(Func<XamlRoot?> resolveRoot) : IUpdateDialog
+{
+    public async Task<bool> ShowAsync(UpdateState state, string? message, string? releaseNotes, CancellationToken token)
+    {
+        var dialog = new ContentDialog
+        {
+            Title = state switch
+            {
+                UpdateState.Checking => "Checking for updates",
+                UpdateState.Available => "Update available",
+                UpdateState.Error => "Update check failed",
+                _ => "NTranslate is current"
+            },
+            Content = string.IsNullOrWhiteSpace(releaseNotes) ? message : $"{message}\n\n{releaseNotes}",
+            PrimaryButtonText = state == UpdateState.Available ? "Install" : null,
+            CloseButtonText = "Close",
+            XamlRoot = resolveRoot() ?? throw new InvalidOperationException("Update dialog owner is unavailable.")
+        };
+        return await dialog.ShowAsync().AsTask(token) == ContentDialogResult.Primary;
     }
 }
 

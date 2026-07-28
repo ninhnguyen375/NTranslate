@@ -103,6 +103,46 @@ public sealed class GitHubReleaseClientTests
         Assert.False(File.Exists(destination + ".partial"));
     }
 
+    [Fact]
+    public async Task RejectsOversizedContentLengthAndRemovesPartial()
+    {
+        using var directory = new TemporaryDirectory();
+        var destination = Path.Combine(directory.Path, "update.msix");
+        var response = Response(HttpStatusCode.OK, "small");
+        response.Content.Headers.ContentLength = GitHubReleaseClient.MaximumMsixBytes + 1;
+
+        var error = await Assert.ThrowsAsync<UpdateClientException>(() => Client(new StubHandler((_, _) => response)).DownloadAsync(new Uri("https://github.com/update.msix"), destination, CancellationToken.None));
+
+        Assert.Equal("Update package exceeds the 512 MiB limit.", error.Message);
+        Assert.False(File.Exists(destination));
+        Assert.False(File.Exists(destination + ".partial"));
+    }
+
+    [Fact]
+    public async Task RejectsChunkedBodyOverflowAndRemovesPartial()
+    {
+        using var directory = new TemporaryDirectory();
+        var destination = Path.Combine(directory.Path, "update.msix");
+        var content = new StreamContent(new RepeatingStream(GitHubReleaseClient.MaximumMsixBytes + 1));
+        content.Headers.ContentLength = null;
+        var response = new HttpResponseMessage(HttpStatusCode.OK) { Content = content };
+
+        await Assert.ThrowsAsync<UpdateClientException>(() => Client(new StubHandler((_, _) => response)).DownloadAsync(new Uri("https://github.com/update.msix"), destination, CancellationToken.None));
+
+        Assert.False(File.Exists(destination));
+        Assert.False(File.Exists(destination + ".partial"));
+    }
+
+    [Fact]
+    public async Task RejectsRedirectEndingOnDisallowedHost()
+    {
+        using var directory = new TemporaryDirectory();
+        var response = Response(HttpStatusCode.OK, "package");
+        response.RequestMessage = new HttpRequestMessage(HttpMethod.Get, "https://evil.example/update.msix");
+
+        await Assert.ThrowsAsync<UpdateClientException>(() => Client(new StubHandler((_, _) => response)).DownloadAsync(new Uri("https://github.com/update.msix"), Path.Combine(directory.Path, "update.msix"), CancellationToken.None));
+    }
+
     private static GitHubReleaseClient Client(HttpMessageHandler handler) => new(new HttpClient(handler), "ninhnguyen375", "NTranslate");
 
     private static HttpResponseMessage Response(HttpStatusCode status, string body) => new(status)
@@ -116,6 +156,36 @@ public sealed class GitHubReleaseClientTests
             : this((request, token) => Task.FromResult(response(request, token))) { }
 
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) => response(request, cancellationToken);
+    }
+
+    private sealed class RepeatingStream(long length) : Stream
+    {
+        private long _position;
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
+        public override long Length => length;
+        public override long Position { get => _position; set => throw new NotSupportedException(); }
+        public override int Read(byte[] buffer, int offset, int count)
+        {
+            var read = (int)Math.Min(count, length - _position);
+            if (read <= 0) return 0;
+            Array.Clear(buffer, offset, read);
+            _position += read;
+            return read;
+        }
+        public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            var read = (int)Math.Min(buffer.Length, length - _position);
+            if (read <= 0) return ValueTask.FromResult(0);
+            buffer.Span[..read].Clear();
+            _position += read;
+            return ValueTask.FromResult(read);
+        }
+        public override void Flush() { }
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
     }
 
     private sealed class TemporaryDirectory : IDisposable

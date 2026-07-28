@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Reflection;
+using Windows.ApplicationModel;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using NTranslate.App.History;
@@ -45,6 +46,7 @@ internal sealed class AppComposition : IDisposable
     private readonly SpeechCoordinator _speech;
     private readonly UpdateCoordinator _updates;
     private readonly RecoveryCoordinator _recovery;
+    private readonly ManualUpdateFlow _manualUpdates;
     private readonly AppShutdown _shutdown;
     private AppConfig _config;
     private string _root;
@@ -135,7 +137,9 @@ internal sealed class AppComposition : IDisposable
         _settingsViewModel.SetFolderPicker(new WinUiSettingsFolderPicker(_settingsWindow));
 
         var releases = new GitHubReleaseClient(http, "ninhnguyen375", "NTranslate");
-        var currentVersion = SemanticVersion.TryParse(Assembly.GetExecutingAssembly().GetName().Version?.ToString(3), out var version) ? version : new(0, 0, 0);
+        var currentVersion = CurrentVersionResolver.Resolve(
+            () => { var value = Package.Current.Id.Version; return new Version(value.Major, value.Minor, value.Build, value.Revision); },
+            Assembly.GetExecutingAssembly().GetName().Version);
         _updates = new UpdateCoordinator(
             currentVersion,
             async token =>
@@ -146,6 +150,7 @@ internal sealed class AppComposition : IDisposable
             releases.DownloadAsync,
             new MsixPackageVerifier(),
             info => Process.Start(info));
+        _manualUpdates = new ManualUpdateFlow(_updates, new UpdateDialog(() => ContentRoot));
         _recovery = new RecoveryCoordinator(_historyRuntime, new RecoveryNotice(() => ContentRoot), new ShellLogDirectoryLauncher());
         var winUiExceptions = new WinUiUnhandledExceptionSource(Application.Current);
         var appDomainExceptions = new AppDomainUnhandledExceptionSource();
@@ -174,7 +179,7 @@ internal sealed class AppComposition : IDisposable
         _tray.OpenTranslatorRequested += (_, _) => ShowManual();
         _tray.HistoryRequested += (_, _) => Enqueue(ShowHistory);
         _tray.SettingsRequested += (_, _) => Enqueue(() => _ = ShowSettingsAsync());
-        _tray.CheckForUpdatesRequested += (_, _) => _ = _updates.CheckAsync(true, _lifetime.Token);
+        _tray.CheckForUpdatesRequested += (_, _) => Enqueue(() => _ = RunManualUpdateAsync());
         _tray.StartWithWindowsRequested += (_, _) => _ = ToggleStartWithWindowsAsync();
         _tray.ExitRequested += (_, _) => Enqueue(_shutdown.Run);
     }
@@ -204,6 +209,13 @@ internal sealed class AppComposition : IDisposable
         _root,
         string.IsNullOrWhiteSpace(request.Config.HistoryDirectory) ? _root : Path.GetFullPath(request.Config.HistoryDirectory),
         token);
+
+    private async Task RunManualUpdateAsync()
+    {
+        try { await _manualUpdates.RunAsync(_lifetime.Token); }
+        catch (OperationCanceledException) { }
+        catch { await DispatchAsync(() => _viewModel.SetStartupGuidance("Unable to verify or install update.")); }
+    }
 
     private async Task ToggleStartWithWindowsAsync()
     {

@@ -8,12 +8,18 @@ param(
     [switch]$TrustDevelopmentCertificate,
     [switch]$SkipBuild,
     [switch]$SkipInstall,
-    [scriptblock]$InvokeTool = { param($File, $Arguments) & $File @Arguments; if ($LASTEXITCODE -ne 0) { throw "$File failed with exit code $LASTEXITCODE" } }
+    [string]$NativeArchitecture = $env:PROCESSOR_ARCHITECTURE,
+    [scriptblock]$InvokeTool = { param($File, $Arguments) & $File @Arguments; if ($LASTEXITCODE -ne 0) { throw "$File failed with exit code $LASTEXITCODE" } },
+    [scriptblock]$GetSignature = { param($Path) Get-AuthenticodeSignature -LiteralPath $Path },
+    [scriptblock]$InvokeLayout,
+    [scriptblock]$ResolveTool,
+    [scriptblock]$GetDevelopmentCertificate
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $expectedSdk = '10.0.301'
+$pinnedBuildTools = '10.0.26100.6584'
 $minimumBuild = 19045
 $targetTested = '10.0.22621.0'
 $identity = 'NinhNguyen375.NTranslate'
@@ -30,6 +36,7 @@ function Invoke-Checked([string]$File, [string[]]$Arguments) {
 }
 
 try {
+    if ($NativeArchitecture -notin @('AMD64', 'x64')) { throw "Native x64/AMD64 host required; found $NativeArchitecture." }
     $sdk = (& dotnet --version).Trim()
     if ($sdk -ne $expectedSdk) { throw "Required .NET SDK $expectedSdk; found $sdk." }
     $osBuild = [Environment]::OSVersion.Version.Build
@@ -43,32 +50,38 @@ try {
         Invoke-Checked dotnet @('publish', (Join-Path $root 'src\NTranslate.App\NTranslate.App.csproj'), '-c', $Configuration, '-r', $Runtime, '--no-restore', '-o', $publish)
     }
 
-    & (Join-Path $root 'packaging\scripts\New-PackageLayout.ps1') -Version $Version -PublishPath $publish -LayoutPath $layout
+    if ($null -ne $InvokeLayout) { & $InvokeLayout $Version $publish $layout }
+    else { & (Join-Path $root 'packaging\scripts\New-PackageLayout.ps1') -Version $Version -PublishPath $publish -LayoutPath $layout }
     New-Item -ItemType Directory -Path (Split-Path $package) -Force | Out-Null
-    $sdkTools = Join-Path $env:USERPROFILE '.nuget\packages\microsoft.windows.sdk.buildtools'
-    $toolRoot = Get-ChildItem -LiteralPath $sdkTools -Directory | Sort-Object Name -Descending | Select-Object -First 1
-    if ($null -eq $toolRoot) { throw 'Restored Microsoft.Windows.SDK.BuildTools package not found.' }
-    $makeAppx = Join-Path $toolRoot.FullName 'bin\10.0.26100.0\x64\MakeAppx.exe'
-    $signTool = Join-Path $toolRoot.FullName 'bin\10.0.26100.0\x64\SignTool.exe'
-    foreach ($tool in @($makeAppx, $signTool)) { if (-not (Test-Path -LiteralPath $tool -PathType Leaf)) { throw "Pinned packaging tool missing: $tool" } }
+    $toolRoot = Join-Path $env:USERPROFILE ".nuget\packages\microsoft.windows.sdk.buildtools\$pinnedBuildTools"
+    if ($null -eq $ResolveTool -and -not (Test-Path -LiteralPath $toolRoot -PathType Container)) { throw "Pinned Microsoft.Windows.SDK.BuildTools $pinnedBuildTools not found." }
+    $makeAppx = if ($null -ne $ResolveTool) { & $ResolveTool 'MakeAppx.exe' } else { Join-Path $toolRoot 'bin\10.0.26100.0\x64\MakeAppx.exe' }
+    $signTool = if ($null -ne $ResolveTool) { & $ResolveTool 'SignTool.exe' } else { Join-Path $toolRoot 'bin\10.0.26100.0\x64\SignTool.exe' }
+    if ($null -eq $ResolveTool) { foreach ($tool in @($makeAppx, $signTool)) { if (-not (Test-Path -LiteralPath $tool -PathType Leaf)) { throw "Pinned packaging tool missing: $tool" } } }
 
     Invoke-Checked $makeAppx @('pack', '/o', '/d', $layout, '/p', $package)
     if ([string]::IsNullOrWhiteSpace($CertificatePath)) {
-        $certificateResult = & (Join-Path $root 'packaging\scripts\Manage-DevelopmentCertificate.ps1') -Password $CertificatePassword -Trust:$TrustDevelopmentCertificate
-        $CertificatePath = Join-Path $certificateResult.OutputPath 'NTranslate-Development.pfx'
+        $certificateResult = if ($null -ne $GetDevelopmentCertificate) { & $GetDevelopmentCertificate } else { & (Join-Path $root 'packaging\scripts\Manage-DevelopmentCertificate.ps1') -Trust:$TrustDevelopmentCertificate }
+        Invoke-Checked $signTool @('sign', '/fd', 'sha256', '/sha1', $certificateResult.Thumbprint, $package)
     }
-    if ($null -eq $CertificatePassword) { throw 'CertificatePassword required for PFX signing.' }
-    $plainPassword = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($CertificatePassword)
-    $passwordText = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($plainPassword)
-    Invoke-Checked $signTool @('sign', '/fd', 'sha256', '/f', $CertificatePath, '/p', $passwordText, $package)
-    $signature = Get-AuthenticodeSignature -LiteralPath $package
+    else {
+        if ($null -eq $CertificatePassword) { throw 'CertificatePassword required for explicit external PFX signing.' }
+        $plainPassword = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($CertificatePassword)
+        $passwordText = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($plainPassword)
+        Invoke-Checked $signTool @('sign', '/fd', 'sha256', '/f', $CertificatePath, '/p', $passwordText, $package)
+    }
+    $signature = & $GetSignature $package
     if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -ne 'CN=Ninh Nguyen') { throw 'Signed package verification failed.' }
 
     if (-not $SkipInstall) {
+        # Add-AppxPackage owns transactional deployment before commit. Post-commit verification/launch failures keep installed package.
         Add-AppxPackage -Path $package -ForceApplicationShutdown
         $installed = Get-AppxPackage -Name $identity
         if ($null -eq $installed -or $installed.Version.ToString() -ne "$Version.0") { throw 'Installed package verification failed.' }
-        Start-Process explorer.exe "shell:AppsFolder\NinhNguyen375.NTranslate_App"
+        try { Start-Process explorer.exe "shell:AppsFolder\NinhNguyen375.NTranslate_App" }
+        catch {
+            throw "Package installed, but launch failed. Installed package remains because prior MSIX is not retained. Retry from Start, or uninstall with: Get-AppxPackage -Name NinhNguyen375.NTranslate | Remove-AppxPackage"
+        }
     }
 
     Write-Output "Version: $Version"
