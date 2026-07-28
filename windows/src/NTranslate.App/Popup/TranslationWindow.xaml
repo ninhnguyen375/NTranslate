@@ -17,7 +17,7 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <Grid x:Name="TitleDragRegion" ColumnSpacing="8" PointerPressed="TitleDragRegion_PointerPressed">
+        <Grid x:Name="TitleDragRegion" ColumnSpacing="8" PointerPressed="TitleDragRegion_PointerPressed" PointerMoved="TitleDragRegion_PointerMoved" PointerReleased="TitleDragRegion_PointerReleased">
             <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
             <TextBlock Text="NTranslate" Style="{StaticResource TitleTextBlockStyle}" />
             <ToggleButton x:Name="PinButton" Grid.Column="1" Content="Pin" AutomationProperties.Name="Pin popup" Click="PinButton_Click" />

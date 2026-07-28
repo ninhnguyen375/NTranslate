@@ -9,12 +9,13 @@ public sealed partial class TranslationWindow : Window
     private readonly PopupCoordinator _coordinator;
     private readonly Microsoft.UI.Windowing.AppWindow _appWindow;
     private bool _shuttingDown;
+    private readonly TitleDragPolicy _drag = new(4);
 
-    internal TranslationWindow(TranslationViewModel viewModel, double width, double height)
+    internal TranslationWindow(TranslationViewModel viewModel, double width, double height, Action cancelWork)
     {
         ViewModel = viewModel;
         InitializeComponent();
-        _coordinator = new PopupCoordinator(this, viewModel, width, height);
+        _coordinator = new PopupCoordinator(this, viewModel, width, height, cancelWork);
         var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
         _appWindow = Microsoft.UI.Windowing.AppWindow.GetFromWindowId(Microsoft.UI.Win32Interop.GetWindowIdFromWindow(hwnd));
         _appWindow.Closing += AppWindow_Closing;
@@ -46,12 +47,22 @@ public sealed partial class TranslationWindow : Window
 
     private void TitleDragRegion_PointerPressed(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs args)
     {
-        if (!args.GetCurrentPoint(TitleDragRegion).Properties.IsLeftButtonPressed) return;
+        var point = args.GetCurrentPoint(TitleDragRegion);
+        if (point.Properties.IsLeftButtonPressed)
+            _drag.Press(point.Position.X, point.Position.Y);
+    }
+
+    private void TitleDragRegion_PointerMoved(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs args)
+    {
+        var point = args.GetCurrentPoint(TitleDragRegion);
+        if (!point.Properties.IsLeftButtonPressed || !_drag.Move(point.Position.X, point.Position.Y)) return;
         _coordinator.Drag();
         PinButton.IsChecked = true;
         ReleaseCapture();
         SendMessage(WinRT.Interop.WindowNative.GetWindowHandle(this), 0x00A1, 2, 0); // WM_NCLBUTTONDOWN, HTCAPTION
     }
+
+    private void TitleDragRegion_PointerReleased(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs args) => _drag.Release();
 
     [DllImport("user32.dll")] private static extern bool ReleaseCapture();
     [DllImport("user32.dll")] private static extern nint SendMessage(nint hwnd, uint message, nint wParam, nint lParam);

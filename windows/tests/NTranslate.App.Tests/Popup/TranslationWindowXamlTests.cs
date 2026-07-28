@@ -35,6 +35,8 @@ public sealed class TranslationWindowXamlTests
         Assert.Equal("{x:Bind ViewModel.TranslateCommand}", Attribute(FindNamed("TranslateButton"), "Command"));
         Assert.Equal("{x:Bind ViewModel.CopyCommand}", Attribute(FindNamed("CopyButton"), "Command"));
         Assert.Equal("TitleDragRegion_PointerPressed", Attribute(FindNamed("TitleDragRegion"), "PointerPressed"));
+        Assert.Equal("TitleDragRegion_PointerMoved", Attribute(FindNamed("TitleDragRegion"), "PointerMoved"));
+        Assert.Equal("TitleDragRegion_PointerReleased", Attribute(FindNamed("TitleDragRegion"), "PointerReleased"));
         Assert.Null(Attribute(FindNamed("RootGrid"), "PointerMoved"));
     }
 

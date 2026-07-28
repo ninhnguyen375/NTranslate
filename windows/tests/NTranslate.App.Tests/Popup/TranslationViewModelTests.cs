@@ -12,6 +12,23 @@ public sealed class TranslationViewModelTests
     private static AppConfig Config => AppConfig.Default with { MaxTranslateLength = 10 };
 
     [Fact]
+    public async Task CopyFailure_PreservesResultAndAllowsRetry()
+    {
+        var clipboard = new ThrowingClipboardService();
+        var vm = CreateViewModel(ScriptedHandler.Sync(_ => JsonResponse("translated")), clipboard);
+        vm.SourceText = "hello";
+        await vm.TranslateCommand.ExecuteAsync();
+
+        await vm.CopyCommand.ExecuteAsync();
+
+        Assert.Equal("hello", vm.SourceText);
+        Assert.Equal("translated", vm.ResultText);
+        Assert.True(vm.CanCopy);
+        Assert.Equal(PopupState.Result, vm.State);
+        Assert.Contains("Clipboard", vm.StatusMessage, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void StartupGuidance_PersistsWhenCapturedSourceArrives()
     {
         var vm = CreateViewModel(ScriptedHandler.Sync(_ => JsonResponse("unused")), new FakeClipboardService());
@@ -312,7 +329,7 @@ public sealed class TranslationViewModelTests
 
     public static TheoryData<string> NonResultStates => ["guidance", "loading", "error"];
 
-    private static TranslationViewModel CreateViewModel(ScriptedHandler handler, FakeClipboardService clipboard, bool autoCopy = false)
+    private static TranslationViewModel CreateViewModel(ScriptedHandler handler, IClipboardService clipboard, bool autoCopy = false)
     {
         var config = Config with { Ui = Config.Ui with { AutoCopy = autoCopy } };
         var client = new OpenAiCompatibleClient(new HttpClient(handler));
@@ -341,6 +358,15 @@ public sealed class TranslationViewModelTests
             LastBody = request.Content is null ? null : await request.Content.ReadAsStringAsync(cancellationToken);
             return await respond(cancellationToken);
         }
+    }
+
+    private sealed class ThrowingClipboardService : IClipboardService
+    {
+        public uint GetSequenceNumber() => 0;
+        public IClipboardSnapshot CaptureSnapshot() => throw new NotSupportedException();
+        public string? ReadUnicodeText() => null;
+        public void WriteUnicodeText(string text) => throw new InvalidOperationException("clipboard busy");
+        public bool RestoreIfUnchanged(IClipboardSnapshot snapshot, uint copiedSequenceNumber) => false;
     }
 
     private sealed class FakeClipboardService : IClipboardService

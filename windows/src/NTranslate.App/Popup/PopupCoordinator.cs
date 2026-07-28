@@ -14,7 +14,7 @@ internal sealed class PopupCoordinator
     private readonly double _width;
     private readonly double _height;
 
-    public PopupCoordinator(Window window, TranslationViewModel viewModel, double width, double height)
+    public PopupCoordinator(Window window, TranslationViewModel viewModel, double width, double height, Action cancelWork)
     {
         _window = window;
         var hwnd = WindowNative.GetWindowHandle(window);
@@ -24,7 +24,7 @@ internal sealed class PopupCoordinator
         var dpi = GetDpiForWindow(hwnd);
         var size = PopupPlacement.ToPhysicalPixels(width, height, dpi);
         _appWindow.Resize(new(size.Width, size.Height));
-        _lifecycle = new PopupLifecycle(viewModel.Cancel, _appWindow.Hide);
+        _lifecycle = new PopupLifecycle(cancelWork, _appWindow.Hide);
     }
 
     public bool IsPinned { get => _lifecycle.IsPinned; set => _lifecycle.IsPinned = value; }

@@ -210,8 +210,17 @@ public sealed class TranslationViewModel : INotifyPropertyChanged
 
     private Task CopyAsync()
     {
-        if (CanCopy)
+        if (!CanCopy)
+            return Task.CompletedTask;
+        try
+        {
             _clipboard.WriteUnicodeText(ResultText);
+            StatusMessage = null;
+        }
+        catch
+        {
+            StatusMessage = "Clipboard unavailable. Try Copy again.";
+        }
         return Task.CompletedTask;
     }
 

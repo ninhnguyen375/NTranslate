@@ -3,6 +3,23 @@ using NTranslate.Core.Configuration;
 
 namespace NTranslate.App;
 
+internal sealed class CaptureGeneration
+{
+    private int _generation;
+    public int Begin() => Interlocked.Increment(ref _generation);
+    public void Cancel() => Interlocked.Increment(ref _generation);
+    public bool IsCurrent(int generation) => Volatile.Read(ref _generation) == generation;
+}
+
+internal static class GuidancePolicy
+{
+    public static string? Combine(string? config, string? hotkeyError)
+    {
+        var hotkey = hotkeyError is null ? null : "Global hotkey unavailable.";
+        return string.Join(' ', new[] { config, hotkey }.Where(value => value is not null));
+    }
+}
+
 internal static class CaptureRouting
 {
     public static string? SourceText(NTranslate.Platform.Capture.SelectionCapture? capture) => capture?.Source switch

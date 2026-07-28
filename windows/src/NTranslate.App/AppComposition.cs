@@ -40,7 +40,7 @@ internal sealed class AppComposition : IDisposable
         _viewModel = new TranslationViewModel(_config, new OpenAiCompatibleClient(new HttpClient()), _clipboard,
             async token => await credentials.LoadAsync(token).ConfigureAwait(false) ?? throw new InvalidOperationException("API key missing. Store key in Windows Credential Locker before translating."));
         _viewModel.SetStartupGuidance(startup.Guidance);
-        _window = new TranslationWindow(_viewModel, _config.Ui.Width, _config.Ui.Height);
+        _window = new TranslationWindow(_viewModel, _config.Ui.Width, _config.Ui.Height, CancelPopupWork);
         _router = new PopupRouter(CancelCapture, () => Show(null));
         _shutdown = new AppShutdown(
             () => { _lifetime.Cancel(); _captureRequest?.Cancel(); _viewModel.Cancel(); },
@@ -61,11 +61,18 @@ internal sealed class AppComposition : IDisposable
         _tray.Show();
         var registration = _hotkey.Register(_config.Hotkey);
         HotkeyRegistrationError = registration.Error; // tray/manual entry remain usable on collision.
+        _viewModel.SetStartupGuidance(GuidancePolicy.Combine(_viewModel.PersistentGuidance, registration.Error));
     }
 
     public void ShowManual() => Enqueue(_router.ShowManual);
 
     public void Dispose() => _shutdown.Run();
+
+    private void CancelPopupWork()
+    {
+        CancelCapture();
+        _viewModel.Cancel();
+    }
 
     private void CancelCapture()
     {

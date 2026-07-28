@@ -29,6 +29,23 @@ public sealed class AppPoliciesTests
         Assert.Null(CaptureRouting.SourceText(null));
 
     [Fact]
+    public void ClosePopup_InvalidatesBlockedCaptureBeforeLateCompletion()
+    {
+        var generation = new CaptureGeneration();
+        var capture = generation.Begin();
+        generation.Cancel();
+        Assert.False(generation.IsCurrent(capture));
+    }
+
+    [Fact]
+    public void PersistentGuidance_CombinesConfigAndHotkeyFailures()
+    {
+        Assert.Equal(
+            "Configuration invalid. Global hotkey unavailable.",
+            GuidancePolicy.Combine("Configuration invalid.", "RegisterHotKey failed (Win32 error 1409)."));
+    }
+
+    [Fact]
     public void ActivationGate_DrainsQueuedActivationOnceReady()
     {
         var shown = 0;
