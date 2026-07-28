@@ -107,8 +107,6 @@ public sealed partial class TranslationWindow : Window
         var preview = new BitmapImage();
         await preview.SetSourceAsync(image.AsRandomAccessStream());
         ImagePreview.Source = preview;
-        ImagePreview.Visibility = Visibility.Visible;
-        SourceTextBox.Visibility = Visibility.Collapsed;
         image.Position = 0;
         await ViewModel.TranslateImageAsync(image, _lifetimeCancellation.Token);
     }

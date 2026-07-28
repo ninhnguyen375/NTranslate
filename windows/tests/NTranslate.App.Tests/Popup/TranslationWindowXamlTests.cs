@@ -57,6 +57,17 @@ public sealed class TranslationWindowXamlTests
     }
 
     [Fact]
+    public void SourceEditorAndImagePreviewBindVisibilityToImageMode()
+    {
+        Assert.Equal("{x:Bind ViewModel.SourceEditorVisibility, Mode=OneWay}", Attribute(FindNamed("SourceTextBox"), "Visibility"));
+        Assert.Equal("{x:Bind ViewModel.ImagePreviewVisibility, Mode=OneWay}", Attribute(FindNamed("ImagePreview"), "Visibility"));
+
+        var codeBehind = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "TranslationWindow.xaml.cs"));
+        Assert.DoesNotContain("SourceTextBox.Visibility = Visibility.Collapsed", codeBehind, StringComparison.Ordinal);
+        Assert.DoesNotContain("ImagePreview.Visibility = Visibility.Visible", codeBehind, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Window_WiresClosingCancellation()
     {
         var codeBehind = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "TranslationWindow.xaml.cs"));

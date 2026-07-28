@@ -34,8 +34,8 @@
         </Grid>
 
         <Grid Grid.Row="2">
-            <TextBox x:Name="SourceTextBox" Text="{x:Bind ViewModel.SourceText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" TextWrapping="Wrap" AutomationProperties.Name="Source text" />
-            <Image x:Name="ImagePreview" Visibility="Collapsed" Stretch="Uniform" AutomationProperties.Name="Image preview" />
+            <TextBox x:Name="SourceTextBox" Text="{x:Bind ViewModel.SourceText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Visibility="{x:Bind ViewModel.SourceEditorVisibility, Mode=OneWay}" AcceptsReturn="True" TextWrapping="Wrap" AutomationProperties.Name="Source text" />
+            <Image x:Name="ImagePreview" Visibility="{x:Bind ViewModel.ImagePreviewVisibility, Mode=OneWay}" Stretch="Uniform" AutomationProperties.Name="Image preview" />
             <ProgressRing x:Name="ProgressRing" HorizontalAlignment="Center" VerticalAlignment="Center" IsActive="{x:Bind ViewModel.IsLoading, Mode=OneWay}" AutomationProperties.Name="Translation progress" />
         </Grid>
         <TextBox x:Name="ResultTextBox" Grid.Row="3" Text="{x:Bind ViewModel.ResultText, Mode=OneWay}" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" AutomationProperties.Name="Translation result" AutomationProperties.LiveSetting="Polite" />

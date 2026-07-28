@@ -518,6 +518,56 @@ public sealed class TranslationViewModelTests
     }
 
     [Fact]
+    public async Task HistoryAppendFailureDoesNotExposeOrCopyResult()
+    {
+        var clipboard = new FakeClipboardService();
+        var vm = new TranslationViewModel(
+            Config with { Ui = Config.Ui with { AutoCopy = true } },
+            new OpenAiCompatibleClient(new HttpClient(ScriptedHandler.Sync(_ => JsonResponse("translated")))),
+            clipboard,
+            _ => Task.FromResult("test-api-key"),
+            recordHistory: (_, _) => throw new IOException("history unavailable"));
+        vm.SourceText = "hello";
+
+        await vm.TranslateAsync(CancellationToken.None);
+
+        Assert.Equal(PopupState.Error, vm.State);
+        Assert.Equal(string.Empty, vm.ResultText);
+        Assert.Null(clipboard.LastWritten);
+        Assert.False(vm.CanCopy);
+        Assert.Equal("history unavailable", vm.StatusMessage);
+    }
+
+    [Fact]
+    public async Task AutoDetectedVietnameseUsesResolvedEnglishTargetForHistoryAndResultSpeech()
+    {
+        var history = new RecordingHistory();
+        var speech = new RecordingSpeech();
+        var vm = CreateAdvancedViewModel(ScriptedHandler.Sync(_ => JsonResponse("hello")), history: history, speech: speech);
+        vm.SourceLang = "Auto detect";
+        vm.TargetLang = "Vietnamese";
+        vm.SourceText = "xin chào";
+
+        await vm.TranslateAsync(CancellationToken.None);
+        await vm.SpeakResultAsync(CancellationToken.None);
+
+        Assert.Equal("English", Assert.Single(history.Records).TargetLanguage);
+        Assert.Equal(Config.SpeechSourceModel, Assert.Single(speech.Playbacks).Identity.CacheKey.Model);
+    }
+
+    [Fact]
+    public void ManualTextAfterImageModeRestoresSourceEditorMode()
+    {
+        var vm = CreateAdvancedViewModel(ScriptedHandler.Sync(_ => JsonResponse("unused")));
+        vm.EnterImageMode();
+
+        vm.SourceText = "manual text";
+
+        Assert.False(vm.IsImageMode);
+        Assert.Equal("manual text", vm.SourceText);
+    }
+
+    [Fact]
     public async Task SameLanguageTranslateUsesGrammarPromptAndRecordsHistory()
     {
         var history = new RecordingHistory();
@@ -663,7 +713,7 @@ public sealed class TranslationViewModelTests
         var playback = Assert.Single(speech.Playbacks);
         Assert.Equal(SpeechChannel.Result, playback.Identity.CacheKey.Channel);
         Assert.Equal("translated", playback.Identity.CacheKey.Text);
-        Assert.Equal(Config.SpeechTargetModel, playback.Identity.CacheKey.Model);
+        Assert.Equal(Config.SpeechSourceModelVietnamese, playback.Identity.CacheKey.Model);
         Assert.Equal(history.LastId, playback.Identity.HistoryRecordId);
         Assert.Equal(1d, playback.Rate);
     }

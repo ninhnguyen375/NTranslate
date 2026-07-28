@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
+using Microsoft.UI.Xaml;
 using NTranslate.Core.Configuration;
 using NTranslate.Core.Languages;
 using NTranslate.Core.History;
@@ -82,6 +83,8 @@ public sealed class TranslationViewModel : INotifyPropertyChanged
     private bool _isImageMode;
     private SpeechIdentity? _sourceSpeechIdentity;
     private SpeechIdentity? _resultSpeechIdentity;
+    private string? _acceptedSourceLanguage;
+    private string? _acceptedTargetLanguage;
 
     public TranslationViewModel(
         AppConfig config,
@@ -197,6 +200,8 @@ public sealed class TranslationViewModel : INotifyPropertyChanged
     public bool CanCopy => State == PopupState.Result && ResultText.Length > 0;
     public bool IsLoading => State == PopupState.Loading;
     public bool IsImageMode => _isImageMode;
+    public Visibility SourceEditorVisibility => IsImageMode ? Visibility.Collapsed : Visibility.Visible;
+    public Visibility ImagePreviewVisibility => IsImageMode ? Visibility.Visible : Visibility.Collapsed;
     public bool CanSelectSourceLanguage => !IsImageMode;
     public bool CanLearn => !IsImageMode;
     public bool CanSpeakSource => !IsImageMode && SourceText.Length > 0;
@@ -267,7 +272,7 @@ public sealed class TranslationViewModel : INotifyPropertyChanged
     public Task SpeakResultAsync(CancellationToken cancellationToken)
     {
         if (_speech is null || !CanSpeakResult) return Task.CompletedTask;
-        var identity = SpeechIdentityFor(SpeechChannel.Result, ResultText, TargetLang, _resultSpeechIdentity?.HistoryRecordId);
+        var identity = SpeechIdentityFor(SpeechChannel.Result, ResultText, _acceptedTargetLanguage ?? TargetLang, _resultSpeechIdentity?.HistoryRecordId);
         _resultSpeechIdentity = identity;
         return _speech.TogglePlaybackAsync(identity, _config.SpeechRate, cancellationToken);
     }
@@ -284,7 +289,7 @@ public sealed class TranslationViewModel : INotifyPropertyChanged
             string apiKey = await _resolveApiKey(requestCancellation.Token).ConfigureAwait(false);
             var request = new ChatCompletionRequest(_config.Model, PromptRenderer.RenderTranslation(_config), new ImageChatInput(normalized.PngData.ToArray(), TargetLang));
             string result = await _client.CompleteChatAsync(new Uri(_config.ApiBaseUrl), apiKey, request, requestCancellation.Token).ConfigureAwait(false);
-            await ApplyAcceptedResultAsync(lease.Generation, result, null, TranslationMode.ImageTranslate, false, requestCancellation.Token).ConfigureAwait(false);
+            await ApplyAcceptedResultAsync(lease.Generation, result, null, SourceLang, TargetLang, TranslationMode.ImageTranslate, false, requestCancellation.Token).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (requestCancellation.IsCancellationRequested) { }
         catch (Exception ex) { await ApplyErrorAsync(lease.Generation, ex).ConfigureAwait(false); }
@@ -381,6 +386,8 @@ public sealed class TranslationViewModel : INotifyPropertyChanged
                 lease.Generation,
                 result,
                 mode == TranslationMode.Translate ? text : null,
+                pair.SourceLang,
+                pair.TargetLang,
                 mode,
                 isGrammar,
                 cancellation.Token).ConfigureAwait(false);
@@ -436,11 +443,31 @@ public sealed class TranslationViewModel : INotifyPropertyChanged
         RequestGeneration generation,
         string result,
         string? historySource,
+        string resolvedSourceLanguage,
+        string resolvedTargetLanguage,
         TranslationMode mode,
         bool isGrammar,
         CancellationToken cancellationToken)
     {
+        if (!_coordinator.Accepts(generation)) return;
         Guid? historyId = null;
+        if (historySource is not null && _recordHistory is not null)
+        {
+            historyId = await _recordHistory(new(historySource, result, resolvedSourceLanguage, resolvedTargetLanguage, mode, isGrammar), cancellationToken).ConfigureAwait(false);
+            if (!_coordinator.Accepts(generation)) return;
+        }
+        _acceptedSourceLanguage = resolvedSourceLanguage;
+        _acceptedTargetLanguage = resolvedTargetLanguage;
+        if (mode == TranslationMode.Translate)
+        {
+            _sourceSpeechIdentity = SpeechIdentityFor(SpeechChannel.Source, historySource!, resolvedSourceLanguage, historyId);
+            _resultSpeechIdentity = SpeechIdentityFor(SpeechChannel.Result, result, resolvedTargetLanguage, historyId);
+        }
+        else
+        {
+            _sourceSpeechIdentity = null;
+            _resultSpeechIdentity = SpeechIdentityFor(SpeechChannel.Result, result, resolvedTargetLanguage, null);
+        }
         await _dispatchUi(() =>
         {
             if (!_coordinator.Accepts(generation)) return;
@@ -454,21 +481,6 @@ public sealed class TranslationViewModel : INotifyPropertyChanged
             }
         }).ConfigureAwait(false);
         if (!_coordinator.Accepts(generation)) return;
-        if (historySource is not null && _recordHistory is not null)
-        {
-            historyId = await _recordHistory(new(historySource, result, SourceLang, TargetLang, mode, isGrammar), cancellationToken).ConfigureAwait(false);
-            if (!_coordinator.Accepts(generation)) return;
-        }
-        if (mode == TranslationMode.Translate)
-        {
-            _sourceSpeechIdentity = SpeechIdentityFor(SpeechChannel.Source, historySource!, SourceLang, historyId);
-            _resultSpeechIdentity = SpeechIdentityFor(SpeechChannel.Result, result, TargetLang, historyId);
-        }
-        else
-        {
-            _sourceSpeechIdentity = null;
-            _resultSpeechIdentity = SpeechIdentityFor(SpeechChannel.Result, result, TargetLang, null);
-        }
         if (_config.AutoPrefetchSpeech && _speech is not null && mode == TranslationMode.Translate)
         {
             await _speech.PrefetchAsync(_sourceSpeechIdentity!, cancellationToken).ConfigureAwait(false);
@@ -488,7 +500,7 @@ public sealed class TranslationViewModel : INotifyPropertyChanged
     }
 
     private SpeechIdentity SpeechIdentityFor(SpeechChannel channel, string text, string language, Guid? historyId) =>
-        new(new(channel, text, channel == SpeechChannel.Result ? _config.SpeechTargetModel : SpeechModelResolver.Resolve(language, _config)), historyId);
+        new(new(channel, text, SpeechModelResolver.Resolve(language, _config)), historyId);
 
     private void InvalidateAll()
     {
@@ -496,6 +508,8 @@ public sealed class TranslationViewModel : INotifyPropertyChanged
         _inFlight?.Cancel();
         _sourceSpeechIdentity = null;
         _resultSpeechIdentity = null;
+        _acceptedSourceLanguage = null;
+        _acceptedTargetLanguage = null;
         _speech?.Invalidate(SpeechChannel.Source, true);
         _speech?.Invalidate(SpeechChannel.Result, true);
     }
@@ -503,6 +517,8 @@ public sealed class TranslationViewModel : INotifyPropertyChanged
     private void OnImageModeChanged()
     {
         OnPropertyChanged(nameof(IsImageMode));
+        OnPropertyChanged(nameof(SourceEditorVisibility));
+        OnPropertyChanged(nameof(ImagePreviewVisibility));
         OnPropertyChanged(nameof(CanSelectSourceLanguage));
         OnPropertyChanged(nameof(CanLearn));
         OnPropertyChanged(nameof(CanSpeakSource));
@@ -534,10 +550,16 @@ public sealed class TranslationViewModel : INotifyPropertyChanged
         State = PopupState.Guidance;
     }
 
-    private void SetInvalidating(ref string field, string value)
+    private void SetInvalidating(ref string field, string value, [CallerMemberName] string? propertyName = null)
     {
-        if (!Set(ref field, value))
+        if (!Set(ref field, value, propertyName))
             return;
+
+        if (propertyName == nameof(SourceText) && IsImageMode && value.Length > 0)
+        {
+            _isImageMode = false;
+            OnImageModeChanged();
+        }
 
         // Source text/language changed mid-flight: cancel and invalidate so a
         // late completion for the old request can never apply.
