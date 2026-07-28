@@ -16,31 +16,26 @@ public sealed class OleClipboardServiceTests
 
         try
         {
-            service.WriteUnicodeText(syntheticOriginal);
-            ownedSequence = service.GetSequenceNumber();
+            ownedSequence = service.WriteUnicodeTextAndGetSequence(syntheticOriginal);
             using var syntheticSnapshot = service.CaptureSnapshot();
-            uint writtenSequence = 0;
+            uint? writtenSequence = null;
 
             try
             {
-                service.WriteUnicodeText(temporary);
-                writtenSequence = service.GetSequenceNumber();
+                writtenSequence = service.WriteUnicodeTextAndGetSequence(temporary);
                 Assert.Equal(temporary, service.ReadUnicodeText());
             }
             finally
             {
-                var restored = service.RestoreIfUnchanged(syntheticSnapshot, writtenSequence);
-                if (restored)
-                    ownedSequence = service.GetSequenceNumber();
-                Assert.True(restored);
+                ownedSequence = service.RestoreIfUnchangedAndGetSequence(syntheticSnapshot, writtenSequence);
+                Assert.NotNull(ownedSequence);
             }
 
             Assert.Equal(syntheticOriginal, service.ReadUnicodeText());
         }
         finally
         {
-            if (ownedSequence is { } sequence)
-                service.RestoreIfUnchanged(userSnapshot, sequence);
+            service.RestoreIfUnchangedAndGetSequence(userSnapshot, ownedSequence);
         }
     }
 
@@ -55,17 +50,14 @@ public sealed class OleClipboardServiceTests
 
         try
         {
-            service.WriteUnicodeText(temporary);
-            var writtenSequence = service.GetSequenceNumber();
+            var writtenSequence = service.WriteUnicodeTextAndGetSequence(temporary);
             ownedSequence = writtenSequence;
-            service.WriteUnicodeText(temporary + " external");
-            ownedSequence = service.GetSequenceNumber();
-            Assert.False(service.RestoreIfUnchanged(userSnapshot, writtenSequence));
+            ownedSequence = service.WriteUnicodeTextAndGetSequence(temporary + " external");
+            Assert.Null(service.RestoreIfUnchangedAndGetSequence(userSnapshot, writtenSequence));
         }
         finally
         {
-            if (ownedSequence is { } sequence)
-                service.RestoreIfUnchanged(userSnapshot, sequence);
+            service.RestoreIfUnchangedAndGetSequence(userSnapshot, ownedSequence);
         }
     }
 }

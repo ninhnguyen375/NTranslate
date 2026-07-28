@@ -20,23 +20,33 @@ public sealed class OleClipboardService : IClipboardService
         ? WpfClipboard.GetText(TextDataFormat.UnicodeText)
         : null);
 
-    public void WriteUnicodeText(string text)
+    public void WriteUnicodeText(string text) => WriteUnicodeTextAndGetSequence(text);
+
+    internal uint WriteUnicodeTextAndGetSequence(string text)
     {
         ArgumentNullException.ThrowIfNull(text);
-        StaClipboardThread.Invoke(() => WpfClipboard.SetText(text, TextDataFormat.UnicodeText));
+        return StaClipboardThread.Invoke(() =>
+        {
+            WpfClipboard.SetText(text, TextDataFormat.UnicodeText);
+            return GetClipboardSequenceNumber();
+        });
     }
 
-    public bool RestoreIfUnchanged(IClipboardSnapshot snapshot, uint copiedSequenceNumber) => StaClipboardThread.Invoke(() =>
-    {
-        if (!ClipboardRestorePolicy.ShouldRestore(GetClipboardSequenceNumber(), copiedSequenceNumber))
-            return false;
+    public bool RestoreIfUnchanged(IClipboardSnapshot snapshot, uint copiedSequenceNumber) =>
+        RestoreIfUnchangedAndGetSequence(snapshot, copiedSequenceNumber).HasValue;
 
-        var oleSnapshot = snapshot as OleClipboardSnapshot
-            ?? throw new ArgumentException("Snapshot must come from OleClipboardService.", nameof(snapshot));
-        SetClipboard(oleSnapshot.DataObject);
-        FlushClipboard();
-        return true;
-    });
+    internal uint? RestoreIfUnchangedAndGetSequence(IClipboardSnapshot snapshot, uint? ownedSequence) =>
+        StaClipboardThread.Invoke<uint?>(() =>
+        {
+            if (!ClipboardRestorePolicy.ShouldRestore(GetClipboardSequenceNumber(), ownedSequence))
+                return null;
+
+            var oleSnapshot = snapshot as OleClipboardSnapshot
+                ?? throw new ArgumentException("Snapshot must come from OleClipboardService.", nameof(snapshot));
+            SetClipboard(oleSnapshot.DataObject);
+            FlushClipboard();
+            return GetClipboardSequenceNumber();
+        });
 
     [DllImport("ole32.dll")]
     private static extern int OleGetClipboard([MarshalAs(UnmanagedType.Interface)] out object dataObject);
