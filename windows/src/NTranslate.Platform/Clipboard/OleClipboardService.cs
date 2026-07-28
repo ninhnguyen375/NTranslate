@@ -11,7 +11,8 @@ public sealed class OleClipboardService : IClipboardService
 
     public IClipboardSnapshot CaptureSnapshot() => StaClipboardThread.Invoke(() =>
     {
-        OleGetClipboard(out var dataObject).ThrowOnFailure();
+        object dataObject = null!;
+        ClipboardHResultRetry.Run(() => OleGetClipboard(out dataObject));
         return new OleClipboardSnapshot(GetClipboardSequenceNumber(), dataObject);
     });
 
@@ -46,16 +47,14 @@ public sealed class OleClipboardService : IClipboardService
     [DllImport("ole32.dll")]
     private static extern int OleFlushClipboard();
 
-    private static void SetClipboard(object dataObject) => IgnoreClipboardCloseFailure(() => OleSetClipboard(dataObject));
+    private static void SetClipboard(object dataObject) => ClipboardHResultRetry.Run(
+        () => IgnoreClipboardCloseFailure(OleSetClipboard(dataObject)));
 
-    private static void FlushClipboard() => IgnoreClipboardCloseFailure(OleFlushClipboard);
+    private static void FlushClipboard() => ClipboardHResultRetry.Run(
+        () => IgnoreClipboardCloseFailure(OleFlushClipboard()));
 
-    private static void IgnoreClipboardCloseFailure(Func<int> operation)
-    {
-        var hResult = operation();
-        if (hResult < 0 && hResult != unchecked((int)0x800401D4))
-            Marshal.ThrowExceptionForHR(hResult);
-    }
+    private static int IgnoreClipboardCloseFailure(int hResult) =>
+        hResult == unchecked((int)0x800401D4) ? 0 : hResult;
 
     [DllImport("user32.dll")]
     private static extern uint GetClipboardSequenceNumber();
@@ -91,11 +90,24 @@ internal static class StaClipboardThread
     }
 }
 
-internal static class HResultExtensions
+internal static class ClipboardHResultRetry
 {
-    public static void ThrowOnFailure(this int hResult)
+    private const int ClipboardCannotOpen = unchecked((int)0x800401D0);
+    private const int MaxAttempts = 3;
+    private static readonly TimeSpan RetryDelay = TimeSpan.FromMilliseconds(10);
+
+    public static void Run(Func<int> operation) => Run(operation, () => Thread.Sleep(RetryDelay));
+
+    internal static void Run(Func<int> operation, Action delay)
     {
-        if (hResult < 0)
-            Marshal.ThrowExceptionForHR(hResult);
+        for (var attempt = 1; ; attempt++)
+        {
+            var hResult = operation();
+            if (hResult >= 0)
+                return;
+            if (hResult != ClipboardCannotOpen || attempt == MaxAttempts)
+                Marshal.ThrowExceptionForHR(hResult);
+            delay();
+        }
     }
 }

@@ -10,3 +10,9 @@ config.json
 /dist/
 /.claude/worktrees/
 /.superpowers/
+
+# .NET / Windows app
+bin/
+obj/
+.vs/
+*.user
