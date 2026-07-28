@@ -29,6 +29,29 @@ public sealed class TranslationViewModelTests
     }
 
     [Fact]
+    public async Task AutoCopyFailure_PreservesResultAndAllowsManualRetry()
+    {
+        var clipboard = new FailOnceClipboardService();
+        var vm = CreateViewModel(
+            ScriptedHandler.Sync(_ => JsonResponse("translated")),
+            clipboard,
+            autoCopy: true);
+        vm.SourceText = "hello";
+
+        await vm.TranslateCommand.ExecuteAsync();
+
+        Assert.Equal("translated", vm.ResultText);
+        Assert.Equal(PopupState.Result, vm.State);
+        Assert.True(vm.CanCopy);
+        Assert.Contains("Clipboard", vm.StatusMessage, StringComparison.Ordinal);
+
+        await vm.CopyCommand.ExecuteAsync();
+
+        Assert.Equal("translated", clipboard.LastWritten);
+        Assert.Null(vm.StatusMessage);
+    }
+
+    [Fact]
     public void StartupGuidance_PersistsWhenCapturedSourceArrives()
     {
         var vm = CreateViewModel(ScriptedHandler.Sync(_ => JsonResponse("unused")), new FakeClipboardService());
@@ -386,6 +409,27 @@ public sealed class TranslationViewModelTests
         public IClipboardSnapshot CaptureSnapshot() => throw new NotSupportedException();
         public string? ReadUnicodeText() => null;
         public void WriteUnicodeText(string text) => throw new InvalidOperationException("clipboard busy");
+        public bool RestoreIfUnchanged(IClipboardSnapshot snapshot, uint copiedSequenceNumber) => false;
+    }
+
+    private sealed class FailOnceClipboardService : IClipboardService
+    {
+        private bool _failed;
+        public string? LastWritten { get; private set; }
+
+        public uint GetSequenceNumber() => 0;
+        public IClipboardSnapshot CaptureSnapshot() => throw new NotSupportedException();
+        public string? ReadUnicodeText() => null;
+        public void WriteUnicodeText(string text)
+        {
+            if (!_failed)
+            {
+                _failed = true;
+                throw new InvalidOperationException("clipboard busy");
+            }
+
+            LastWritten = text;
+        }
         public bool RestoreIfUnchanged(IClipboardSnapshot snapshot, uint copiedSequenceNumber) => false;
     }
 

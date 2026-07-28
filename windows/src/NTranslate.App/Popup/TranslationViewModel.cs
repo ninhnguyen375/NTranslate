@@ -186,7 +186,16 @@ public sealed class TranslationViewModel : INotifyPropertyChanged
             StatusMessage = null;
             State = PopupState.Result;
             if (_config.Ui.AutoCopy)
-                _clipboard.WriteUnicodeText(result);
+            {
+                try
+                {
+                    _clipboard.WriteUnicodeText(result);
+                }
+                catch
+                {
+                    StatusMessage = "Clipboard unavailable. Try Copy again.";
+                }
+            }
         }
         catch (OperationCanceledException)
         {

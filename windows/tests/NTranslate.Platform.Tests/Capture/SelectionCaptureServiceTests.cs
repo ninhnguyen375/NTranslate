@@ -37,7 +37,7 @@ public sealed class SelectionCaptureServiceTests
     }
 
     [Fact]
-    public async Task Simulated_copy_sequence_change_returns_copied_text_and_restores_snapshot()
+    public async Task Simulated_copy_sequence_change_returns_copied_text_without_unsafe_restore()
     {
         var clipboard = new FakeClipboard("original", 10);
         var copy = new FakeCopyCommand(() => clipboard.SetExternalText("  copied text  "));
@@ -46,8 +46,29 @@ public sealed class SelectionCaptureServiceTests
         var capture = await service.CaptureAsync(simulateCopy: true, CancellationToken.None);
 
         Assert.Equal(new SelectionCapture("copied text", SelectionSource.SimulatedCopy, null), capture);
-        Assert.Equal("original", clipboard.Text);
-        Assert.Equal(1, clipboard.RestoreCount);
+        Assert.Equal("  copied text  ", clipboard.Text);
+        Assert.Equal(0, clipboard.RestoreCount);
+    }
+
+    [Fact]
+    public async Task External_write_after_simulated_copy_is_never_restored_over()
+    {
+        var clipboard = new FakeClipboard("original", 10);
+        var copy = new FakeCopyCommand(() => clipboard.SetExternalText("copied"));
+        var service = CreateService(
+            new FakeUiaReader(null),
+            clipboard,
+            copy,
+            delay: (_, _) =>
+            {
+                clipboard.SetExternalText("external");
+                return Task.CompletedTask;
+            });
+
+        await service.CaptureAsync(simulateCopy: true, CancellationToken.None);
+
+        Assert.Equal("external", clipboard.Text);
+        Assert.Equal(0, clipboard.RestoreCount);
     }
 
     [Fact]
@@ -91,7 +112,7 @@ public sealed class SelectionCaptureServiceTests
     }
 
     [Fact]
-    public async Task Cancellation_after_copy_restores_clipboard_before_propagating()
+    public async Task Cancellation_after_copy_preserves_unproven_clipboard_before_propagating()
     {
         using var cancellation = new CancellationTokenSource();
         var clipboard = new FakeClipboard("original", 10);
@@ -104,12 +125,12 @@ public sealed class SelectionCaptureServiceTests
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(
             () => service.CaptureAsync(simulateCopy: true, cancellation.Token));
-        Assert.Equal("original", clipboard.Text);
-        Assert.Equal(1, clipboard.RestoreCount);
+        Assert.Equal("private selected text", clipboard.Text);
+        Assert.Equal(0, clipboard.RestoreCount);
     }
 
     [Fact]
-    public async Task Concurrent_simulated_captures_serialize_snapshot_through_restore()
+    public async Task Concurrent_simulated_captures_serialize_without_restore()
     {
         var clipboard = new FakeClipboard("original", 10);
         var firstDelayEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -140,8 +161,8 @@ public sealed class SelectionCaptureServiceTests
 
         var captures = await Task.WhenAll(first, second);
         Assert.Equal(new[] { "copy 1", "copy 2" }, captures.Select(capture => capture!.Text));
-        Assert.Equal("original", clipboard.Text);
-        Assert.Equal(2, clipboard.RestoreCount);
+        Assert.Equal("copy 2", clipboard.Text);
+        Assert.Equal(0, clipboard.RestoreCount);
     }
 
     [Fact]
@@ -177,7 +198,7 @@ public sealed class SelectionCaptureServiceTests
     }
 
     [Fact]
-    public async Task Concurrent_whitespace_copies_read_restored_clipboard_before_transaction_ends()
+    public async Task Concurrent_whitespace_copies_read_clipboard_before_transaction_ends()
     {
         var clipboard = new FakeClipboard(" \t ", 10);
         var firstDelayEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -205,7 +226,7 @@ public sealed class SelectionCaptureServiceTests
         var captures = await Task.WhenAll(first, second);
         Assert.All(captures, Assert.Null);
         Assert.Equal(0, clipboard.ReadsOutsideSnapshot);
-        Assert.Equal(2, clipboard.RestoreCount);
+        Assert.Equal(0, clipboard.RestoreCount);
     }
 
     [Fact]
@@ -239,7 +260,7 @@ public sealed class SelectionCaptureServiceTests
         var capture = await service.CaptureAsync(simulateCopy: true, CancellationToken.None);
 
         Assert.Equal("copied", capture!.Text);
-        Assert.Equal("original", clipboard.Text);
+        Assert.Equal("copied", clipboard.Text);
     }
 
     [Fact]

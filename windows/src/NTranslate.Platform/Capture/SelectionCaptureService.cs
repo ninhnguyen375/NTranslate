@@ -68,39 +68,23 @@ public sealed class SelectionCaptureService : ISelectionCaptureService
         {
             using var snapshot = _clipboard.CaptureSnapshot();
             var originalSequence = snapshot.SequenceNumber;
-            uint? copiedSequence = null;
             string? copiedText = null;
 
-            try
+            _copy.SendCopy();
+
+            var elapsed = TimeSpan.Zero;
+            while (elapsed < _copyTimeout)
             {
-                _copy.SendCopy();
-                copiedSequence = _clipboard.GetSequenceNumber();
-                if (copiedSequence == originalSequence)
-                    copiedSequence = null;
+                token.ThrowIfCancellationRequested();
+                var delay = _copyTimeout - elapsed < _pollInterval ? _copyTimeout - elapsed : _pollInterval;
+                await _delay(delay, token).ConfigureAwait(false);
+                elapsed += delay;
 
-                var elapsed = TimeSpan.Zero;
-                while (elapsed < _copyTimeout)
-                {
-                    token.ThrowIfCancellationRequested();
-                    var delay = _copyTimeout - elapsed < _pollInterval ? _copyTimeout - elapsed : _pollInterval;
-                    await _delay(delay, token).ConfigureAwait(false);
-                    elapsed += delay;
+                if (_clipboard.GetSequenceNumber() == originalSequence)
+                    continue;
 
-                    copiedSequence = _clipboard.GetSequenceNumber();
-                    if (copiedSequence == originalSequence)
-                    {
-                        copiedSequence = null;
-                        continue;
-                    }
-
-                    copiedText = Normalize(_clipboard.ReadUnicodeText());
-                    break;
-                }
-            }
-            finally
-            {
-                if (copiedSequence is uint sequence)
-                    _clipboard.RestoreIfUnchanged(snapshot, sequence);
+                copiedText = Normalize(_clipboard.ReadUnicodeText());
+                break;
             }
 
             if (copiedText is not null)
