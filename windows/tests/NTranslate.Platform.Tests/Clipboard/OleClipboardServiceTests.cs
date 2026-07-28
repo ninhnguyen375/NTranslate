@@ -12,32 +12,30 @@ public sealed class OleClipboardServiceTests
         const string temporary = "NTranslate clipboard integration test";
         var service = new OleClipboardService();
         using var userSnapshot = service.CaptureSnapshot();
-        uint cleanupSequence = 0;
+        uint? ownedSequence = null;
 
         try
         {
-            service.WriteUnicodeText(syntheticOriginal);
-            cleanupSequence = service.GetSequenceNumber();
+            ownedSequence = service.WriteUnicodeTextAndGetSequence(syntheticOriginal);
             using var syntheticSnapshot = service.CaptureSnapshot();
-            uint writtenSequence = 0;
+            uint? writtenSequence = null;
 
             try
             {
-                service.WriteUnicodeText(temporary);
-                writtenSequence = cleanupSequence = service.GetSequenceNumber();
+                writtenSequence = service.WriteUnicodeTextAndGetSequence(temporary);
                 Assert.Equal(temporary, service.ReadUnicodeText());
             }
             finally
             {
-                Assert.True(service.RestoreIfUnchanged(syntheticSnapshot, writtenSequence));
-                cleanupSequence = service.GetSequenceNumber();
+                ownedSequence = service.RestoreIfUnchangedAndGetSequence(syntheticSnapshot, writtenSequence);
+                Assert.NotNull(ownedSequence);
             }
 
             Assert.Equal(syntheticOriginal, service.ReadUnicodeText());
         }
         finally
         {
-            service.RestoreIfUnchanged(userSnapshot, cleanupSequence);
+            service.RestoreIfUnchangedAndGetSequence(userSnapshot, ownedSequence);
         }
     }
 
@@ -48,20 +46,18 @@ public sealed class OleClipboardServiceTests
         var service = new OleClipboardService();
         using var userSnapshot = service.CaptureSnapshot();
         const string temporary = "NTranslate changed sequence test";
-        uint writtenSequence = 0;
-        uint cleanupSequence = 0;
+        uint? ownedSequence = null;
 
         try
         {
-            service.WriteUnicodeText(temporary);
-            writtenSequence = cleanupSequence = service.GetSequenceNumber();
-            service.WriteUnicodeText(temporary + " external");
-            cleanupSequence = service.GetSequenceNumber();
-            Assert.False(service.RestoreIfUnchanged(userSnapshot, writtenSequence));
+            var writtenSequence = service.WriteUnicodeTextAndGetSequence(temporary);
+            ownedSequence = writtenSequence;
+            ownedSequence = service.WriteUnicodeTextAndGetSequence(temporary + " external");
+            Assert.Null(service.RestoreIfUnchangedAndGetSequence(userSnapshot, writtenSequence));
         }
         finally
         {
-            service.RestoreIfUnchanged(userSnapshot, cleanupSequence);
+            service.RestoreIfUnchangedAndGetSequence(userSnapshot, ownedSequence);
         }
     }
 }
