@@ -14,5 +14,6 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\NTranslate.App\NTranslate.App.csproj" />
+    <None Include="..\..\src\NTranslate.App\Popup\TranslationWindow.xaml" Link="TranslationWindow.xaml" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

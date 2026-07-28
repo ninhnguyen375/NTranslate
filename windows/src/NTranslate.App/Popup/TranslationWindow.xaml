@@ -1,0 +1,43 @@
+<Window
+    x:Class="NTranslate.App.Popup.TranslationWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="NTranslate">
+    <Grid x:Name="RootGrid" Padding="16" RowSpacing="12" AutomationProperties.Name="Translation popup">
+        <Grid.KeyboardAccelerators>
+            <KeyboardAccelerator Key="Escape" Modifiers="None" Invoked="CloseAccelerator_Invoked" />
+            <KeyboardAccelerator Key="Enter" Modifiers="Control" Invoked="TranslateAccelerator_Invoked" />
+            <KeyboardAccelerator Key="C" Modifiers="Control,Shift" Invoked="CopyAccelerator_Invoked" />
+        </Grid.KeyboardAccelerators>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <Grid ColumnSpacing="8">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+            <TextBlock Text="NTranslate" Style="{StaticResource TitleTextBlockStyle}" />
+            <ToggleButton x:Name="PinButton" Grid.Column="1" Content="Pin" AutomationProperties.Name="Pin popup" Click="PinButton_Click" />
+            <Button x:Name="CloseButton" Grid.Column="2" Content="Close" AutomationProperties.Name="Close popup" Click="CloseButton_Click" />
+        </Grid>
+
+        <Grid Grid.Row="1" ColumnSpacing="8">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+            <ComboBox x:Name="SourceLanguageBox" ItemsSource="{x:Bind ViewModel.Languages}" SelectedItem="{x:Bind ViewModel.SourceLang, Mode=TwoWay}" AutomationProperties.Name="Source language" />
+            <Button x:Name="SwapButton" Grid.Column="1" Content="Swap" AutomationProperties.Name="Swap languages" Click="SwapButton_Click" />
+            <ComboBox x:Name="TargetLanguageBox" Grid.Column="2" ItemsSource="{x:Bind ViewModel.TargetLanguages}" SelectedItem="{x:Bind ViewModel.TargetLang, Mode=TwoWay}" AutomationProperties.Name="Target language" />
+        </Grid>
+
+        <TextBox x:Name="SourceTextBox" Grid.Row="2" Text="{x:Bind ViewModel.SourceText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" TextWrapping="Wrap" AutomationProperties.Name="Source text" />
+        <TextBox x:Name="ResultTextBox" Grid.Row="3" Text="{x:Bind ViewModel.ResultText, Mode=OneWay}" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" AutomationProperties.Name="Translation result" AutomationProperties.LiveSetting="Polite" />
+
+        <StackPanel Grid.Row="4" Orientation="Horizontal" Spacing="8">
+            <Button x:Name="TranslateButton" Content="Translate" AutomationProperties.Name="Translate" Command="{x:Bind ViewModel.TranslateCommand}" />
+            <Button x:Name="CopyButton" Content="Copy" AutomationProperties.Name="Copy result" Command="{x:Bind ViewModel.CopyCommand}" />
+            <TextBlock Text="{x:Bind ViewModel.StatusMessage, Mode=OneWay}" VerticalAlignment="Center" AutomationProperties.Name="Status" AutomationProperties.LiveSetting="Polite" />
+        </StackPanel>
+    </Grid>
+</Window>

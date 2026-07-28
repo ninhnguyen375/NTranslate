@@ -105,9 +105,24 @@ public sealed class TranslationViewModel : INotifyPropertyChanged
     /// <summary>Copy is only ever actionable for an accepted, non-stale, successful translation.</summary>
     public bool CanCopy => State == PopupState.Result && ResultText.Length > 0;
 
+    public IReadOnlyList<string> Languages => _config.Languages;
+
+    public IReadOnlyList<string> TargetLanguages => _config.TargetLanguages;
+
     public IAsyncCommand TranslateCommand { get; }
 
     public AsyncRelayCommand CopyCommand { get; }
+
+    public void SwapLanguages()
+    {
+        (SourceLang, TargetLang) = (TargetLang, SourceLang);
+    }
+
+    public void Cancel()
+    {
+        _coordinator.Invalidate();
+        _inFlight?.Cancel();
+    }
 
     /// <summary>
     /// Internal seam for tests: runs the translate flow without the command's

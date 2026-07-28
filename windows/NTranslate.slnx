@@ -1,4 +1,8 @@
 <Solution>
+  <Configurations>
+    <Platform Name="Any CPU" />
+    <Platform Name="x64" />
+  </Configurations>
   <Folder Name="/src/">
     <Project Path="src/NTranslate.Core/NTranslate.Core.csproj" />
     <Project Path="src/NTranslate.Platform/NTranslate.Platform.csproj" />

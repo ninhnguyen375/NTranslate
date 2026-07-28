@@ -31,6 +31,18 @@ public sealed class GlobalHotkeyTests
     }
 
     [Fact]
+    public void Register_failure_returns_native_error_without_throwing()
+    {
+        var owner = new FakeMessageWindow { RegisterResult = false, LastError = 1409 };
+        using var hotkey = new GlobalHotkey(owner);
+
+        var result = hotkey.Register(new("D", false, false, true, false));
+
+        Assert.False(result.IsRegistered);
+        Assert.Contains("1409", result.Error);
+    }
+
+    [Fact]
     public void WmHotkey_filters_id_and_contains_subscriber_errors()
     {
         var owner = new FakeMessageWindow();

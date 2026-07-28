@@ -3,33 +3,33 @@ using Microsoft.Windows.AppLifecycle;
 
 namespace NTranslate.App;
 
-/// <summary>
-/// Composition root. Task 7 only proves the single-instance skeleton: a hidden window
-/// (never activated, so no visible normal window on startup) and a seam for dispatching
-/// redirected activations to a popup entry point. Task 9 wires the real popup/tray/hotkey
-/// composition into <see cref="OnActivationDispatched"/>.
-/// </summary>
+/// <summary>Tray-only WinUI composition root.</summary>
 public partial class App : Application
 {
-    private Window? _window;
+    private AppComposition? _composition;
+    private readonly Queue<AppActivationArguments> _pendingActivations = [];
 
     public App()
     {
         InitializeComponent();
+        AppInstance.GetCurrent().Activated += (_, activatedArgs) => OnActivationDispatched(activatedArgs);
     }
 
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
-        _window = new Window { Title = "NTranslate" };
-        AppInstance.GetCurrent().Activated += (_, activatedArgs) => OnActivationDispatched(activatedArgs);
+        _composition = new AppComposition(Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread());
+        _composition.Start();
+        while (_pendingActivations.TryDequeue(out _))
+            _composition.ShowManual();
     }
 
-    /// <summary>
-    /// Stub seam for redirected activation reaching the primary instance. Deliberately a
-    /// no-op until Task 9 composes the popup coordinator; must never log activation args
-    /// (they may carry launch context derived from user selection/clipboard).
-    /// </summary>
     private void OnActivationDispatched(AppActivationArguments activatedArgs)
     {
+        if (_composition is null)
+        {
+            _pendingActivations.Enqueue(activatedArgs);
+            return;
+        }
+        _composition.ShowManual();
     }
 }
