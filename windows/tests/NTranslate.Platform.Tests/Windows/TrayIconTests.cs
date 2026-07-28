@@ -26,6 +26,27 @@ public sealed class TrayIconTests
     public void Resolve_callback_maps_activation_messages(uint message)
         => Assert.Equal(TrayCallbackAction.Open, TrayCallbackMessages.Resolve(message));
 
+    [Theory]
+    [InlineData(0x0400)] // NIN_SELECT
+    [InlineData(0x0401)] // NIN_KEYSELECT
+    public void Modern_activation_suppresses_double_click_fallback(uint modernMessage)
+    {
+        var gate = new TrayActivationGate();
+
+        Assert.True(gate.ShouldRaise(modernMessage));
+        Assert.False(gate.ShouldRaise(0x0203));
+    }
+
+    [Fact]
+    public void Double_click_then_modern_activation_raises_once_and_resets()
+    {
+        var gate = new TrayActivationGate();
+
+        Assert.True(gate.ShouldRaise(0x0203));
+        Assert.False(gate.ShouldRaise(0x0400));
+        Assert.True(gate.ShouldRaise(0x0400));
+    }
+
     [Fact]
     public void Show_add_and_dispose_delete_icon_without_throwing()
     {

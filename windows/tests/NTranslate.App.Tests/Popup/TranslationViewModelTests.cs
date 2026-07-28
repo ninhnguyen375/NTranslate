@@ -155,6 +155,68 @@ public sealed class TranslationViewModelTests
     }
 
     [Fact]
+    public async Task TranslationWaitsForQueuedUiCompletion()
+    {
+        var queued = new TaskCompletionSource<Action>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var completed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var client = new OpenAiCompatibleClient(new HttpClient(ScriptedHandler.Sync(_ => JsonResponse("translated"))));
+        var vm = new TranslationViewModel(
+            Config,
+            client,
+            new FakeClipboardService(),
+            _ => Task.FromResult("test-api-key"),
+            action =>
+            {
+                queued.SetResult(action);
+                return completed.Task;
+            });
+        vm.SourceText = "hello";
+
+        var translation = vm.TranslateCommand.ExecuteAsync();
+        var action = await queued.Task.WaitAsync(TimeSpan.FromSeconds(1));
+
+        Assert.False(translation.IsCompleted);
+        Assert.Equal(PopupState.Loading, vm.State);
+
+        action();
+        completed.SetResult();
+        await translation;
+
+        Assert.Equal("translated", vm.ResultText);
+        Assert.Equal(PopupState.Result, vm.State);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task RejectedUiDispatchCompletesWithoutRetryingOrMutatingOffThread(bool apiFails)
+    {
+        var dispatches = 0;
+        var response = apiFails
+            ? new HttpResponseMessage(HttpStatusCode.InternalServerError) { Content = new StringContent("boom") }
+            : JsonResponse("translated");
+        var client = new OpenAiCompatibleClient(new HttpClient(ScriptedHandler.Sync(_ => response)));
+        var vm = new TranslationViewModel(
+            Config,
+            client,
+            new FakeClipboardService(),
+            _ => Task.FromResult("test-api-key"),
+            _ =>
+            {
+                dispatches++;
+                throw new UiDispatchUnavailableException();
+            });
+        vm.SourceText = "hello";
+
+        await vm.TranslateCommand.ExecuteAsync();
+
+        Assert.Equal(1, dispatches);
+        Assert.Equal(PopupState.Loading, vm.State);
+        Assert.Equal(string.Empty, vm.ResultText);
+        Assert.Null(vm.StatusMessage);
+    }
+
+    [Fact]
     public async Task ChangingSourceTextMidFlightCancelsAndInvalidatesLateCompletion()
     {
         var gate = new TaskCompletionSource();

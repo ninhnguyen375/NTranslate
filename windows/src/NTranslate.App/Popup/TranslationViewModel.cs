@@ -17,6 +17,11 @@ public enum PopupState
     Error
 }
 
+internal sealed class UiDispatchUnavailableException : InvalidOperationException
+{
+    public UiDispatchUnavailableException() : base("UI dispatcher is unavailable.") { }
+}
+
 /// <summary>
 /// Text-translation popup state. Owns request cancellation/generation gating
 /// so only the newest, non-stale completion can ever mutate <see cref="ResultText"/>,
@@ -207,16 +212,29 @@ public sealed class TranslationViewModel : INotifyPropertyChanged
         {
             // Cancelled by a newer request or an invalidating change: not a visible error.
         }
+        catch (UiDispatchUnavailableException)
+        {
+            // Dispatcher shutdown is terminal. Do not retry it or mutate UI state off-thread.
+            _coordinator.Invalidate();
+        }
         catch (Exception ex)
         {
-            await _dispatchUi(() =>
+            try
             {
-                if (!_coordinator.IsCurrent(generation))
-                    return; // stale failure: discard, never surface, never touch SourceText.
+                await _dispatchUi(() =>
+                {
+                    if (!_coordinator.IsCurrent(generation))
+                        return; // stale failure: discard, never surface, never touch SourceText.
 
-                StatusMessage = ex.Message;
-                State = PopupState.Error;
-            }).ConfigureAwait(false);
+                    StatusMessage = ex.Message;
+                    State = PopupState.Error;
+                }).ConfigureAwait(false);
+            }
+            catch (UiDispatchUnavailableException)
+            {
+                // Dispatcher shutdown is terminal. Do not mutate UI state off-thread.
+                _coordinator.Invalidate();
+            }
         }
         finally
         {

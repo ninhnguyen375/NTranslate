@@ -47,7 +47,7 @@ internal sealed class AppComposition : IDisposable
                         try { action(); completion.SetResult(); }
                         catch (Exception error) { completion.SetException(error); }
                     }))
-                    completion.SetException(new InvalidOperationException("UI dispatcher is unavailable."));
+                    completion.SetException(new UiDispatchUnavailableException());
                 return completion.Task;
             });
         _viewModel.SetStartupGuidance(startup.Guidance);

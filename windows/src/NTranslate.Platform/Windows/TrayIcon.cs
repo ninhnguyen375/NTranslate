@@ -21,6 +21,35 @@ internal static class TrayCallbackMessages
     };
 }
 
+internal sealed class TrayActivationGate
+{
+    private const uint NinSelect = 0x0400;
+    private const uint NinKeySelect = 0x0401;
+    private const uint WmLButtonDblClk = 0x0203;
+    private bool _modernCallbacksObserved;
+    private bool _legacyFallbackRaised;
+
+    internal bool ShouldRaise(uint message)
+    {
+        if (message is NinSelect or NinKeySelect)
+        {
+            _modernCallbacksObserved = true;
+            if (_legacyFallbackRaised)
+            {
+                _legacyFallbackRaised = false;
+                return false;
+            }
+            return true;
+        }
+
+        if (message != WmLButtonDblClk || _modernCallbacksObserved)
+            return false;
+
+        _legacyFallbackRaised = true;
+        return true;
+    }
+}
+
 internal static class TrayMenuCommands
 {
     internal const int OpenId = 1001;
@@ -54,6 +83,7 @@ public sealed class TrayIcon : ITrayIcon
     private const uint TpmRightButton = 2, TpmReturnCmd = 0x0100;
 
     private readonly Thread _thread;
+    private readonly TrayActivationGate _activationGate = new();
     private nint _hwnd;
     private uint _threadId;
     private bool _added;
@@ -204,9 +234,10 @@ public sealed class TrayIcon : ITrayIcon
 
     private void HandleCallback(nint lParam)
     {
-        switch (TrayCallbackMessages.Resolve((uint)(lParam.ToInt64() & 0xFFFF)))
+        var message = (uint)(lParam.ToInt64() & 0xFFFF);
+        switch (TrayCallbackMessages.Resolve(message))
         {
-            case TrayCallbackAction.Open: Raise(OpenTranslatorRequested); break;
+            case TrayCallbackAction.Open when _activationGate.ShouldRaise(message): Raise(OpenTranslatorRequested); break;
             case TrayCallbackAction.ContextMenu: ShowContextMenu(); break;
         }
     }
