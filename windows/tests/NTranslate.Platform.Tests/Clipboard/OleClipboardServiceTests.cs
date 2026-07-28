@@ -12,10 +12,12 @@ public sealed class OleClipboardServiceTests
         const string temporary = "NTranslate clipboard integration test";
         var service = new OleClipboardService();
         using var userSnapshot = service.CaptureSnapshot();
+        uint? ownedSequence = null;
 
         try
         {
             service.WriteUnicodeText(syntheticOriginal);
+            ownedSequence = service.GetSequenceNumber();
             using var syntheticSnapshot = service.CaptureSnapshot();
             uint writtenSequence = 0;
 
@@ -27,14 +29,18 @@ public sealed class OleClipboardServiceTests
             }
             finally
             {
-                Assert.True(service.RestoreIfUnchanged(syntheticSnapshot, writtenSequence));
+                var restored = service.RestoreIfUnchanged(syntheticSnapshot, writtenSequence);
+                if (restored)
+                    ownedSequence = service.GetSequenceNumber();
+                Assert.True(restored);
             }
 
             Assert.Equal(syntheticOriginal, service.ReadUnicodeText());
         }
         finally
         {
-            service.RestoreIfUnchanged(userSnapshot, service.GetSequenceNumber());
+            if (ownedSequence is { } sequence)
+                service.RestoreIfUnchanged(userSnapshot, sequence);
         }
     }
 
@@ -45,18 +51,21 @@ public sealed class OleClipboardServiceTests
         var service = new OleClipboardService();
         using var userSnapshot = service.CaptureSnapshot();
         const string temporary = "NTranslate changed sequence test";
-        uint writtenSequence = 0;
+        uint? ownedSequence = null;
 
         try
         {
             service.WriteUnicodeText(temporary);
-            writtenSequence = service.GetSequenceNumber();
+            var writtenSequence = service.GetSequenceNumber();
+            ownedSequence = writtenSequence;
             service.WriteUnicodeText(temporary + " external");
+            ownedSequence = service.GetSequenceNumber();
             Assert.False(service.RestoreIfUnchanged(userSnapshot, writtenSequence));
         }
         finally
         {
-            service.RestoreIfUnchanged(userSnapshot, service.GetSequenceNumber());
+            if (ownedSequence is { } sequence)
+                service.RestoreIfUnchanged(userSnapshot, sequence);
         }
     }
 }
