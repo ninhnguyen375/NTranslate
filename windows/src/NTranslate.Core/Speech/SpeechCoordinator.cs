@@ -179,7 +179,11 @@ public sealed class SpeechCoordinator : IAsyncDisposable
         }
         catch (OperationCanceledException)
         {
-            lock (sync) state.Invalidate(identity.CacheKey.Channel);
+            lock (sync)
+            {
+                if (state.IsLoading(identity, generation))
+                    state.Invalidate(identity.CacheKey.Channel);
+            }
             throw;
         }
         catch

@@ -89,6 +89,38 @@ public sealed class SpeechCoordinatorTests
     }
 
     [Fact]
+    public async Task CanceledRequestDoesNotInvalidateNewerRequestOnSameChannel()
+    {
+        await using var fixture = new Fixture();
+        var firstStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var secondAudio = new TaskCompletionSource<byte[]>(TaskCreationOptions.RunContinuationsAsynchronously);
+        fixture.Api.Handler = async (key, token) =>
+        {
+            if (key.Text == "first")
+            {
+                firstStarted.SetResult();
+                await Task.Delay(Timeout.Infinite, token);
+            }
+            return await secondAudio.Task.WaitAsync(token);
+        };
+        var first = new SpeechIdentity(new(SpeechChannel.Source, "first", "model"), null);
+        var second = new SpeechIdentity(new(SpeechChannel.Source, "second", "model"), null);
+
+        var firstTask = fixture.Coordinator.TogglePlaybackAsync(first, 1, CancellationToken.None);
+        await firstStarted.Task;
+        var secondTask = fixture.Coordinator.TogglePlaybackAsync(second, 1, CancellationToken.None);
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => firstTask);
+        secondAudio.SetResult(ValidAudio);
+        await secondTask;
+        fixture.Player.RaiseEnded();
+        await fixture.Coordinator.TogglePlaybackAsync(second, 1, CancellationToken.None);
+
+        Assert.Equal(2, fixture.Api.CallCount);
+        Assert.Equal(1, fixture.Player.ValidateCount);
+        Assert.Equal(2, fixture.Player.PlayCount);
+    }
+
+    [Fact]
     public async Task PrefetchCachesWithoutPlaying()
     {
         await using var fixture = new Fixture();
