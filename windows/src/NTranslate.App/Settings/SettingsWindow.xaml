@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Window
+    x:Class="NTranslate.App.Settings.SettingsWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="Settings">
+    <Grid Padding="24" RowSpacing="12">
+        <Grid.RowDefinitions><RowDefinition Height="*" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+        <NavigationView Grid.Row="0" IsBackButtonVisible="Collapsed" IsSettingsVisible="False" PaneDisplayMode="Left">
+            <NavigationView.MenuItems>
+                <NavigationViewItem Content="General" Tag="General" />
+                <NavigationViewItem Content="Prompts" Tag="Prompts" />
+                <NavigationViewItem Content="Languages" Tag="Languages" />
+                <NavigationViewItem Content="Advanced" Tag="Advanced" />
+            </NavigationView.MenuItems>
+            <ScrollViewer><StackPanel Spacing="10">
+                <PasswordBox Header="API key" AutomationProperties.Name="API key" />
+                <TextBox Header="API base URL" /><TextBox Header="Speech API URL" /><TextBox Header="Model" />
+                <TextBox Header="System prompt" AcceptsReturn="True" /><TextBox Header="Learn prompt" AcceptsReturn="True" />
+                <TextBox Header="Sentence learn prompt" AcceptsReturn="True" /><TextBox Header="Grammar prompt" AcceptsReturn="True" />
+                <TextBox Header="Source language" /><TextBox Header="Target language" /><TextBox Header="Native language" />
+                <TextBox Header="Languages" /><TextBox Header="Target languages" /><NumberBox Header="Maximum translation length" />
+                <TextBox Header="Speech source model" /><TextBox Header="Vietnamese speech source model" />
+                <TextBox Header="Chinese speech source model" /><TextBox Header="Speech target model" /><NumberBox Header="Speech rate" />
+                <TextBox Header="History directory" /><Button Content="Browse" AutomationProperties.Name="Browse history directory" />
+                <TextBox Header="Hotkey" /><NumberBox Header="Window width" /><NumberBox Header="Window height" />
+                <CheckBox Content="Auto-copy" /><CheckBox Content="Simulate copy" /><CheckBox Content="Auto-prefetch speech" />
+                <CheckBox Content="Start with Windows" />
+            </StackPanel></ScrollViewer>
+        </NavigationView>
+        <InfoBar Grid.Row="1" Severity="Error" IsClosable="False" />
+        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+            <Button Content="Revert" AutomationProperties.Name="Revert" />
+            <Button Content="Cancel" AutomationProperties.Name="Cancel" />
+            <Button Content="Save" AutomationProperties.Name="Save settings" Style="{StaticResource AccentButtonStyle}" />
+        </StackPanel>
+    </Grid>
+</Window>

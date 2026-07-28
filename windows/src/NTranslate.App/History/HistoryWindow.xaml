@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Window
+    x:Class="NTranslate.App.History.HistoryWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:history="using:NTranslate.App.History"
+    Title="Translation history">
+    <Grid Padding="24" RowSpacing="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+        <TextBox Grid.Row="0" PlaceholderText="Search history" AutomationProperties.Name="Search history" />
+        <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="12">
+            <RadioButton Content="All history" IsChecked="True" AutomationProperties.Name="All history" />
+            <RadioButton Content="Saved" AutomationProperties.Name="Saved" />
+            <ComboBox Header="Time range" AutomationProperties.Name="Time range" SelectedIndex="0">
+                <x:String>All</x:String>
+                <x:String>Today</x:String>
+                <x:String>Last 24 hours</x:String>
+                <x:String>Week</x:String>
+                <x:String>Month</x:String>
+            </ComboBox>
+            <Button Content="Delete visible" AutomationProperties.Name="Delete visible" />
+        </StackPanel>
+        <InfoBar Grid.Row="2" IsOpen="False" Severity="Error" IsClosable="False" />
+        <ListView Grid.Row="3" SelectionMode="Single" IsItemClickEnabled="True" AutomationProperties.Name="Translation history">
+            <ListView.KeyboardAccelerators>
+                <KeyboardAccelerator Key="Enter" />
+            </ListView.KeyboardAccelerators>
+            <ListView.ItemTemplate>
+                <DataTemplate x:DataType="history:HistoryItemViewModel">
+                    <Grid Padding="8" ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock Text="{x:Bind SourceText}" TextWrapping="Wrap" />
+                            <TextBlock Text="{x:Bind ResultText}" TextWrapping="Wrap" />
+                            <TextBlock Text="{x:Bind TimestampText}" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal">
+                            <Button AutomationProperties.Name="Play source audio" ToolTipService.ToolTip="Play source audio" />
+                            <Button AutomationProperties.Name="Play result audio" ToolTipService.ToolTip="Play result audio" />
+                            <Button AutomationProperties.Name="Toggle saved" ToolTipService.ToolTip="Toggle saved" />
+                            <Button AutomationProperties.Name="Delete translation" ToolTipService.ToolTip="Delete translation" />
+                        </StackPanel>
+                    </Grid>
+                </DataTemplate>
+            </ListView.ItemTemplate>
+        </ListView>
+    </Grid>
+</Window>
