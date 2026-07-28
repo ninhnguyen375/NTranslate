@@ -18,8 +18,10 @@ public interface ILogDirectoryLauncher
 public sealed class RecoveryCoordinator(
     ICrashLogService crashLogs,
     IRecoveryNotice notice,
-    ILogDirectoryLauncher logsLauncher)
+    ILogDirectoryLauncher logsLauncher,
+    Func<Func<Task<RecoveryNoticeChoice>>, Task<RecoveryNoticeChoice>>? dispatchNotice = null)
 {
+    private readonly Func<Func<Task<RecoveryNoticeChoice>>, Task<RecoveryNoticeChoice>> _dispatchNotice = dispatchNotice ?? (show => show());
     private readonly SemaphoreSlim _gate = new(1, 1);
     private bool _checked;
 
@@ -32,7 +34,7 @@ public sealed class RecoveryCoordinator(
             _checked = true;
             var summary = await crashLogs.GetNewestUnacknowledgedAsync(token).ConfigureAwait(false);
             if (summary is null) return;
-            var choice = await notice.ShowAsync(summary, token).ConfigureAwait(false);
+            var choice = await _dispatchNotice(() => notice.ShowAsync(summary, token)).ConfigureAwait(false);
             if (choice == RecoveryNoticeChoice.OpenLogs)
                 await logsLauncher.OpenAsync(crashLogs.LogsDirectory, token).ConfigureAwait(false);
             await crashLogs.AcknowledgeAsync(summary.FileName, token).ConfigureAwait(false);

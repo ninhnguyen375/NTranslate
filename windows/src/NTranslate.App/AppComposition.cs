@@ -151,7 +151,11 @@ internal sealed class AppComposition : IDisposable
             new MsixPackageVerifier(),
             info => Process.Start(info));
         _manualUpdates = new ManualUpdateFlow(_updates, new UpdateDialog(() => ContentRoot));
-        _recovery = new RecoveryCoordinator(_historyRuntime, new RecoveryNotice(() => ContentRoot), new ShellLogDirectoryLauncher());
+        _recovery = new RecoveryCoordinator(
+            _historyRuntime,
+            new RecoveryNotice(() => ContentRoot),
+            new ShellLogDirectoryLauncher(),
+            DispatchRecoveryNoticeAsync);
         var winUiExceptions = new WinUiUnhandledExceptionSource(Application.Current);
         var appDomainExceptions = new AppDomainUnhandledExceptionSource();
         var taskExceptions = new TaskSchedulerUnobservedExceptionSource();
@@ -237,6 +241,17 @@ internal sealed class AppComposition : IDisposable
         token,
         TaskContinuationOptions.ExecuteSynchronously,
         TaskScheduler.Default);
+
+    private Task<RecoveryNoticeChoice> DispatchRecoveryNoticeAsync(Func<Task<RecoveryNoticeChoice>> show)
+    {
+        var completion = new TaskCompletionSource<RecoveryNoticeChoice>(TaskCreationOptions.RunContinuationsAsynchronously);
+        if (!_dispatcher.TryEnqueue(async () =>
+            {
+                try { completion.SetResult(await show().ConfigureAwait(true)); }
+                catch (Exception error) { completion.SetException(error); }
+            })) completion.SetException(new UiDispatchUnavailableException());
+        return completion.Task;
+    }
 
     private Task DispatchAsync(Action action)
     {

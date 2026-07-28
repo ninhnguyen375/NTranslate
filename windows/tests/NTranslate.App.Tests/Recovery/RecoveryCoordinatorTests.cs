@@ -24,6 +24,45 @@ public sealed class RecoveryCoordinatorTests
     }
 
     [Fact]
+    public async Task Dispatches_notice_before_acknowledging()
+    {
+        var log = new CrashLogSummary("crash-new.json", DateTimeOffset.UtcNow, "System.Exception", "failure", null);
+        var service = new FakeCrashLogService(log);
+        var notice = new FakeNotice(RecoveryNoticeChoice.Dismiss);
+        var dispatched = false;
+        var coordinator = new RecoveryCoordinator(
+            service,
+            notice,
+            new FakeLauncher(),
+            async show =>
+            {
+                dispatched = true;
+                return await show();
+            });
+
+        await coordinator.ShowPendingAsync(CancellationToken.None);
+
+        Assert.True(dispatched);
+        Assert.Equal(log.FileName, service.AcknowledgedFileName);
+    }
+
+    [Fact]
+    public async Task Notice_failure_is_observed_and_not_acknowledged()
+    {
+        var log = new CrashLogSummary("crash-new.json", DateTimeOffset.UtcNow, "System.Exception", "failure", null);
+        var service = new FakeCrashLogService(log);
+        var coordinator = new RecoveryCoordinator(
+            service,
+            new ThrowingNotice(),
+            new FakeLauncher(),
+            show => show());
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => coordinator.ShowPendingAsync(CancellationToken.None));
+
+        Assert.Null(service.AcknowledgedFileName);
+    }
+
+    [Fact]
     public async Task Registers_all_exception_sources_and_marks_task_observed()
     {
         var service = new FakeCrashLogService(null);
@@ -69,6 +108,12 @@ public sealed class RecoveryCoordinatorTests
             ShowCount++;
             return Task.FromResult(choice);
         }
+    }
+
+    private sealed class ThrowingNotice : IRecoveryNotice
+    {
+        public Task<RecoveryNoticeChoice> ShowAsync(CrashLogSummary summary, CancellationToken token) =>
+            Task.FromException<RecoveryNoticeChoice>(new InvalidOperationException("dialog failed"));
     }
 
     private sealed class FakeLauncher : ILogDirectoryLauncher
