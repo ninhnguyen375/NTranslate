@@ -18,4 +18,7 @@
     <ProjectReference Include="..\NTranslate.Platform\NTranslate.Platform.csproj" />
     <ProjectReference Include="..\NTranslate.Core\NTranslate.Core.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="NTranslate.App.Tests" />
+  </ItemGroup>
 </Project>
