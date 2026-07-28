@@ -59,7 +59,7 @@ internal sealed class UiDispatchUnavailableException : InvalidOperationException
 /// </summary>
 public sealed class TranslationViewModel : INotifyPropertyChanged
 {
-    private readonly AppConfig _config;
+    private AppConfig _config;
     private readonly OpenAiCompatibleClient _client;
     private readonly IClipboardService _clipboard;
     private readonly Func<CancellationToken, Task<string>> _resolveApiKey;
@@ -218,6 +218,17 @@ public sealed class TranslationViewModel : INotifyPropertyChanged
     }
 
     internal void SetStartupGuidance(string? guidance) => PersistentGuidance = guidance;
+
+    internal void ReloadConfig(AppConfig config)
+    {
+        ArgumentNullException.ThrowIfNull(config);
+        InvalidateAll();
+        _config = config;
+        SourceLang = config.SourceLang;
+        TargetLang = config.TargetLang;
+        OnPropertyChanged(nameof(Languages));
+        OnPropertyChanged(nameof(TargetLanguages));
+    }
 
     public void Cancel() => InvalidateAll();
 

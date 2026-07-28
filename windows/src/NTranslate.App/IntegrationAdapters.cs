@@ -25,10 +25,10 @@ internal sealed class JsonConfigStore(string path) : IConfigStore
     }
 }
 
-internal sealed class OpenAiSpeechApi(OpenAiCompatibleClient client, AppConfig config, Func<CancellationToken, Task<string>> apiKey) : ISpeechSynthesisApi
+internal sealed class OpenAiSpeechApi(OpenAiCompatibleClient client, Func<AppConfig> config, Func<CancellationToken, Task<string>> apiKey) : ISpeechSynthesisApi
 {
     public async Task<byte[]> SynthesizeAsync(SpeechCacheKey key, CancellationToken cancellationToken) =>
-        await client.SynthesizeSpeechAsync(new Uri(config.ApiSpeechUrl!), await apiKey(cancellationToken).ConfigureAwait(false), new(key.Model, key.Text), cancellationToken).ConfigureAwait(false);
+        await client.SynthesizeSpeechAsync(new Uri(config().ApiSpeechUrl!), await apiKey(cancellationToken).ConfigureAwait(false), new(key.Model, key.Text), cancellationToken).ConfigureAwait(false);
 }
 
 internal sealed class SpeechHistoryAdapter(ITranslationHistoryStore store) : ISpeechHistoryStore
@@ -45,17 +45,18 @@ internal sealed class HistoryAudioPlayer : IHistoryAudioPlayer
     public ValueTask DisposeAsync() => _player.DisposeAsync();
 }
 
-internal sealed class RecoveryNotice : IRecoveryNotice
+internal sealed class RecoveryNotice(Func<XamlRoot?> resolveRoot) : IRecoveryNotice
 {
     public async Task<RecoveryNoticeChoice> ShowAsync(NTranslate.Core.Recovery.CrashLogSummary summary, CancellationToken token)
     {
+        var root = resolveRoot() ?? throw new InvalidOperationException("Recovery notice owner is unavailable.");
         var dialog = new ContentDialog
         {
             Title = "NTranslate recovered from an error",
             Content = $"{summary.ExceptionType}: {summary.Message}",
             PrimaryButtonText = "Open logs",
             CloseButtonText = "Dismiss",
-            XamlRoot = (Application.Current as App)?.ContentRoot
+            XamlRoot = root
         };
         return await dialog.ShowAsync().AsTask(token) == ContentDialogResult.Primary
             ? RecoveryNoticeChoice.OpenLogs

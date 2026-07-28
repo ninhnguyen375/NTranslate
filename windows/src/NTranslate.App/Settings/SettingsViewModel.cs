@@ -19,7 +19,7 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
     private readonly string _originalApiKey;
     private readonly Func<SettingsSaveRequest, CancellationToken, Task> _save;
     private readonly Action _requestClose;
-    private readonly ISettingsFolderPicker? _folderPicker;
+    private ISettingsFolderPicker? _folderPicker;
     private string? _errorMessage;
 
     public SettingsViewModel(
@@ -53,6 +53,8 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
     }
 
     public void Cancel() => _requestClose();
+
+    internal void SetFolderPicker(ISettingsFolderPicker folderPicker) => _folderPicker = folderPicker;
 
     public async Task BrowseHistoryDirectoryAsync(CancellationToken token)
     {

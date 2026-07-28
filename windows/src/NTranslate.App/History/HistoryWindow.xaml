@@ -11,21 +11,21 @@
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
-        <TextBox Grid.Row="0" PlaceholderText="Search history" AutomationProperties.Name="Search history" />
+        <TextBox Grid.Row="0" PlaceholderText="Search history" AutomationProperties.Name="Search history" Text="{Binding Query, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
         <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="12">
-            <RadioButton Content="All history" IsChecked="True" AutomationProperties.Name="All history" />
-            <RadioButton Content="Saved" AutomationProperties.Name="Saved" />
-            <ComboBox Header="Time range" AutomationProperties.Name="Time range" SelectedIndex="0">
+            <RadioButton Content="All history" IsChecked="True" AutomationProperties.Name="All history" Click="AllHistory_Click" />
+            <RadioButton Content="Saved" AutomationProperties.Name="Saved" Click="Saved_Click" />
+            <ComboBox Header="Time range" AutomationProperties.Name="Time range" SelectedIndex="0" SelectionChanged="TimeRange_SelectionChanged">
                 <x:String>All</x:String>
                 <x:String>Today</x:String>
                 <x:String>Last 24 hours</x:String>
                 <x:String>Week</x:String>
                 <x:String>Month</x:String>
             </ComboBox>
-            <Button Content="Delete visible" AutomationProperties.Name="Delete visible" />
+            <Button Content="Delete visible" AutomationProperties.Name="Delete visible" Click="DeleteVisible_Click" />
         </StackPanel>
         <InfoBar Grid.Row="2" IsOpen="False" Severity="Error" IsClosable="False" />
-        <ListView Grid.Row="3" SelectionMode="Single" IsItemClickEnabled="True" AutomationProperties.Name="Translation history">
+        <ListView Grid.Row="3" SelectionMode="Single" IsItemClickEnabled="True" ItemClick="History_ItemClick" ItemsSource="{Binding VisibleRecords}" AutomationProperties.Name="Translation history">
             <ListView.KeyboardAccelerators>
                 <KeyboardAccelerator Key="Enter" />
             </ListView.KeyboardAccelerators>
@@ -42,10 +42,10 @@
                             <TextBlock Text="{Binding TimestampText}" />
                         </StackPanel>
                         <StackPanel Grid.Column="1" Orientation="Horizontal">
-                            <Button AutomationProperties.Name="Play source audio" ToolTipService.ToolTip="Play source audio" />
-                            <Button AutomationProperties.Name="Play result audio" ToolTipService.ToolTip="Play result audio" />
-                            <Button AutomationProperties.Name="Toggle saved" ToolTipService.ToolTip="Toggle saved" />
-                            <Button AutomationProperties.Name="Delete translation" ToolTipService.ToolTip="Delete translation" />
+                            <Button AutomationProperties.Name="Play source audio" ToolTipService.ToolTip="Play source audio" Click="PlaySource_Click" Tag="{Binding}" />
+                            <Button AutomationProperties.Name="Play result audio" ToolTipService.ToolTip="Play result audio" Click="PlayResult_Click" Tag="{Binding}" />
+                            <Button AutomationProperties.Name="Toggle saved" ToolTipService.ToolTip="Toggle saved" Click="ToggleSaved_Click" Tag="{Binding}" />
+                            <Button AutomationProperties.Name="Delete translation" ToolTipService.ToolTip="Delete translation" Click="Delete_Click" Tag="{Binding}" />
                         </StackPanel>
                     </Grid>
                 </DataTemplate>

@@ -14,25 +14,27 @@
                 <NavigationViewItem Content="Advanced" Tag="Advanced" />
             </NavigationView.MenuItems>
             <ScrollViewer><StackPanel Spacing="10">
-                <PasswordBox Header="API key" AutomationProperties.Name="API key" />
-                <TextBox Header="API base URL" /><TextBox Header="Speech API URL" /><TextBox Header="Model" />
-                <TextBox Header="System prompt" AcceptsReturn="True" /><TextBox Header="Learn prompt" AcceptsReturn="True" />
-                <TextBox Header="Sentence learn prompt" AcceptsReturn="True" /><TextBox Header="Grammar prompt" AcceptsReturn="True" />
-                <TextBox Header="Source language" /><TextBox Header="Target language" /><TextBox Header="Native language" />
-                <TextBox Header="Languages" /><TextBox Header="Target languages" /><NumberBox Header="Maximum translation length" />
-                <TextBox Header="Speech source model" /><TextBox Header="Vietnamese speech source model" />
-                <TextBox Header="Chinese speech source model" /><TextBox Header="Speech target model" /><NumberBox Header="Speech rate" />
-                <TextBox Header="History directory" /><Button Content="Browse" AutomationProperties.Name="Browse history directory" />
-                <TextBox Header="Hotkey" /><NumberBox Header="Window width" /><NumberBox Header="Window height" />
-                <CheckBox Content="Auto-copy" /><CheckBox Content="Simulate copy" /><CheckBox Content="Auto-prefetch speech" />
-                <CheckBox Content="Start with Windows" />
+                <PasswordBox Header="API key" AutomationProperties.Name="API key" Password="{Binding Draft.ApiKey, Mode=TwoWay}" />
+                <TextBox Header="API base URL" Text="{Binding Draft.ApiBaseUrl, Mode=TwoWay}" /><TextBox Header="Speech API URL" Text="{Binding Draft.ApiSpeechUrl, Mode=TwoWay}" /><TextBox Header="Model" Text="{Binding Draft.Model, Mode=TwoWay}" />
+                <TextBox Header="System prompt" Text="{Binding Draft.SystemPrompt, Mode=TwoWay}" AcceptsReturn="True" /><TextBox Header="Learn prompt" Text="{Binding Draft.LearnPrompt, Mode=TwoWay}" AcceptsReturn="True" />
+                <TextBox Header="Sentence learn prompt" Text="{Binding Draft.SentenceLearnPrompt, Mode=TwoWay}" AcceptsReturn="True" /><TextBox Header="Grammar prompt" Text="{Binding Draft.GrammarPrompt, Mode=TwoWay}" AcceptsReturn="True" />
+                <TextBox Header="Source language" Text="{Binding Draft.SourceLang, Mode=TwoWay}" /><TextBox Header="Target language" Text="{Binding Draft.TargetLang, Mode=TwoWay}" /><TextBox Header="Native language" Text="{Binding Draft.NativeLang, Mode=TwoWay}" />
+                <ListView Header="Languages" ItemsSource="{Binding Draft.Languages}" /><ListView Header="Target languages" ItemsSource="{Binding Draft.TargetLanguages}" /><NumberBox Header="Maximum translation length" Value="{Binding Draft.MaxTranslateLength, Mode=TwoWay}" />
+                <TextBox Header="Speech source model" Text="{Binding Draft.SpeechSourceModel, Mode=TwoWay}" /><TextBox Header="Vietnamese speech source model" Text="{Binding Draft.SpeechSourceModelVietnamese, Mode=TwoWay}" />
+                <TextBox Header="Chinese speech source model" Text="{Binding Draft.SpeechSourceModelChinese, Mode=TwoWay}" /><TextBox Header="Speech target model" Text="{Binding Draft.SpeechTargetModel, Mode=TwoWay}" /><NumberBox Header="Speech rate" Minimum="0.5" Maximum="1.5" SmallChange="0.1" Value="{Binding Draft.SpeechRate, Mode=TwoWay}" />
+                <TextBox Header="History directory" Text="{Binding Draft.HistoryDirectory, Mode=TwoWay}" /><Button Content="Browse" AutomationProperties.Name="Browse history directory" Click="Browse_Click" />
+                <TextBox Header="Hotkey" Text="{Binding Draft.HotkeyKey, Mode=TwoWay}" /><NumberBox Header="Window width" Value="{Binding Draft.UiWidth, Mode=TwoWay}" /><NumberBox Header="Window height" Value="{Binding Draft.UiHeight, Mode=TwoWay}" />
+                <CheckBox Content="Auto-copy" IsChecked="{Binding Draft.UiAutoCopy, Mode=TwoWay}" /><CheckBox Content="Simulate copy" IsChecked="{Binding Draft.UiSimulateCopy, Mode=TwoWay}" /><CheckBox Content="Auto-prefetch speech" IsChecked="{Binding Draft.AutoPrefetchSpeech, Mode=TwoWay}" />
+                <CheckBox Content="Start with Windows" IsChecked="{Binding Draft.StartWithWindows, Mode=TwoWay}" />
             </StackPanel></ScrollViewer>
         </NavigationView>
         <InfoBar Grid.Row="1" Severity="Error" IsClosable="False" />
         <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
-            <Button Content="Revert" AutomationProperties.Name="Revert" />
-            <Button Content="Cancel" AutomationProperties.Name="Cancel" />
-            <Button Content="Save" AutomationProperties.Name="Save settings" Style="{StaticResource AccentButtonStyle}" />
+            <Button Content="Revert" AutomationProperties.Name="Revert" Click="Revert_Click" />
+            <Button Content="Cancel" AutomationProperties.Name="Cancel" Click="Cancel_Click" />
+            <Button Content="Save" AutomationProperties.Name="Save settings" Style="{StaticResource AccentButtonStyle}" Click="Save_Click">
+                <Button.KeyboardAccelerators><KeyboardAccelerator Key="S" Modifiers="Control" Invoked="SaveAccelerator_Invoked" /></Button.KeyboardAccelerators>
+            </Button>
         </StackPanel>
     </Grid>
 </Window>

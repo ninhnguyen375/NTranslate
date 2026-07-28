@@ -44,8 +44,13 @@ internal sealed class AppComposition : IDisposable
     private readonly UpdateCoordinator _updates;
     private readonly RecoveryCoordinator _recovery;
     private readonly AppShutdown _shutdown;
-    private readonly AppConfig _config;
+    private AppConfig _config;
     private readonly string _root;
+    private readonly CredentialLockerApiKeyStore _credentials;
+    private readonly SettingsSaveCoordinator _settingsSave;
+    private readonly RuntimeSettingsApplier _runtimeSettings;
+    private readonly CrashHandlerRegistration _crashHandlers;
+    private readonly IDisposable[] _exceptionSources;
     private readonly string _configPath;
     private readonly PopupRouter _router;
     private CancellationTokenSource? _captureRequest;
@@ -65,13 +70,13 @@ internal sealed class AppComposition : IDisposable
         _capture = new SelectionCaptureService(new UiAutomationSelectionReader(), _clipboard, new SendInputCopyCommand());
         _hotkey = new GlobalHotkey();
         _tray = new TrayIcon();
-        var credentials = new CredentialLockerApiKeyStore();
+        _credentials = new CredentialLockerApiKeyStore();
         var http = new HttpClient();
         var client = new OpenAiCompatibleClient(http);
         var historyStore = new JsonTranslationHistoryStore(_root);
         var historySink = new AcceptedTranslationSink(historyStore);
         _speech = new SpeechCoordinator(
-            new OpenAiSpeechApi(client, _config, ResolveApiKeyAsync),
+            new OpenAiSpeechApi(client, () => _config, ResolveApiKeyAsync),
             new WindowsSpeechPlayer(),
             new SpeechHistoryAdapter(historyStore));
         _viewModel = new TranslationViewModel(
@@ -102,20 +107,19 @@ internal sealed class AppComposition : IDisposable
         _historyWindow = new HistoryWindow(_historyViewModel);
 
         var configStore = new JsonConfigStore(_configPath);
-        var settingsSave = new SettingsSaveCoordinator(configStore, credentials, new HistoryDirectoryMigrator(), (_, _, _, _) => Task.CompletedTask);
+        var startupRegistration = new StartupRegistration();
+        _runtimeSettings = new RuntimeSettingsApplier(
+            () => (_config, _config.StartWithWindows),
+            (config, _) => DispatchAsync(() => { _viewModel.ReloadConfig(config); _config = config; }),
+            startupRegistration.SetEnabledAsync);
+        _settingsSave = new SettingsSaveCoordinator(configStore, _credentials, new HistoryDirectoryMigrator(), _runtimeSettings.ApplyRuntimeAsync);
         var settingsViewModel = new SettingsViewModel(
             _config,
-            credentials.LoadAsync().GetAwaiter().GetResult() ?? string.Empty,
-            async (request, token) => await settingsSave.SaveAsync(
-                request.Config,
-                request.ApiKey,
-                request.SpeechRate,
-                request.StartWithWindows,
-                _root,
-                string.IsNullOrWhiteSpace(request.Config.HistoryDirectory) ? _root : Path.GetFullPath(request.Config.HistoryDirectory),
-                token).ConfigureAwait(false),
+            _credentials.LoadAsync().GetAwaiter().GetResult() ?? string.Empty,
+            SaveSettingsAsync,
             CloseSettings);
         _settingsWindow = new SettingsWindow(settingsViewModel);
+        settingsViewModel.SetFolderPicker(new WinUiSettingsFolderPicker(_settingsWindow));
 
         var releases = new GitHubReleaseClient(http, "ninhnguyen375", "NTranslate");
         var currentVersion = SemanticVersion.TryParse(Assembly.GetExecutingAssembly().GetName().Version?.ToString(3), out var version) ? version : new(0, 0, 0);
@@ -130,7 +134,12 @@ internal sealed class AppComposition : IDisposable
             new MsixPackageVerifier(),
             info => Process.Start(info));
         var crashLogs = new CrashLogService(_root, new AtomicFileWriter());
-        _recovery = new RecoveryCoordinator(crashLogs, new RecoveryNotice(), new ShellLogDirectoryLauncher());
+        _recovery = new RecoveryCoordinator(crashLogs, new RecoveryNotice(() => ContentRoot), new ShellLogDirectoryLauncher());
+        var winUiExceptions = new WinUiUnhandledExceptionSource(Application.Current);
+        var appDomainExceptions = new AppDomainUnhandledExceptionSource();
+        var taskExceptions = new TaskSchedulerUnobservedExceptionSource();
+        _exceptionSources = [winUiExceptions, appDomainExceptions, taskExceptions];
+        _crashHandlers = new CrashHandlerRegistration(crashLogs, winUiExceptions, appDomainExceptions, taskExceptions);
 
         _router = new PopupRouter(CancelCapture, () => Show(null));
         _shutdown = new AppShutdown(
@@ -140,6 +149,8 @@ internal sealed class AppComposition : IDisposable
             _window.RestoreWindowProcedure,
             () =>
             {
+                _crashHandlers.Dispose();
+                foreach (var source in _exceptionSources) source.Dispose();
                 _historyViewModel.DisposeAsync().AsTask().GetAwaiter().GetResult();
                 _speech.DisposeAsync().AsTask().GetAwaiter().GetResult();
                 _historyWindow.Close();
@@ -152,7 +163,7 @@ internal sealed class AppComposition : IDisposable
         _tray.HistoryRequested += (_, _) => Enqueue(ShowHistory);
         _tray.SettingsRequested += (_, _) => Enqueue(ShowSettings);
         _tray.CheckForUpdatesRequested += (_, _) => _ = _updates.CheckAsync(true, _lifetime.Token);
-        _tray.StartWithWindowsRequested += (_, _) => Enqueue(ShowSettings);
+        _tray.StartWithWindowsRequested += (_, _) => _ = ToggleStartWithWindowsAsync();
         _tray.ExitRequested += (_, _) => Enqueue(_shutdown.Run);
     }
 
@@ -165,13 +176,39 @@ internal sealed class AppComposition : IDisposable
         var registration = _hotkey.Register(_config.Hotkey);
         HotkeyRegistrationError = registration.Error;
         _viewModel.SetStartupGuidance(GuidancePolicy.Combine(_viewModel.PersistentGuidance, registration.Error));
+        _crashHandlers.Register();
+        ShowManual();
         _ = _recovery.ShowPendingAsync(_lifetime.Token);
     }
 
     public void ShowManual() => Enqueue(_router.ShowManual);
     public void Dispose() => _shutdown.Run();
 
-    private Task<string> ResolveApiKeyAsync(CancellationToken token) => new CredentialLockerApiKeyStore().LoadAsync(token).ContinueWith(
+    private Task SaveSettingsAsync(SettingsSaveRequest request, CancellationToken token) => _settingsSave.SaveAsync(
+        request.Config with { SpeechRate = request.SpeechRate, StartWithWindows = request.StartWithWindows },
+        request.ApiKey,
+        request.SpeechRate,
+        request.StartWithWindows,
+        _root,
+        string.IsNullOrWhiteSpace(request.Config.HistoryDirectory) ? _root : Path.GetFullPath(request.Config.HistoryDirectory),
+        token);
+
+    private async Task ToggleStartWithWindowsAsync()
+    {
+        try
+        {
+            var next = !_config.StartWithWindows;
+            await _settingsSave.SaveAsync(_config with { StartWithWindows = next }, await _credentials.LoadAsync(_lifetime.Token).ConfigureAwait(false) ?? string.Empty,
+                _config.SpeechRate, next, _root, _root, _lifetime.Token).ConfigureAwait(false);
+            await DispatchAsync(() => _viewModel.SetStartupGuidance($"Start with Windows {(next ? "enabled" : "disabled")}."));
+        }
+        catch (Exception error) when (error is not OperationCanceledException)
+        {
+            await DispatchAsync(() => _viewModel.SetStartupGuidance($"Could not change Start with Windows: {error.Message}"));
+        }
+    }
+
+    private Task<string> ResolveApiKeyAsync(CancellationToken token) => _credentials.LoadAsync(token).ContinueWith(
         task => task.Result ?? throw new InvalidOperationException("API key missing. Store key in Windows Credential Locker before translating."),
         token,
         TaskContinuationOptions.ExecuteSynchronously,
