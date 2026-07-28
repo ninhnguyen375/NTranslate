@@ -3,7 +3,6 @@
     x:Class="NTranslate.App.History.HistoryWindow"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:history="using:NTranslate.App.History"
     Title="Translation history">
     <Grid Padding="24" RowSpacing="12">
         <Grid.RowDefinitions>
@@ -31,16 +30,16 @@
                 <KeyboardAccelerator Key="Enter" />
             </ListView.KeyboardAccelerators>
             <ListView.ItemTemplate>
-                <DataTemplate x:DataType="history:HistoryItemViewModel">
+                <DataTemplate>
                     <Grid Padding="8" ColumnSpacing="8">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <StackPanel>
-                            <TextBlock Text="{x:Bind SourceText}" TextWrapping="Wrap" />
-                            <TextBlock Text="{x:Bind ResultText}" TextWrapping="Wrap" />
-                            <TextBlock Text="{x:Bind TimestampText}" />
+                            <TextBlock Text="{Binding SourceText}" TextWrapping="Wrap" />
+                            <TextBlock Text="{Binding ResultText}" TextWrapping="Wrap" />
+                            <TextBlock Text="{Binding TimestampText}" />
                         </StackPanel>
                         <StackPanel Grid.Column="1" Orientation="Horizontal">
                             <Button AutomationProperties.Name="Play source audio" ToolTipService.ToolTip="Play source audio" />

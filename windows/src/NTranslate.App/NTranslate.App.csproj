@@ -18,7 +18,9 @@
   </ItemGroup>
   <ItemGroup>
     <ApplicationDefinition Include="App.xaml" />
+    <Page Include="History\HistoryWindow.xaml" />
     <Page Include="Popup\TranslationWindow.xaml" />
+    <Page Include="Settings\SettingsWindow.xaml" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\NTranslate.Platform\NTranslate.Platform.csproj" />

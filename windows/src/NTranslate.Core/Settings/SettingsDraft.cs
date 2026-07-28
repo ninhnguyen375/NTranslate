@@ -63,7 +63,9 @@ public sealed class SettingsDraft
         SpeechSourceModelVietnamese = config.SpeechSourceModelVietnamese;
         SpeechSourceModelChinese = config.SpeechSourceModelChinese;
         SpeechTargetModel = config.SpeechTargetModel;
+        SpeechRate = config.SpeechRate;
         HistoryDirectory = config.HistoryDirectory;
+        StartWithWindows = config.StartWithWindows;
         HotkeyKey = config.Hotkey.Key;
         HotkeyOption = config.Hotkey.Option;
         HotkeyControl = config.Hotkey.Control;
@@ -94,7 +96,9 @@ public sealed class SettingsDraft
         SpeechSourceModelVietnamese = SpeechSourceModelVietnamese.Trim(),
         SpeechSourceModelChinese = SpeechSourceModelChinese.Trim(),
         SpeechTargetModel = SpeechTargetModel.Trim(),
+        SpeechRate = SpeechRate,
         HistoryDirectory = HistoryDirectory?.Trim(),
+        StartWithWindows = StartWithWindows,
         Hotkey = new(HotkeyKey.Trim(), HotkeyOption, false, HotkeyControl, HotkeyShift),
         Ui = new(UiWidth, UiHeight, UiAutoCopy, UiSimulateCopy)
     };

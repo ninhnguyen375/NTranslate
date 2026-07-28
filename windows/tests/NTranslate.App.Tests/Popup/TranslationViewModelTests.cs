@@ -509,6 +509,7 @@ public sealed class TranslationViewModelTests
         Assert.Contains(Config.GrammarPrompt.Split(' ')[0], handler.LastBody, StringComparison.Ordinal);
         Assert.Single(history.Records);
         Assert.Equal(TranslationMode.Translate, history.Records[0].Mode);
+        Assert.True(history.Records[0].IsGrammar);
     }
 
     [Theory]

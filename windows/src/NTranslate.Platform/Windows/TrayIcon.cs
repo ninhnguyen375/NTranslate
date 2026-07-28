@@ -2,7 +2,7 @@ using System.Runtime.InteropServices;
 
 namespace NTranslate.Platform.Windows;
 
-internal enum TrayCommand { Open, Exit }
+internal enum TrayCommand { Open, History, Settings, CheckForUpdates, StartWithWindows, Exit }
 internal enum TrayCallbackAction { Open, ContextMenu }
 
 internal static class TrayCallbackMessages
@@ -45,11 +45,19 @@ internal sealed class TrayActivationGate(uint correlationWindow)
 internal static class TrayMenuCommands
 {
     internal const int OpenId = 1001;
+    internal const int HistoryId = 1002;
+    internal const int SettingsId = 1003;
+    internal const int CheckForUpdatesId = 1004;
+    internal const int StartWithWindowsId = 1005;
     internal const int ExitId = 1099;
 
     internal static TrayCommand? Resolve(int id) => id switch
     {
         OpenId => TrayCommand.Open,
+        HistoryId => TrayCommand.History,
+        SettingsId => TrayCommand.Settings,
+        CheckForUpdatesId => TrayCommand.CheckForUpdates,
+        StartWithWindowsId => TrayCommand.StartWithWindows,
         ExitId => TrayCommand.Exit,
         _ => null,
     };
@@ -58,6 +66,10 @@ internal static class TrayMenuCommands
 public interface ITrayIcon : IDisposable
 {
     event EventHandler? OpenTranslatorRequested;
+    event EventHandler? HistoryRequested;
+    event EventHandler? SettingsRequested;
+    event EventHandler? CheckForUpdatesRequested;
+    event EventHandler? StartWithWindowsRequested;
     event EventHandler? ExitRequested;
     void Show();
 }
@@ -86,6 +98,10 @@ public sealed class TrayIcon : ITrayIcon
     private Exception? _terminalError;
 
     public event EventHandler? OpenTranslatorRequested;
+    public event EventHandler? HistoryRequested;
+    public event EventHandler? SettingsRequested;
+    public event EventHandler? CheckForUpdatesRequested;
+    public event EventHandler? StartWithWindowsRequested;
     public event EventHandler? ExitRequested;
 
     public TrayIcon()
@@ -239,6 +255,10 @@ public sealed class TrayIcon : ITrayIcon
         GetCursorPos(out var point);
         var menu = CreatePopupMenu();
         AppendMenu(menu, MfString, (nint)TrayMenuCommands.OpenId, "Open Translator");
+        AppendMenu(menu, MfString, (nint)TrayMenuCommands.HistoryId, "Translation History");
+        AppendMenu(menu, MfString, (nint)TrayMenuCommands.SettingsId, "Settings");
+        AppendMenu(menu, MfString, (nint)TrayMenuCommands.CheckForUpdatesId, "Check for Updates");
+        AppendMenu(menu, MfString, (nint)TrayMenuCommands.StartWithWindowsId, "Start with Windows");
         AppendMenu(menu, MfString, (nint)TrayMenuCommands.ExitId, "Exit");
         SetForegroundWindow(_hwnd);
         var command = TrackPopupMenu(menu, TpmRightButton | TpmReturnCmd, point.x, point.y, 0, _hwnd, 0);
@@ -252,6 +272,10 @@ public sealed class TrayIcon : ITrayIcon
         switch (TrayMenuCommands.Resolve(id))
         {
             case TrayCommand.Open: Raise(OpenTranslatorRequested); break;
+            case TrayCommand.History: Raise(HistoryRequested); break;
+            case TrayCommand.Settings: Raise(SettingsRequested); break;
+            case TrayCommand.CheckForUpdates: Raise(CheckForUpdatesRequested); break;
+            case TrayCommand.StartWithWindows: Raise(StartWithWindowsRequested); break;
             case TrayCommand.Exit: Raise(ExitRequested); break;
         }
     }

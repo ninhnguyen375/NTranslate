@@ -21,12 +21,22 @@ public enum PopupState
     Error
 }
 
+public sealed record AcceptedTextTranslation(
+    Guid RecordId,
+    DateTimeOffset Timestamp,
+    string SourceText,
+    string ResultText,
+    string SourceLanguage,
+    string TargetLanguage,
+    bool IsGrammar);
+
 public sealed record TranslationHistoryEntry(
     string SourceText,
     string ResultText,
     string SourceLanguage,
     string TargetLanguage,
-    TranslationMode Mode);
+    TranslationMode Mode,
+    bool IsGrammar = false);
 
 public interface ITranslationSpeech
 {
@@ -220,7 +230,7 @@ public sealed class TranslationViewModel : INotifyPropertyChanged
         if (_speech is null || !CanSpeakSource) return Task.CompletedTask;
         var identity = SpeechIdentityFor(SpeechChannel.Source, SourceText, SourceLang, _sourceSpeechIdentity?.HistoryRecordId);
         _sourceSpeechIdentity = identity;
-        return _speech.TogglePlaybackAsync(identity, 1d, cancellationToken);
+        return _speech.TogglePlaybackAsync(identity, _config.SpeechRate, cancellationToken);
     }
 
     public Task SpeakResultAsync(CancellationToken cancellationToken)
@@ -228,7 +238,7 @@ public sealed class TranslationViewModel : INotifyPropertyChanged
         if (_speech is null || !CanSpeakResult) return Task.CompletedTask;
         var identity = SpeechIdentityFor(SpeechChannel.Result, ResultText, TargetLang, _resultSpeechIdentity?.HistoryRecordId);
         _resultSpeechIdentity = identity;
-        return _speech.TogglePlaybackAsync(identity, 1d, cancellationToken);
+        return _speech.TogglePlaybackAsync(identity, _config.SpeechRate, cancellationToken);
     }
 
     public async Task TranslateImageAsync(Stream image, CancellationToken cancellationToken)
@@ -243,7 +253,7 @@ public sealed class TranslationViewModel : INotifyPropertyChanged
             string apiKey = await _resolveApiKey(requestCancellation.Token).ConfigureAwait(false);
             var request = new ChatCompletionRequest(_config.Model, PromptRenderer.RenderTranslation(_config), new ImageChatInput(normalized.PngData.ToArray(), TargetLang));
             string result = await _client.CompleteChatAsync(new Uri(_config.ApiBaseUrl), apiKey, request, requestCancellation.Token).ConfigureAwait(false);
-            await ApplyAcceptedResultAsync(lease.Generation, result, null, TranslationMode.ImageTranslate, requestCancellation.Token).ConfigureAwait(false);
+            await ApplyAcceptedResultAsync(lease.Generation, result, null, TranslationMode.ImageTranslate, false, requestCancellation.Token).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (requestCancellation.IsCancellationRequested) { }
         catch (Exception ex) { await ApplyErrorAsync(lease.Generation, ex).ConfigureAwait(false); }
@@ -326,9 +336,11 @@ public sealed class TranslationViewModel : INotifyPropertyChanged
             string apiKey = await _resolveApiKey(cancellation.Token).ConfigureAwait(true);
             var pair = LanguagePolicy.ResolvePair(text, _config with { SourceLang = SourceLang, TargetLang = TargetLang }, []);
             var effectiveConfig = _config with { SourceLang = pair.SourceLang, TargetLang = pair.TargetLang };
+            bool isGrammar = mode == TranslationMode.Translate
+                && PromptRenderer.SelectMode(text, pair.SourceLang, pair.TargetLang, false) == PromptMode.Grammar;
             string systemPrompt = mode == TranslationMode.Learn
                 ? PromptRenderer.RenderLearn(text, effectiveConfig)
-                : PromptRenderer.SelectMode(text, pair.SourceLang, pair.TargetLang, false) == PromptMode.Grammar
+                : isGrammar
                     ? PromptRenderer.RenderGrammar(pair.TargetLang, effectiveConfig)
                     : PromptRenderer.RenderTranslation(effectiveConfig);
             var request = new ChatCompletionRequest(_config.Model, systemPrompt, new TextChatInput(text));
@@ -339,6 +351,7 @@ public sealed class TranslationViewModel : INotifyPropertyChanged
                 result,
                 mode == TranslationMode.Translate ? text : null,
                 mode,
+                isGrammar,
                 cancellation.Token).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
@@ -393,6 +406,7 @@ public sealed class TranslationViewModel : INotifyPropertyChanged
         string result,
         string? historySource,
         TranslationMode mode,
+        bool isGrammar,
         CancellationToken cancellationToken)
     {
         Guid? historyId = null;
@@ -411,7 +425,7 @@ public sealed class TranslationViewModel : INotifyPropertyChanged
         if (!_coordinator.Accepts(generation)) return;
         if (historySource is not null && _recordHistory is not null)
         {
-            historyId = await _recordHistory(new(historySource, result, SourceLang, TargetLang, mode), cancellationToken).ConfigureAwait(false);
+            historyId = await _recordHistory(new(historySource, result, SourceLang, TargetLang, mode, isGrammar), cancellationToken).ConfigureAwait(false);
             if (!_coordinator.Accepts(generation)) return;
         }
         if (mode == TranslationMode.Translate)
