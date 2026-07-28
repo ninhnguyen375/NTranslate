@@ -29,22 +29,41 @@ public sealed class TrayIconTests
     [Theory]
     [InlineData(0x0400)] // NIN_SELECT
     [InlineData(0x0401)] // NIN_KEYSELECT
-    public void Modern_activation_suppresses_double_click_fallback(uint modernMessage)
+    public void Immediate_modern_then_legacy_activation_raises_once(uint modernMessage)
     {
-        var gate = new TrayActivationGate();
+        var gate = new TrayActivationGate(500);
 
-        Assert.True(gate.ShouldRaise(modernMessage));
-        Assert.False(gate.ShouldRaise(0x0203));
+        Assert.True(gate.ShouldRaise(modernMessage, 1000));
+        Assert.False(gate.ShouldRaise(0x0203, 1001));
+    }
+
+    [Theory]
+    [InlineData(0x0400)] // NIN_SELECT
+    [InlineData(0x0401)] // NIN_KEYSELECT
+    public void Immediate_legacy_then_modern_activation_raises_once(uint modernMessage)
+    {
+        var gate = new TrayActivationGate(500);
+
+        Assert.True(gate.ShouldRaise(0x0203, 1000));
+        Assert.False(gate.ShouldRaise(modernMessage, 1001));
     }
 
     [Fact]
-    public void Double_click_then_modern_activation_raises_once_and_resets()
+    public void Delayed_unrelated_activation_is_not_suppressed()
     {
-        var gate = new TrayActivationGate();
+        var gate = new TrayActivationGate(500);
 
-        Assert.True(gate.ShouldRaise(0x0203));
-        Assert.False(gate.ShouldRaise(0x0400));
-        Assert.True(gate.ShouldRaise(0x0400));
+        Assert.True(gate.ShouldRaise(0x0203, 1000));
+        Assert.True(gate.ShouldRaise(0x0400, 1501));
+    }
+
+    [Fact]
+    public void Repeated_modern_activations_are_not_suppressed()
+    {
+        var gate = new TrayActivationGate(500);
+
+        Assert.True(gate.ShouldRaise(0x0400, 1000));
+        Assert.True(gate.ShouldRaise(0x0400, 1001));
     }
 
     [Fact]

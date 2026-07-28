@@ -21,33 +21,25 @@ internal static class TrayCallbackMessages
     };
 }
 
-internal sealed class TrayActivationGate
+internal sealed class TrayActivationGate(uint correlationWindow)
 {
     private const uint NinSelect = 0x0400;
     private const uint NinKeySelect = 0x0401;
     private const uint WmLButtonDblClk = 0x0203;
-    private bool _modernCallbacksObserved;
-    private bool _legacyFallbackRaised;
+    private uint? _lastMessage;
+    private uint _lastTime;
 
-    internal bool ShouldRaise(uint message)
+    internal bool ShouldRaise(uint message, uint time)
     {
-        if (message is NinSelect or NinKeySelect)
-        {
-            _modernCallbacksObserved = true;
-            if (_legacyFallbackRaised)
-            {
-                _legacyFallbackRaised = false;
-                return false;
-            }
-            return true;
-        }
-
-        if (message != WmLButtonDblClk || _modernCallbacksObserved)
-            return false;
-
-        _legacyFallbackRaised = true;
-        return true;
+        bool duplicate = _lastMessage is uint previous
+            && IsModern(previous) != IsModern(message)
+            && unchecked(time - _lastTime) <= correlationWindow;
+        _lastMessage = duplicate ? null : message;
+        _lastTime = time;
+        return !duplicate;
     }
+
+    private static bool IsModern(uint message) => message is NinSelect or NinKeySelect;
 }
 
 internal static class TrayMenuCommands
@@ -83,7 +75,7 @@ public sealed class TrayIcon : ITrayIcon
     private const uint TpmRightButton = 2, TpmReturnCmd = 0x0100;
 
     private readonly Thread _thread;
-    private readonly TrayActivationGate _activationGate = new();
+    private readonly TrayActivationGate _activationGate = new(GetDoubleClickTime());
     private nint _hwnd;
     private uint _threadId;
     private bool _added;
@@ -222,7 +214,7 @@ public sealed class TrayIcon : ITrayIcon
                     catch (Exception error) { Complete(pending, error); }
                     continue;
                 }
-                if (message.hwnd == _hwnd && message.message == WmCallback) HandleCallback(message.lParam);
+                if (message.hwnd == _hwnd && message.message == WmCallback) HandleCallback(message.lParam, message.time);
                 else if (message.hwnd == _hwnd && message.message == WmCommand) HandleCommand((int)(message.wParam.ToInt64() & 0xFFFF));
                 TranslateMessage(ref message);
                 DispatchMessage(ref message);
@@ -232,12 +224,12 @@ public sealed class TrayIcon : ITrayIcon
         catch (Exception error) { _startError = error; ready.Set(); Terminal(error); }
     }
 
-    private void HandleCallback(nint lParam)
+    private void HandleCallback(nint lParam, uint time)
     {
         var message = (uint)(lParam.ToInt64() & 0xFFFF);
         switch (TrayCallbackMessages.Resolve(message))
         {
-            case TrayCallbackAction.Open when _activationGate.ShouldRaise(message): Raise(OpenTranslatorRequested); break;
+            case TrayCallbackAction.Open when _activationGate.ShouldRaise(message, time): Raise(OpenTranslatorRequested); break;
             case TrayCallbackAction.ContextMenu: ShowContextMenu(); break;
         }
     }
@@ -309,5 +301,6 @@ public sealed class TrayIcon : ITrayIcon
     [DllImport("user32.dll")] private static extern bool SetForegroundWindow(nint hwnd);
     [DllImport("user32.dll")] private static extern uint TrackPopupMenu(nint menu, uint flags, int x, int y, int reserved, nint hwnd, nint rect);
     [DllImport("user32.dll")] private static extern bool GetCursorPos(out Point point);
+    [DllImport("user32.dll")] private static extern uint GetDoubleClickTime();
     [DllImport("kernel32.dll")] private static extern uint GetCurrentThreadId();
 }
