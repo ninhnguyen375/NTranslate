@@ -83,6 +83,9 @@ public sealed class TranslationViewModel : INotifyPropertyChanged
     private bool _isImageMode;
     private SpeechIdentity? _sourceSpeechIdentity;
     private SpeechIdentity? _resultSpeechIdentity;
+    private SpeechPhase _sourceSpeechPhase;
+    private SpeechPhase _resultSpeechPhase;
+    private string? _speechError;
     private string? _acceptedSourceLanguage;
     private string? _acceptedTargetLanguage;
 
@@ -206,6 +209,15 @@ public sealed class TranslationViewModel : INotifyPropertyChanged
     public bool CanLearn => !IsImageMode;
     public bool CanSpeakSource => !IsImageMode && SourceText.Length > 0;
     public bool CanSpeakResult => ResultText.Length > 0;
+    public bool CanUseSourceSpeech => CanSpeakSource && _sourceSpeechPhase != SpeechPhase.Loading;
+    public bool CanUseResultSpeech => CanSpeakResult && _resultSpeechPhase != SpeechPhase.Loading;
+    public string SourceSpeechActionText => SpeechActionText(SpeechChannel.Source, _sourceSpeechPhase);
+    public string ResultSpeechActionText => SpeechActionText(SpeechChannel.Result, _resultSpeechPhase);
+    public string? SpeechError
+    {
+        get => _speechError;
+        private set => Set(ref _speechError, value);
+    }
     public bool CreatesHistory => !IsImageMode;
 
     public IReadOnlyList<string> Languages => _config.Languages;
@@ -261,20 +273,20 @@ public sealed class TranslationViewModel : INotifyPropertyChanged
 
     public Task LearnAsync(CancellationToken cancellationToken) => TranslateTextAsync(TranslationMode.Learn, cancellationToken);
 
-    public Task SpeakSourceAsync(CancellationToken cancellationToken)
+    public async Task SpeakSourceAsync(CancellationToken cancellationToken)
     {
-        if (_speech is null || !CanSpeakSource) return Task.CompletedTask;
+        if (_speech is null || !CanSpeakSource) return;
         var identity = SpeechIdentityFor(SpeechChannel.Source, SourceText, SourceLang, _sourceSpeechIdentity?.HistoryRecordId);
         _sourceSpeechIdentity = identity;
-        return _speech.TogglePlaybackAsync(identity, _config.SpeechRate, cancellationToken);
+        await ToggleSpeechAsync(SpeechChannel.Source, identity, cancellationToken).ConfigureAwait(false);
     }
 
-    public Task SpeakResultAsync(CancellationToken cancellationToken)
+    public async Task SpeakResultAsync(CancellationToken cancellationToken)
     {
-        if (_speech is null || !CanSpeakResult) return Task.CompletedTask;
+        if (_speech is null || !CanSpeakResult) return;
         var identity = SpeechIdentityFor(SpeechChannel.Result, ResultText, _acceptedTargetLanguage ?? TargetLang, _resultSpeechIdentity?.HistoryRecordId);
         _resultSpeechIdentity = identity;
-        return _speech.TogglePlaybackAsync(identity, _config.SpeechRate, cancellationToken);
+        await ToggleSpeechAsync(SpeechChannel.Result, identity, cancellationToken).ConfigureAwait(false);
     }
 
     public async Task TranslateImageAsync(Stream image, CancellationToken cancellationToken)
@@ -510,6 +522,53 @@ public sealed class TranslationViewModel : INotifyPropertyChanged
         }).ConfigureAwait(false);
     }
 
+    private async Task ToggleSpeechAsync(SpeechChannel channel, SpeechIdentity identity, CancellationToken cancellationToken)
+    {
+        var phase = channel == SpeechChannel.Source ? _sourceSpeechPhase : _resultSpeechPhase;
+        SetSpeechPhase(channel, phase switch
+        {
+            SpeechPhase.Playing => SpeechPhase.Paused,
+            SpeechPhase.Paused => SpeechPhase.Playing,
+            _ => SpeechPhase.Loading
+        });
+        SpeechError = null;
+        try
+        {
+            await _speech!.TogglePlaybackAsync(identity, _config.SpeechRate, cancellationToken).ConfigureAwait(false);
+            if (phase is not (SpeechPhase.Playing or SpeechPhase.Paused)) SetSpeechPhase(channel, SpeechPhase.Playing);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            SetSpeechPhase(channel, SpeechPhase.Idle);
+        }
+        catch (Exception error)
+        {
+            SpeechError = error.Message;
+            SetSpeechPhase(channel, SpeechPhase.Failed);
+        }
+    }
+
+    private void SetSpeechPhase(SpeechChannel channel, SpeechPhase phase)
+    {
+        if (channel == SpeechChannel.Source) _sourceSpeechPhase = phase;
+        else _resultSpeechPhase = phase;
+        OnPropertyChanged(channel == SpeechChannel.Source ? nameof(SourceSpeechActionText) : nameof(ResultSpeechActionText));
+        OnPropertyChanged(channel == SpeechChannel.Source ? nameof(CanUseSourceSpeech) : nameof(CanUseResultSpeech));
+    }
+
+    private static string SpeechActionText(SpeechChannel channel, SpeechPhase phase)
+    {
+        var subject = channel == SpeechChannel.Source ? "source speech" : "result speech";
+        return phase switch
+        {
+            SpeechPhase.Loading => $"Loading {subject}",
+            SpeechPhase.Playing => $"Pause {subject}",
+            SpeechPhase.Paused => $"Resume {subject}",
+            SpeechPhase.Failed => $"Retry {subject}",
+            _ => $"Play {subject}"
+        };
+    }
+
     private SpeechIdentity SpeechIdentityFor(SpeechChannel channel, string text, string language, Guid? historyId) =>
         new(new(channel, text, SpeechModelResolver.Resolve(language, _config)), historyId);
 
@@ -521,6 +580,9 @@ public sealed class TranslationViewModel : INotifyPropertyChanged
         _resultSpeechIdentity = null;
         _acceptedSourceLanguage = null;
         _acceptedTargetLanguage = null;
+        SetSpeechPhase(SpeechChannel.Source, SpeechPhase.Idle);
+        SetSpeechPhase(SpeechChannel.Result, SpeechPhase.Idle);
+        SpeechError = null;
         _speech?.Invalidate(SpeechChannel.Source, true);
         _speech?.Invalidate(SpeechChannel.Result, true);
     }

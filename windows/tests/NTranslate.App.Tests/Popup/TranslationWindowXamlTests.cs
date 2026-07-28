@@ -46,8 +46,10 @@ public sealed class TranslationWindowXamlTests
         Assert.Equal("SourceSpeechButton_Click", Attribute(FindNamed("SourceSpeechButton"), "Click"));
         Assert.Equal("ResultSpeechButton_Click", Attribute(FindNamed("ResultSpeechButton"), "Click"));
         Assert.Equal("ImageTranslateButton_Click", Attribute(FindNamed("ImageTranslateButton"), "Click"));
-        Assert.Equal("{x:Bind ViewModel.CanSpeakSource, Mode=OneWay}", Attribute(FindNamed("SourceSpeechButton"), "IsEnabled"));
-        Assert.Equal("{x:Bind ViewModel.CanSpeakResult, Mode=OneWay}", Attribute(FindNamed("ResultSpeechButton"), "IsEnabled"));
+        Assert.Equal("{x:Bind ViewModel.CanUseSourceSpeech, Mode=OneWay}", Attribute(FindNamed("SourceSpeechButton"), "IsEnabled"));
+        Assert.Equal("{x:Bind ViewModel.CanUseResultSpeech, Mode=OneWay}", Attribute(FindNamed("ResultSpeechButton"), "IsEnabled"));
+        Assert.Equal("{x:Bind ViewModel.SourceSpeechActionText, Mode=OneWay}", Attribute(FindNamed("SourceSpeechButton"), "Content"));
+        Assert.Equal("{x:Bind ViewModel.ResultSpeechActionText, Mode=OneWay}", Attribute(FindNamed("ResultSpeechButton"), "Content"));
         Assert.Equal("Image preview", Attribute(FindNamed("ImagePreview"), "AutomationProperties.Name"));
         Assert.Equal("{x:Bind ViewModel.IsLoading, Mode=OneWay}", Attribute(FindNamed("ProgressRing"), "IsActive"));
         Assert.Equal("TitleDragRegion_PointerPressed", Attribute(FindNamed("TitleDragRegion"), "PointerPressed"));

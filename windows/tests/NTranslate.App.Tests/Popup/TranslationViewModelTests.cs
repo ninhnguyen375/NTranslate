@@ -694,6 +694,20 @@ public sealed class TranslationViewModelTests
     }
 
     [Fact]
+    public async Task SpeechFailureSurfacesRetryStateWithoutEscapingHandlerBoundary()
+    {
+        var speech = new RecordingSpeech { Error = new IOException("speech unavailable") };
+        var vm = CreateAdvancedViewModel(ScriptedHandler.Sync(_ => JsonResponse("unused")), speech: speech);
+        vm.SourceText = "hello";
+
+        await vm.SpeakSourceAsync(CancellationToken.None);
+
+        Assert.Equal("Retry source speech", vm.SourceSpeechActionText);
+        Assert.Equal("speech unavailable", vm.SpeechError);
+        Assert.True(vm.CanUseSourceSpeech);
+    }
+
+    [Fact]
     public async Task SpeakSourceUsesResolvedSourceModelAndIndependentChannel()
     {
         var speech = new RecordingSpeech();
@@ -873,6 +887,7 @@ public sealed class TranslationViewModelTests
 
     private sealed class RecordingSpeech : ITranslationSpeech
     {
+        public Exception? Error { get; set; }
         public List<SpeechIdentity> Prefetched { get; } = [];
         public List<(SpeechIdentity Identity, double Rate)> Playbacks { get; } = [];
         public List<SpeechChannel> InvalidatedChannels { get; } = [];
@@ -885,6 +900,7 @@ public sealed class TranslationViewModelTests
         public Task TogglePlaybackAsync(SpeechIdentity identity, double rate, CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            if (Error is not null) throw Error;
             Playbacks.Add((identity, rate));
             return Task.CompletedTask;
         }
