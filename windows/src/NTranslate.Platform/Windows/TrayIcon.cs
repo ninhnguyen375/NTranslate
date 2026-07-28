@@ -45,6 +45,9 @@ public sealed class TrayIcon : ITrayIcon
     private bool _added;
     private bool _disposed;
     private Exception? _startError;
+    private readonly object _pendingGate = new();
+    private readonly HashSet<PendingInvoke> _pendingInvokes = [];
+    private Exception? _terminalError;
 
     public event EventHandler? OpenTranslatorRequested;
     public event EventHandler? ExitRequested;
@@ -104,19 +107,53 @@ public sealed class TrayIcon : ITrayIcon
     private void Invoke(Action action)
     {
         if (GetCurrentThreadId() == _threadId) { action(); return; }
-        Exception? error = null;
-        using var done = new ManualResetEventSlim();
-        var handle = GCHandle.Alloc((Action)(() =>
+        var pending = new PendingInvoke(action);
+        lock (_pendingGate)
         {
-            try { action(); } catch (Exception e) { error = e; } finally { done.Set(); }
-        }));
+            if (_terminalError is not null) throw new InvalidOperationException(_terminalError.Message, _terminalError);
+            _pendingInvokes.Add(pending);
+        }
+        var handle = GCHandle.Alloc(pending);
         if (!PostThreadMessage(_threadId, WmWork, 0, GCHandle.ToIntPtr(handle)))
         {
             handle.Free();
-            throw new InvalidOperationException($"PostThreadMessage failed (Win32 error {Marshal.GetLastPInvokeError()}).");
+            Complete(pending, new InvalidOperationException($"PostThreadMessage failed (Win32 error {Marshal.GetLastPInvokeError()})."));
         }
-        if (!done.Wait(TimeSpan.FromSeconds(5))) throw new InvalidOperationException("Tray icon command timed out.");
-        if (error is not null) throw error;
+        if (!pending.Done.Wait(TimeSpan.FromSeconds(5)))
+        {
+            lock (_pendingGate)
+            {
+                if (_terminalError is not null) throw new InvalidOperationException(_terminalError.Message, _terminalError);
+            }
+            throw new InvalidOperationException("Tray icon command timed out.");
+        }
+        if (pending.Error is not null) throw pending.Error;
+    }
+
+    private void Complete(PendingInvoke pending, Exception? error)
+    {
+        pending.Error = error;
+        pending.Done.Set();
+        lock (_pendingGate) _pendingInvokes.Remove(pending);
+    }
+
+    private void Terminal(Exception error)
+    {
+        PendingInvoke[] pending;
+        lock (_pendingGate)
+        {
+            if (_terminalError is not null) return;
+            _terminalError = error;
+            pending = [.. _pendingInvokes];
+        }
+        foreach (var invoke in pending) Complete(invoke, error);
+    }
+
+    private sealed class PendingInvoke(Action action)
+    {
+        public readonly Action Action = action;
+        public readonly ManualResetEventSlim Done = new();
+        public Exception? Error;
     }
 
     private void Run(ManualResetEventSlim ready)
@@ -130,13 +167,15 @@ public sealed class TrayIcon : ITrayIcon
             while (true)
             {
                 var status = GetMessage(out var message, 0, 0, 0);
-                if (status <= 0) break;
+                if (status == 0) break;
+                if (status == -1) throw new InvalidOperationException($"GetMessage failed (Win32 error {Marshal.GetLastPInvokeError()}).");
                 if (message.message == WmWork)
                 {
                     var handle = GCHandle.FromIntPtr(message.lParam);
-                    var work = (Action)handle.Target!;
+                    var pending = (PendingInvoke)handle.Target!;
                     handle.Free();
-                    work();
+                    try { pending.Action(); Complete(pending, null); }
+                    catch (Exception error) { Complete(pending, error); }
                     continue;
                 }
                 if (message.hwnd == _hwnd && message.message == WmCallback) HandleCallback(message.lParam);
@@ -144,8 +183,9 @@ public sealed class TrayIcon : ITrayIcon
                 TranslateMessage(ref message);
                 DispatchMessage(ref message);
             }
+            Terminal(new InvalidOperationException("Tray icon message window has stopped."));
         }
-        catch (Exception error) { _startError = error; ready.Set(); }
+        catch (Exception error) { _startError = error; ready.Set(); Terminal(error); }
     }
 
     private void HandleCallback(nint lParam)
