@@ -31,6 +31,18 @@ public sealed class GlobalHotkeyTests
     }
 
     [Fact]
+    public void Register_failure_returns_native_error_without_throwing()
+    {
+        var owner = new FakeMessageWindow { RegisterResult = false, LastError = 1409 };
+        using var hotkey = new GlobalHotkey(owner);
+
+        var result = hotkey.Register(new("D", false, false, true, false));
+
+        Assert.False(result.IsRegistered);
+        Assert.Contains("1409", result.Error);
+    }
+
+    [Fact]
     public void WmHotkey_filters_id_and_contains_subscriber_errors()
     {
         var owner = new FakeMessageWindow();
@@ -59,28 +71,28 @@ public sealed class GlobalHotkeyTests
     }
 
     [Fact]
-    public void Dispose_failure_throws_keeps_owned_window_for_retry()
+    public void Dispose_unregister_failure_still_destroys_owned_window_once()
     {
         var owner = new FakeMessageWindow { UnregisterResult = false, LastError = 5 };
         var hotkey = new GlobalHotkey(owner);
         hotkey.Register(new("D", false, false, true, false));
+
         Assert.Throws<HotkeyOperationException>(hotkey.Dispose);
-        Assert.Equal(0, owner.DestroyCalls);
-        owner.UnregisterResult = true;
         hotkey.Dispose();
-        hotkey.Dispose();
+
+        Assert.Equal(1, owner.UnregisterCalls);
         Assert.Equal(1, owner.DestroyCalls);
     }
 
     [Fact]
-    public void Dispose_destroy_failure_throws_and_retries()
+    public void Dispose_destroy_failure_throws_and_remains_idempotent()
     {
         var owner = new FakeMessageWindow { DestroyResult = false, LastError = 87 };
         var hotkey = new GlobalHotkey(owner);
         Assert.Throws<HotkeyOperationException>(hotkey.Dispose);
         owner.DestroyResult = true;
         hotkey.Dispose();
-        Assert.Equal(2, owner.DestroyCalls);
+        Assert.Equal(1, owner.DestroyCalls);
     }
 
     private sealed class FakeMessageWindow : IMessageWindow
@@ -96,10 +108,9 @@ public sealed class GlobalHotkeyTests
         public HotkeyModifiers RegisterModifiers { get; private set; }
         public int UnregisterCalls { get; private set; }
         public int DestroyCalls { get; private set; }
-        public bool RegisterHotkey(nint id, HotkeyModifiers modifiers, uint key) { RegisterWindow = Handle; RegisterId = id; RegisterModifiers = modifiers; return RegisterResult; }
-        public bool UnregisterHotkey(nint id) { UnregisterCalls++; return UnregisterResult; }
-        public bool Destroy() { DestroyCalls++; return DestroyResult; }
-        public int GetLastError() => LastError;
+        public NativeCommandResult<bool> RegisterHotkey(nint id, HotkeyModifiers modifiers, uint key) { RegisterWindow = Handle; RegisterId = id; RegisterModifiers = modifiers; return new(RegisterResult, RegisterResult ? 0 : LastError); }
+        public NativeCommandResult<bool> UnregisterHotkey(nint id) { UnregisterCalls++; return new(UnregisterResult, UnregisterResult ? 0 : LastError); }
+        public NativeCommandResult<bool> Destroy() { DestroyCalls++; return new(DestroyResult, DestroyResult ? 0 : LastError); }
         public void Dispatch(uint message, nint wParam) => MessageReceived?.Invoke(this, new(message, wParam));
     }
 }

@@ -1,10 +1,16 @@
 <Solution>
+  <Configurations>
+    <Platform Name="Any CPU" />
+    <Platform Name="x64" />
+  </Configurations>
   <Folder Name="/src/">
     <Project Path="src/NTranslate.Core/NTranslate.Core.csproj" />
     <Project Path="src/NTranslate.Platform/NTranslate.Platform.csproj" />
+    <Project Path="src/NTranslate.App/NTranslate.App.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/NTranslate.Core.Tests/NTranslate.Core.Tests.csproj" />
     <Project Path="tests/NTranslate.Platform.Tests/NTranslate.Platform.Tests.csproj" />
+    <Project Path="tests/NTranslate.App.Tests/NTranslate.App.Tests.csproj" />
   </Folder>
 </Solution>

@@ -39,10 +39,9 @@ internal interface IMessageWindow
 {
     event EventHandler<NativeMessageEventArgs>? MessageReceived;
     nint Handle { get; }
-    bool RegisterHotkey(nint id, HotkeyModifiers modifiers, uint key);
-    bool UnregisterHotkey(nint id);
-    bool Destroy();
-    int GetLastError();
+    NativeCommandResult<bool> RegisterHotkey(nint id, HotkeyModifiers modifiers, uint key);
+    NativeCommandResult<bool> UnregisterHotkey(nint id);
+    NativeCommandResult<bool> Destroy();
 }
 
 internal sealed class NativeMessageWindow : IMessageWindow
@@ -68,19 +67,22 @@ internal sealed class NativeMessageWindow : IMessageWindow
         if (_startError is not null) throw new HotkeyOperationException(_startError.Message);
     }
 
-    public bool RegisterHotkey(nint id, HotkeyModifiers modifiers, uint key) => Invoke(() => RegisterHotKey(_handle, id, (uint)modifiers, key));
-    public bool UnregisterHotkey(nint id) => Invoke(() => UnregisterHotKey(_handle, id));
-    public bool Destroy() => Invoke(() =>
+    public NativeCommandResult<bool> RegisterHotkey(nint id, HotkeyModifiers modifiers, uint key) => Invoke(() => RegisterHotKey(_handle, id, (uint)modifiers, key));
+    public NativeCommandResult<bool> UnregisterHotkey(nint id) => Invoke(() => UnregisterHotKey(_handle, id));
+    public NativeCommandResult<bool> Destroy() => Invoke(() =>
     {
         var destroyed = DestroyWindow(_handle);
         if (destroyed) PostQuitMessage(0);
         return destroyed;
     });
-    public int GetLastError() => throw new NotSupportedException("Error belongs to each command result.");
 
-    private bool Invoke(Func<bool> action)
+    private NativeCommandResult<bool> Invoke(Func<bool> action)
     {
-        if (GetCurrentThreadId() == _threadId) return action();
+        if (GetCurrentThreadId() == _threadId)
+        {
+            var value = action();
+            return new(value, value ? 0 : Marshal.GetLastPInvokeError());
+        }
         var command = new Command(action);
         lock (_commandsGate)
         {
@@ -99,10 +101,10 @@ internal sealed class NativeMessageWindow : IMessageWindow
             throw new HotkeyOperationException("Hotkey command timed out.");
         }
         if (command.Error is not null) throw command.Error;
-        return command.Result!.Value;
+        return command.Result!;
     }
 
-    private void Complete(Command command, bool? result, Exception? error)
+    private void Complete(Command command, NativeCommandResult<bool>? result, Exception? error)
     {
         command.Result = result;
         command.Error = error;
@@ -115,7 +117,7 @@ internal sealed class NativeMessageWindow : IMessageWindow
         public readonly Func<bool> Action = action;
         public readonly ManualResetEventSlim Done = new();
         public bool Cancelled;
-        public bool? Result;
+        public NativeCommandResult<bool>? Result;
         public Exception? Error;
     }
 
@@ -139,7 +141,11 @@ internal sealed class NativeMessageWindow : IMessageWindow
                     handle.Free();
                     if (!command.Cancelled)
                     {
-                        try { Complete(command, command.Action(), null); }
+                        try
+                        {
+                            var value = command.Action();
+                            Complete(command, new(value, value ? 0 : Marshal.GetLastPInvokeError()), null);
+                        }
                         catch (Exception error) { Complete(command, null, error); }
                     }
                     else Complete(command, null, new HotkeyOperationException("Hotkey command timed out."));
@@ -204,29 +210,43 @@ public sealed class GlobalHotkey : IGlobalHotkey
         ObjectDisposedException.ThrowIf(_disposed, this);
         var parsed = WindowsHotkeyValidation.Parse(config);
         if (_registered) Unregister();
-        if (_window.RegisterHotkey(Id, parsed.Modifiers | HotkeyModifiers.NoRepeat, parsed.VirtualKey))
+        var result = _window.RegisterHotkey(Id, parsed.Modifiers | HotkeyModifiers.NoRepeat, parsed.VirtualKey);
+        if (result.Value)
         {
             _registered = true;
             return new(true, null);
         }
-        return new(false, $"RegisterHotKey failed (Win32 error {_window.GetLastError()}).");
+        return new(false, $"RegisterHotKey failed (Win32 error {result.LastError}).");
     }
 
     public void Unregister()
     {
         if (!_registered) return;
-        if (!_window.UnregisterHotkey(Id)) throw new HotkeyOperationException($"UnregisterHotKey failed (Win32 error {_window.GetLastError()}).");
+        var result = _window.UnregisterHotkey(Id);
+        if (!result.Value) throw new HotkeyOperationException($"UnregisterHotKey failed (Win32 error {result.LastError}).");
         _registered = false;
     }
 
     public void Dispose()
     {
         if (_disposed) return;
-        Unregister();
-        if (!_window.Destroy()) throw new HotkeyOperationException($"DestroyWindow failed (Win32 error {_window.GetLastError()}).");
-        _window.MessageReceived -= HandleMessage;
-        _disposed = true;
-        GC.SuppressFinalize(this);
+        List<Exception> errors = [];
+        try { Unregister(); }
+        catch (Exception error) { errors.Add(error); }
+        try
+        {
+            var result = _window.Destroy();
+            if (!result.Value) errors.Add(new HotkeyOperationException($"DestroyWindow failed (Win32 error {result.LastError})."));
+        }
+        catch (Exception error) { errors.Add(error); }
+        finally
+        {
+            _window.MessageReceived -= HandleMessage;
+            _disposed = true;
+            GC.SuppressFinalize(this);
+        }
+        if (errors.Count == 1) throw errors[0];
+        if (errors.Count > 1) throw new AggregateException("Hotkey cleanup failed.", errors);
     }
 
     private void HandleMessage(object? sender, NativeMessageEventArgs message)

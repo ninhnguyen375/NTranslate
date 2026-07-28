@@ -1,0 +1,266 @@
+using System.Runtime.InteropServices;
+
+namespace NTranslate.Platform.Windows;
+
+internal enum TrayCommand { Open, Exit }
+
+internal static class TrayMenuCommands
+{
+    internal const int OpenId = 1001;
+    internal const int ExitId = 1099;
+
+    internal static TrayCommand? Resolve(int id) => id switch
+    {
+        OpenId => TrayCommand.Open,
+        ExitId => TrayCommand.Exit,
+        _ => null,
+    };
+}
+
+public interface ITrayIcon : IDisposable
+{
+    event EventHandler? OpenTranslatorRequested;
+    event EventHandler? ExitRequested;
+    void Show();
+}
+
+public sealed class TrayIcon : ITrayIcon
+{
+    private const uint WmCallback = 0x8000 + 1; // WM_APP + 1
+    private const uint WmWork = 0x8000 + 2; // WM_APP + 2
+    private const uint WmLButtonDblClk = 0x0203;
+    private const uint WmCommand = 0x0111;
+    private const uint WmContextMenu = 0x007B;
+    private const uint WmRButtonUp = 0x0205;
+    private const uint IconId = 1;
+    private const uint NimAdd = 0, NimDelete = 2, NimSetVersion = 4;
+    private const uint NifMessage = 1, NifIcon = 2, NifTip = 4;
+    private const uint NotifyIconVersion4 = 4;
+    private const uint MfString = 0;
+    private const uint TpmRightButton = 2, TpmReturnCmd = 0x0100;
+
+    private readonly Thread _thread;
+    private nint _hwnd;
+    private uint _threadId;
+    private bool _added;
+    private bool _disposed;
+    private Exception? _startError;
+    private readonly object _pendingGate = new();
+    private readonly HashSet<PendingInvoke> _pendingInvokes = [];
+    private Exception? _terminalError;
+
+    public event EventHandler? OpenTranslatorRequested;
+    public event EventHandler? ExitRequested;
+
+    public TrayIcon()
+    {
+        using var ready = new ManualResetEventSlim();
+        _thread = new Thread(() => Run(ready)) { IsBackground = true, Name = "NTranslate.Tray" };
+        _thread.Start();
+        ready.Wait();
+        if (_startError is not null) throw new InvalidOperationException(_startError.Message, _startError);
+    }
+
+    public void Show()
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (_added) return;
+        Invoke(() =>
+        {
+            var data = CreateIconData(NifMessage | NifIcon | NifTip);
+            if (!Shell_NotifyIconW(NimAdd, ref data)) throw new InvalidOperationException($"Shell_NotifyIconW(NIM_ADD) failed (Win32 error {Marshal.GetLastPInvokeError()}).");
+            data.uVersion = NotifyIconVersion4;
+            if (!Shell_NotifyIconW(NimSetVersion, ref data)) throw new InvalidOperationException($"Shell_NotifyIconW(NIM_SETVERSION) failed (Win32 error {Marshal.GetLastPInvokeError()}).");
+        });
+        _added = true;
+    }
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        if (_added)
+        {
+            Invoke(() =>
+            {
+                var data = CreateIconData(0);
+                Shell_NotifyIconW(NimDelete, ref data);
+            });
+            _added = false;
+        }
+        Invoke(() => PostQuitMessage(0));
+        _thread.Join(TimeSpan.FromSeconds(5));
+        GC.SuppressFinalize(this);
+    }
+
+    private NotifyIconData CreateIconData(uint flags) => new()
+    {
+        cbSize = Marshal.SizeOf<NotifyIconData>(),
+        hWnd = _hwnd,
+        uID = IconId,
+        uFlags = flags,
+        uCallbackMessage = WmCallback,
+        hIcon = LoadIcon(0, new nint(32512)), // IDI_APPLICATION
+        szTip = "NTranslate",
+    };
+
+    private void Invoke(Action action)
+    {
+        if (GetCurrentThreadId() == _threadId) { action(); return; }
+        var pending = new PendingInvoke(action);
+        lock (_pendingGate)
+        {
+            if (_terminalError is not null) throw new InvalidOperationException(_terminalError.Message, _terminalError);
+            _pendingInvokes.Add(pending);
+        }
+        var handle = GCHandle.Alloc(pending);
+        if (!PostThreadMessage(_threadId, WmWork, 0, GCHandle.ToIntPtr(handle)))
+        {
+            handle.Free();
+            Complete(pending, new InvalidOperationException($"PostThreadMessage failed (Win32 error {Marshal.GetLastPInvokeError()})."));
+        }
+        if (!pending.Done.Wait(TimeSpan.FromSeconds(5)))
+        {
+            lock (_pendingGate)
+            {
+                if (_terminalError is not null) throw new InvalidOperationException(_terminalError.Message, _terminalError);
+            }
+            throw new InvalidOperationException("Tray icon command timed out.");
+        }
+        if (pending.Error is not null) throw pending.Error;
+    }
+
+    private void Complete(PendingInvoke pending, Exception? error)
+    {
+        pending.Error = error;
+        pending.Done.Set();
+        lock (_pendingGate) _pendingInvokes.Remove(pending);
+    }
+
+    private void Terminal(Exception error)
+    {
+        PendingInvoke[] pending;
+        lock (_pendingGate)
+        {
+            if (_terminalError is not null) return;
+            _terminalError = error;
+            pending = [.. _pendingInvokes];
+        }
+        foreach (var invoke in pending) Complete(invoke, error);
+    }
+
+    private sealed class PendingInvoke(Action action)
+    {
+        public readonly Action Action = action;
+        public readonly ManualResetEventSlim Done = new();
+        public Exception? Error;
+    }
+
+    private void Run(ManualResetEventSlim ready)
+    {
+        try
+        {
+            _threadId = GetCurrentThreadId();
+            _hwnd = CreateWindowEx(0, "STATIC", "", 0, 0, 0, 0, 0, new nint(-3), 0, 0, 0);
+            if (_hwnd == 0) throw new InvalidOperationException($"CreateWindowEx failed (Win32 error {Marshal.GetLastPInvokeError()}).");
+            ready.Set();
+            while (true)
+            {
+                var status = GetMessage(out var message, 0, 0, 0);
+                if (status == 0) break;
+                if (status == -1) throw new InvalidOperationException($"GetMessage failed (Win32 error {Marshal.GetLastPInvokeError()}).");
+                if (message.message == WmWork)
+                {
+                    var handle = GCHandle.FromIntPtr(message.lParam);
+                    var pending = (PendingInvoke)handle.Target!;
+                    handle.Free();
+                    try { pending.Action(); Complete(pending, null); }
+                    catch (Exception error) { Complete(pending, error); }
+                    continue;
+                }
+                if (message.hwnd == _hwnd && message.message == WmCallback) HandleCallback(message.lParam);
+                else if (message.hwnd == _hwnd && message.message == WmCommand) HandleCommand((int)(message.wParam.ToInt64() & 0xFFFF));
+                TranslateMessage(ref message);
+                DispatchMessage(ref message);
+            }
+            Terminal(new InvalidOperationException("Tray icon message window has stopped."));
+        }
+        catch (Exception error) { _startError = error; ready.Set(); Terminal(error); }
+    }
+
+    private void HandleCallback(nint lParam)
+    {
+        var mouseMessage = (uint)(lParam.ToInt64() & 0xFFFF);
+        if (mouseMessage == WmLButtonDblClk) Raise(OpenTranslatorRequested);
+        else if (mouseMessage == WmContextMenu || mouseMessage == WmRButtonUp) ShowContextMenu();
+    }
+
+    private void ShowContextMenu()
+    {
+        GetCursorPos(out var point);
+        var menu = CreatePopupMenu();
+        AppendMenu(menu, MfString, (nint)TrayMenuCommands.OpenId, "Open Translator");
+        AppendMenu(menu, MfString, (nint)TrayMenuCommands.ExitId, "Exit");
+        SetForegroundWindow(_hwnd);
+        var command = TrackPopupMenu(menu, TpmRightButton | TpmReturnCmd, point.x, point.y, 0, _hwnd, 0);
+        PostMessage(_hwnd, 0, 0, 0); // WM_NULL: required so the menu closes correctly (MS Q135788)
+        DestroyMenu(menu);
+        if (command != 0) HandleCommand((int)command);
+    }
+
+    private void HandleCommand(int id)
+    {
+        switch (TrayMenuCommands.Resolve(id))
+        {
+            case TrayCommand.Open: Raise(OpenTranslatorRequested); break;
+            case TrayCommand.Exit: Raise(ExitRequested); break;
+        }
+    }
+
+    private static void Raise(EventHandler? handler)
+    {
+        foreach (EventHandler h in handler?.GetInvocationList() ?? [])
+            _ = Task.Run(() => { try { h(null, EventArgs.Empty); } catch { } });
+    }
+
+    [StructLayout(LayoutKind.Sequential)] private struct Msg { public nint hwnd; public uint message; public nint wParam; public nint lParam; public uint time; public nint pt; }
+    [StructLayout(LayoutKind.Sequential)] private struct Point { public int x; public int y; }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private struct NotifyIconData
+    {
+        public int cbSize;
+        public nint hWnd;
+        public uint uID;
+        public uint uFlags;
+        public uint uCallbackMessage;
+        public nint hIcon;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)] public string szTip;
+        public uint dwState;
+        public uint dwStateMask;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 256)] public string szInfo;
+        public uint uVersion;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 64)] public string szInfoTitle;
+        public uint dwInfoFlags;
+        public Guid guidItem;
+        public nint hBalloonIcon;
+    }
+
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode)] private static extern bool Shell_NotifyIconW(uint message, ref NotifyIconData data);
+    [DllImport("user32.dll", SetLastError = true)] private static extern nint CreateWindowEx(uint ex, string cls, string name, uint style, int x, int y, int w, int h, nint parent, nint menu, nint instance, nint param);
+    [DllImport("user32.dll", SetLastError = true)] private static extern bool DestroyWindow(nint hwnd);
+    [DllImport("user32.dll")] private static extern int GetMessage(out Msg message, nint hwnd, uint min, uint max);
+    [DllImport("user32.dll")] private static extern bool TranslateMessage(ref Msg message);
+    [DllImport("user32.dll")] private static extern nint DispatchMessage(ref Msg message);
+    [DllImport("user32.dll", SetLastError = true)] private static extern bool PostThreadMessage(uint id, uint message, nint wParam, nint lParam);
+    [DllImport("user32.dll")] private static extern void PostQuitMessage(int exitCode);
+    [DllImport("user32.dll")] private static extern bool PostMessage(nint hwnd, uint message, nint wParam, nint lParam);
+    [DllImport("user32.dll")] private static extern nint LoadIcon(nint instance, nint iconName);
+    [DllImport("user32.dll")] private static extern nint CreatePopupMenu();
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern bool AppendMenu(nint menu, uint flags, nint id, string text);
+    [DllImport("user32.dll")] private static extern bool DestroyMenu(nint menu);
+    [DllImport("user32.dll")] private static extern bool SetForegroundWindow(nint hwnd);
+    [DllImport("user32.dll")] private static extern uint TrackPopupMenu(nint menu, uint flags, int x, int y, int reserved, nint hwnd, nint rect);
+    [DllImport("user32.dll")] private static extern bool GetCursorPos(out Point point);
+    [DllImport("kernel32.dll")] private static extern uint GetCurrentThreadId();
+}
