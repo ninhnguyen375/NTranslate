@@ -5,37 +5,65 @@ namespace NTranslate.Core.Tests.Requests;
 public sealed class RequestCoordinatorTests
 {
     [Fact]
-    public void BeginAdvancesGenerationAndIsCurrentForNewestOnly()
+    public void BeginCancelsOldLeaseAndAdvancesGeneration()
     {
-        var coordinator = new RequestCoordinator();
+        using var coordinator = new RequestCoordinator();
+        using var first = coordinator.Begin();
+        using var second = coordinator.Begin();
 
-        var first = coordinator.Begin();
-        var second = coordinator.Begin();
-
-        Assert.NotEqual(first, second);
-        Assert.False(coordinator.IsCurrent(first));
-        Assert.True(coordinator.IsCurrent(second));
+        Assert.True(first.Token.IsCancellationRequested);
+        Assert.True(second.Generation.Value > first.Generation.Value);
+        Assert.False(coordinator.Accepts(first.Generation));
+        Assert.True(coordinator.Accepts(second.Generation));
     }
 
     [Fact]
-    public void OlderCompletionLosesToNewerRequest()
+    public void OldCompletionCannotClearNewRequest()
     {
-        var coordinator = new RequestCoordinator();
+        using var coordinator = new RequestCoordinator();
+        using var first = coordinator.Begin();
+        using var second = coordinator.Begin();
 
-        var stale = coordinator.Begin();
-        coordinator.Begin();
-
-        Assert.False(coordinator.IsCurrent(stale));
+        Assert.False(first.TryComplete());
+        Assert.True(coordinator.IsInFlight);
+        Assert.True(second.TryComplete());
+        Assert.False(coordinator.IsInFlight);
+        Assert.False(second.TryComplete());
     }
 
     [Fact]
-    public void InvalidateDiscardsInFlightCompletionEvenWithoutNewRequest()
+    public void CancelCurrentRejectsOldResults()
+    {
+        using var coordinator = new RequestCoordinator();
+        using var lease = coordinator.Begin();
+
+        coordinator.CancelCurrent();
+
+        Assert.True(lease.Token.IsCancellationRequested);
+        Assert.False(coordinator.Accepts(lease.Generation));
+        Assert.False(coordinator.IsInFlight);
+    }
+
+    [Fact]
+    public void DisposeCancelsActiveToken()
     {
         var coordinator = new RequestCoordinator();
-        var generation = coordinator.Begin();
+        using var lease = coordinator.Begin();
 
-        coordinator.Invalidate();
+        coordinator.Dispose();
 
-        Assert.False(coordinator.IsCurrent(generation));
+        Assert.True(lease.Token.IsCancellationRequested);
+    }
+
+    [Fact]
+    public void OuterCancellationCancelsLease()
+    {
+        using var outer = new CancellationTokenSource();
+        using var coordinator = new RequestCoordinator();
+        using var lease = coordinator.Begin(outer.Token);
+
+        outer.Cancel();
+
+        Assert.True(lease.Token.IsCancellationRequested);
     }
 }

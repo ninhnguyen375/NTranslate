@@ -147,7 +147,7 @@ public sealed class TranslationViewModel : INotifyPropertyChanged
 
     public void Cancel()
     {
-        _coordinator.Invalidate();
+        _coordinator.CancelCurrent();
         _inFlight?.Cancel();
     }
 
@@ -175,7 +175,7 @@ public sealed class TranslationViewModel : INotifyPropertyChanged
         _inFlight?.Cancel();
         var cancellation = new CancellationTokenSource();
         _inFlight = cancellation;
-        int generation = _coordinator.Begin();
+        using var lease = _coordinator.Begin(cancellation.Token);
         State = PopupState.Loading;
 
         try
@@ -189,7 +189,7 @@ public sealed class TranslationViewModel : INotifyPropertyChanged
 
             await _dispatchUi(() =>
             {
-                if (!_coordinator.IsCurrent(generation))
+                if (!_coordinator.Accepts(lease.Generation))
                     return; // superseded or invalidated: discard silently, no error.
 
                 ResultText = result;
@@ -215,7 +215,7 @@ public sealed class TranslationViewModel : INotifyPropertyChanged
         catch (UiDispatchUnavailableException)
         {
             // Dispatcher shutdown is terminal. Do not retry it or mutate UI state off-thread.
-            _coordinator.Invalidate();
+            _coordinator.CancelCurrent();
         }
         catch (Exception ex)
         {
@@ -223,7 +223,7 @@ public sealed class TranslationViewModel : INotifyPropertyChanged
             {
                 await _dispatchUi(() =>
                 {
-                    if (!_coordinator.IsCurrent(generation))
+                    if (!_coordinator.Accepts(lease.Generation))
                         return; // stale failure: discard, never surface, never touch SourceText.
 
                     StatusMessage = ex.Message;
@@ -233,7 +233,7 @@ public sealed class TranslationViewModel : INotifyPropertyChanged
             catch (UiDispatchUnavailableException)
             {
                 // Dispatcher shutdown is terminal. Do not mutate UI state off-thread.
-                _coordinator.Invalidate();
+                _coordinator.CancelCurrent();
             }
         }
         finally
@@ -262,7 +262,7 @@ public sealed class TranslationViewModel : INotifyPropertyChanged
 
     private void RejectWithGuidance(string message)
     {
-        _coordinator.Invalidate();
+        _coordinator.CancelCurrent();
         _inFlight?.Cancel();
         ResultText = string.Empty;
         StatusMessage = message;
@@ -276,7 +276,7 @@ public sealed class TranslationViewModel : INotifyPropertyChanged
 
         // Source text/language changed mid-flight: cancel and invalidate so a
         // late completion for the old request can never apply.
-        _coordinator.Invalidate();
+        _coordinator.CancelCurrent();
         _inFlight?.Cancel();
         ResultText = string.Empty;
         StatusMessage = null;
