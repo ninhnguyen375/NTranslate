@@ -5,7 +5,11 @@ using NTranslate.Core.Languages;
 using NTranslate.Core.OpenAI;
 using NTranslate.Core.Prompts;
 using NTranslate.Core.Requests;
+using NTranslate.Core.Speech;
+using NTranslate.Core.Translation;
 using NTranslate.Platform.Clipboard;
+using NTranslate.Platform.Images;
+using NTranslate.Platform.Shell;
 
 namespace NTranslate.App.Popup;
 
@@ -15,6 +19,20 @@ public enum PopupState
     Loading,
     Result,
     Error
+}
+
+public sealed record TranslationHistoryEntry(
+    string SourceText,
+    string ResultText,
+    string SourceLanguage,
+    string TargetLanguage,
+    TranslationMode Mode);
+
+public interface ITranslationSpeech
+{
+    Task PrefetchAsync(SpeechIdentity identity, CancellationToken cancellationToken);
+    Task TogglePlaybackAsync(SpeechIdentity identity, double rate, CancellationToken cancellationToken);
+    void Invalidate(SpeechChannel channel, bool stopPlayback);
 }
 
 internal sealed class UiDispatchUnavailableException : InvalidOperationException
@@ -36,6 +54,10 @@ public sealed class TranslationViewModel : INotifyPropertyChanged
     private readonly IClipboardService _clipboard;
     private readonly Func<CancellationToken, Task<string>> _resolveApiKey;
     private readonly Func<Action, Task> _dispatchUi;
+    private readonly IImageNormalizer? _imageNormalizer;
+    private readonly IBrowserLauncher? _browserLauncher;
+    private readonly ITranslationSpeech? _speech;
+    private readonly Func<TranslationHistoryEntry, CancellationToken, Task<Guid?>>? _recordHistory;
     private readonly RequestCoordinator _coordinator = new();
 
     private CancellationTokenSource? _inFlight;
@@ -46,23 +68,55 @@ public sealed class TranslationViewModel : INotifyPropertyChanged
     private string? _statusMessage;
     private string? _persistentGuidance;
     private PopupState _state = PopupState.Guidance;
+    private bool _isImageMode;
 
     public TranslationViewModel(
         AppConfig config,
         OpenAiCompatibleClient client,
         IClipboardService clipboard,
         Func<CancellationToken, Task<string>> resolveApiKey,
-        Func<Action, Task>? dispatchUi = null)
+        Func<Action, Task>? dispatchUi = null,
+        IImageNormalizer? imageNormalizer = null,
+        IBrowserLauncher? browserLauncher = null,
+        ITranslationSpeech? speech = null,
+        Func<TranslationHistoryEntry, CancellationToken, Task<Guid?>>? recordHistory = null)
     {
         _config = config;
         _client = client;
         _clipboard = clipboard;
         _resolveApiKey = resolveApiKey;
         _dispatchUi = dispatchUi ?? (action => { action(); return Task.CompletedTask; });
+        _imageNormalizer = imageNormalizer;
+        _browserLauncher = browserLauncher;
+        _speech = speech;
+        _recordHistory = recordHistory;
         _sourceLang = config.SourceLang;
         _targetLang = config.TargetLang;
         TranslateCommand = new AsyncRelayCommand(TranslateAsync);
         CopyCommand = new AsyncRelayCommand(CopyAsync, () => CanCopy);
+    }
+
+    public TranslationViewModel(
+        AppConfig config,
+        OpenAiCompatibleClient client,
+        IClipboardService clipboard,
+        Func<CancellationToken, Task<string>> resolveApiKey,
+        IImageNormalizer imageNormalizer,
+        IBrowserLauncher browserLauncher,
+        SpeechCoordinator speechCoordinator,
+        Func<TranslationHistoryEntry, CancellationToken, Task<Guid?>>? recordHistory = null,
+        Func<Action, Task>? dispatchUi = null)
+        : this(
+            config,
+            client,
+            clipboard,
+            resolveApiKey,
+            dispatchUi,
+            imageNormalizer,
+            browserLauncher,
+            new SpeechCoordinatorBoundary(speechCoordinator),
+            recordHistory)
+    {
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -127,6 +181,12 @@ public sealed class TranslationViewModel : INotifyPropertyChanged
 
     /// <summary>Copy is only ever actionable for an accepted, non-stale, successful translation.</summary>
     public bool CanCopy => State == PopupState.Result && ResultText.Length > 0;
+    public bool IsImageMode => _isImageMode;
+    public bool CanSelectSourceLanguage => !IsImageMode;
+    public bool CanLearn => !IsImageMode;
+    public bool CanSpeakSource => !IsImageMode && SourceText.Length > 0;
+    public bool CanSpeakResult => ResultText.Length > 0;
+    public bool CreatesHistory => !IsImageMode;
 
     public IReadOnlyList<string> Languages => _config.Languages;
 
@@ -145,11 +205,74 @@ public sealed class TranslationViewModel : INotifyPropertyChanged
 
     internal void SetStartupGuidance(string? guidance) => PersistentGuidance = guidance;
 
-    public void Cancel()
+    public void Cancel() => InvalidateAll();
+
+    public Task TranslateAsync(CancellationToken cancellationToken) => TranslateTextAsync(TranslationMode.Translate, cancellationToken);
+
+    public Task LearnAsync(CancellationToken cancellationToken) => TranslateTextAsync(TranslationMode.Learn, cancellationToken);
+
+    public async Task TranslateImageAsync(Stream image, CancellationToken cancellationToken)
     {
-        _coordinator.CancelCurrent();
-        _inFlight?.Cancel();
+        ArgumentNullException.ThrowIfNull(image);
+        if (_imageNormalizer is null) throw new InvalidOperationException("Image normalization is unavailable.");
+        EnterImageMode();
+        using var lease = BeginRequest(cancellationToken, out var requestCancellation);
+        try
+        {
+            var normalized = await _imageNormalizer.NormalizePngAsync(image, requestCancellation.Token).ConfigureAwait(false);
+            string apiKey = await _resolveApiKey(requestCancellation.Token).ConfigureAwait(false);
+            var request = new ChatCompletionRequest(_config.Model, PromptRenderer.RenderTranslation(_config), new ImageChatInput(normalized.PngData.ToArray(), TargetLang));
+            string result = await _client.CompleteChatAsync(new Uri(_config.ApiBaseUrl), apiKey, request, requestCancellation.Token).ConfigureAwait(false);
+            await ApplyAcceptedResultAsync(lease.Generation, result, null, TranslationMode.ImageTranslate, requestCancellation.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (requestCancellation.IsCancellationRequested) { }
+        catch (Exception ex) { await ApplyErrorAsync(lease.Generation, ex).ConfigureAwait(false); }
+        finally { FinishRequest(requestCancellation); }
     }
+
+    public async Task SearchImagesAsync(CancellationToken cancellationToken)
+    {
+        if (_browserLauncher is null) throw new InvalidOperationException("Browser launch is unavailable.");
+        string fallback = SourceText.Trim();
+        using var lease = BeginRequest(cancellationToken, out var requestCancellation);
+        string? generated = null;
+        try
+        {
+            string apiKey = await _resolveApiKey(requestCancellation.Token).ConfigureAwait(false);
+            var request = new ChatCompletionRequest(_config.Model, "Return only a concise image search query.", new TextChatInput(fallback));
+            generated = await _client.CompleteChatAsync(new Uri(_config.ApiBaseUrl), apiKey, request, requestCancellation.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (requestCancellation.IsCancellationRequested) { return; }
+        catch { }
+        finally
+        {
+            if (ReferenceEquals(_inFlight, requestCancellation)) _inFlight = null;
+        }
+        if (!_coordinator.Accepts(lease.Generation) || requestCancellation.IsCancellationRequested)
+        {
+            requestCancellation.Dispose();
+            return;
+        }
+        try
+        {
+            string query = ImageSearchPolicy.ResolveQuery(generated, fallback);
+            await _browserLauncher.OpenAsync(ImageSearchPolicy.CreateGoogleImagesUri(query), requestCancellation.Token).ConfigureAwait(false);
+        }
+        finally { requestCancellation.Dispose(); }
+    }
+
+    public void EnterImageMode()
+    {
+        InvalidateAll();
+        _isImageMode = true;
+        _sourceText = string.Empty;
+        OnPropertyChanged(nameof(SourceText));
+        OnImageModeChanged();
+        ResultText = string.Empty;
+        State = PopupState.Guidance;
+    }
+
+    public void WindowChanged() => InvalidateAll();
 
     /// <summary>
     /// Internal seam for tests: runs the translate flow without the command's
@@ -158,7 +281,9 @@ public sealed class TranslationViewModel : INotifyPropertyChanged
     /// </summary>
     internal Task TranslateForTestAsync() => TranslateAsync();
 
-    private async Task TranslateAsync()
+    private Task TranslateAsync() => TranslateTextAsync(TranslationMode.Translate, CancellationToken.None);
+
+    private async Task TranslateTextAsync(TranslationMode mode, CancellationToken outerCancellationToken)
     {
         string text = SourceText.Trim();
         if (text.Length == 0)
@@ -172,41 +297,29 @@ public sealed class TranslationViewModel : INotifyPropertyChanged
             return;
         }
 
-        _inFlight?.Cancel();
-        var cancellation = new CancellationTokenSource();
-        _inFlight = cancellation;
-        using var lease = _coordinator.Begin(cancellation.Token);
-        State = PopupState.Loading;
+        _isImageMode = false;
+        OnImageModeChanged();
+        using var lease = BeginRequest(outerCancellationToken, out var cancellation);
 
         try
         {
             string apiKey = await _resolveApiKey(cancellation.Token).ConfigureAwait(true);
             var pair = LanguagePolicy.ResolvePair(text, _config with { SourceLang = SourceLang, TargetLang = TargetLang }, []);
             var effectiveConfig = _config with { SourceLang = pair.SourceLang, TargetLang = pair.TargetLang };
-            string systemPrompt = PromptRenderer.RenderTranslation(effectiveConfig);
+            string systemPrompt = mode == TranslationMode.Learn
+                ? PromptRenderer.RenderLearn(text, effectiveConfig)
+                : PromptRenderer.SelectMode(text, pair.SourceLang, pair.TargetLang, false) == PromptMode.Grammar
+                    ? PromptRenderer.RenderGrammar(pair.TargetLang, effectiveConfig)
+                    : PromptRenderer.RenderTranslation(effectiveConfig);
             var request = new ChatCompletionRequest(_config.Model, systemPrompt, new TextChatInput(text));
             string result = await _client.CompleteChatAsync(new Uri(_config.ApiBaseUrl), apiKey, request, cancellation.Token).ConfigureAwait(false);
 
-            await _dispatchUi(() =>
-            {
-                if (!_coordinator.Accepts(lease.Generation))
-                    return; // superseded or invalidated: discard silently, no error.
-
-                ResultText = result;
-                StatusMessage = null;
-                State = PopupState.Result;
-                if (_config.Ui.AutoCopy)
-                {
-                    try
-                    {
-                        _clipboard.WriteUnicodeText(result);
-                    }
-                    catch
-                    {
-                        StatusMessage = "Clipboard unavailable. Try Copy again.";
-                    }
-                }
-            }).ConfigureAwait(false);
+            await ApplyAcceptedResultAsync(
+                lease.Generation,
+                result,
+                mode == TranslationMode.Translate ? text : null,
+                mode,
+                cancellation.Token).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
         {
@@ -236,12 +349,87 @@ public sealed class TranslationViewModel : INotifyPropertyChanged
                 _coordinator.CancelCurrent();
             }
         }
-        finally
+        finally { FinishRequest(cancellation); }
+    }
+
+    private RequestLease BeginRequest(CancellationToken outerCancellationToken, out CancellationTokenSource cancellation)
+    {
+        _inFlight?.Cancel();
+        cancellation = CancellationTokenSource.CreateLinkedTokenSource(outerCancellationToken);
+        _inFlight = cancellation;
+        var lease = _coordinator.Begin(cancellation.Token);
+        State = PopupState.Loading;
+        return lease;
+    }
+
+    private void FinishRequest(CancellationTokenSource cancellation)
+    {
+        if (ReferenceEquals(_inFlight, cancellation)) _inFlight = null;
+        cancellation.Dispose();
+    }
+
+    private async Task ApplyAcceptedResultAsync(
+        RequestGeneration generation,
+        string result,
+        string? historySource,
+        TranslationMode mode,
+        CancellationToken cancellationToken)
+    {
+        Guid? historyId = null;
+        await _dispatchUi(() =>
         {
-            if (ReferenceEquals(_inFlight, cancellation))
-                _inFlight = null;
-            cancellation.Dispose();
+            if (!_coordinator.Accepts(generation)) return;
+            ResultText = result;
+            StatusMessage = null;
+            State = PopupState.Result;
+            if (_config.Ui.AutoCopy)
+            {
+                try { _clipboard.WriteUnicodeText(result); }
+                catch { StatusMessage = "Clipboard unavailable. Try Copy again."; }
+            }
+        }).ConfigureAwait(false);
+        if (!_coordinator.Accepts(generation)) return;
+        if (historySource is not null && _recordHistory is not null)
+        {
+            historyId = await _recordHistory(new(historySource, result, SourceLang, TargetLang, mode), cancellationToken).ConfigureAwait(false);
+            if (!_coordinator.Accepts(generation)) return;
         }
+        if (_config.AutoPrefetchSpeech && _speech is not null && mode == TranslationMode.Translate)
+        {
+            await _speech.PrefetchAsync(SpeechIdentityFor(SpeechChannel.Source, historySource!, SourceLang, historyId), cancellationToken).ConfigureAwait(false);
+            if (!_coordinator.Accepts(generation)) return;
+            await _speech.PrefetchAsync(SpeechIdentityFor(SpeechChannel.Result, result, TargetLang, historyId), cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    private async Task ApplyErrorAsync(RequestGeneration generation, Exception exception)
+    {
+        await _dispatchUi(() =>
+        {
+            if (!_coordinator.Accepts(generation)) return;
+            StatusMessage = exception.Message;
+            State = PopupState.Error;
+        }).ConfigureAwait(false);
+    }
+
+    private SpeechIdentity SpeechIdentityFor(SpeechChannel channel, string text, string language, Guid? historyId) =>
+        new(new(channel, text, channel == SpeechChannel.Result ? _config.SpeechTargetModel : SpeechModelResolver.Resolve(language, _config)), historyId);
+
+    private void InvalidateAll()
+    {
+        _coordinator.CancelCurrent();
+        _inFlight?.Cancel();
+        _speech?.Invalidate(SpeechChannel.Source, true);
+        _speech?.Invalidate(SpeechChannel.Result, true);
+    }
+
+    private void OnImageModeChanged()
+    {
+        OnPropertyChanged(nameof(IsImageMode));
+        OnPropertyChanged(nameof(CanSelectSourceLanguage));
+        OnPropertyChanged(nameof(CanLearn));
+        OnPropertyChanged(nameof(CanSpeakSource));
+        OnPropertyChanged(nameof(CreatesHistory));
     }
 
     private Task CopyAsync()
@@ -276,8 +464,7 @@ public sealed class TranslationViewModel : INotifyPropertyChanged
 
         // Source text/language changed mid-flight: cancel and invalidate so a
         // late completion for the old request can never apply.
-        _coordinator.CancelCurrent();
-        _inFlight?.Cancel();
+        InvalidateAll();
         ResultText = string.Empty;
         StatusMessage = null;
         State = PopupState.Guidance;
@@ -295,4 +482,16 @@ public sealed class TranslationViewModel : INotifyPropertyChanged
 
     private void OnPropertyChanged(string? propertyName) =>
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+
+    private sealed class SpeechCoordinatorBoundary(SpeechCoordinator coordinator) : ITranslationSpeech
+    {
+        public Task PrefetchAsync(SpeechIdentity identity, CancellationToken cancellationToken) =>
+            coordinator.PrefetchAsync(identity, cancellationToken);
+
+        public Task TogglePlaybackAsync(SpeechIdentity identity, double rate, CancellationToken cancellationToken) =>
+            coordinator.TogglePlaybackAsync(identity, rate, cancellationToken);
+
+        public void Invalidate(SpeechChannel channel, bool stopPlayback) =>
+            coordinator.Invalidate(channel, stopPlayback);
+    }
 }
