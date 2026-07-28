@@ -51,8 +51,8 @@ public sealed class AppCompositionTests
 
         foreach (var value in new[] { "ItemsSource=\"{Binding VisibleRecords}\"", "Text=\"{Binding Query, Mode=TwoWay", "ItemClick=\"History_ItemClick\"", "DeleteVisible_Click", "ToggleSaved_Click", "PlaySource_Click", "PlayResult_Click", "Delete_Click" })
             Assert.Contains(value, history + historyCode, StringComparison.Ordinal);
-        foreach (var value in new[] { "Password=\"{Binding Draft.ApiKey, Mode=TwoWay}", "Save_Click", "Cancel_Click", "Revert_Click", "Browse_Click", "KeyboardAccelerator Key=\"S\" Modifiers=\"Control\"" })
-            Assert.Contains(value, settings + settingsCode, StringComparison.Ordinal);
+        foreach (var value in new[] { "Password=\"{Binding Draft.ApiKey, Mode=TwoWay}", "Save_Click", "Cancel_Click", "Revert_Click", "Browse_Click", "KeyboardAccelerator Key=\"S\" Modifiers=\"Control\"", "RefreshAsync", "ShowSettingsAsync" })
+            Assert.Contains(value, settings + settingsCode + File.ReadAllText(Path.Combine(root, "windows", "src", "NTranslate.App", "AppComposition.cs")), StringComparison.Ordinal);
     }
 
     private static string FindRepositoryRoot()

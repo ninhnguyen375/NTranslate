@@ -95,6 +95,78 @@ public sealed class SettingsViewModelTests
         Assert.Equal("C:\\History", viewModel.Draft.HistoryDirectory);
     }
 
+    [Fact]
+    public void LanguageListsCanBeEdited()
+    {
+        var viewModel = CreateViewModel();
+        viewModel.NewLanguage = "French";
+        viewModel.AddLanguage();
+        viewModel.NewTargetLanguage = "Japanese";
+        viewModel.AddTargetLanguage();
+
+        Assert.Contains("French", viewModel.Draft.Languages);
+        Assert.Contains("Japanese", viewModel.Draft.TargetLanguages);
+
+        viewModel.RemoveLanguage("French");
+        viewModel.RemoveTargetLanguage("Japanese");
+
+        Assert.DoesNotContain("French", viewModel.Draft.Languages);
+        Assert.DoesNotContain("Japanese", viewModel.Draft.TargetLanguages);
+    }
+
+    [Fact]
+    public async Task RefreshUsesLatestRuntimeSnapshotForDraftAndRevert()
+    {
+        var runtime = AppConfig.Default with { Model = "saved", StartWithWindows = true };
+        var key = "saved-key";
+        var viewModel = new SettingsViewModel(
+            AppConfig.Default,
+            "startup-key",
+            (request, _) => { runtime = request.Config; key = request.ApiKey; return Task.CompletedTask; },
+            () => { },
+            refresh: _ => Task.FromResult((runtime, key)));
+
+        await viewModel.RefreshAsync(CancellationToken.None);
+        Assert.Equal("saved", viewModel.Draft.Model);
+        Assert.True(viewModel.Draft.StartWithWindows);
+        Assert.Equal("saved-key", viewModel.Draft.ApiKey);
+
+        viewModel.Draft.Model = "discard";
+        viewModel.Draft.StartWithWindows = false;
+        viewModel.Draft.ApiKey = "discard-key";
+        viewModel.Revert();
+
+        Assert.Equal("saved", viewModel.Draft.Model);
+        Assert.True(viewModel.Draft.StartWithWindows);
+        Assert.Equal("saved-key", viewModel.Draft.ApiKey);
+    }
+
+    [Fact]
+    public async Task SaveCloseReopenAndExternalToggleRefreshLatestSnapshot()
+    {
+        var runtime = AppConfig.Default;
+        var key = "old-key";
+        var viewModel = new SettingsViewModel(
+            runtime,
+            key,
+            (request, _) => { runtime = request.Config; key = request.ApiKey; return Task.CompletedTask; },
+            () => { },
+            refresh: _ => Task.FromResult((runtime, key)));
+        viewModel.Draft.Model = "saved-model";
+        viewModel.Draft.ApiKey = "new-key";
+
+        await viewModel.SaveAsync(CancellationToken.None);
+        runtime = runtime with { StartWithWindows = true };
+        await viewModel.RefreshAsync(CancellationToken.None);
+
+        Assert.Equal("saved-model", viewModel.Draft.Model);
+        Assert.Equal("new-key", viewModel.Draft.ApiKey);
+        Assert.True(viewModel.Draft.StartWithWindows);
+    }
+
+    private static SettingsViewModel CreateViewModel() =>
+        new(AppConfig.Default, "key", (_, _) => Task.CompletedTask, () => { });
+
     private sealed class StubPicker(nint ownerHwnd, string? result, Action<nint> capture) : ISettingsFolderPicker
     {
         public nint OwnerHwnd => ownerHwnd;

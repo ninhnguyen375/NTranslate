@@ -41,6 +41,7 @@ internal sealed class AppComposition : IDisposable
     private readonly HistoryRuntime _historyRuntime;
     private readonly HistoryWindow _historyWindow;
     private readonly SettingsWindow _settingsWindow;
+    private readonly SettingsViewModel _settingsViewModel;
     private readonly SpeechCoordinator _speech;
     private readonly UpdateCoordinator _updates;
     private readonly RecoveryCoordinator _recovery;
@@ -124,13 +125,14 @@ internal sealed class AppComposition : IDisposable
             }),
             startupRegistration.SetEnabledAsync);
         _settingsSave = new SettingsSaveCoordinator(configStore, _credentials, new HistoryDirectoryMigrator(), _runtimeSettings.ApplyRuntimeAsync);
-        var settingsViewModel = new SettingsViewModel(
+        _settingsViewModel = new SettingsViewModel(
             _config,
             _credentials.LoadAsync().GetAwaiter().GetResult() ?? string.Empty,
             SaveSettingsAsync,
-            CloseSettings);
-        _settingsWindow = new SettingsWindow(settingsViewModel);
-        settingsViewModel.SetFolderPicker(new WinUiSettingsFolderPicker(_settingsWindow));
+            CloseSettings,
+            refresh: async token => (_config, await _credentials.LoadAsync(token).ConfigureAwait(false) ?? string.Empty));
+        _settingsWindow = new SettingsWindow(_settingsViewModel);
+        _settingsViewModel.SetFolderPicker(new WinUiSettingsFolderPicker(_settingsWindow));
 
         var releases = new GitHubReleaseClient(http, "ninhnguyen375", "NTranslate");
         var currentVersion = SemanticVersion.TryParse(Assembly.GetExecutingAssembly().GetName().Version?.ToString(3), out var version) ? version : new(0, 0, 0);
@@ -171,7 +173,7 @@ internal sealed class AppComposition : IDisposable
         _hotkey.Pressed += (_, _) => _ = CaptureAndShowAsync();
         _tray.OpenTranslatorRequested += (_, _) => ShowManual();
         _tray.HistoryRequested += (_, _) => Enqueue(ShowHistory);
-        _tray.SettingsRequested += (_, _) => Enqueue(ShowSettings);
+        _tray.SettingsRequested += (_, _) => Enqueue(() => _ = ShowSettingsAsync());
         _tray.CheckForUpdatesRequested += (_, _) => _ = _updates.CheckAsync(true, _lifetime.Token);
         _tray.StartWithWindowsRequested += (_, _) => _ = ToggleStartWithWindowsAsync();
         _tray.ExitRequested += (_, _) => Enqueue(_shutdown.Run);
@@ -241,7 +243,11 @@ internal sealed class AppComposition : IDisposable
         _ = _historyViewModel.ReloadAsync(_lifetime.Token);
     }
 
-    private void ShowSettings() => _settingsWindow.Activate();
+    private async Task ShowSettingsAsync()
+    {
+        await _settingsViewModel.RefreshAsync(_lifetime.Token);
+        _settingsWindow.Activate();
+    }
     private void CloseSettings() => _settingsWindow?.AppWindow.Hide();
     private void CancelPopupWork() { CancelCapture(); _viewModel.Cancel(); }
     private void CancelCapture() { Interlocked.Increment(ref _captureGeneration); Interlocked.Exchange(ref _captureRequest, null)?.Cancel(); }

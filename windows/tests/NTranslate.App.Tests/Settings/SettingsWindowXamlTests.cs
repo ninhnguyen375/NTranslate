@@ -27,6 +27,13 @@ public sealed class SettingsWindowXamlTests
         foreach (var action in new[] { "Browse history directory", "Revert", "Cancel", "Save settings" })
             Assert.Contains($"AutomationProperties.Name=\"{action}\"", text, StringComparison.Ordinal);
         Assert.Contains("PasswordBox", text, StringComparison.Ordinal);
+        Assert.Contains("SelectionChanged=\"Navigation_SelectionChanged\"", text, StringComparison.Ordinal);
+        foreach (var section in new[] { "GeneralSection", "PromptsSection", "LanguagesSection", "AdvancedSection" })
+            Assert.Contains($"x:Name=\"{section}\"", text, StringComparison.Ordinal);
+        foreach (var action in new[] { "Add language", "Remove language", "Add target language", "Remove target language" })
+            Assert.Contains($"AutomationProperties.Name=\"{action}\"", text, StringComparison.Ordinal);
+        foreach (var modifier in new[] { "Option hotkey modifier", "Control hotkey modifier", "Shift hotkey modifier" })
+            Assert.Contains($"AutomationProperties.Name=\"{modifier}\"", text, StringComparison.Ordinal);
     }
 
     private static string FindRepositoryRoot()
