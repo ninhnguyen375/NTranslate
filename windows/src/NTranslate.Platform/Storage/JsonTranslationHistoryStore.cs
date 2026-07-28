@@ -130,6 +130,8 @@ public sealed class JsonTranslationHistoryStore : ITranslationHistoryStore
                 ?? throw new InvalidDataException("History document cannot be null.");
             if (loaded.GroupBy(record => record.Id).Any(group => group.Count() != 1))
                 throw new InvalidDataException("History contains duplicate record IDs.");
+            foreach (var audioPath in loaded.SelectMany(record => new[] { record.SourceAudioPath, record.ResultAudioPath }))
+                if (audioPath is not null) ValidateAudioPath(audioPath, allowMissingLeaf: true);
             _records = loaded.OrderByDescending(record => record.Timestamp).ToArray();
         }
         catch (Exception error) when (error is JsonException or IOException or UnauthorizedAccessException or InvalidDataException)

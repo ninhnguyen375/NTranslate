@@ -89,7 +89,55 @@ public sealed class TranslationHistoryStoreTests : IDisposable
         await File.WriteAllBytesAsync(Path.Combine(_root, "history.json"), JsonSerializer.SerializeToUtf8Bytes(new[] { record }));
         var store = new JsonTranslationHistoryStore(_root);
 
-        await Assert.ThrowsAsync<InvalidDataException>(() => store.ReadAudioAsync(record.Id, TranslationAudioKind.Source));
+        Assert.NotNull(store.LoadError);
+    }
+
+    [Theory]
+    [InlineData("append")]
+    [InlineData("bookmark")]
+    [InlineData("delete")]
+    public async Task Unsafe_loaded_audio_metadata_locks_all_mutations_and_preserves_exact_bytes(string mutation)
+    {
+        Directory.CreateDirectory(_root);
+        var record = Record(Guid.NewGuid()) with { SourceAudioPath = @"Audio\..\escape.audio" };
+        var historyPath = Path.Combine(_root, "history.json");
+        var original = JsonSerializer.SerializeToUtf8Bytes(new[] { record });
+        await File.WriteAllBytesAsync(historyPath, original);
+        var store = new JsonTranslationHistoryStore(_root);
+
+        Assert.NotNull(store.LoadError);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => mutation switch
+        {
+            "append" => store.AppendAsync(Record(Guid.NewGuid())),
+            "bookmark" => store.SetSavedAsync(record.Id, true),
+            "delete" => store.RemoveAsync(new HashSet<Guid> { record.Id }),
+            _ => throw new ArgumentOutOfRangeException(nameof(mutation)),
+        });
+        Assert.Equal(original, await File.ReadAllBytesAsync(historyPath));
+    }
+
+    [Fact]
+    public async Task Loaded_reparse_audio_metadata_locks_mutations_and_preserves_exact_bytes_when_supported()
+    {
+        var outside = Path.Combine(Path.GetTempPath(), $"ntranslate-outside-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(Path.Combine(_root, "Audio"));
+        Directory.CreateDirectory(outside);
+        var link = Path.Combine(_root, "Audio", "link");
+        try
+        {
+            try { Directory.CreateSymbolicLink(link, outside); }
+            catch (Exception error) when (error is UnauthorizedAccessException or IOException or PlatformNotSupportedException) { return; }
+            var record = Record(Guid.NewGuid()) with { ResultAudioPath = @"Audio\link\escape.audio" };
+            var historyPath = Path.Combine(_root, "history.json");
+            var original = JsonSerializer.SerializeToUtf8Bytes(new[] { record });
+            await File.WriteAllBytesAsync(historyPath, original);
+            var store = new JsonTranslationHistoryStore(_root);
+
+            Assert.NotNull(store.LoadError);
+            await Assert.ThrowsAsync<InvalidOperationException>(() => store.AppendAsync(Record(Guid.NewGuid())));
+            Assert.Equal(original, await File.ReadAllBytesAsync(historyPath));
+        }
+        finally { Directory.Delete(outside, true); }
     }
 
     [Fact]
@@ -107,7 +155,7 @@ public sealed class TranslationHistoryStoreTests : IDisposable
             await File.WriteAllBytesAsync(Path.Combine(_root, "history.json"), JsonSerializer.SerializeToUtf8Bytes(new[] { record }));
             var store = new JsonTranslationHistoryStore(_root);
 
-            await Assert.ThrowsAsync<InvalidDataException>(() => store.ReadAudioAsync(record.Id, TranslationAudioKind.Source));
+            Assert.NotNull(store.LoadError);
         }
         finally { Directory.Delete(outside, true); }
     }

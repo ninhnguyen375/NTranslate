@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using System.Text.Json;
 using NTranslate.Core.History;
 using NTranslate.Core.Settings;
@@ -6,10 +7,11 @@ namespace NTranslate.Platform.Storage;
 
 public sealed class HistoryDirectoryMigrator : IHistoryDirectoryMigrator
 {
+    private const string OwnershipMarker = ".ntranslate-migration-owner";
     private static readonly JsonSerializerOptions JsonOptions = new();
     private readonly object _gate = new();
     private readonly HashSet<HistoryMigrationReceipt> _owned = new(ReferenceEqualityComparer.Instance);
-    private readonly HashSet<HistoryMigrationReceipt> _committed = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<HistoryMigrationReceipt, string> _committed = new(ReferenceEqualityComparer.Instance);
 
     public async Task<HistoryMigrationReceipt?> PrepareAsync(
         string currentRoot,
@@ -49,6 +51,7 @@ public sealed class HistoryDirectoryMigrator : IHistoryDirectoryMigrator
             if (Directory.Exists(sourceAudio))
                 await CopyAudioTreeAsync(sourceAudio, Path.Combine(staging, "Audio"), token).ConfigureAwait(false);
 
+            await File.WriteAllTextAsync(Path.Combine(staging, OwnershipMarker), Guid.NewGuid().ToString("N"), token).ConfigureAwait(false);
             await ValidateStagingAsync(staging, token).ConfigureAwait(false);
             return receipt;
         }
@@ -82,7 +85,8 @@ public sealed class HistoryDirectoryMigrator : IHistoryDirectoryMigrator
         {
             throw new IOException($"Cannot commit history migration to '{receipt.DestinationRoot}'.", error);
         }
-        lock (_gate) _committed.Add(receipt);
+        var identity = ComputeTreeIdentity(receipt.DestinationRoot);
+        lock (_gate) _committed.Add(receipt, identity);
         return Task.CompletedTask;
     }
 
@@ -91,10 +95,24 @@ public sealed class HistoryDirectoryMigrator : IHistoryDirectoryMigrator
         ArgumentNullException.ThrowIfNull(receipt);
         token.ThrowIfCancellationRequested();
         EnsureOwned(receipt);
-        bool committed;
-        lock (_gate) committed = _committed.Contains(receipt);
-        if (committed && Directory.Exists(receipt.DestinationRoot))
+        string? committedIdentity;
+        lock (_gate) _committed.TryGetValue(receipt, out committedIdentity);
+        if (committedIdentity is not null && Directory.Exists(receipt.DestinationRoot))
+        {
+            try
+            {
+                RejectReparse(receipt.DestinationRoot);
+                if (!CryptographicOperations.FixedTimeEquals(
+                        Convert.FromHexString(committedIdentity),
+                        Convert.FromHexString(ComputeTreeIdentity(receipt.DestinationRoot))))
+                    throw new InvalidDataException("Committed destination content changed.");
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException)
+            {
+                throw new IOException($"Cannot rollback history migration because destination '{receipt.DestinationRoot}' changed.", error);
+            }
             Directory.Delete(receipt.DestinationRoot, true);
+        }
         if (Directory.Exists(receipt.StagingRoot))
             Directory.Delete(receipt.StagingRoot, true);
         lock (_gate)
@@ -174,6 +192,27 @@ public sealed class HistoryDirectoryMigrator : IHistoryDirectoryMigrator
             || parts.Any(part => part is "." or ".."))
             throw new InvalidDataException("Audio path must stay under Audio.");
         return Path.Combine(parts);
+    }
+
+    private static string ComputeTreeIdentity(string root)
+    {
+        RejectReparse(root);
+        using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        foreach (var path in Directory.EnumerateFileSystemEntries(root, "*", SearchOption.AllDirectories)
+                     .OrderBy(path => Path.GetRelativePath(root, path), StringComparer.OrdinalIgnoreCase))
+        {
+            RejectReparse(path);
+            var relative = Path.GetRelativePath(root, path).Replace(Path.DirectorySeparatorChar, '/');
+            hash.AppendData(System.Text.Encoding.UTF8.GetBytes((Directory.Exists(path) ? "D:" : "F:") + relative + "\0"));
+            if (File.Exists(path))
+            {
+                using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+                var buffer = new byte[81920];
+                int read;
+                while ((read = stream.Read(buffer)) != 0) hash.AppendData(buffer.AsSpan(0, read));
+            }
+        }
+        return Convert.ToHexString(hash.GetHashAndReset());
     }
 
     private static void EnsureEmptyOrMissing(string path)

@@ -166,6 +166,44 @@ public sealed class HistoryDirectoryMigratorTests : IDisposable
     }
 
     [Fact]
+    public async Task Rollback_refuses_committed_destination_changed_by_external_file()
+    {
+        var (source, destination, _) = await CreateValidSourceAsync();
+        var migrator = new HistoryDirectoryMigrator();
+        var receipt = Assert.IsType<HistoryMigrationReceipt>(await migrator.PrepareAsync(source, destination));
+        await migrator.CommitAsync(receipt);
+        var external = Path.Combine(destination, "external.txt");
+        await File.WriteAllTextAsync(external, "foreign");
+
+        var error = await Assert.ThrowsAsync<IOException>(() => migrator.RollbackAsync(receipt));
+
+        Assert.Contains("changed", error.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("foreign", await File.ReadAllTextAsync(external));
+        Assert.True(File.Exists(Path.Combine(destination, "history.json")));
+    }
+
+    [Fact]
+    public async Task Rollback_refuses_committed_destination_replaced_by_reparse_point_when_supported()
+    {
+        var (source, destination, _) = await CreateValidSourceAsync();
+        var outside = Path.Combine(_root, "outside");
+        Directory.CreateDirectory(outside);
+        await File.WriteAllTextAsync(Path.Combine(outside, "keep.txt"), "foreign");
+        var migrator = new HistoryDirectoryMigrator();
+        var receipt = Assert.IsType<HistoryMigrationReceipt>(await migrator.PrepareAsync(source, destination));
+        await migrator.CommitAsync(receipt);
+        Directory.Delete(destination, true);
+        try { Directory.CreateSymbolicLink(destination, outside); }
+        catch (Exception linkError) when (linkError is UnauthorizedAccessException or IOException or PlatformNotSupportedException) { return; }
+
+        var error = await Assert.ThrowsAsync<IOException>(() => migrator.RollbackAsync(receipt));
+
+        Assert.Contains("changed", error.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("foreign", await File.ReadAllTextAsync(Path.Combine(outside, "keep.txt")));
+        Assert.True(Directory.Exists(destination));
+    }
+
+    [Fact]
     public async Task Rollback_removes_only_owned_paths_and_rejects_forged_receipts()
     {
         var (source, destination, _) = await CreateValidSourceAsync();
