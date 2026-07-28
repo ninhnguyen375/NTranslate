@@ -338,6 +338,17 @@ public sealed class TranslationViewModel : INotifyPropertyChanged
         State = PopupState.Guidance;
     }
 
+    public void EnterTextMode()
+    {
+        if (!IsImageMode) return;
+        InvalidateAll();
+        _isImageMode = false;
+        OnImageModeChanged();
+        ResultText = string.Empty;
+        StatusMessage = null;
+        State = PopupState.Guidance;
+    }
+
     public void WindowChanged() => InvalidateAll();
 
     /// <summary>

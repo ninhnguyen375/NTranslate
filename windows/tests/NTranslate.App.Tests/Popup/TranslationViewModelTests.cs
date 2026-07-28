@@ -556,6 +556,17 @@ public sealed class TranslationViewModelTests
     }
 
     [Fact]
+    public void ManualPopupAfterImageModeRestoresSourceEditorMode()
+    {
+        var vm = CreateAdvancedViewModel(ScriptedHandler.Sync(_ => JsonResponse("unused")));
+        vm.EnterImageMode();
+
+        vm.EnterTextMode();
+
+        Assert.False(vm.IsImageMode);
+    }
+
+    [Fact]
     public void ManualTextAfterImageModeRestoresSourceEditorMode()
     {
         var vm = CreateAdvancedViewModel(ScriptedHandler.Sync(_ => JsonResponse("unused")));

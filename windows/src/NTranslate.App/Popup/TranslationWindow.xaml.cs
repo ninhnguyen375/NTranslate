@@ -39,6 +39,7 @@ public sealed partial class TranslationWindow : Window
             _lifetimeCancellation.Dispose();
             _lifetimeCancellation = new();
         }
+        ViewModel.EnterTextMode();
         _coordinator.Show(sourceText);
     }
 
