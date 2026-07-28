@@ -93,8 +93,16 @@ public sealed partial class TranslationWindow : Window
     private void SwapButton_Click(object sender, RoutedEventArgs e) => ViewModel.SwapLanguages();
     private async void LearnButton_Click(object sender, RoutedEventArgs e) => await ViewModel.LearnAsync(_lifetimeCancellation.Token);
     private async void ImagesButton_Click(object sender, RoutedEventArgs e) => await ViewModel.SearchImagesAsync(_lifetimeCancellation.Token);
-    private async void SourceSpeechButton_Click(object sender, RoutedEventArgs e) => await ViewModel.SpeakSourceAsync(_lifetimeCancellation.Token);
-    private async void ResultSpeechButton_Click(object sender, RoutedEventArgs e) => await ViewModel.SpeakResultAsync(_lifetimeCancellation.Token);
+    private async void SourceSpeechButton_Click(object sender, RoutedEventArgs e)
+    {
+        try { await ViewModel.SpeakSourceAsync(_lifetimeCancellation.Token); }
+        catch (Exception ex) when (ex is not OperationCanceledException) { }
+    }
+    private async void ResultSpeechButton_Click(object sender, RoutedEventArgs e)
+    {
+        try { await ViewModel.SpeakResultAsync(_lifetimeCancellation.Token); }
+        catch (Exception ex) when (ex is not OperationCanceledException) { }
+    }
 
     private async void ImageTranslateButton_Click(object sender, RoutedEventArgs e)
     {

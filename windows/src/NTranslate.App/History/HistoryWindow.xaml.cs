@@ -48,8 +48,22 @@ public sealed partial class HistoryWindow : Window
     private async void HistoryEnter_Invoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args) { args.Handled = true; await ReopenSelectedAsync(); }
     private async Task ReopenSelectedAsync() { if (HistoryList.SelectedItem is TranslationRecord record) await _viewModel.ReopenAsync(record, _lifetime.Token); }
     private async void DeleteVisible_Click(object sender, RoutedEventArgs args) => await _viewModel.DeleteVisibleAsync(_lifetime.Token);
-    private async void PlaySource_Click(object sender, RoutedEventArgs args) { if (Record(sender) is { } record) await _viewModel.PlayAudioAsync(record, TranslationAudioKind.Source, _lifetime.Token); }
-    private async void PlayResult_Click(object sender, RoutedEventArgs args) { if (Record(sender) is { } record) await _viewModel.PlayAudioAsync(record, TranslationAudioKind.Result, _lifetime.Token); }
+    private async void PlaySource_Click(object sender, RoutedEventArgs args)
+    {
+        if (Record(sender) is { } record)
+        {
+            try { await _viewModel.PlayAudioAsync(record, TranslationAudioKind.Source, _lifetime.Token); }
+            catch (Exception ex) when (ex is not OperationCanceledException) { }
+        }
+    }
+    private async void PlayResult_Click(object sender, RoutedEventArgs args)
+    {
+        if (Record(sender) is { } record)
+        {
+            try { await _viewModel.PlayAudioAsync(record, TranslationAudioKind.Result, _lifetime.Token); }
+            catch (Exception ex) when (ex is not OperationCanceledException) { }
+        }
+    }
     private async void ToggleSaved_Click(object sender, RoutedEventArgs args) { if (Record(sender) is { } record) await _viewModel.SetSavedAsync(record, !record.IsSaved, _lifetime.Token); }
     private async void Delete_Click(object sender, RoutedEventArgs args) { if (Record(sender) is { } record) await _viewModel.DeleteAsync(record, _lifetime.Token); }
     private void AllHistory_Click(object sender, RoutedEventArgs args) => _viewModel.SavedOnly = false;
