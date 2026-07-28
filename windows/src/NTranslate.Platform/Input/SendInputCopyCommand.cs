@@ -7,13 +7,43 @@ public sealed class SendInputCopyCommand : ISimulatedCopyCommand
     private const uint InputKeyboard = 1;
     private const uint KeyEventFKeyUp = 2;
 
-    public void SendCopy()
-    {
-        var inputs = CreateCopyInputs().Select(input => (NativeInput)input).ToArray();
-        var sent = SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<NativeInput>());
-        if (sent != inputs.Length)
-            throw new InvalidOperationException(CreateFailureMessage(sent, sent == 0 ? Marshal.GetLastWin32Error() : 0));
+    public void SendCopy() => SendCopy(Send, Marshal.GetLastWin32Error);
 
+    internal static void SendCopy(Func<CopyInput[], uint> send, Func<int> getLastError)
+    {
+        var inputs = CreateCopyInputs();
+        var sent = send(inputs);
+        if (sent == inputs.Length)
+            return;
+
+        var failure = CreateFailureMessage(sent, sent == 0 ? getLastError() : 0);
+        var releases = KeysLeftDown(inputs, sent).Select(key => new CopyInput(key, true)).ToArray();
+        if (releases.Length > 0)
+        {
+            try { _ = send(releases); }
+            catch { }
+        }
+        throw new InvalidOperationException(failure);
+    }
+
+    private static ushort[] KeysLeftDown(CopyInput[] inputs, uint sent)
+    {
+        List<ushort> down = [];
+        foreach (var input in inputs.Take((int)Math.Min(sent, (uint)inputs.Length)))
+        {
+            if (input.KeyUp)
+                down.Remove(input.VirtualKey);
+            else if (!down.Contains(input.VirtualKey))
+                down.Add(input.VirtualKey);
+        }
+        down.Reverse();
+        return [.. down];
+    }
+
+    private static uint Send(CopyInput[] inputs)
+    {
+        var nativeInputs = inputs.Select(input => (NativeInput)input).ToArray();
+        return SendInput((uint)nativeInputs.Length, nativeInputs, Marshal.SizeOf<NativeInput>());
     }
 
     internal static string CreateFailureMessage(uint sent, int win32Error) => sent == 0

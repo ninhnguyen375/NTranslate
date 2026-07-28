@@ -1,3 +1,4 @@
+using NTranslate.Core.Credentials;
 using NTranslate.Platform.Credentials;
 using Windows.Security.Credentials;
 
@@ -32,6 +33,35 @@ public sealed class CredentialLockerApiKeyStoreTests
         finally
         {
             RemoveExactCredential(resource, userName);
+        }
+    }
+
+    [Fact]
+    public async Task FailedReplacementRestoresExistingCredential()
+    {
+        var vault = new FailingReplacementVault("old-secret");
+        var store = new CredentialLockerApiKeyStore("resource", "apiKey", vault);
+
+        var error = await Assert.ThrowsAsync<CredentialStoreException>(() => store.SaveAsync("new-secret"));
+
+        Assert.Equal("old-secret", await store.LoadAsync());
+        Assert.IsType<InvalidOperationException>(error.InnerException);
+        Assert.Equal(2, vault.AddCalls);
+    }
+
+    private sealed class FailingReplacementVault(string password) : ICredentialVault
+    {
+        private string? _password = password;
+        public int AddCalls { get; private set; }
+
+        public string? Retrieve(string resource, string userName) => _password;
+        public void Remove(string resource, string userName) => _password = null;
+        public void Add(string resource, string userName, string value)
+        {
+            AddCalls++;
+            if (AddCalls == 1)
+                throw new InvalidOperationException("replacement failed");
+            _password = value;
         }
     }
 

@@ -345,6 +345,34 @@ public sealed class TranslationViewModelTests
     }
 
     [Fact]
+    public async Task ApiKeyResolverCancellationWithoutRequestCancellationSurfacesError()
+    {
+        var vm = new TranslationViewModel(
+            Config,
+            new OpenAiCompatibleClient(new HttpClient(ScriptedHandler.Sync(_ => throw new InvalidOperationException("Network must not be called.")))),
+            new FakeClipboardService(),
+            _ => throw new OperationCanceledException("resolver stopped"));
+        vm.SourceText = "hello";
+
+        await vm.TranslateCommand.ExecuteAsync();
+
+        Assert.Equal(PopupState.Error, vm.State);
+        Assert.Equal("resolver stopped", vm.StatusMessage);
+    }
+
+    [Fact]
+    public async Task TranslatorCancellationWithoutRequestCancellationSurfacesError()
+    {
+        var vm = CreateViewModel(ScriptedHandler.Sync(_ => throw new OperationCanceledException("translator stopped")), new FakeClipboardService());
+        vm.SourceText = "hello";
+
+        await vm.TranslateCommand.ExecuteAsync();
+
+        Assert.Equal(PopupState.Error, vm.State);
+        Assert.Equal("translator stopped", vm.StatusMessage);
+    }
+
+    [Fact]
     public async Task CancelledRequestDoesNotSurfaceVisibleError()
     {
         var handler = new ScriptedHandler(async ct =>

@@ -52,9 +52,7 @@ internal sealed class NativeMessageWindow : IMessageWindow
     private nint _handle;
     private uint _threadId;
     private Exception? _startError;
-    private readonly object _commandsGate = new();
-    private readonly HashSet<Command> _commands = [];
-    private Exception? _terminalError;
+    private readonly NativeMessageCommandQueue _commands = new();
     public event EventHandler<NativeMessageEventArgs>? MessageReceived;
     public nint Handle => _handle;
 
@@ -83,42 +81,20 @@ internal sealed class NativeMessageWindow : IMessageWindow
             var value = action();
             return new(value, value ? 0 : Marshal.GetLastPInvokeError());
         }
-        var command = new Command(action);
-        lock (_commandsGate)
+        var command = _commands.Enqueue(() =>
         {
-            if (_terminalError is not null) throw new HotkeyOperationException(_terminalError.Message);
-            _commands.Add(command);
-        }
+            var value = action();
+            return new NativeCommandResult<bool>(value, value ? 0 : Marshal.GetLastPInvokeError());
+        });
         var handle = GCHandle.Alloc(command);
         if (!PostThreadMessage(_threadId, WmWork, 0, GCHandle.ToIntPtr(handle)))
         {
             handle.Free();
-            Complete(command, null, new HotkeyOperationException($"PostThreadMessage failed (Win32 error {Marshal.GetLastPInvokeError()})."));
+            _commands.Terminal(new HotkeyOperationException($"PostThreadMessage failed (Win32 error {Marshal.GetLastPInvokeError()})."));
         }
-        if (!command.Done.Wait(TimeSpan.FromSeconds(5)))
-        {
-            command.Cancelled = true;
-            throw new HotkeyOperationException("Hotkey command timed out.");
-        }
-        if (command.Error is not null) throw command.Error;
-        return command.Result!;
-    }
-
-    private void Complete(Command command, NativeCommandResult<bool>? result, Exception? error)
-    {
-        command.Result = result;
-        command.Error = error;
-        command.Done.Set();
-        lock (_commandsGate) _commands.Remove(command);
-    }
-
-    private sealed class Command(Func<bool> action)
-    {
-        public readonly Func<bool> Action = action;
-        public readonly ManualResetEventSlim Done = new();
-        public bool Cancelled;
-        public NativeCommandResult<bool>? Result;
-        public Exception? Error;
+        if (!command.Done.Wait(TimeSpan.FromSeconds(5)) && !command.TryCancel())
+            command.Done.Wait();
+        return command.GetResult();
     }
 
     private void Run(ManualResetEventSlim ready)
@@ -137,18 +113,8 @@ internal sealed class NativeMessageWindow : IMessageWindow
                 if (message.message == WmWork)
                 {
                     var handle = GCHandle.FromIntPtr(message.lParam);
-                    var command = (Command)handle.Target!;
                     handle.Free();
-                    if (!command.Cancelled)
-                    {
-                        try
-                        {
-                            var value = command.Action();
-                            Complete(command, new(value, value ? 0 : Marshal.GetLastPInvokeError()), null);
-                        }
-                        catch (Exception error) { Complete(command, null, error); }
-                    }
-                    else Complete(command, null, new HotkeyOperationException("Hotkey command timed out."));
+                    _commands.RunNext();
                     continue;
                 }
                 if (message.hwnd == _handle && message.message == WmHotkey) Dispatch(message.message, message.wParam);
@@ -160,16 +126,7 @@ internal sealed class NativeMessageWindow : IMessageWindow
         catch (Exception error) { _startError = error; ready.Set(); Terminal(error); }
     }
 
-    private void Terminal(Exception error)
-    {
-        Command[] pending;
-        lock (_commandsGate)
-        {
-            _terminalError = error;
-            pending = _commands.ToArray();
-        }
-        foreach (var command in pending) Complete(command, null, error);
-    }
+    private void Terminal(Exception error) => _commands.Terminal(error);
 
     private void Dispatch(uint message, nint wParam)
     {

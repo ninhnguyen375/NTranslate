@@ -208,7 +208,7 @@ public sealed class TranslationViewModel : INotifyPropertyChanged
                 }
             }).ConfigureAwait(false);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
         {
             // Cancelled by a newer request or an invalidating change: not a visible error.
         }

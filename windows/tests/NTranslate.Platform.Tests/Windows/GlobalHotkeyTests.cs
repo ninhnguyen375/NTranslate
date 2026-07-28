@@ -95,6 +95,35 @@ public sealed class GlobalHotkeyTests
         Assert.Equal(1, owner.DestroyCalls);
     }
 
+    [Fact]
+    public async Task ProductionCommandQueueTimeoutAndExecutionHaveSingleWinner()
+    {
+        var queue = new NativeMessageCommandQueue();
+        var calls = 0;
+        var command = queue.Enqueue(() =>
+        {
+            Interlocked.Increment(ref calls);
+            return new NativeCommandResult<bool>(true, 0);
+        });
+        using var gate = new Barrier(2);
+
+        var timeout = Task.Run(() => { gate.SignalAndWait(); return command.TryCancel(); });
+        var execution = Task.Run(() => { gate.SignalAndWait(); return queue.RunNext(); });
+        var cancelled = await timeout;
+        await execution;
+
+        if (cancelled)
+        {
+            Assert.Equal(0, calls);
+            Assert.Throws<HotkeyOperationException>(command.GetResult);
+        }
+        else
+        {
+            Assert.Equal(1, calls);
+            Assert.True(command.GetResult().Value);
+        }
+    }
+
     private sealed class FakeMessageWindow : IMessageWindow
     {
         public event EventHandler<NativeMessageEventArgs>? MessageReceived;

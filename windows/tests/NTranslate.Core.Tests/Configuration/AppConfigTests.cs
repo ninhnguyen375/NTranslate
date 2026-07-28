@@ -92,6 +92,18 @@ public sealed class AppConfigTests
     }
 
     [Fact]
+    public void ValidationRejectsNonLoopbackHttpEndpoints()
+    {
+        var config = AppConfig.Default with
+        {
+            ApiBaseUrl = "http://example.test/v1/chat/completions",
+            ApiSpeechUrl = "http://192.0.2.1/v1/audio/speech"
+        };
+
+        Assert.Equal(["ApiBaseUrl", "ApiSpeechUrl"], config.Validate().Select(issue => issue.Field));
+    }
+
+    [Fact]
     public void ValidationRejectsWindowsOnlyHotkeyValues()
     {
         var config = AppConfig.Default with { Hotkey = new("Đ", false, true, false, false) };

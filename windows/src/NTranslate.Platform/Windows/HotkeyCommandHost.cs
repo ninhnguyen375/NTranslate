@@ -1,6 +1,6 @@
 namespace NTranslate.Platform.Windows;
 
-internal sealed class HotkeyCommandHost
+internal class HotkeyCommandHost
 {
     private readonly object _gate = new();
     private readonly Queue<ICommand> _queue = [];
@@ -47,3 +47,5 @@ internal sealed class HotkeyCommandHost
 
     internal interface ICommand { void Run(); void Fail(Exception error); }
 }
+
+internal sealed class NativeMessageCommandQueue : HotkeyCommandHost;

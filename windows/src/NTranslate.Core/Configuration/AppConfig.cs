@@ -76,8 +76,8 @@ public sealed record AppConfig(
     private static void ValidateEndpoint(string? value, string field, List<ConfigValidationIssue> issues)
     {
         if (!Uri.TryCreate(value, UriKind.Absolute, out var uri) ||
-            (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
-            issues.Add(new(field, "Must be an absolute HTTP or HTTPS URL."));
+            (uri.Scheme != Uri.UriSchemeHttps && !(uri.Scheme == Uri.UriSchemeHttp && uri.IsLoopback)))
+            issues.Add(new(field, "Must use HTTPS, except for HTTP loopback URLs."));
     }
 
     private static void AddBlank(string value, string field, List<ConfigValidationIssue> issues)
