@@ -13,6 +13,33 @@ using NTranslate.Platform.Storage;
 
 namespace NTranslate.App;
 
+internal sealed class HistoryRuntime(string root) : ITranslationHistoryStore, ICrashLogService
+{
+    private sealed record Services(string Root, JsonTranslationHistoryStore History, CrashLogService Crashes);
+    private Services _services = Create(root);
+
+    public string Root => Volatile.Read(ref _services).Root;
+    public IReadOnlyList<TranslationRecord> Records => Volatile.Read(ref _services).History.Records;
+    public string? LoadError => Volatile.Read(ref _services).History.LoadError;
+    public string LogsDirectory => Volatile.Read(ref _services).Crashes.LogsDirectory;
+
+    public void SwitchHistoryRuntime(string root) => Interlocked.Exchange(ref _services, Create(root));
+    public Task AppendAsync(TranslationRecord record, CancellationToken token = default) => Volatile.Read(ref _services).History.AppendAsync(record, token);
+    public Task SetSavedAsync(Guid id, bool saved, CancellationToken token = default) => Volatile.Read(ref _services).History.SetSavedAsync(id, saved, token);
+    public Task AttachAudioAsync(Guid id, TranslationAudioKind kind, ReadOnlyMemory<byte> data, CancellationToken token = default) => Volatile.Read(ref _services).History.AttachAudioAsync(id, kind, data, token);
+    public Task<byte[]?> ReadAudioAsync(Guid id, TranslationAudioKind kind, CancellationToken token = default) => Volatile.Read(ref _services).History.ReadAudioAsync(id, kind, token);
+    public Task RemoveAsync(IReadOnlySet<Guid> ids, CancellationToken token = default) => Volatile.Read(ref _services).History.RemoveAsync(ids, token);
+    public Task RecordAsync(Exception exception, CancellationToken token = default) => Volatile.Read(ref _services).Crashes.RecordAsync(exception, token);
+    public Task<NTranslate.Core.Recovery.CrashLogSummary?> GetNewestUnacknowledgedAsync(CancellationToken token = default) => Volatile.Read(ref _services).Crashes.GetNewestUnacknowledgedAsync(token);
+    public Task AcknowledgeAsync(string fileName, CancellationToken token = default) => Volatile.Read(ref _services).Crashes.AcknowledgeAsync(fileName, token);
+
+    private static Services Create(string root)
+    {
+        var fullRoot = Path.GetFullPath(root);
+        return new(fullRoot, new JsonTranslationHistoryStore(fullRoot), new CrashLogService(fullRoot, new AtomicFileWriter()));
+    }
+}
+
 internal sealed class JsonConfigStore(string path) : IConfigStore
 {
     public async Task<AppConfig> LoadAsync(CancellationToken token = default) =>
@@ -35,6 +62,25 @@ internal sealed class SpeechHistoryAdapter(ITranslationHistoryStore store) : ISp
 {
     public Task AttachAudioAsync(Guid recordId, SpeechHistoryAudioKind kind, ReadOnlyMemory<byte> audio, CancellationToken cancellationToken) =>
         store.AttachAudioAsync(recordId, kind == SpeechHistoryAudioKind.Source ? TranslationAudioKind.Source : TranslationAudioKind.Result, audio, cancellationToken);
+}
+
+internal sealed class HistoryDeleteConfirmation(Func<XamlRoot?> resolveRoot)
+{
+    public async Task<bool> ConfirmAsync(IReadOnlyList<TranslationRecord> records, CancellationToken token)
+    {
+        var root = resolveRoot() ?? throw new InvalidOperationException("History delete confirmation owner is unavailable.");
+        var scope = records.Count == 1 ? "this translation" : $"these {records.Count} visible translations";
+        var dialog = new ContentDialog
+        {
+            Title = "Delete history?",
+            Content = $"Permanently delete {scope}?",
+            PrimaryButtonText = "Delete",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Close,
+            XamlRoot = root
+        };
+        return await dialog.ShowAsync().AsTask(token) == ContentDialogResult.Primary;
+    }
 }
 
 internal sealed class HistoryAudioPlayer : IHistoryAudioPlayer

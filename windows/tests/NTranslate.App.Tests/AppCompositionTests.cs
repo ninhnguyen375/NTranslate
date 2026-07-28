@@ -25,6 +25,22 @@ public sealed class AppCompositionTests
     }
 
     [Fact]
+    public void CompositionSwitchesRootServicesAndUsesOwnedExplicitDeleteDialog()
+    {
+        var root = FindRepositoryRoot();
+        var composition = File.ReadAllText(Path.Combine(root, "windows", "src", "NTranslate.App", "AppComposition.cs"));
+        var adapters = File.ReadAllText(Path.Combine(root, "windows", "src", "NTranslate.App", "IntegrationAdapters.cs"));
+
+        Assert.Contains("HistoryRuntime", composition, StringComparison.Ordinal);
+        Assert.Contains("SwitchHistoryRuntime", composition, StringComparison.Ordinal);
+        Assert.Contains("OpenHistoryRecord", composition, StringComparison.Ordinal);
+        Assert.Contains("HistoryDeleteConfirmation", composition, StringComparison.Ordinal);
+        Assert.Contains("ContentDialogResult.Primary", adapters, StringComparison.Ordinal);
+        Assert.Contains("XamlRoot = root", adapters, StringComparison.Ordinal);
+        Assert.Contains("records.Count", adapters, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void WindowsExposeBoundActionsAndAccessibleKeyboardRoutes()
     {
         var root = FindRepositoryRoot();

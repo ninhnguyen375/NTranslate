@@ -38,6 +38,7 @@ internal sealed class AppComposition : IDisposable
     private readonly TranslationViewModel _viewModel;
     private readonly TranslationWindow _window;
     private readonly HistoryViewModel _historyViewModel;
+    private readonly HistoryRuntime _historyRuntime;
     private readonly HistoryWindow _historyWindow;
     private readonly SettingsWindow _settingsWindow;
     private readonly SpeechCoordinator _speech;
@@ -45,7 +46,7 @@ internal sealed class AppComposition : IDisposable
     private readonly RecoveryCoordinator _recovery;
     private readonly AppShutdown _shutdown;
     private AppConfig _config;
-    private readonly string _root;
+    private string _root;
     private readonly CredentialLockerApiKeyStore _credentials;
     private readonly SettingsSaveCoordinator _settingsSave;
     private readonly RuntimeSettingsApplier _runtimeSettings;
@@ -73,12 +74,12 @@ internal sealed class AppComposition : IDisposable
         _credentials = new CredentialLockerApiKeyStore();
         var http = new HttpClient();
         var client = new OpenAiCompatibleClient(http);
-        var historyStore = new JsonTranslationHistoryStore(_root);
-        var historySink = new AcceptedTranslationSink(historyStore);
+        _historyRuntime = new HistoryRuntime(_root);
+        var historySink = new AcceptedTranslationSink(_historyRuntime);
         _speech = new SpeechCoordinator(
             new OpenAiSpeechApi(client, () => _config, ResolveApiKeyAsync),
             new WindowsSpeechPlayer(),
-            new SpeechHistoryAdapter(historyStore));
+            new SpeechHistoryAdapter(_historyRuntime));
         _viewModel = new TranslationViewModel(
             _config,
             client,
@@ -98,11 +99,12 @@ internal sealed class AppComposition : IDisposable
         _viewModel.SetStartupGuidance(startup.Guidance);
         _window = new TranslationWindow(_viewModel, _config.Ui.Width, _config.Ui.Height, CancelPopupWork);
 
+        var deleteConfirmation = new HistoryDeleteConfirmation(() => _historyWindow?.Content is FrameworkElement content ? content.XamlRoot : null);
         _historyViewModel = new HistoryViewModel(
-            historyStore,
+            _historyRuntime,
             new HistoryAudioPlayer(),
-            (_, _) => Task.FromResult(true),
-            (record, _) => { Show(record.SourceText); return Task.CompletedTask; },
+            deleteConfirmation.ConfirmAsync,
+            (record, _) => DispatchAsync(() => { _viewModel.OpenHistoryRecord(record); _window.ShowPopup(null); }),
             dispatchUi: DispatchAsync);
         _historyWindow = new HistoryWindow(_historyViewModel);
 
@@ -110,7 +112,16 @@ internal sealed class AppComposition : IDisposable
         var startupRegistration = new StartupRegistration();
         _runtimeSettings = new RuntimeSettingsApplier(
             () => (_config, _config.StartWithWindows),
-            (config, _) => DispatchAsync(() => { _viewModel.ReloadConfig(config); _config = config; }),
+            (config, _) => DispatchAsync(() =>
+            {
+                var root = string.IsNullOrWhiteSpace(config.HistoryDirectory)
+                    ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "NTranslate")
+                    : Path.GetFullPath(config.HistoryDirectory);
+                _historyRuntime.SwitchHistoryRuntime(root);
+                _root = root;
+                _viewModel.ReloadConfig(config);
+                _config = config;
+            }),
             startupRegistration.SetEnabledAsync);
         _settingsSave = new SettingsSaveCoordinator(configStore, _credentials, new HistoryDirectoryMigrator(), _runtimeSettings.ApplyRuntimeAsync);
         var settingsViewModel = new SettingsViewModel(
@@ -133,13 +144,12 @@ internal sealed class AppComposition : IDisposable
             releases.DownloadAsync,
             new MsixPackageVerifier(),
             info => Process.Start(info));
-        var crashLogs = new CrashLogService(_root, new AtomicFileWriter());
-        _recovery = new RecoveryCoordinator(crashLogs, new RecoveryNotice(() => ContentRoot), new ShellLogDirectoryLauncher());
+        _recovery = new RecoveryCoordinator(_historyRuntime, new RecoveryNotice(() => ContentRoot), new ShellLogDirectoryLauncher());
         var winUiExceptions = new WinUiUnhandledExceptionSource(Application.Current);
         var appDomainExceptions = new AppDomainUnhandledExceptionSource();
         var taskExceptions = new TaskSchedulerUnobservedExceptionSource();
         _exceptionSources = [winUiExceptions, appDomainExceptions, taskExceptions];
-        _crashHandlers = new CrashHandlerRegistration(crashLogs, winUiExceptions, appDomainExceptions, taskExceptions);
+        _crashHandlers = new CrashHandlerRegistration(_historyRuntime, winUiExceptions, appDomainExceptions, taskExceptions);
 
         _router = new PopupRouter(CancelCapture, () => Show(null));
         _shutdown = new AppShutdown(

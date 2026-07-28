@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using NTranslate.Core.Configuration;
 using NTranslate.Core.Languages;
+using NTranslate.Core.History;
 using NTranslate.Core.OpenAI;
 using NTranslate.Core.Prompts;
 using NTranslate.Core.Requests;
@@ -231,6 +232,25 @@ public sealed class TranslationViewModel : INotifyPropertyChanged
     }
 
     public void Cancel() => InvalidateAll();
+
+    public void OpenHistoryRecord(TranslationRecord record)
+    {
+        ArgumentNullException.ThrowIfNull(record);
+        InvalidateAll();
+        _isImageMode = false;
+        _sourceText = record.SourceText;
+        _sourceLang = record.SourceLanguage;
+        _targetLang = record.TargetLanguage;
+        ResultText = record.ResultText;
+        StatusMessage = null;
+        State = PopupState.Result;
+        _sourceSpeechIdentity = SpeechIdentityFor(SpeechChannel.Source, record.SourceText, record.SourceLanguage, record.Id);
+        _resultSpeechIdentity = SpeechIdentityFor(SpeechChannel.Result, record.ResultText, record.TargetLanguage, record.Id);
+        OnPropertyChanged(nameof(SourceText));
+        OnPropertyChanged(nameof(SourceLang));
+        OnPropertyChanged(nameof(TargetLang));
+        OnImageModeChanged();
+    }
 
     public Task TranslateAsync(CancellationToken cancellationToken) => TranslateTextAsync(TranslationMode.Translate, cancellationToken);
 

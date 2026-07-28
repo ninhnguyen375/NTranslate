@@ -495,6 +495,29 @@ public sealed class TranslationViewModelTests
     }
 
     [Fact]
+    public async Task OpenHistoryRecordRestoresAcceptedStateWithoutApi()
+    {
+        var handler = ScriptedHandler.Sync(_ => throw new InvalidOperationException("Network must not be called."));
+        var speech = new RecordingSpeech();
+        var vm = CreateAdvancedViewModel(handler, speech: speech);
+        var id = Guid.NewGuid();
+        var record = new NTranslate.Core.History.TranslationRecord(
+            id, DateTimeOffset.UtcNow, "offline source", "offline result", "English", "Vietnamese", null, null, true);
+
+        vm.OpenHistoryRecord(record);
+        await vm.SpeakResultAsync(CancellationToken.None);
+
+        Assert.Equal(0, handler.CallCount);
+        Assert.Equal("offline source", vm.SourceText);
+        Assert.Equal("offline result", vm.ResultText);
+        Assert.Equal("English", vm.SourceLang);
+        Assert.Equal("Vietnamese", vm.TargetLang);
+        Assert.Equal(PopupState.Result, vm.State);
+        Assert.True(vm.CanCopy);
+        Assert.Equal(id, Assert.Single(speech.Playbacks).Identity.HistoryRecordId);
+    }
+
+    [Fact]
     public async Task SameLanguageTranslateUsesGrammarPromptAndRecordsHistory()
     {
         var history = new RecordingHistory();
