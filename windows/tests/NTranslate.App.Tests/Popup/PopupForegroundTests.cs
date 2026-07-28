@@ -5,41 +5,41 @@ namespace NTranslate.App.Tests.Popup;
 public sealed class PopupForegroundTests
 {
     [Fact]
-    public void Raise_ActivatesThenTogglesTopmostBeforeRequestingForeground()
+    public void Raise_ActivatesThenRaisesInNormalZOrderBeforeRequestingForeground()
     {
         var calls = new List<string>();
         var native = new RecordingForegroundNative(calls);
 
         new PopupForeground(native).Raise((nint)42, () => calls.Add("activate"));
 
-        Assert.Equal(["activate", "topmost", "not-topmost", "foreground"], calls);
+        Assert.Equal(["activate", "raise:42:0", "foreground:42"], calls);
     }
 
     [Fact]
-    public void Raise_NativeFailuresRemainNonfatalAndAttemptEveryStep()
+    public void Raise_SetWindowPosFailureRemainsNonfatalAndStillRequestsForeground()
     {
         var calls = new List<string>();
-        var native = new RecordingForegroundNative(calls, succeed: false);
+        var native = new RecordingForegroundNative(calls, raiseSucceeds: false);
 
         var error = Record.Exception(() =>
             new PopupForeground(native).Raise((nint)42, () => calls.Add("activate")));
 
         Assert.Null(error);
-        Assert.Equal(["activate", "topmost", "not-topmost", "foreground"], calls);
+        Assert.Equal(["activate", "raise:42:0", "foreground:42"], calls);
     }
 
-    private sealed class RecordingForegroundNative(List<string> calls, bool succeed = true) : IPopupForegroundNative
+    private sealed class RecordingForegroundNative(List<string> calls, bool raiseSucceeds = true) : IPopupForegroundNative
     {
-        public bool SetTopmost(nint hwnd, bool topmost)
+        public bool SetWindowPos(nint hwnd, nint insertAfter)
         {
-            calls.Add(topmost ? "topmost" : "not-topmost");
-            return succeed;
+            calls.Add($"raise:{hwnd}:{insertAfter}");
+            return raiseSucceeds;
         }
 
         public bool SetForeground(nint hwnd)
         {
-            calls.Add("foreground");
-            return succeed;
+            calls.Add($"foreground:{hwnd}");
+            return true;
         }
     }
 }
