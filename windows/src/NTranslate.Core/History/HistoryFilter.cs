@@ -1,3 +1,5 @@
+using NTranslate.Core.Translation;
+
 namespace NTranslate.Core.History;
 
 public sealed record TranslationRecord(
@@ -9,7 +11,8 @@ public sealed record TranslationRecord(
     string TargetLanguage,
     string? SourceAudioPath,
     string? ResultAudioPath,
-    bool IsSaved);
+    bool IsSaved,
+    TranslationMode Mode = TranslationMode.Translate);
 
 public enum HistoryTimeRange
 {

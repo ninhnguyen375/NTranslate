@@ -6,6 +6,52 @@ namespace NTranslate.Platform.Tests.Capture;
 
 public sealed class SelectionCaptureServiceTests
 {
+    private static readonly byte[] ValidPng = [137, 80, 78, 71, 13, 10, 26, 10];
+
+    [Fact]
+    public async Task Clipboard_text_wins_over_bitmap()
+    {
+        var clipboard = new FakeClipboard("clipboard text") { Bitmap = ValidPng };
+        var capture = await CreateService(new FakeUiaReader(null), clipboard, new FakeCopyCommand())
+            .CaptureAsync(simulateCopy: false, CancellationToken.None);
+        Assert.Equal("clipboard text", capture!.Text);
+        Assert.Null(capture.ImagePng);
+        Assert.Equal(0, clipboard.BitmapReadCount);
+    }
+
+    [Fact]
+    public async Task Clipboard_bitmap_is_used_only_when_text_is_unavailable()
+    {
+        var clipboard = new FakeClipboard(null) { Bitmap = ValidPng };
+        var capture = await CreateService(new FakeUiaReader(null), clipboard, new FakeCopyCommand())
+            .CaptureAsync(simulateCopy: false, CancellationToken.None);
+        Assert.Equal(SelectionSource.Clipboard, capture!.Source);
+        Assert.Null(capture.Text);
+        Assert.Equal(ValidPng, capture.ImagePng);
+    }
+
+    [Fact]
+    public async Task Invalid_bitmap_returns_empty_capture_with_sanitized_diagnostic()
+    {
+        const string privateMessage = "private clipboard details";
+        var clipboard = new FakeClipboard(null) { BitmapException = new InvalidOperationException(privateMessage) };
+        var capture = await CreateService(new FakeUiaReader(null), clipboard, new FakeCopyCommand())
+            .CaptureAsync(simulateCopy: false, CancellationToken.None);
+        Assert.NotNull(capture);
+        Assert.Null(capture.Text);
+        Assert.Null(capture.ImagePng);
+        Assert.Equal(SelectionSource.Clipboard, capture.Source);
+        Assert.Contains(nameof(InvalidOperationException), capture.Diagnostic, StringComparison.Ordinal);
+        Assert.DoesNotContain(privateMessage, capture.Diagnostic, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Selection_capture_rejects_both_payloads()
+    {
+        Assert.Throws<ArgumentException>(() =>
+            new SelectionCapture("text", ValidPng, SelectionSource.Clipboard, null));
+    }
+
     [Fact]
     public async Task Ui_automation_wins_without_touching_clipboard()
     {
@@ -302,6 +348,9 @@ public sealed class SelectionCaptureServiceTests
     private sealed class FakeClipboard(string? text, uint sequenceNumber = 1) : IClipboardService
     {
         public string? Text { get; private set; } = text;
+        public byte[]? Bitmap { get; init; }
+        public Exception? BitmapException { get; init; }
+        public int BitmapReadCount { get; private set; }
         public int ReadCount { get; private set; }
         public int RestoreCount { get; private set; }
         public int CaptureCount { get; private set; }
@@ -328,6 +377,14 @@ public sealed class SelectionCaptureServiceTests
             if (_activeSnapshots == 0)
                 ReadsOutsideSnapshot++;
             return Text;
+        }
+
+        public byte[]? ReadImagePng()
+        {
+            BitmapReadCount++;
+            if (BitmapException is not null)
+                throw BitmapException;
+            return Bitmap;
         }
 
         public void WriteUnicodeText(string value) => SetExternalText(value);

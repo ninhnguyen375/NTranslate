@@ -113,6 +113,12 @@ public sealed class SpeechCoordinator : IAsyncDisposable
         }
     }
 
+    public void SetRate(double rate)
+    {
+        ThrowIfDisposed();
+        player.SetRate(rate);
+    }
+
     public void Invalidate(SpeechChannel channel, bool stopPlayback)
     {
         CancellationTokenSource? cancellation;

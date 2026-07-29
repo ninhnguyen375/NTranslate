@@ -48,13 +48,13 @@ public sealed class TranslationWindowXamlTests
         Assert.Equal("ImageTranslateButton_Click", Attribute(FindNamed("ImageTranslateButton"), "Click"));
         Assert.Equal("{x:Bind ViewModel.CanUseSourceSpeech, Mode=OneWay}", Attribute(FindNamed("SourceSpeechButton"), "IsEnabled"));
         Assert.Equal("{x:Bind ViewModel.CanUseResultSpeech, Mode=OneWay}", Attribute(FindNamed("ResultSpeechButton"), "IsEnabled"));
-        Assert.Equal("{x:Bind ViewModel.SourceSpeechActionText, Mode=OneWay}", Attribute(FindNamed("SourceSpeechButton"), "Content"));
-        Assert.Equal("{x:Bind ViewModel.ResultSpeechActionText, Mode=OneWay}", Attribute(FindNamed("ResultSpeechButton"), "Content"));
+        Assert.Contains(FindNamed("SourceSpeechButton").Descendants(), element => element.Name.LocalName is "SymbolIcon" or "FontIcon");
+        Assert.Contains(FindNamed("ResultSpeechButton").Descendants(), element => element.Name.LocalName is "SymbolIcon" or "FontIcon");
         Assert.Equal("Image preview", Attribute(FindNamed("ImagePreview"), "AutomationProperties.Name"));
         Assert.Equal("{x:Bind ViewModel.IsLoading, Mode=OneWay}", Attribute(FindNamed("ProgressRing"), "IsActive"));
-        Assert.Equal("TitleDragRegion_PointerPressed", Attribute(FindNamed("TitleDragRegion"), "PointerPressed"));
-        Assert.Equal("TitleDragRegion_PointerMoved", Attribute(FindNamed("TitleDragRegion"), "PointerMoved"));
-        Assert.Equal("TitleDragRegion_PointerReleased", Attribute(FindNamed("TitleDragRegion"), "PointerReleased"));
+        Assert.Null(Attribute(FindNamed("TitleDragRegion"), "PointerPressed"));
+        Assert.Null(Attribute(FindNamed("TitleDragRegion"), "PointerMoved"));
+        Assert.Null(Attribute(FindNamed("TitleDragRegion"), "PointerReleased"));
         Assert.Null(Attribute(FindNamed("RootGrid"), "PointerMoved"));
     }
 
@@ -80,10 +80,113 @@ public sealed class TranslationWindowXamlTests
     }
 
     [Fact]
+    public void Window_ExposesManualTextAndImageRequestsWithLifetimeCancellation()
+    {
+        var codeBehind = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "TranslationWindow.xaml.cs"));
+        Assert.Contains("internal void ShowManual()", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("internal Task ShowAndTranslateTextAsync(string text, CancellationToken cancellationToken)", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("internal async Task ShowAndTranslateImageAsync(byte[] imageBytes, CancellationToken cancellationToken)", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("internal CancellationToken OperationToken", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("ViewModel.TranslateAsync(OperationToken)", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("ViewModel.TranslateImageAsync(image, OperationToken)", codeBehind, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Startup_DoesNotShowPopup()
+    {
+        var composition = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "AppComposition.cs"));
+        var start = composition[composition.IndexOf("public void Start()", StringComparison.Ordinal)..composition.IndexOf("public void ShowManual()", StringComparison.Ordinal)];
+        Assert.DoesNotContain("ShowManual();", start, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Result_IsPoliteLiveRegion()
     {
         var result = FindNamed("ResultTextBox");
         Assert.Equal("Polite", Attribute(result, "AutomationProperties.LiveSetting"));
+    }
+
+    [Fact]
+    public void Popup_UsesHeaderSplitPaneAndGroupedFooterHierarchy()
+    {
+        var header = FindNamed("HeaderGrid");
+        var title = FindNamed("TitleDragRegion");
+        Assert.Contains(header.Descendants(), element => Attribute(element, "Name") == "TitleDragRegion");
+        Assert.All(new[] { "UpdateButton", "HistoryButton", "PinButton", "CloseButton" }, name =>
+        {
+            Assert.Contains(header.Descendants(), element => Attribute(element, "Name") == name);
+            Assert.DoesNotContain(title.DescendantsAndSelf(), element => Attribute(element, "Name") == name);
+        });
+
+        var paneGrid = FindNamed("PaneGrid");
+        var columns = paneGrid.Elements().Single(e => e.Name.LocalName == "Grid.ColumnDefinitions").Elements().ToArray();
+        Assert.Equal(new[] { "*", "Auto", "*" }, columns.Select(column => Attribute(column, "Width")));
+        Assert.Contains(paneGrid.Descendants(), element => Attribute(element, "Name") == "PaneDivider");
+
+        var sourceHeader = FindNamed("SourcePaneHeader");
+        Assert.All(new[] { "SourceLanguageCode", "SpeechRateBox", "SourceSpeechButton" }, name => Assert.Contains(sourceHeader.Descendants(), element => Attribute(element, "Name") == name));
+        var resultHeader = FindNamed("ResultPaneHeader");
+        Assert.All(new[] { "TargetLanguageCode", "ResultSpeechButton", "CopyButton", "BookmarkButton" }, name => Assert.Contains(resultHeader.Descendants(), element => Attribute(element, "Name") == name));
+
+        var footer = FindNamed("FooterGrid");
+        Assert.Contains(footer.Descendants(), element => Attribute(element, "Name") == "ActionPanel");
+        Assert.Contains(footer.Descendants(), element => Attribute(element, "Name") == "LanguagePanel");
+        Assert.DoesNotContain("ButtonPanel", XDocument.Load(XamlPath).Descendants().Attributes().Where(a => a.Name.LocalName == "Name").Select(a => a.Value));
+    }
+
+    [Fact]
+    public void Popup_UsesAccessibleIconActionsAndAccentTranslateButton()
+    {
+        var iconButtons = new[] { "UpdateButton", "HistoryButton", "PinButton", "CloseButton", "SourceSpeechButton", "ResultSpeechButton", "CopyButton", "BookmarkButton", "SwapButton" };
+        foreach (var name in iconButtons)
+        {
+            var button = FindNamed(name);
+            Assert.NotNull(Attribute(button, "AutomationProperties.Name"));
+            Assert.NotNull(Attribute(button, "ToolTipService.ToolTip"));
+            Assert.Contains(button.Descendants(), element => element.Name.LocalName is "SymbolIcon" or "FontIcon");
+        }
+
+        var translate = FindNamed("TranslateButton");
+        Assert.Equal("{StaticResource AccentButtonStyle}", Attribute(translate, "Style"));
+        Assert.Contains(translate.Descendants(), element => element.Name.LocalName is "SymbolIcon" or "FontIcon");
+        Assert.Contains(translate.Descendants(), element => element.Name.LocalName == "TextBlock" && Attribute(element, "Text") == "Translate");
+    }
+
+    [Fact]
+    public void Popup_UsesNativeSymbolIconsWithoutFluentFontGlyphs()
+    {
+        var document = XDocument.Load(XamlPath);
+        Assert.DoesNotContain(document.Descendants(), element => element.Name.LocalName == "FontIcon");
+        Assert.DoesNotContain("Segoe Fluent Icons", File.ReadAllText(XamlPath), StringComparison.Ordinal);
+
+        var iconControls = new[]
+        {
+            "UpdateButton", "HistoryButton", "PinButton", "CloseButton", "SourceSpeechButton",
+            "ResultSpeechButton", "CopyButton", "BookmarkButton", "ImagesButton", "ImageTranslateButton",
+            "LearnButton", "TranslateButton", "SwapButton"
+        };
+        Assert.All(iconControls, name => Assert.Contains(FindNamed(name).Descendants(), element => element.Name.LocalName == "SymbolIcon"));
+    }
+
+    [Fact]
+    public void Popup_WiresHeaderPaneActionsAndCustomTitleBar()
+    {
+        Assert.Equal("HistoryButton_Click", Attribute(FindNamed("HistoryButton"), "Click"));
+        Assert.Equal("UpdateButton_Click", Attribute(FindNamed("UpdateButton"), "Click"));
+        Assert.Equal("BookmarkButton_Click", Attribute(FindNamed("BookmarkButton"), "Click"));
+        Assert.Equal("{x:Bind ViewModel.CanToggleSaved, Mode=OneWay}", Attribute(FindNamed("BookmarkButton"), "IsEnabled"));
+        Assert.Null(Attribute(FindNamed("BookmarkButton"), "IsChecked"));
+        Assert.Equal("{x:Bind ViewModel.SelectedSpeechRate, Mode=TwoWay}", Attribute(FindNamed("SpeechRateBox"), "SelectedItem"));
+
+        var codeBehind = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "TranslationWindow.xaml.cs"));
+        Assert.Contains("ExtendsContentIntoTitleBar = true", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("SetTitleBar(TitleDragRegion)", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("SetBorderAndTitleBar(true, false)", codeBehind, StringComparison.Ordinal);
+        Assert.DoesNotContain("TitleDragRegion_Pointer", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("BookmarkButton.IsChecked = ViewModel.IsCurrentSaved", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("await EventBoundary.IgnoreCancellation(() => ViewModel.ToggleSavedAsync(_lifetimeCancellation.Token))", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("try { await ViewModel.ReportErrorAsync(error); }", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("catch (UiDispatchUnavailableException) { }", codeBehind, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -93,12 +196,12 @@ public sealed class TranslationWindowXamlTests
         Assert.Equal("{x:Bind ViewModel.StatusMessage, Mode=OneWay}", Attribute(status, "Text"));
         Assert.Equal("Wrap", Attribute(status, "TextWrapping"));
         Assert.Equal("Polite", Attribute(status, "AutomationProperties.LiveSetting"));
-        Assert.Equal("4", Attribute(status, "Grid.Row"));
+        Assert.Equal("2", Attribute(status, "Grid.Row"));
         Assert.Null(Attribute(status, "Grid.Column"));
 
-        var buttonPanel = FindNamed("ButtonPanel");
-        Assert.Equal("5", Attribute(buttonPanel, "Grid.Row"));
-        Assert.DoesNotContain(status, buttonPanel.Descendants());
+        var footer = FindNamed("FooterGrid");
+        Assert.Equal("3", Attribute(footer, "Grid.Row"));
+        Assert.DoesNotContain(status, footer.Descendants());
     }
 
     [Fact]

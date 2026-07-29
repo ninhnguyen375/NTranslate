@@ -1,56 +1,72 @@
-<Window
-    x:Class="NTranslate.App.Popup.TranslationWindow"
-    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    Title="NTranslate">
-    <Grid x:Name="RootGrid" Padding="16" RowSpacing="12" AutomationProperties.Name="Translation popup">
+<Window x:Class="NTranslate.App.Popup.TranslationWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Title="NTranslate">
+    <Grid x:Name="RootGrid" Padding="12" RowSpacing="8" AutomationProperties.Name="Translation popup">
+        <Grid.Resources>
+            <Style x:Key="CompactIconButtonStyle" TargetType="Button"><Setter Property="MinWidth" Value="32" /><Setter Property="MinHeight" Value="32" /><Setter Property="Padding" Value="6" /></Style>
+            <Style x:Key="CompactIconToggleButtonStyle" TargetType="ToggleButton"><Setter Property="MinWidth" Value="32" /><Setter Property="MinHeight" Value="32" /><Setter Property="Padding" Value="6" /></Style>
+        </Grid.Resources>
         <Grid.KeyboardAccelerators>
             <KeyboardAccelerator Key="Escape" Modifiers="None" Invoked="CloseAccelerator_Invoked" />
             <KeyboardAccelerator Key="Enter" Modifiers="Control" Invoked="TranslateAccelerator_Invoked" />
             <KeyboardAccelerator Key="L" Modifiers="Control,Shift" Invoked="LearnAccelerator_Invoked" />
             <KeyboardAccelerator Key="C" Modifiers="Control,Shift" Invoked="CopyAccelerator_Invoked" />
         </Grid.KeyboardAccelerators>
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="*" />
-            <RowDefinition Height="*" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-        </Grid.RowDefinitions>
-
-        <Grid x:Name="TitleDragRegion" ColumnSpacing="8" PointerPressed="TitleDragRegion_PointerPressed" PointerMoved="TitleDragRegion_PointerMoved" PointerReleased="TitleDragRegion_PointerReleased">
-            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-            <TextBlock Text="NTranslate" Style="{StaticResource TitleTextBlockStyle}" />
-            <ToggleButton x:Name="PinButton" Grid.Column="1" Content="Pin" AutomationProperties.Name="Pin popup" Click="PinButton_Click" />
-            <Button x:Name="CloseButton" Grid.Column="2" Content="Close" AutomationProperties.Name="Close popup" Click="CloseButton_Click" />
+        <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+        <Grid x:Name="HeaderGrid" ColumnSpacing="4" MinHeight="36">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+            <Grid x:Name="TitleDragRegion"><TextBlock VerticalAlignment="Center" Text="NTranslate" Style="{StaticResource TitleTextBlockStyle}" /></Grid>
+            <Button x:Name="UpdateButton" Grid.Column="1" Style="{StaticResource CompactIconButtonStyle}" AutomationProperties.Name="Check for updates" ToolTipService.ToolTip="Check for updates" Click="UpdateButton_Click"><SymbolIcon Symbol="Sync" /></Button>
+            <Button x:Name="HistoryButton" Grid.Column="2" Style="{StaticResource CompactIconButtonStyle}" AutomationProperties.Name="Open history" ToolTipService.ToolTip="History" Click="HistoryButton_Click"><SymbolIcon Symbol="Clock" /></Button>
+            <ToggleButton x:Name="PinButton" Grid.Column="3" Style="{StaticResource CompactIconToggleButtonStyle}" AutomationProperties.Name="Pin popup" ToolTipService.ToolTip="Pin popup" Click="PinButton_Click"><SymbolIcon Symbol="Pin" /></ToggleButton>
+            <Button x:Name="CloseButton" Grid.Column="4" Style="{StaticResource CompactIconButtonStyle}" AutomationProperties.Name="Close popup" ToolTipService.ToolTip="Close" Click="CloseButton_Click"><SymbolIcon Symbol="Cancel" /></Button>
         </Grid>
-
-        <Grid Grid.Row="1" ColumnSpacing="8">
+        <Grid x:Name="PaneGrid" Grid.Row="1" ColumnSpacing="10">
             <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
-            <ComboBox x:Name="SourceLanguageBox" ItemsSource="{x:Bind ViewModel.Languages}" SelectedItem="{x:Bind ViewModel.SourceLang, Mode=TwoWay}" AutomationProperties.Name="Source language" />
-            <Button x:Name="SwapButton" Grid.Column="1" Content="Swap" AutomationProperties.Name="Swap languages" Click="SwapButton_Click" />
-            <ComboBox x:Name="TargetLanguageBox" Grid.Column="2" ItemsSource="{x:Bind ViewModel.TargetLanguages}" SelectedItem="{x:Bind ViewModel.TargetLang, Mode=TwoWay}" AutomationProperties.Name="Target language" />
-        </Grid>
-
-        <Grid Grid.Row="2">
-            <TextBox x:Name="SourceTextBox" Text="{x:Bind ViewModel.SourceText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Visibility="{x:Bind ViewModel.SourceEditorVisibility, Mode=OneWay}" AcceptsReturn="True" TextWrapping="Wrap" AutomationProperties.Name="Source text" />
-            <Image x:Name="ImagePreview" Visibility="{x:Bind ViewModel.ImagePreviewVisibility, Mode=OneWay}" Stretch="Uniform" AutomationProperties.Name="Image preview" />
-            <ProgressRing x:Name="ProgressRing" HorizontalAlignment="Center" VerticalAlignment="Center" IsActive="{x:Bind ViewModel.IsLoading, Mode=OneWay}" AutomationProperties.Name="Translation progress" />
-        </Grid>
-        <TextBox x:Name="ResultTextBox" Grid.Row="3" Text="{x:Bind ViewModel.ResultText, Mode=OneWay}" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" AutomationProperties.Name="Translation result" AutomationProperties.LiveSetting="Polite" />
-
-        <TextBlock x:Name="StatusTextBlock" Grid.Row="4" Text="{x:Bind ViewModel.StatusMessage, Mode=OneWay}" TextWrapping="Wrap" AutomationProperties.Name="Status" AutomationProperties.LiveSetting="Polite" />
-
-        <StackPanel x:Name="ButtonPanel" Grid.Row="5" Orientation="Horizontal" Spacing="8">
-            <Button x:Name="TranslateButton" Content="Translate" AutomationProperties.Name="Translate" Command="{x:Bind ViewModel.TranslateCommand}" />
-            <Button x:Name="LearnButton" Content="Learn" AutomationProperties.Name="Learn" Click="LearnButton_Click" />
-            <Button x:Name="ImagesButton" Content="Images" AutomationProperties.Name="Search images" Click="ImagesButton_Click" />
-            <Button x:Name="ImageTranslateButton" Content="Image" AutomationProperties.Name="Translate clipboard image" Click="ImageTranslateButton_Click" />
-            <Button x:Name="SourceSpeechButton" Content="{x:Bind ViewModel.SourceSpeechActionText, Mode=OneWay}" AutomationProperties.Name="{x:Bind ViewModel.SourceSpeechActionText, Mode=OneWay}" IsEnabled="{x:Bind ViewModel.CanUseSourceSpeech, Mode=OneWay}" Click="SourceSpeechButton_Click" />
-            <Button x:Name="ResultSpeechButton" Content="{x:Bind ViewModel.ResultSpeechActionText, Mode=OneWay}" AutomationProperties.Name="{x:Bind ViewModel.ResultSpeechActionText, Mode=OneWay}" IsEnabled="{x:Bind ViewModel.CanUseResultSpeech, Mode=OneWay}" Click="ResultSpeechButton_Click" />
-            <TextBlock Text="{x:Bind ViewModel.SpeechError, Mode=OneWay}" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" />
-            <Button x:Name="CopyButton" Content="Copy" AutomationProperties.Name="Copy result" Command="{x:Bind ViewModel.CopyCommand}" />
+            <Grid Grid.Column="0" RowSpacing="6">
+                <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
+                <Grid x:Name="SourcePaneHeader" ColumnSpacing="4">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>                    <TextBlock x:Name="SourceLanguageCode" VerticalAlignment="Center" Text="{x:Bind ViewModel.SourceLanguageCode, Mode=OneWay}" Style="{StaticResource SubtitleTextBlockStyle}" AutomationProperties.Name="Source language code" />
+                    <ComboBox x:Name="SpeechRateBox" Grid.Column="1" Width="76" ItemsSource="{x:Bind ViewModel.SpeechRates}" SelectedItem="{x:Bind ViewModel.SelectedSpeechRate, Mode=TwoWay}" AutomationProperties.Name="Speech rate" ToolTipService.ToolTip="Speech rate" />
+                    <Button x:Name="SourceSpeechButton" Grid.Column="2" Style="{StaticResource CompactIconButtonStyle}" AutomationProperties.Name="{x:Bind ViewModel.SourceSpeechActionText, Mode=OneWay}" ToolTipService.ToolTip="Source speech" IsEnabled="{x:Bind ViewModel.CanUseSourceSpeech, Mode=OneWay}" Click="SourceSpeechButton_Click"><SymbolIcon Symbol="Volume" /></Button>
+                </Grid>
+                <Grid Grid.Row="1">
+                    <TextBox x:Name="SourceTextBox" Text="{x:Bind ViewModel.SourceText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Visibility="{x:Bind ViewModel.SourceEditorVisibility, Mode=OneWay}" AcceptsReturn="True" TextWrapping="Wrap" ScrollViewer.VerticalScrollBarVisibility="Auto" AutomationProperties.Name="Source text" />
+                    <Grid Visibility="{x:Bind ViewModel.ImagePreviewVisibility, Mode=OneWay}" RowSpacing="4">
+                        <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
+                        <TextBlock Text="Clipboard image" Style="{StaticResource CaptionTextBlockStyle}" />
+                        <Image x:Name="ImagePreview" Grid.Row="1" Visibility="{x:Bind ViewModel.ImagePreviewVisibility, Mode=OneWay}" Stretch="Uniform" AutomationProperties.Name="Image preview" />
+                    </Grid>
+                    <ProgressRing x:Name="ProgressRing" HorizontalAlignment="Center" VerticalAlignment="Center" IsActive="{x:Bind ViewModel.IsLoading, Mode=OneWay}" AutomationProperties.Name="Translation progress" />
+                </Grid>
+            </Grid>
+            <Border x:Name="PaneDivider" Grid.Column="1" Width="1" Background="{ThemeResource DividerStrokeColorDefaultBrush}" />
+            <Grid Grid.Column="2" RowSpacing="6">
+                <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
+                <Grid x:Name="ResultPaneHeader" ColumnSpacing="4">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                    <TextBlock x:Name="TargetLanguageCode" VerticalAlignment="Center" Text="{x:Bind ViewModel.TargetLanguageCode, Mode=OneWay}" Style="{StaticResource SubtitleTextBlockStyle}" AutomationProperties.Name="Target language code" />
+                    <Button x:Name="ResultSpeechButton" Grid.Column="1" Style="{StaticResource CompactIconButtonStyle}" AutomationProperties.Name="{x:Bind ViewModel.ResultSpeechActionText, Mode=OneWay}" ToolTipService.ToolTip="Result speech" IsEnabled="{x:Bind ViewModel.CanUseResultSpeech, Mode=OneWay}" Click="ResultSpeechButton_Click"><SymbolIcon Symbol="Volume" /></Button>
+                    <Button x:Name="CopyButton" Grid.Column="2" Style="{StaticResource CompactIconButtonStyle}" AutomationProperties.Name="Copy result" ToolTipService.ToolTip="Copy result" Command="{x:Bind ViewModel.CopyCommand}"><SymbolIcon Symbol="Copy" /></Button>
+                    <ToggleButton x:Name="BookmarkButton" Grid.Column="3" Style="{StaticResource CompactIconToggleButtonStyle}" AutomationProperties.Name="Toggle bookmark" ToolTipService.ToolTip="Bookmark" IsEnabled="{x:Bind ViewModel.CanToggleSaved, Mode=OneWay}" Click="BookmarkButton_Click"><SymbolIcon Symbol="Favorite" /></ToggleButton>
+                </Grid>
+                <TextBox x:Name="ResultTextBox" Grid.Row="1" Text="{x:Bind ViewModel.ResultText, Mode=OneWay}" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" ScrollViewer.VerticalScrollBarVisibility="Auto" AutomationProperties.Name="Translation result" AutomationProperties.LiveSetting="Polite" />
+            </Grid>
+        </Grid>        <StackPanel Grid.Row="2" Spacing="2">
+            <TextBlock x:Name="StatusTextBlock" Grid.Row="2" Text="{x:Bind ViewModel.StatusMessage, Mode=OneWay}" TextWrapping="Wrap" AutomationProperties.Name="Status" AutomationProperties.LiveSetting="Polite" />
+            <TextBlock Text="{x:Bind ViewModel.SpeechError, Mode=OneWay}" TextWrapping="Wrap" AutomationProperties.Name="Speech status" AutomationProperties.LiveSetting="Polite" />
         </StackPanel>
+        <Grid x:Name="FooterGrid" Grid.Row="3" ColumnSpacing="8">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+            <StackPanel x:Name="ActionPanel" Orientation="Horizontal" Spacing="4">
+                <Button x:Name="ImagesButton" AutomationProperties.Name="Search images" ToolTipService.ToolTip="Search images" Click="ImagesButton_Click"><StackPanel Orientation="Horizontal" Spacing="5"><SymbolIcon Symbol="Pictures" /><TextBlock Text="Images" /></StackPanel></Button>
+                <Button x:Name="ImageTranslateButton" AutomationProperties.Name="Translate clipboard image" ToolTipService.ToolTip="Translate clipboard image" Click="ImageTranslateButton_Click"><StackPanel Orientation="Horizontal" Spacing="5"><SymbolIcon Symbol="Paste" /><TextBlock Text="Clipboard" /></StackPanel></Button>
+                <Button x:Name="LearnButton" AutomationProperties.Name="Learn" ToolTipService.ToolTip="Learn" IsEnabled="{x:Bind ViewModel.CanLearn, Mode=OneWay}" Click="LearnButton_Click"><StackPanel Orientation="Horizontal" Spacing="5"><SymbolIcon Symbol="Help" /><TextBlock Text="Learn" /></StackPanel></Button>
+                <Button x:Name="TranslateButton" Style="{StaticResource AccentButtonStyle}" AutomationProperties.Name="Translate" Command="{x:Bind ViewModel.TranslateCommand}"><StackPanel Orientation="Horizontal" Spacing="5"><SymbolIcon Symbol="Send" /><TextBlock Text="Translate" /></StackPanel></Button>
+            </StackPanel>
+            <StackPanel x:Name="LanguagePanel" Grid.Column="2" Orientation="Horizontal" Spacing="4">
+                <ComboBox x:Name="SourceLanguageBox" MinWidth="100" MaxWidth="140" ItemsSource="{x:Bind ViewModel.Languages}" SelectedItem="{x:Bind ViewModel.SourceLang, Mode=TwoWay}" IsEnabled="{x:Bind ViewModel.CanSelectSourceLanguage, Mode=OneWay}" AutomationProperties.Name="Source language" />
+                <Button x:Name="SwapButton" Style="{StaticResource CompactIconButtonStyle}" AutomationProperties.Name="Swap languages" ToolTipService.ToolTip="Swap languages" Click="SwapButton_Click"><SymbolIcon Symbol="Switch" /></Button>
+                <ComboBox x:Name="TargetLanguageBox" MinWidth="100" MaxWidth="140" ItemsSource="{x:Bind ViewModel.TargetLanguages}" SelectedItem="{x:Bind ViewModel.TargetLang, Mode=TwoWay}" AutomationProperties.Name="Target language" />
+            </StackPanel>
+        </Grid>
     </Grid>
 </Window>

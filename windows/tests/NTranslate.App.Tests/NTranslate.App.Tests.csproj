@@ -16,5 +16,6 @@
     <ProjectReference Include="..\..\src\NTranslate.App\NTranslate.App.csproj" />
     <None Include="..\..\src\NTranslate.App\Popup\TranslationWindow.xaml" Link="TranslationWindow.xaml" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\..\src\NTranslate.App\Popup\TranslationWindow.xaml.cs" Link="TranslationWindow.xaml.cs" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\src\NTranslate.App\AppComposition.cs" Link="AppComposition.cs" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

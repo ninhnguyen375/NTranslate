@@ -57,8 +57,7 @@ public sealed class SelectionCaptureService : ISelectionCaptureService
             return await CaptureSimulatedCopyAsync(diagnostic, token).ConfigureAwait(false);
 
         token.ThrowIfCancellationRequested();
-        var clipboardText = Normalize(_clipboard.ReadUnicodeText());
-        return clipboardText is null ? null : new(clipboardText, SelectionSource.Clipboard, diagnostic);
+        return CaptureClipboard(diagnostic);
     }
 
     private async Task<SelectionCapture?> CaptureSimulatedCopyAsync(string? diagnostic, CancellationToken token)
@@ -90,12 +89,29 @@ public sealed class SelectionCaptureService : ISelectionCaptureService
             if (copiedText is not null)
                 return new(copiedText, SelectionSource.SimulatedCopy, diagnostic);
 
-            var clipboardText = Normalize(_clipboard.ReadUnicodeText());
-            return clipboardText is null ? null : new(clipboardText, SelectionSource.Clipboard, diagnostic);
+            return CaptureClipboard(diagnostic);
         }
         finally
         {
             SimulatedCopyMutex.Release();
+        }
+    }
+
+    private SelectionCapture? CaptureClipboard(string? diagnostic)
+    {
+        var text = Normalize(_clipboard.ReadUnicodeText());
+        if (text is not null)
+            return new(text, null, SelectionSource.Clipboard, diagnostic);
+
+        try
+        {
+            var imagePng = _clipboard.ReadImagePng();
+            return imagePng is null ? null : new(null, imagePng, SelectionSource.Clipboard, diagnostic);
+        }
+        catch (Exception exception)
+        {
+            return new(null, null, SelectionSource.Clipboard,
+                string.Join(' ', new[] { diagnostic, $"Clipboard image failed ({exception.GetType().Name})" }.Where(value => value is not null)));
         }
     }
 

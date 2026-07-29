@@ -34,11 +34,24 @@ public sealed class AppCompositionTests
 
         Assert.Contains("HistoryRuntime", composition, StringComparison.Ordinal);
         Assert.Contains("SwitchHistoryRuntime", composition, StringComparison.Ordinal);
-        Assert.Contains("OpenHistoryRecord", composition, StringComparison.Ordinal);
+        Assert.Contains("ShowHistoryRecord", composition, StringComparison.Ordinal);
         Assert.Contains("HistoryDeleteConfirmation", composition, StringComparison.Ordinal);
         Assert.Contains("ContentDialogResult.Primary", adapters, StringComparison.Ordinal);
         Assert.Contains("XamlRoot = root", adapters, StringComparison.Ordinal);
         Assert.Contains("records.Count", adapters, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void CompositionPersistsModeAndUsesHistorySpecificPopupPath()
+    {
+        var root = FindRepositoryRoot();
+        var composition = File.ReadAllText(Path.Combine(root, "windows", "src", "NTranslate.App", "AppComposition.cs"));
+        var window = File.ReadAllText(Path.Combine(root, "windows", "src", "NTranslate.App", "Popup", "TranslationWindow.xaml.cs"));
+
+        Assert.Contains("accepted.TargetLanguage, null, null, false, entry.Mode)", composition, StringComparison.Ordinal);
+        Assert.Contains("_window.ShowHistoryRecord(record)", composition, StringComparison.Ordinal);
+        Assert.Contains("internal void ShowHistoryRecord(TranslationRecord record)", window, StringComparison.Ordinal);
+        Assert.Contains("ImagePreview.Source = null", window, StringComparison.Ordinal);
     }
 
     [Fact]

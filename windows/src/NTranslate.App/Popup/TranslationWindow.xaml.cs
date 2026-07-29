@@ -4,6 +4,7 @@ using Microsoft.UI.Xaml.Media.Imaging;
 using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.WindowsRuntime;
 using Windows.ApplicationModel.DataTransfer;
+using NTranslate.Core.History;
 
 namespace NTranslate.App.Popup;
 
@@ -12,17 +13,30 @@ public sealed partial class TranslationWindow : Window
     [DllImport("user32.dll")] internal static extern bool ShowWindow(nint hWnd, int nCmdShow);
     private readonly PopupCoordinator _coordinator;
     private readonly Microsoft.UI.Windowing.AppWindow _appWindow;
+    private readonly Action _showHistory;
+    private readonly Func<Task> _checkForUpdates;
     private CancellationTokenSource _lifetimeCancellation = new();
     private bool _shuttingDown;
-    private readonly TitleDragPolicy _drag = new(4);
 
-    internal TranslationWindow(TranslationViewModel viewModel, double width, double height, Action cancelWork)
+    internal TranslationWindow(TranslationViewModel viewModel, double width, double height, Action cancelWork, Action showHistory, Func<Task> checkForUpdates)
     {
         ViewModel = viewModel;
+        _showHistory = showHistory;
+        _checkForUpdates = checkForUpdates;
         InitializeComponent();
+        BookmarkButton.IsChecked = ViewModel.IsCurrentSaved;
+        ViewModel.PropertyChanged += (_, args) =>
+        {
+            if (args.PropertyName == nameof(ViewModel.IsCurrentSaved))
+                BookmarkButton.IsChecked = ViewModel.IsCurrentSaved;
+        };
+        ExtendsContentIntoTitleBar = true;
+        SetTitleBar(TitleDragRegion);
         _coordinator = new PopupCoordinator(this, viewModel, width, height, cancelWork);
         var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
         _appWindow = Microsoft.UI.Windowing.AppWindow.GetFromWindowId(Microsoft.UI.Win32Interop.GetWindowIdFromWindow(hwnd));
+        if (_appWindow.Presenter is Microsoft.UI.Windowing.OverlappedPresenter presenter)
+            presenter.SetBorderAndTitleBar(true, false);
         _appWindow.Closing += AppWindow_Closing;
         Activated += (_, args) =>
         {
@@ -32,8 +46,40 @@ public sealed partial class TranslationWindow : Window
     }
 
     internal TranslationViewModel ViewModel { get; }
+    internal CancellationToken OperationToken => _lifetimeCancellation.Token;
 
     internal void InitializeForTray() { Activate(); _appWindow.Hide(); }
+    internal void ShowManual()
+    {
+        ViewModel.SourceText = string.Empty;
+        ShowPopup(null);
+    }
+    internal void ShowHistoryRecord(TranslationRecord record)
+    {
+        if (_lifetimeCancellation.IsCancellationRequested)
+        {
+            _lifetimeCancellation.Dispose();
+            _lifetimeCancellation = new();
+        }
+        ImagePreview.Source = null;
+        ViewModel.OpenHistoryRecord(record);
+        _coordinator.Show(null);
+    }
+    internal Task ShowAndTranslateTextAsync(string text, CancellationToken cancellationToken)
+    {
+        if (cancellationToken.IsCancellationRequested) return Task.CompletedTask;
+        ShowPopup(text);
+        return ViewModel.TranslateAsync(OperationToken);
+    }
+
+    internal async Task ShowAndTranslateImageAsync(byte[] imageBytes, CancellationToken cancellationToken)
+    {
+        if (cancellationToken.IsCancellationRequested) return;
+        ShowImagePopup(imageBytes);
+        using var image = new MemoryStream(imageBytes, writable: false);
+        await ViewModel.TranslateImageAsync(image, OperationToken);
+    }
+
     internal void ShowPopup(string? sourceText)
     {
         if (_lifetimeCancellation.IsCancellationRequested)
@@ -43,6 +89,21 @@ public sealed partial class TranslationWindow : Window
         }
         ViewModel.EnterTextMode();
         _coordinator.Show(sourceText);
+    }
+
+    internal void ShowImagePopup(byte[] imageBytes)
+    {
+        if (_lifetimeCancellation.IsCancellationRequested)
+        {
+            _lifetimeCancellation.Dispose();
+            _lifetimeCancellation = new();
+        }
+        ViewModel.EnterImageMode();
+        using var image = new MemoryStream(imageBytes, writable: false);
+        var preview = new BitmapImage();
+        preview.SetSource(image.AsRandomAccessStream());
+        ImagePreview.Source = preview;
+        _coordinator.Show(null);
     }
 
     internal void RestoreWindowProcedure() => _coordinator.RestoreWindowProcedure();
@@ -68,30 +129,15 @@ public sealed partial class TranslationWindow : Window
         ViewModel.WindowChanged();
     }
 
-    private void TitleDragRegion_PointerPressed(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs args)
-    {
-        var point = args.GetCurrentPoint(TitleDragRegion);
-        if (point.Properties.IsLeftButtonPressed)
-            _drag.Press(point.Position.X, point.Position.Y);
-    }
-
-    private void TitleDragRegion_PointerMoved(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs args)
-    {
-        var point = args.GetCurrentPoint(TitleDragRegion);
-        if (!point.Properties.IsLeftButtonPressed || !_drag.Move(point.Position.X, point.Position.Y)) return;
-        _coordinator.Drag();
-        PinButton.IsChecked = true;
-        ReleaseCapture();
-        SendMessage(WinRT.Interop.WindowNative.GetWindowHandle(this), 0x00A1, 2, 0); // WM_NCLBUTTONDOWN, HTCAPTION
-    }
-
-    private void TitleDragRegion_PointerReleased(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs args) => _drag.Release();
-
-    [DllImport("user32.dll")] private static extern bool ReleaseCapture();
-    [DllImport("user32.dll")] private static extern nint SendMessage(nint hwnd, uint message, nint wParam, nint lParam);
-
     private void CloseButton_Click(object sender, RoutedEventArgs e) { CancelOperations(); _coordinator.Close(); }
     private void PinButton_Click(object sender, RoutedEventArgs e) => _coordinator.IsPinned = PinButton.IsChecked == true;
+    private void HistoryButton_Click(object sender, RoutedEventArgs e) => _showHistory();
+    private async void UpdateButton_Click(object sender, RoutedEventArgs e) => await _checkForUpdates();
+    private async void BookmarkButton_Click(object sender, RoutedEventArgs e)
+    {
+        await EventBoundary.IgnoreCancellation(() => ViewModel.ToggleSavedAsync(_lifetimeCancellation.Token));
+        BookmarkButton.IsChecked = ViewModel.IsCurrentSaved;
+    }
     private void SwapButton_Click(object sender, RoutedEventArgs e) => ViewModel.SwapLanguages();
     private async void LearnButton_Click(object sender, RoutedEventArgs e) => await ViewModel.LearnAsync(_lifetimeCancellation.Token);
     private async void ImagesButton_Click(object sender, RoutedEventArgs e) => await ViewModel.SearchImagesAsync(_lifetimeCancellation.Token);
@@ -108,18 +154,27 @@ public sealed partial class TranslationWindow : Window
 
     private async void ImageTranslateButton_Click(object sender, RoutedEventArgs e)
     {
-        var content = Clipboard.GetContent();
-        if (!content.Contains(StandardDataFormats.Bitmap)) return;
-        var reference = await content.GetBitmapAsync();
-        using var input = await reference.OpenReadAsync();
-        using var image = new MemoryStream();
-        await input.AsStreamForRead().CopyToAsync(image, _lifetimeCancellation.Token);
-        image.Position = 0;
-        var preview = new BitmapImage();
-        await preview.SetSourceAsync(image.AsRandomAccessStream());
-        ImagePreview.Source = preview;
-        image.Position = 0;
-        await ViewModel.TranslateImageAsync(image, _lifetimeCancellation.Token);
+        try
+        {
+            var content = Clipboard.GetContent();
+            if (!content.Contains(StandardDataFormats.Bitmap)) return;
+            var reference = await content.GetBitmapAsync();
+            using var input = await reference.OpenReadAsync();
+            using var image = new MemoryStream();
+            await input.AsStreamForRead().CopyToAsync(image, _lifetimeCancellation.Token);
+            image.Position = 0;
+            var preview = new BitmapImage();
+            await preview.SetSourceAsync(image.AsRandomAccessStream());
+            ImagePreview.Source = preview;
+            image.Position = 0;
+            await ViewModel.TranslateImageAsync(image, _lifetimeCancellation.Token);
+        }
+        catch (OperationCanceledException) when (_lifetimeCancellation.IsCancellationRequested) { }
+        catch (Exception error)
+        {
+            try { await ViewModel.ReportErrorAsync(error); }
+            catch (UiDispatchUnavailableException) { }
+        }
     }
 
     private void CloseAccelerator_Invoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args) { CancelOperations(); _coordinator.Close(); args.Handled = true; }

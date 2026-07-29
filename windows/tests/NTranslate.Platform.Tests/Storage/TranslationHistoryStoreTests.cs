@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using NTranslate.Core.History;
+using NTranslate.Core.Translation;
 using NTranslate.Platform.Storage;
 
 namespace NTranslate.Platform.Tests.Storage;
@@ -25,6 +26,52 @@ public sealed class TranslationHistoryStoreTests : IDisposable
         Assert.Equal([newer.Id, older.Id], loaded.Records.Select(record => record.Id));
         Assert.True(loaded.Records.Single(record => record.Id == older.Id).IsSaved);
         Assert.Equal("", loaded.Records.Single(record => record.Id == older.Id).SourceText);
+    }
+
+    [Fact]
+    public async Task RoundTripPreservesImageModeAndOldJsonDefaultsToTranslate()
+    {
+        var image = Record(Guid.NewGuid()) with { Mode = TranslationMode.ImageTranslate };
+        var store = new JsonTranslationHistoryStore(_root);
+        await store.AppendAsync(image);
+
+        Assert.Equal(TranslationMode.ImageTranslate, Assert.Single(new JsonTranslationHistoryStore(_root).Records).Mode);
+
+        var oldRoot = Path.Combine(_root, "old");
+        Directory.CreateDirectory(oldRoot);
+        var oldJson = $$"""[{"Id":"{{Guid.NewGuid()}}","Timestamp":"2026-07-28T01:00:00Z","SourceText":"old","ResultText":"result","SourceLanguage":"en","TargetLanguage":"vi","SourceAudioPath":null,"ResultAudioPath":null,"IsSaved":false}]""";
+        await File.WriteAllTextAsync(Path.Combine(oldRoot, "history.json"), oldJson);
+
+        Assert.Equal(TranslationMode.Translate, Assert.Single(new JsonTranslationHistoryStore(oldRoot).Records).Mode);
+    }
+
+    [Fact]
+    public async Task UnsupportedTranslationModeLocksMutations()
+    {
+        Directory.CreateDirectory(_root);
+        var record = Record(Guid.NewGuid()) with { Mode = (TranslationMode)999 };
+        await File.WriteAllBytesAsync(Path.Combine(_root, "history.json"), JsonSerializer.SerializeToUtf8Bytes(new[] { record }));
+
+        var store = new JsonTranslationHistoryStore(_root);
+
+        Assert.NotNull(store.LoadError);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => store.AppendAsync(Record(Guid.NewGuid())));
+    }
+
+    [Fact]
+    public async Task AppendRejectsUnsupportedTranslationModeWithoutMutation()
+    {
+        var existing = Record(Guid.NewGuid());
+        var store = new JsonTranslationHistoryStore(_root);
+        await store.AppendAsync(existing);
+        var historyPath = Path.Combine(_root, "history.json");
+        var original = await File.ReadAllBytesAsync(historyPath);
+
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() =>
+            store.AppendAsync(Record(Guid.NewGuid()) with { Mode = (TranslationMode)999 }));
+
+        Assert.Equal(original, await File.ReadAllBytesAsync(historyPath));
+        Assert.Equal([existing], store.Records);
     }
 
     [Fact]

@@ -20,6 +20,22 @@ public sealed class OleClipboardService : IClipboardService
         ? WpfClipboard.GetText(TextDataFormat.UnicodeText)
         : null);
 
+    public byte[]? ReadImagePng() => StaClipboardThread.Invoke(() =>
+    {
+        if (!WpfClipboard.ContainsImage())
+            return null;
+
+        var image = WpfClipboard.GetImage();
+        if (image is null)
+            return null;
+
+        var encoder = new System.Windows.Media.Imaging.PngBitmapEncoder();
+        encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(image));
+        using var stream = new MemoryStream();
+        encoder.Save(stream);
+        return stream.ToArray();
+    });
+
     public void WriteUnicodeText(string text) => WriteUnicodeTextAndGetSequence(text);
 
     internal uint WriteUnicodeTextAndGetSequence(string text)

@@ -24,12 +24,17 @@ public sealed class JsonTranslationHistoryStore : ITranslationHistoryStore
     public IReadOnlyList<TranslationRecord> Records => Array.AsReadOnly(_records);
     public string? LoadError { get; private set; }
 
-    public Task AppendAsync(TranslationRecord record, CancellationToken token = default) => MutateAsync(records =>
+    public Task AppendAsync(TranslationRecord record, CancellationToken token = default)
     {
-        if (records.Any(existing => existing.Id == record.Id))
-            throw new InvalidOperationException($"Record '{record.Id}' already exists.");
-        return records.Append(record).OrderByDescending(item => item.Timestamp).ToArray();
-    }, token);
+        if (!IsSupportedMode(record.Mode))
+            throw new ArgumentOutOfRangeException(nameof(record), record.Mode, "Translation mode is not supported by history.");
+        return MutateAsync(records =>
+        {
+            if (records.Any(existing => existing.Id == record.Id))
+                throw new InvalidOperationException($"Record '{record.Id}' already exists.");
+            return records.Append(record).OrderByDescending(item => item.Timestamp).ToArray();
+        }, token);
+    }
 
     public Task SetSavedAsync(Guid id, bool saved, CancellationToken token = default) => MutateAsync(records =>
     {
@@ -130,6 +135,8 @@ public sealed class JsonTranslationHistoryStore : ITranslationHistoryStore
                 ?? throw new InvalidDataException("History document cannot be null.");
             if (loaded.GroupBy(record => record.Id).Any(group => group.Count() != 1))
                 throw new InvalidDataException("History contains duplicate record IDs.");
+            if (loaded.Any(record => !IsSupportedMode(record.Mode)))
+                throw new InvalidDataException("History contains an unsupported translation mode.");
             foreach (var audioPath in loaded.SelectMany(record => new[] { record.SourceAudioPath, record.ResultAudioPath }))
                 if (audioPath is not null) ValidateAudioPath(audioPath, allowMissingLeaf: true);
             _records = loaded.OrderByDescending(record => record.Timestamp).ToArray();
@@ -143,6 +150,9 @@ public sealed class JsonTranslationHistoryStore : ITranslationHistoryStore
 
     private Task PersistAsync(TranslationRecord[] records, CancellationToken token) =>
         _writer.WriteAsync(_historyPath, JsonSerializer.SerializeToUtf8Bytes(records, JsonOptions), token);
+
+    private static bool IsSupportedMode(NTranslate.Core.Translation.TranslationMode mode) =>
+        mode is NTranslate.Core.Translation.TranslationMode.Translate or NTranslate.Core.Translation.TranslationMode.ImageTranslate;
 
     private void EnsureWritable()
     {

@@ -518,6 +518,47 @@ public sealed class TranslationViewModelTests
     }
 
     [Fact]
+    public void TextTransitionsNotifySpeechAvailability()
+    {
+        var vm = CreateAdvancedViewModel(ScriptedHandler.Sync(_ => JsonResponse("unused")));
+        var changes = new List<string?>();
+        vm.PropertyChanged += (_, args) => changes.Add(args.PropertyName);
+
+        vm.SourceText = "speakable";
+        Assert.Contains(nameof(vm.CanUseSourceSpeech), changes);
+
+        changes.Clear();
+        vm.OpenHistoryRecord(new(
+            Guid.NewGuid(), DateTimeOffset.UtcNow, "history source", "history result", "English", "Vietnamese", null, null, false));
+        Assert.Contains(nameof(vm.CanUseSourceSpeech), changes);
+        Assert.Contains(nameof(vm.CanUseResultSpeech), changes);
+
+        changes.Clear();
+        vm.EnterImageMode();
+        Assert.Contains(nameof(vm.CanUseSourceSpeech), changes);
+        Assert.Contains(nameof(vm.CanUseResultSpeech), changes);
+    }
+
+    [Fact]
+    public void OpenImageHistoryRecordRestoresUnavailablePreviewState()
+    {
+        var vm = CreateAdvancedViewModel(ScriptedHandler.Sync(_ => JsonResponse("unused")));
+        var record = new NTranslate.Core.History.TranslationRecord(
+            Guid.NewGuid(), DateTimeOffset.UtcNow, "Clipboard image", "offline result", "English", "Vietnamese", null, null, false,
+            TranslationMode.ImageTranslate);
+
+        vm.OpenHistoryRecord(record);
+
+        Assert.True(vm.IsImageMode);
+        Assert.Equal(string.Empty, vm.SourceText);
+        Assert.Equal("offline result", vm.ResultText);
+        Assert.Equal("English", vm.SourceLang);
+        Assert.Equal("Vietnamese", vm.TargetLang);
+        Assert.False(vm.CanSpeakSource);
+        Assert.Equal("Image preview unavailable for history records.", vm.StatusMessage);
+    }
+
+    [Fact]
     public async Task HistoryAppendFailureDoesNotExposeOrCopyResult()
     {
         var clipboard = new FakeClipboardService();
@@ -613,22 +654,104 @@ public sealed class TranslationViewModelTests
     }
 
     [Fact]
-    public async Task ImageModeClearsSourceAssociationAndKeepsTargetAndResultSpeech()
+    public async Task AcceptedImageTranslationRecordsMetadataWithoutSourceBytes()
     {
+        var history = new RecordingHistory();
         var speech = new RecordingSpeech();
-        var vm = CreateAdvancedViewModel(ScriptedHandler.Sync(_ => JsonResponse("image-result")), speech: speech);
+        var vm = CreateAdvancedViewModel(ScriptedHandler.Sync(_ => JsonResponse("image-result")), history: history, speech: speech);
         vm.SourceText = "old source";
 
         await vm.TranslateImageAsync(new MemoryStream([1, 2, 3]), CancellationToken.None);
 
+        var entry = Assert.Single(history.Records);
+        Assert.Equal("Clipboard image", entry.SourceText);
+        Assert.Equal("image-result", entry.ResultText);
+        Assert.Equal(TranslationMode.ImageTranslate, entry.Mode);
         Assert.True(vm.IsImageMode);
         Assert.Equal(string.Empty, vm.SourceText);
         Assert.False(vm.CanSelectSourceLanguage);
         Assert.False(vm.CanLearn);
         Assert.False(vm.CanSpeakSource);
-        Assert.False(vm.CreatesHistory);
+        Assert.True(vm.CreatesHistory);
         Assert.True(vm.CanSpeakResult);
         Assert.Equal("image-result", vm.ResultText);
+    }
+
+    [Fact]
+    public async Task BookmarkEnablesAfterHistoryReturnsIdAndSuccessfulToggleUpdatesState()
+    {
+        var history = new RecordingHistory { BlockRecord = true };
+        var bookmarks = new RecordingBookmarks();
+        var vm = CreateAdvancedViewModel(ScriptedHandler.Sync(_ => JsonResponse("translated")), history: history, bookmarks: bookmarks);
+        vm.SourceText = "hello";
+
+        var translation = vm.TranslateAsync(CancellationToken.None);
+        await history.RecordStarted.Task.WaitAsync(TimeSpan.FromSeconds(1));
+        Assert.Null(vm.CurrentHistoryId);
+        Assert.False(vm.CanToggleSaved);
+        history.ReleaseRecord();
+        await translation;
+
+        Assert.Equal(history.LastId, vm.CurrentHistoryId);
+        Assert.False(vm.IsCurrentSaved);
+        Assert.True(vm.CanToggleSaved);
+        await vm.ToggleSavedAsync(CancellationToken.None);
+        Assert.Equal((history.LastId!.Value, true), Assert.Single(bookmarks.Calls));
+        Assert.True(vm.IsCurrentSaved);
+    }
+
+    [Fact]
+    public async Task FailedBookmarkTogglePreservesStateAndSetsStatus()
+    {
+        var bookmarks = new RecordingBookmarks { Error = new IOException("bookmark unavailable") };
+        var vm = CreateAdvancedViewModel(ScriptedHandler.Sync(_ => JsonResponse("translated")), bookmarks: bookmarks);
+        vm.SourceText = "hello";
+        await vm.TranslateAsync(CancellationToken.None);
+
+        await vm.ToggleSavedAsync(CancellationToken.None);
+
+        Assert.False(vm.IsCurrentSaved);
+        Assert.Equal("bookmark unavailable", vm.StatusMessage);
+    }
+
+    [Fact]
+    public async Task CompletedBookmarkToggleCannotMutateChangedResult()
+    {
+        var bookmarks = new RecordingBookmarks { BlockSave = true };
+        var vm = CreateAdvancedViewModel(ScriptedHandler.Sync(_ => JsonResponse("translated")), bookmarks: bookmarks);
+        vm.SourceText = "hello";
+        await vm.TranslateAsync(CancellationToken.None);
+
+        var toggle = vm.ToggleSavedAsync(CancellationToken.None);
+        await bookmarks.SaveStarted.Task.WaitAsync(TimeSpan.FromSeconds(1));
+        vm.SourceText = "changed";
+        bookmarks.ReleaseSave();
+        await toggle;
+
+        Assert.Null(vm.CurrentHistoryId);
+        Assert.False(vm.IsCurrentSaved);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task BookmarkCompletionDispatchesUiMutation(bool fails)
+    {
+        var bookmarks = new RecordingBookmarks { Error = fails ? new IOException("bookmark unavailable") : null };
+        var dispatches = 0;
+        var vm = CreateAdvancedViewModel(
+            ScriptedHandler.Sync(_ => JsonResponse("translated")),
+            bookmarks: bookmarks,
+            dispatch: action => { dispatches++; action(); return Task.CompletedTask; });
+        vm.SourceText = "hello";
+        await vm.TranslateAsync(CancellationToken.None);
+        dispatches = 0;
+
+        await vm.ToggleSavedAsync(CancellationToken.None);
+
+        Assert.Equal(1, dispatches);
+        Assert.Equal(!fails, vm.IsCurrentSaved);
+        Assert.Equal(fails ? "bookmark unavailable" : null, vm.StatusMessage);
     }
 
     [Fact]
@@ -691,6 +814,93 @@ public sealed class TranslationViewModelTests
         gate.SetResult();
         await translation;
         Assert.NotEqual("late", vm.ResultText);
+    }
+
+    [Theory]
+    [InlineData("Auto detect", "", "AUTO")]
+    [InlineData("English", "", "EN")]
+    [InlineData("Vietnamese", "", "VI")]
+    [InlineData("Chinese", "", "ZH")]
+    [InlineData("French", "", "FR")]
+    [InlineData("Auto detect", "hello", "EN")]
+    [InlineData("Auto detect", "xin chào", "VI")]
+    [InlineData("Auto detect", "你好", "ZH")]
+    public void LanguageCodesMapSelectionAndDetectedSource(string sourceLanguage, string sourceText, string expectedSourceCode)
+    {
+        var vm = CreateAdvancedViewModel(ScriptedHandler.Sync(_ => JsonResponse("unused")));
+
+        vm.SourceLang = sourceLanguage;
+        vm.SourceText = sourceText;
+
+        Assert.Equal(expectedSourceCode, vm.SourceLanguageCode);
+        Assert.Equal("VI", vm.TargetLanguageCode);
+    }
+
+    [Fact]
+    public void LanguageCodeChangesNotifyWhenSourceTextOrLanguageSelectionChanges()
+    {
+        var vm = CreateAdvancedViewModel(ScriptedHandler.Sync(_ => JsonResponse("unused")));
+        vm.SourceLang = "Auto detect";
+        var changes = new List<string?>();
+        vm.PropertyChanged += (_, args) => changes.Add(args.PropertyName);
+
+        vm.SourceText = "xin chào";
+        vm.TargetLang = "Chinese";
+
+        Assert.Contains(nameof(vm.SourceLanguageCode), changes);
+        Assert.Contains(nameof(vm.TargetLanguageCode), changes);
+    }
+
+    [Fact]
+    public async Task SpeechRateSelectionUsesBoundaryWithoutChangingPersistentConfig()
+    {
+        var speech = new RecordingSpeech();
+        var config = Config;
+        var vm = CreateAdvancedViewModel(ScriptedHandler.Sync(_ => JsonResponse("unused")), speech: speech, config: config);
+        var persistedRate = config.SpeechRate;
+
+        Assert.Equal([0.5, 0.75, 1.0, 1.25, 1.5], vm.SpeechRates);
+        Assert.Equal(persistedRate, vm.SelectedSpeechRate);
+
+        vm.SelectedSpeechRate = 1.25;
+        vm.SourceText = "hello";
+        await vm.SpeakSourceAsync(CancellationToken.None);
+
+        Assert.Equal([1.25], speech.AppliedRates);
+        Assert.Equal(1.25, Assert.Single(speech.Playbacks).Rate);
+        Assert.Equal(persistedRate, config.SpeechRate);
+    }
+
+    [Fact]
+    public async Task SpeechCompletionDispatchesUiMutations()
+    {
+        var speech = new RecordingSpeech();
+        var dispatches = 0;
+        var vm = CreateAdvancedViewModel(
+            ScriptedHandler.Sync(_ => JsonResponse("unused")),
+            speech: speech,
+            dispatch: action => { dispatches++; action(); return Task.CompletedTask; });
+        vm.SourceText = "hello";
+        dispatches = 0;
+
+        await vm.SpeakSourceAsync(CancellationToken.None);
+
+        Assert.Equal(2, dispatches);
+        Assert.Equal("Pause source speech", vm.SourceSpeechActionText);
+    }
+
+    [Fact]
+    public async Task ReportErrorDispatchesSafeStatus()
+    {
+        var dispatches = 0;
+        var vm = CreateAdvancedViewModel(
+            ScriptedHandler.Sync(_ => JsonResponse("unused")),
+            dispatch: action => { dispatches++; action(); return Task.CompletedTask; });
+
+        await vm.ReportErrorAsync(new IOException("clipboard unavailable"));
+
+        Assert.Equal(1, dispatches);
+        Assert.Equal("clipboard unavailable", vm.StatusMessage);
     }
 
     [Fact]
@@ -792,9 +1002,12 @@ public sealed class TranslationViewModelTests
         RecordingHistory? history = null,
         RecordingSpeech? speech = null,
         RecordingBrowser? browser = null,
-        bool autoPrefetch = false)
+        RecordingBookmarks? bookmarks = null,
+        bool autoPrefetch = false,
+        Func<Action, Task>? dispatch = null,
+        AppConfig? config = null)
     {
-        var config = Config with
+        config = (config ?? Config) with
         {
             AutoPrefetchSpeech = autoPrefetch,
             LearnPrompt = "LearnWord {{config.sourceLang}} {{config.targetLang}}",
@@ -805,10 +1018,12 @@ public sealed class TranslationViewModelTests
             new OpenAiCompatibleClient(new HttpClient(handler)),
             new FakeClipboardService(),
             _ => Task.FromResult("test-api-key"),
+            dispatchUi: dispatch,
             imageNormalizer: new PassThroughNormalizer(),
             browserLauncher: browser ?? new RecordingBrowser(),
             speech: speech ?? new RecordingSpeech(),
-            recordHistory: (history ?? new RecordingHistory()).RecordAsync);
+            recordHistory: (history ?? new RecordingHistory()).RecordAsync,
+            setSaved: (bookmarks ?? new RecordingBookmarks()).SetSavedAsync);
     }
 
     private static TranslationViewModel CreateViewModel(ScriptedHandler handler, IClipboardService clipboard, bool autoCopy = false)
@@ -874,14 +1089,38 @@ public sealed class TranslationViewModelTests
 
     private sealed class RecordingHistory
     {
+        private readonly TaskCompletionSource _recordRelease = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public List<TranslationHistoryEntry> Records { get; } = [];
         public Guid? LastId { get; private set; }
-        public Task<Guid?> RecordAsync(TranslationHistoryEntry entry, CancellationToken cancellationToken)
+        public bool BlockRecord { get; set; }
+        public TaskCompletionSource RecordStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public void ReleaseRecord() => _recordRelease.TrySetResult();
+        public async Task<Guid?> RecordAsync(TranslationHistoryEntry entry, CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            RecordStarted.TrySetResult();
+            if (BlockRecord) await _recordRelease.Task.WaitAsync(cancellationToken);
             Records.Add(entry);
             LastId = Guid.NewGuid();
-            return Task.FromResult(LastId);
+            return LastId;
+        }
+    }
+
+    private sealed class RecordingBookmarks
+    {
+        private readonly TaskCompletionSource _saveRelease = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public Exception? Error { get; set; }
+        public bool BlockSave { get; set; }
+        public TaskCompletionSource SaveStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public List<(Guid Id, bool Saved)> Calls { get; } = [];
+        public void ReleaseSave() => _saveRelease.TrySetResult();
+        public async Task SetSavedAsync(Guid id, bool saved, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            SaveStarted.TrySetResult();
+            if (BlockSave) await _saveRelease.Task.WaitAsync(cancellationToken);
+            if (Error is not null) throw Error;
+            Calls.Add((id, saved));
         }
     }
 
@@ -890,6 +1129,7 @@ public sealed class TranslationViewModelTests
         public Exception? Error { get; set; }
         public List<SpeechIdentity> Prefetched { get; } = [];
         public List<(SpeechIdentity Identity, double Rate)> Playbacks { get; } = [];
+        public List<double> AppliedRates { get; } = [];
         public List<SpeechChannel> InvalidatedChannels { get; } = [];
         public Task PrefetchAsync(SpeechIdentity identity, CancellationToken cancellationToken)
         {
@@ -904,6 +1144,7 @@ public sealed class TranslationViewModelTests
             Playbacks.Add((identity, rate));
             return Task.CompletedTask;
         }
+        public void SetRate(double rate) => AppliedRates.Add(rate);
         public void Invalidate(SpeechChannel channel, bool stopPlayback) => InvalidatedChannels.Add(channel);
     }
 

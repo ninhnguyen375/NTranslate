@@ -57,8 +57,9 @@ internal sealed class AppComposition : IDisposable
     private readonly IDisposable[] _exceptionSources;
     private readonly string _configPath;
     private readonly PopupRouter _router;
+    private readonly PopupRequestDispatcher _popupRequests;
     private CancellationTokenSource? _captureRequest;
-    private int _captureGeneration;
+    private readonly CaptureGeneration _captureGeneration = new();
 
     public AppComposition(DispatcherQueue dispatcher)
     {
@@ -93,14 +94,15 @@ internal sealed class AppComposition : IDisposable
             _speech,
             async (entry, token) =>
             {
-                if (entry.Mode != NTranslate.Core.Translation.TranslationMode.Translate) return null;
+                if (entry.Mode is not (NTranslate.Core.Translation.TranslationMode.Translate or NTranslate.Core.Translation.TranslationMode.ImageTranslate)) return null;
                 var accepted = new AcceptedTextTranslation(Guid.NewGuid(), DateTimeOffset.UtcNow, entry.SourceText, entry.ResultText, entry.SourceLanguage, entry.TargetLanguage, entry.IsGrammar);
-                await historySink.AcceptAsync(new TranslationRecord(accepted.RecordId, accepted.Timestamp, accepted.SourceText, accepted.ResultText, accepted.SourceLanguage, accepted.TargetLanguage, null, null, false), token).ConfigureAwait(false);
+                await historySink.AcceptAsync(new TranslationRecord(accepted.RecordId, accepted.Timestamp, accepted.SourceText, accepted.ResultText, accepted.SourceLanguage, accepted.TargetLanguage, null, null, false, entry.Mode), token).ConfigureAwait(false);
                 return accepted.RecordId;
             },
-            DispatchAsync);
+            DispatchAsync,
+            _historyRuntime.SetSavedAsync);
         _viewModel.SetStartupGuidance(startup.Guidance);
-        _window = new TranslationWindow(_viewModel, _config.Ui.Width, _config.Ui.Height, CancelPopupWork);
+        _window = new TranslationWindow(_viewModel, _config.Ui.Width, _config.Ui.Height, CancelPopupWork, ShowHistory, RunManualUpdateAsync);
         _window.InitializeForTray();
 
         var deleteConfirmation = new HistoryDeleteConfirmation(() => _historyWindow?.Content is FrameworkElement content ? content.XamlRoot : null);
@@ -108,7 +110,7 @@ internal sealed class AppComposition : IDisposable
             _historyRuntime,
             new HistoryAudioPlayer(),
             deleteConfirmation.ConfirmAsync,
-            (record, _) => DispatchAsync(() => { _viewModel.OpenHistoryRecord(record); _window.ShowPopup(null); }),
+            (record, _) => DispatchAsync(() => _window.ShowHistoryRecord(record)),
             dispatchUi: DispatchAsync);
         _historyWindow = new HistoryWindow(_historyViewModel);
 
@@ -163,7 +165,13 @@ internal sealed class AppComposition : IDisposable
         _exceptionSources = [winUiExceptions, appDomainExceptions, taskExceptions];
         _crashHandlers = new CrashHandlerRegistration(_historyRuntime, winUiExceptions, appDomainExceptions, taskExceptions);
 
-        _router = new PopupRouter(CancelCapture, () => Show(null));
+        _router = new PopupRouter(CancelCapture, _window.ShowManual);
+        _popupRequests = new PopupRequestDispatcher(
+            _viewModel.InvalidateRequests,
+            Enqueue,
+            _window.ShowManual,
+            _window.ShowAndTranslateTextAsync,
+            _window.ShowAndTranslateImageAsync);
         _shutdown = new AppShutdown(
             () => { _lifetime.Cancel(); _captureRequest?.Cancel(); _viewModel.Cancel(); _speech.InvalidateAll(true); },
             _hotkey.Dispose,
@@ -199,7 +207,6 @@ internal sealed class AppComposition : IDisposable
         HotkeyRegistrationError = registration.Error;
         _viewModel.SetStartupGuidance(GuidancePolicy.Combine(_viewModel.PersistentGuidance, registration.Error));
         _crashHandlers.Register();
-        ShowManual();
         _ = _recovery.ShowPendingAsync(_lifetime.Token);
     }
 
@@ -278,7 +285,7 @@ internal sealed class AppComposition : IDisposable
     }
     private void CloseSettings() => _settingsWindow?.AppWindow.Hide();
     private void CancelPopupWork() { CancelCapture(); _viewModel.Cancel(); }
-    private void CancelCapture() { Interlocked.Increment(ref _captureGeneration); Interlocked.Exchange(ref _captureRequest, null)?.Cancel(); }
+    private void CancelCapture() { _captureGeneration.Cancel(); Interlocked.Exchange(ref _captureRequest, null)?.Cancel(); }
 
     private async Task CaptureAndShowAsync()
     {
@@ -286,19 +293,14 @@ internal sealed class AppComposition : IDisposable
         var previous = Interlocked.Exchange(ref _captureRequest, cancellation);
         previous?.Cancel();
         previous?.Dispose();
-        var generation = Interlocked.Increment(ref _captureGeneration);
+        var generation = _captureGeneration.Begin();
+        _popupRequests.Invalidate();
         SelectionCapture? capture = null;
         try { capture = await _capture.CaptureAsync(_config.Ui.SimulateCopy, cancellation.Token).ConfigureAwait(false); }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { return; }
         catch { }
-        if (generation == Volatile.Read(ref _captureGeneration))
-            Enqueue(() => { if (generation == Volatile.Read(ref _captureGeneration)) Show(CaptureRouting.SourceText(capture)); });
-    }
-
-    private void Show(string? text)
-    {
-        if (text is null) _viewModel.SourceText = string.Empty;
-        _window.ShowPopup(text);
+        if (!_captureGeneration.IsCurrent(generation)) return;
+        _popupRequests.Enqueue(CaptureRouting.Resolve(capture), () => _captureGeneration.IsCurrent(generation), cancellation.Token);
     }
 
     private void Enqueue(Action action) => _dispatcher.TryEnqueue(() => { if (!_lifetime.IsCancellationRequested) action(); });

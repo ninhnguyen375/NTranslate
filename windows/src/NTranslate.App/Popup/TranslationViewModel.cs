@@ -44,6 +44,7 @@ public interface ITranslationSpeech
 {
     Task PrefetchAsync(SpeechIdentity identity, CancellationToken cancellationToken);
     Task TogglePlaybackAsync(SpeechIdentity identity, double rate, CancellationToken cancellationToken);
+    void SetRate(double rate);
     void Invalidate(SpeechChannel channel, bool stopPlayback);
 }
 
@@ -70,8 +71,11 @@ public sealed class TranslationViewModel : INotifyPropertyChanged
     private readonly IBrowserLauncher? _browserLauncher;
     private readonly ITranslationSpeech? _speech;
     private readonly Func<TranslationHistoryEntry, CancellationToken, Task<Guid?>>? _recordHistory;
+    private readonly Func<Guid, bool, CancellationToken, Task>? _setSaved;
     private readonly RequestCoordinator _coordinator = new();
+    private static readonly IReadOnlyList<double> SupportedSpeechRates = [0.5, 0.75, 1.0, 1.25, 1.5];
 
+    private readonly object _requestGate = new();
     private CancellationTokenSource? _inFlight;
     private string _sourceText = string.Empty;
     private string _sourceLang;
@@ -88,6 +92,9 @@ public sealed class TranslationViewModel : INotifyPropertyChanged
     private string? _speechError;
     private string? _acceptedSourceLanguage;
     private string? _acceptedTargetLanguage;
+    private Guid? _currentHistoryId;
+    private bool _isCurrentSaved;
+    private double _selectedSpeechRate;
 
     public TranslationViewModel(
         AppConfig config,
@@ -98,7 +105,8 @@ public sealed class TranslationViewModel : INotifyPropertyChanged
         IImageNormalizer? imageNormalizer = null,
         IBrowserLauncher? browserLauncher = null,
         ITranslationSpeech? speech = null,
-        Func<TranslationHistoryEntry, CancellationToken, Task<Guid?>>? recordHistory = null)
+        Func<TranslationHistoryEntry, CancellationToken, Task<Guid?>>? recordHistory = null,
+        Func<Guid, bool, CancellationToken, Task>? setSaved = null)
     {
         _config = config;
         _client = client;
@@ -109,8 +117,10 @@ public sealed class TranslationViewModel : INotifyPropertyChanged
         _browserLauncher = browserLauncher;
         _speech = speech;
         _recordHistory = recordHistory;
+        _setSaved = setSaved;
         _sourceLang = config.SourceLang;
         _targetLang = config.TargetLang;
+        _selectedSpeechRate = config.SpeechRate;
         TranslateCommand = new AsyncRelayCommand(TranslateAsync);
         CopyCommand = new AsyncRelayCommand(CopyAsync, () => CanCopy);
     }
@@ -124,7 +134,8 @@ public sealed class TranslationViewModel : INotifyPropertyChanged
         IBrowserLauncher browserLauncher,
         SpeechCoordinator speechCoordinator,
         Func<TranslationHistoryEntry, CancellationToken, Task<Guid?>>? recordHistory = null,
-        Func<Action, Task>? dispatchUi = null)
+        Func<Action, Task>? dispatchUi = null,
+        Func<Guid, bool, CancellationToken, Task>? setSaved = null)
         : this(
             config,
             client,
@@ -134,7 +145,8 @@ public sealed class TranslationViewModel : INotifyPropertyChanged
             imageNormalizer,
             browserLauncher,
             new SpeechCoordinatorBoundary(speechCoordinator),
-            recordHistory)
+            recordHistory,
+            setSaved)
     {
     }
 
@@ -143,25 +155,41 @@ public sealed class TranslationViewModel : INotifyPropertyChanged
     public string SourceText
     {
         get => _sourceText;
-        set => SetInvalidating(ref _sourceText, value);
+        set
+        {
+            if (SetInvalidating(ref _sourceText, value))
+            {
+                OnPropertyChanged(nameof(SourceLanguageCode));
+                OnPropertyChanged(nameof(CanUseSourceSpeech));
+            }
+        }
     }
 
     public string SourceLang
     {
         get => _sourceLang;
-        set => SetInvalidating(ref _sourceLang, value);
+        set
+        {
+            if (SetInvalidating(ref _sourceLang, value)) OnPropertyChanged(nameof(SourceLanguageCode));
+        }
     }
 
     public string TargetLang
     {
         get => _targetLang;
-        set => SetInvalidating(ref _targetLang, value);
+        set
+        {
+            if (SetInvalidating(ref _targetLang, value)) OnPropertyChanged(nameof(TargetLanguageCode));
+        }
     }
 
     public string ResultText
     {
         get => _resultText;
-        private set => Set(ref _resultText, value);
+        private set
+        {
+            if (Set(ref _resultText, value)) OnPropertyChanged(nameof(CanUseResultSpeech));
+        }
     }
 
     /// <summary>Guidance text (blank/too-long) or error message, depending on <see cref="State"/>.</summary>
@@ -218,7 +246,25 @@ public sealed class TranslationViewModel : INotifyPropertyChanged
         get => _speechError;
         private set => Set(ref _speechError, value);
     }
-    public bool CreatesHistory => !IsImageMode;
+    public bool CreatesHistory => _recordHistory is not null;
+    public Guid? CurrentHistoryId => _currentHistoryId;
+    public bool IsCurrentSaved => _isCurrentSaved;
+    public bool CanToggleSaved => CurrentHistoryId.HasValue && _setSaved is not null;
+    public string SourceLanguageCode => LanguageCode(
+        string.Equals(SourceLang, "Auto detect", StringComparison.OrdinalIgnoreCase) && SourceText.Length > 0
+            ? LanguagePolicy.Detect(SourceText)
+            : SourceLang);
+    public string TargetLanguageCode => LanguageCode(TargetLang);
+    public IReadOnlyList<double> SpeechRates => SupportedSpeechRates;
+    public double SelectedSpeechRate
+    {
+        get => _selectedSpeechRate;
+        set
+        {
+            if (!Set(ref _selectedSpeechRate, value)) return;
+            _speech?.SetRate(value);
+        }
+    }
 
     public IReadOnlyList<string> Languages => _config.Languages;
 
@@ -244,34 +290,76 @@ public sealed class TranslationViewModel : INotifyPropertyChanged
         _config = config;
         SourceLang = config.SourceLang;
         TargetLang = config.TargetLang;
+        SelectedSpeechRate = config.SpeechRate;
         OnPropertyChanged(nameof(Languages));
         OnPropertyChanged(nameof(TargetLanguages));
     }
 
     public void Cancel() => InvalidateAll();
 
+    internal void InvalidateRequests()
+    {
+        lock (_requestGate)
+        {
+            _coordinator.CancelCurrent();
+            try { _inFlight?.Cancel(); }
+            catch (ObjectDisposedException) { }
+            _inFlight = null;
+        }
+    }
+
     public void OpenHistoryRecord(TranslationRecord record)
     {
         ArgumentNullException.ThrowIfNull(record);
         InvalidateAll();
-        _isImageMode = false;
-        _sourceText = record.SourceText;
+        _isImageMode = record.Mode == TranslationMode.ImageTranslate;
+        _sourceText = IsImageMode ? string.Empty : record.SourceText;
         _sourceLang = record.SourceLanguage;
         _targetLang = record.TargetLanguage;
+        CurrentHistoryIdValue = record.Id;
+        IsCurrentSavedValue = record.IsSaved;
         ResultText = record.ResultText;
-        StatusMessage = null;
+        StatusMessage = IsImageMode ? "Image preview unavailable for history records." : null;
         State = PopupState.Result;
         _sourceSpeechIdentity = SpeechIdentityFor(SpeechChannel.Source, record.SourceText, record.SourceLanguage, record.Id);
         _resultSpeechIdentity = SpeechIdentityFor(SpeechChannel.Result, record.ResultText, record.TargetLanguage, record.Id);
         OnPropertyChanged(nameof(SourceText));
+        OnPropertyChanged(nameof(CanUseSourceSpeech));
         OnPropertyChanged(nameof(SourceLang));
         OnPropertyChanged(nameof(TargetLang));
+        OnPropertyChanged(nameof(SourceLanguageCode));
+        OnPropertyChanged(nameof(TargetLanguageCode));
         OnImageModeChanged();
     }
 
     public Task TranslateAsync(CancellationToken cancellationToken) => TranslateTextAsync(TranslationMode.Translate, cancellationToken);
 
     public Task LearnAsync(CancellationToken cancellationToken) => TranslateTextAsync(TranslationMode.Learn, cancellationToken);
+
+    public async Task ToggleSavedAsync(CancellationToken cancellationToken)
+    {
+        if (!CanToggleSaved) return;
+        var historyId = CurrentHistoryId!.Value;
+        var next = !IsCurrentSaved;
+        try
+        {
+            await _setSaved!(historyId, next, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception error) when (error is not OperationCanceledException)
+        {
+            await _dispatchUi(() =>
+            {
+                if (CurrentHistoryId == historyId) StatusMessage = error.Message;
+            }).ConfigureAwait(false);
+            return;
+        }
+        await _dispatchUi(() =>
+        {
+            if (CurrentHistoryId != historyId) return;
+            IsCurrentSavedValue = next;
+            StatusMessage = null;
+        }).ConfigureAwait(false);
+    }
 
     public async Task SpeakSourceAsync(CancellationToken cancellationToken)
     {
@@ -301,7 +389,7 @@ public sealed class TranslationViewModel : INotifyPropertyChanged
             string apiKey = await _resolveApiKey(requestCancellation.Token).ConfigureAwait(false);
             var request = new ChatCompletionRequest(_config.Model, PromptRenderer.RenderTranslation(_config), new ImageChatInput(normalized.PngData.ToArray(), TargetLang));
             string result = await _client.CompleteChatAsync(new Uri(_config.ApiBaseUrl), apiKey, request, requestCancellation.Token).ConfigureAwait(false);
-            await ApplyAcceptedResultAsync(lease.Generation, result, null, SourceLang, TargetLang, TranslationMode.ImageTranslate, false, requestCancellation.Token).ConfigureAwait(false);
+            await ApplyAcceptedResultAsync(lease.Generation, result, "Clipboard image", SourceLang, TargetLang, TranslationMode.ImageTranslate, false, requestCancellation.Token).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (requestCancellation.IsCancellationRequested) { }
         catch (Exception ex) { await ApplyErrorAsync(lease.Generation, ex).ConfigureAwait(false); }
@@ -324,7 +412,10 @@ public sealed class TranslationViewModel : INotifyPropertyChanged
         catch { }
         finally
         {
-            if (ReferenceEquals(_inFlight, requestCancellation)) _inFlight = null;
+            lock (_requestGate)
+            {
+                if (ReferenceEquals(_inFlight, requestCancellation)) _inFlight = null;
+            }
         }
         if (!_coordinator.Accepts(lease.Generation) || requestCancellation.IsCancellationRequested)
         {
@@ -345,6 +436,8 @@ public sealed class TranslationViewModel : INotifyPropertyChanged
         _isImageMode = true;
         _sourceText = string.Empty;
         OnPropertyChanged(nameof(SourceText));
+        OnPropertyChanged(nameof(SourceLanguageCode));
+        OnPropertyChanged(nameof(CanUseSourceSpeech));
         OnImageModeChanged();
         ResultText = string.Empty;
         State = PopupState.Guidance;
@@ -362,6 +455,16 @@ public sealed class TranslationViewModel : INotifyPropertyChanged
     }
 
     public void WindowChanged() => InvalidateAll();
+
+    internal Task ReportErrorAsync(Exception error)
+    {
+        ArgumentNullException.ThrowIfNull(error);
+        return _dispatchUi(() =>
+        {
+            StatusMessage = error.Message;
+            State = PopupState.Error;
+        });
+    }
 
     /// <summary>
     /// Internal seam for tests: runs the translate flow without the command's
@@ -448,17 +551,32 @@ public sealed class TranslationViewModel : INotifyPropertyChanged
 
     private RequestLease BeginRequest(CancellationToken outerCancellationToken, out CancellationTokenSource cancellation)
     {
-        _inFlight?.Cancel();
-        cancellation = CancellationTokenSource.CreateLinkedTokenSource(outerCancellationToken);
-        _inFlight = cancellation;
-        var lease = _coordinator.Begin(cancellation.Token);
+        CancellationTokenSource? previous;
+        RequestLease lease;
+        lock (_requestGate)
+        {
+            previous = _inFlight;
+            cancellation = CancellationTokenSource.CreateLinkedTokenSource(outerCancellationToken);
+            _inFlight = cancellation;
+            lease = _coordinator.Begin(cancellation.Token);
+        }
+        lock (_requestGate)
+        {
+            try { previous?.Cancel(); }
+            catch (ObjectDisposedException) { }
+        }
+        CurrentHistoryIdValue = null;
+        IsCurrentSavedValue = false;
         State = PopupState.Loading;
         return lease;
     }
 
     private void FinishRequest(CancellationTokenSource cancellation)
     {
-        if (ReferenceEquals(_inFlight, cancellation)) _inFlight = null;
+        lock (_requestGate)
+        {
+            if (ReferenceEquals(_inFlight, cancellation)) _inFlight = null;
+        }
         cancellation.Dispose();
     }
 
@@ -494,6 +612,8 @@ public sealed class TranslationViewModel : INotifyPropertyChanged
         await _dispatchUi(() =>
         {
             if (!_coordinator.Accepts(generation)) return;
+            CurrentHistoryIdValue = historyId;
+            IsCurrentSavedValue = false;
             ResultText = result;
             StatusMessage = null;
             State = PopupState.Result;
@@ -525,26 +645,33 @@ public sealed class TranslationViewModel : INotifyPropertyChanged
     private async Task ToggleSpeechAsync(SpeechChannel channel, SpeechIdentity identity, CancellationToken cancellationToken)
     {
         var phase = channel == SpeechChannel.Source ? _sourceSpeechPhase : _resultSpeechPhase;
-        SetSpeechPhase(channel, phase switch
+        await _dispatchUi(() =>
         {
-            SpeechPhase.Playing => SpeechPhase.Paused,
-            SpeechPhase.Paused => SpeechPhase.Playing,
-            _ => SpeechPhase.Loading
-        });
-        SpeechError = null;
+            SetSpeechPhase(channel, phase switch
+            {
+                SpeechPhase.Playing => SpeechPhase.Paused,
+                SpeechPhase.Paused => SpeechPhase.Playing,
+                _ => SpeechPhase.Loading
+            });
+            SpeechError = null;
+        }).ConfigureAwait(false);
         try
         {
-            await _speech!.TogglePlaybackAsync(identity, _config.SpeechRate, cancellationToken).ConfigureAwait(false);
-            if (phase is not (SpeechPhase.Playing or SpeechPhase.Paused)) SetSpeechPhase(channel, SpeechPhase.Playing);
+            await _speech!.TogglePlaybackAsync(identity, SelectedSpeechRate, cancellationToken).ConfigureAwait(false);
+            if (phase is not (SpeechPhase.Playing or SpeechPhase.Paused))
+                await _dispatchUi(() => SetSpeechPhase(channel, SpeechPhase.Playing)).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            SetSpeechPhase(channel, SpeechPhase.Idle);
+            await _dispatchUi(() => SetSpeechPhase(channel, SpeechPhase.Idle)).ConfigureAwait(false);
         }
         catch (Exception error)
         {
-            SpeechError = error.Message;
-            SetSpeechPhase(channel, SpeechPhase.Failed);
+            await _dispatchUi(() =>
+            {
+                SpeechError = error.Message;
+                SetSpeechPhase(channel, SpeechPhase.Failed);
+            }).ConfigureAwait(false);
         }
     }
 
@@ -572,10 +699,33 @@ public sealed class TranslationViewModel : INotifyPropertyChanged
     private SpeechIdentity SpeechIdentityFor(SpeechChannel channel, string text, string language, Guid? historyId) =>
         new(new(channel, text, SpeechModelResolver.Resolve(language, _config)), historyId);
 
+    private static string LanguageCode(string language)
+    {
+        if (string.Equals(language, "Auto detect", StringComparison.OrdinalIgnoreCase)) return "AUTO";
+        if (string.Equals(language, "Chinese", StringComparison.OrdinalIgnoreCase)) return "ZH";
+        var trimmed = language.Trim();
+        return trimmed[..Math.Min(2, trimmed.Length)].ToUpperInvariant();
+    }
+
+    private Guid? CurrentHistoryIdValue
+    {
+        set
+        {
+            if (!Set(ref _currentHistoryId, value, nameof(CurrentHistoryId))) return;
+            OnPropertyChanged(nameof(CanToggleSaved));
+        }
+    }
+
+    private bool IsCurrentSavedValue
+    {
+        set => Set(ref _isCurrentSaved, value, nameof(IsCurrentSaved));
+    }
+
     private void InvalidateAll()
     {
-        _coordinator.CancelCurrent();
-        _inFlight?.Cancel();
+        InvalidateRequests();
+        CurrentHistoryIdValue = null;
+        IsCurrentSavedValue = false;
         _sourceSpeechIdentity = null;
         _resultSpeechIdentity = null;
         _acceptedSourceLanguage = null;
@@ -595,6 +745,7 @@ public sealed class TranslationViewModel : INotifyPropertyChanged
         OnPropertyChanged(nameof(CanSelectSourceLanguage));
         OnPropertyChanged(nameof(CanLearn));
         OnPropertyChanged(nameof(CanSpeakSource));
+        OnPropertyChanged(nameof(CanUseSourceSpeech));
         OnPropertyChanged(nameof(CreatesHistory));
     }
 
@@ -616,17 +767,16 @@ public sealed class TranslationViewModel : INotifyPropertyChanged
 
     private void RejectWithGuidance(string message)
     {
-        _coordinator.CancelCurrent();
-        _inFlight?.Cancel();
+        InvalidateRequests();
         ResultText = string.Empty;
         StatusMessage = message;
         State = PopupState.Guidance;
     }
 
-    private void SetInvalidating(ref string field, string value, [CallerMemberName] string? propertyName = null)
+    private bool SetInvalidating(ref string field, string value, [CallerMemberName] string? propertyName = null)
     {
         if (!Set(ref field, value, propertyName))
-            return;
+            return false;
 
         if (propertyName == nameof(SourceText) && IsImageMode && value.Length > 0)
         {
@@ -640,6 +790,7 @@ public sealed class TranslationViewModel : INotifyPropertyChanged
         ResultText = string.Empty;
         StatusMessage = null;
         State = PopupState.Guidance;
+        return true;
     }
 
     private bool Set<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)
@@ -662,6 +813,8 @@ public sealed class TranslationViewModel : INotifyPropertyChanged
 
         public Task TogglePlaybackAsync(SpeechIdentity identity, double rate, CancellationToken cancellationToken) =>
             coordinator.TogglePlaybackAsync(identity, rate, cancellationToken);
+
+        public void SetRate(double rate) => coordinator.SetRate(rate);
 
         public void Invalidate(SpeechChannel channel, bool stopPlayback) =>
             coordinator.Invalidate(channel, stopPlayback);
