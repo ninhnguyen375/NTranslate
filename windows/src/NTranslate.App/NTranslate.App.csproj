@@ -29,4 +29,7 @@
   <ItemGroup>
     <InternalsVisibleTo Include="NTranslate.App.Tests" />
   </ItemGroup>
+  <Target Name="CopyCompiledXamlResourcesToPublish" AfterTargets="Publish">
+    <Copy SourceFiles="$(TargetDir)$(AssemblyName).pri" DestinationFolder="$(PublishDir)" />
+  </Target>
 </Project>

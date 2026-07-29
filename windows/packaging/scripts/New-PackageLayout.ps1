@@ -12,6 +12,7 @@ if ($Version -notmatch '^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$') { throw "Ve
 $parts = $Version.Split('.')
 if ($parts | Where-Object { [uint64]$_ -gt 65535 }) { throw 'Version components must be between 0 and 65535.' }
 if (-not (Test-Path -LiteralPath (Join-Path $PublishPath 'NTranslate.App.exe') -PathType Leaf)) { throw 'Publish output lacks NTranslate.App.exe.' }
+if (-not (Test-Path -LiteralPath (Join-Path $PublishPath 'NTranslate.App.pri') -PathType Leaf)) { throw 'Publish output lacks compiled XAML resources NTranslate.App.pri.' }
 
 $manifestSource = Join-Path $PSScriptRoot '..\manifest\AppxManifest.xml'
 $assetsSource = Join-Path $PSScriptRoot '..\Assets'

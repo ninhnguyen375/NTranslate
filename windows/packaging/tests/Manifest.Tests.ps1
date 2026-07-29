@@ -14,7 +14,7 @@ $ns.AddNamespace('desktop', 'http://schemas.microsoft.com/appx/manifest/desktop/
 $identity = $manifest.SelectSingleNode('/m:Package/m:Identity', $ns)
 if ($identity.Name -ne 'NinhNguyen375.NTranslate') { throw 'Wrong package identity.' }
 if ($identity.Publisher -ne 'CN=Ninh Nguyen') { throw 'Wrong publisher.' }
-if ($identity.Version -ne '1.0.0.0') { throw 'Wrong pinned manifest version.' }
+if ($identity.Version -ne '1.2.7.0') { throw 'Wrong pinned manifest version.' }
 if ($identity.ProcessorArchitecture -ne 'x64') { throw 'Wrong architecture.' }
 $target = $manifest.SelectSingleNode('/m:Package/m:Dependencies/m:TargetDeviceFamily', $ns)
 if ($target.Name -ne 'Windows.Desktop' -or $target.MinVersion -ne '10.0.19045.0' -or $target.MaxVersionTested -ne '10.0.22621.0') { throw 'Wrong OS policy.' }
@@ -30,7 +30,10 @@ $layout = Join-Path $temp 'layout'
 try {
     New-Item -ItemType Directory -Path $publish | Out-Null
     Set-Content -LiteralPath (Join-Path $publish 'NTranslate.App.exe') -Value 'fixture'
+    try { & $layoutScript -Version '2.3.4' -PublishPath $publish -LayoutPath $layout; throw 'Layout accepted missing compiled XAML resources.' } catch { if ($_.Exception.Message -eq 'Layout accepted missing compiled XAML resources.') { throw } }
+    Set-Content -LiteralPath (Join-Path $publish 'NTranslate.App.pri') -Value 'fixture'
     & $layoutScript -Version '2.3.4' -PublishPath $publish -LayoutPath $layout
+    if (-not (Test-Path -LiteralPath (Join-Path $layout 'NTranslate.App.pri') -PathType Leaf)) { throw 'Compiled XAML resources missing from layout.' }
     [xml]$generated = Get-Content -LiteralPath (Join-Path $layout 'AppxManifest.xml') -Raw
     $generatedIdentity = $generated.SelectSingleNode('/*[local-name()="Package"]/*[local-name()="Identity"]')
     if ($generatedIdentity.Version -ne '2.3.4.0') { throw 'Semantic version conversion failed.' }

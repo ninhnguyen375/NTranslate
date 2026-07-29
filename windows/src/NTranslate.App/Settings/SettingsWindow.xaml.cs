@@ -16,9 +16,22 @@ public sealed partial class SettingsWindow : Window
         _viewModel = viewModel;
         InitializeComponent();
         if (Content is FrameworkElement content) content.DataContext = viewModel;
+        SyncApiKeyBox();
         var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
         _appWindow = Microsoft.UI.Windowing.AppWindow.GetFromWindowId(Microsoft.UI.Win32Interop.GetWindowIdFromWindow(hwnd));
         _appWindow.Closing += AppWindow_Closing;
+        _viewModel.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == "Draft")
+                SyncApiKeyBox();
+        };
+    }
+
+    private void SyncApiKeyBox() => ApiKeyBox.Password = _viewModel.Draft.ApiKey;
+
+    private void ApiKeyBox_PasswordChanged(object sender, RoutedEventArgs e)
+    {
+        _viewModel.Draft.ApiKey = ApiKeyBox.Password;
     }
 
     internal void PrepareToShow()

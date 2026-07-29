@@ -60,9 +60,11 @@ try {
     if ($null -eq $ResolveTool) { foreach ($tool in @($makeAppx, $signTool)) { if (-not (Test-Path -LiteralPath $tool -PathType Leaf)) { throw "Pinned packaging tool missing: $tool" } } }
 
     Invoke-Checked $makeAppx @('pack', '/o', '/d', $layout, '/p', $package)
+    $developmentThumbprint = $null
     if ([string]::IsNullOrWhiteSpace($CertificatePath)) {
         $certificateResult = if ($null -ne $GetDevelopmentCertificate) { & $GetDevelopmentCertificate } else { & (Join-Path $root 'packaging\scripts\Manage-DevelopmentCertificate.ps1') -Trust:$TrustDevelopmentCertificate }
-        Invoke-Checked $signTool @('sign', '/fd', 'sha256', '/sha1', $certificateResult.Thumbprint, $package)
+        $developmentThumbprint = $certificateResult.Thumbprint
+        Invoke-Checked $signTool @('sign', '/fd', 'sha256', '/sha1', $developmentThumbprint, $package)
     }
     else {
         if ($null -eq $CertificatePassword) { throw 'CertificatePassword required for explicit external PFX signing.' }
@@ -71,14 +73,27 @@ try {
         Invoke-Checked $signTool @('sign', '/fd', 'sha256', '/f', $CertificatePath, '/p', $passwordText, $package)
     }
     $signature = & $GetSignature $package
-    if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -ne 'CN=Ninh Nguyen') { throw 'Signed package verification failed.' }
+    $validDevelopmentSignature = $null -ne $developmentThumbprint -and $null -ne $signature.SignerCertificate -and
+        $signature.Status -notin @('NotSigned', 'HashMismatch') -and
+        $signature.SignerCertificate.Subject -eq 'CN=Ninh Nguyen' -and
+        $signature.SignerCertificate.Thumbprint -eq $developmentThumbprint
+    if (-not $validDevelopmentSignature -and ($signature.Status -ne 'Valid' -or $null -eq $signature.SignerCertificate -or $signature.SignerCertificate.Subject -ne 'CN=Ninh Nguyen')) { throw 'Signed package verification failed.' }
 
     if (-not $SkipInstall) {
         # Add-AppxPackage owns transactional deployment before commit. Post-commit verification/launch failures keep installed package.
         Add-AppxPackage -Path $package -ForceApplicationShutdown
         $installed = Get-AppxPackage -Name $identity
         if ($null -eq $installed -or $installed.Version.ToString() -ne "$Version.0") { throw 'Installed package verification failed.' }
-        try { Start-Process explorer.exe "shell:AppsFolder\NinhNguyen375.NTranslate_App" }
+        try {
+            $application = (Get-AppxPackageManifest -Package $installed).Package.Applications.Application
+            $aumid = $installed.PackageFamilyName + '!' + $application.Id
+            Start-Process explorer.exe "shell:AppsFolder\$aumid"
+            $launched = 1..20 | ForEach-Object {
+                Start-Sleep -Milliseconds 250
+                Get-Process -Name NTranslate.App -ErrorAction SilentlyContinue
+            } | Select-Object -First 1
+            if ($null -eq $launched) { throw 'Application process did not stay running after activation.' }
+        }
         catch {
             throw "Package installed, but launch failed. Installed package remains because prior MSIX is not retained. Retry from Start, or uninstall with: Get-AppxPackage -Name NinhNguyen375.NTranslate | Remove-AppxPackage"
         }

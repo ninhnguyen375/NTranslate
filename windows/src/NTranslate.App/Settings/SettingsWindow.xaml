@@ -16,7 +16,7 @@
             <ScrollViewer>
                 <Grid>
                     <StackPanel x:Name="GeneralSection" Spacing="10">
-                        <PasswordBox Header="API key" AutomationProperties.Name="API key" Password="{Binding Draft.ApiKey, Mode=TwoWay}" />
+                        <PasswordBox x:Name="ApiKeyBox" Header="API key" AutomationProperties.Name="API key" PasswordChanged="ApiKeyBox_PasswordChanged" />
                         <TextBox Header="API base URL" Text="{Binding Draft.ApiBaseUrl, Mode=TwoWay}" />
                         <TextBox Header="Speech API URL" Text="{Binding Draft.ApiSpeechUrl, Mode=TwoWay}" />
                         <TextBox Header="Model" Text="{Binding Draft.Model, Mode=TwoWay}" />

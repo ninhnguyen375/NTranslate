@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Reflection;
 using Windows.ApplicationModel;
 using Microsoft.UI.Dispatching;
@@ -101,6 +101,7 @@ internal sealed class AppComposition : IDisposable
             DispatchAsync);
         _viewModel.SetStartupGuidance(startup.Guidance);
         _window = new TranslationWindow(_viewModel, _config.Ui.Width, _config.Ui.Height, CancelPopupWork);
+        _window.InitializeForTray();
 
         var deleteConfirmation = new HistoryDeleteConfirmation(() => _historyWindow?.Content is FrameworkElement content ? content.XamlRoot : null);
         _historyViewModel = new HistoryViewModel(

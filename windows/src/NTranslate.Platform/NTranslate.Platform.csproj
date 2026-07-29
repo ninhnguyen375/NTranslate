@@ -3,6 +3,7 @@
     <FrameworkReference Include="Microsoft.WindowsDesktop.App.WPF" />
     <InternalsVisibleTo Include="NTranslate.Platform.Tests" />
     <ProjectReference Include="..\NTranslate.Core\NTranslate.Core.csproj" />
+    <Content Include="..\..\packaging\Assets\NTranslate.ico" Link="Assets\NTranslate.ico" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
   <PropertyGroup>
     <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>

@@ -9,13 +9,14 @@ internal static class TrayCallbackMessages
 {
     private const uint NinSelect = 0x0400;
     private const uint NinKeySelect = 0x0401;
+    private const uint WmLButtonUp = 0x0202;
     private const uint WmLButtonDblClk = 0x0203;
     private const uint WmContextMenu = 0x007B;
     private const uint WmRButtonUp = 0x0205;
 
     internal static TrayCallbackAction? Resolve(uint message) => message switch
     {
-        NinSelect or NinKeySelect or WmLButtonDblClk => TrayCallbackAction.Open,
+        NinSelect or NinKeySelect or WmLButtonUp or WmLButtonDblClk => TrayCallbackAction.Open,
         WmContextMenu or WmRButtonUp => TrayCallbackAction.ContextMenu,
         _ => null,
     };
@@ -89,6 +90,9 @@ public sealed class TrayIcon : ITrayIcon
     private readonly Thread _thread;
     private readonly TrayActivationGate _activationGate = new(GetDoubleClickTime());
     private nint _hwnd;
+    private nint _icon;
+    private WndProc? _windowProcedure;
+    private nint _previousWindowProcedure;
     private uint _threadId;
     private bool _added;
     private bool _disposed;
@@ -103,6 +107,7 @@ public sealed class TrayIcon : ITrayIcon
     public event EventHandler? CheckForUpdatesRequested;
     public event EventHandler? StartWithWindowsRequested;
     public event EventHandler? ExitRequested;
+    internal nint MessageWindow => _hwnd;
 
     public TrayIcon()
     {
@@ -140,7 +145,17 @@ public sealed class TrayIcon : ITrayIcon
             });
             _added = false;
         }
-        Invoke(() => PostQuitMessage(0));
+        Invoke(() =>
+        {
+            if (_icon != 0) { DestroyIcon(_icon); _icon = 0; }
+            if (_hwnd != 0)
+            {
+                if (_previousWindowProcedure != 0) SetWindowLongPtr(_hwnd, -4, _previousWindowProcedure);
+                DestroyWindow(_hwnd);
+                _hwnd = 0;
+            }
+            PostQuitMessage(0);
+        });
         _thread.Join(TimeSpan.FromSeconds(5));
         GC.SuppressFinalize(this);
     }
@@ -152,7 +167,7 @@ public sealed class TrayIcon : ITrayIcon
         uID = IconId,
         uFlags = flags,
         uCallbackMessage = WmCallback,
-        hIcon = LoadIcon(0, new nint(32512)), // IDI_APPLICATION
+        hIcon = _icon,
         szTip = "NTranslate",
     };
 
@@ -213,8 +228,13 @@ public sealed class TrayIcon : ITrayIcon
         try
         {
             _threadId = GetCurrentThreadId();
-            _hwnd = CreateWindowEx(0, "STATIC", "", 0, 0, 0, 0, 0, new nint(-3), 0, 0, 0);
+            _hwnd = CreateWindowEx(0, "STATIC", "", 0, 0, 0, 0, 0, 0, 0, 0, 0);
             if (_hwnd == 0) throw new InvalidOperationException($"CreateWindowEx failed (Win32 error {Marshal.GetLastPInvokeError()}).");
+            _windowProcedure = WindowProcedure;
+            _previousWindowProcedure = SetWindowLongPtr(_hwnd, -4, Marshal.GetFunctionPointerForDelegate(_windowProcedure));
+            if (_previousWindowProcedure == 0) throw new InvalidOperationException($"SetWindowLongPtr failed (Win32 error {Marshal.GetLastPInvokeError()}).");
+            _icon = LoadImage(0, Path.Combine(AppContext.BaseDirectory, "Assets", "NTranslate.ico"), 1, 0, 0, 0x10 | 0x40);
+            if (_icon == 0) throw new InvalidOperationException($"LoadImage failed (Win32 error {Marshal.GetLastPInvokeError()}).");
             ready.Set();
             while (true)
             {
@@ -230,14 +250,27 @@ public sealed class TrayIcon : ITrayIcon
                     catch (Exception error) { Complete(pending, error); }
                     continue;
                 }
-                if (message.hwnd == _hwnd && message.message == WmCallback) HandleCallback(message.lParam, message.time);
-                else if (message.hwnd == _hwnd && message.message == WmCommand) HandleCommand((int)(message.wParam.ToInt64() & 0xFFFF));
                 TranslateMessage(ref message);
                 DispatchMessage(ref message);
             }
             Terminal(new InvalidOperationException("Tray icon message window has stopped."));
         }
         catch (Exception error) { _startError = error; ready.Set(); Terminal(error); }
+    }
+
+    private nint WindowProcedure(nint hwnd, uint message, nint wParam, nint lParam)
+    {
+        if (message == WmCallback)
+        {
+            HandleCallback(lParam, GetMessageTime());
+            return 0;
+        }
+        if (message == WmCommand)
+        {
+            HandleCommand((int)(wParam.ToInt64() & 0xFFFF));
+            return 0;
+        }
+        return CallWindowProc(_previousWindowProcedure, hwnd, message, wParam, lParam);
     }
 
     private void HandleCallback(nint lParam, uint time)
@@ -309,8 +342,12 @@ public sealed class TrayIcon : ITrayIcon
         public nint hBalloonIcon;
     }
 
+    private delegate nint WndProc(nint hwnd, uint message, nint wParam, nint lParam);
     [DllImport("shell32.dll", CharSet = CharSet.Unicode)] private static extern bool Shell_NotifyIconW(uint message, ref NotifyIconData data);
     [DllImport("user32.dll", SetLastError = true)] private static extern nint CreateWindowEx(uint ex, string cls, string name, uint style, int x, int y, int w, int h, nint parent, nint menu, nint instance, nint param);
+    [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW", SetLastError = true)] private static extern nint SetWindowLongPtr(nint hwnd, int index, nint value);
+    [DllImport("user32.dll")] private static extern nint CallWindowProc(nint previous, nint hwnd, uint message, nint wParam, nint lParam);
+    [DllImport("user32.dll")] private static extern uint GetMessageTime();
     [DllImport("user32.dll", SetLastError = true)] private static extern bool DestroyWindow(nint hwnd);
     [DllImport("user32.dll")] private static extern int GetMessage(out Msg message, nint hwnd, uint min, uint max);
     [DllImport("user32.dll")] private static extern bool TranslateMessage(ref Msg message);
@@ -318,7 +355,8 @@ public sealed class TrayIcon : ITrayIcon
     [DllImport("user32.dll", SetLastError = true)] private static extern bool PostThreadMessage(uint id, uint message, nint wParam, nint lParam);
     [DllImport("user32.dll")] private static extern void PostQuitMessage(int exitCode);
     [DllImport("user32.dll")] private static extern bool PostMessage(nint hwnd, uint message, nint wParam, nint lParam);
-    [DllImport("user32.dll")] private static extern nint LoadIcon(nint instance, nint iconName);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)] private static extern nint LoadImage(nint instance, string name, uint type, int cx, int cy, uint flags);
+    [DllImport("user32.dll")] private static extern bool DestroyIcon(nint icon);
     [DllImport("user32.dll")] private static extern nint CreatePopupMenu();
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern bool AppendMenu(nint menu, uint flags, nint id, string text);
     [DllImport("user32.dll")] private static extern bool DestroyMenu(nint menu);

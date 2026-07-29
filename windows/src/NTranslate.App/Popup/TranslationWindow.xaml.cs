@@ -1,4 +1,4 @@
-using Microsoft.UI.Xaml;
+﻿using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media.Imaging;
 using System.Runtime.InteropServices;
@@ -9,6 +9,7 @@ namespace NTranslate.App.Popup;
 
 public sealed partial class TranslationWindow : Window
 {
+    [DllImport("user32.dll")] internal static extern bool ShowWindow(nint hWnd, int nCmdShow);
     private readonly PopupCoordinator _coordinator;
     private readonly Microsoft.UI.Windowing.AppWindow _appWindow;
     private CancellationTokenSource _lifetimeCancellation = new();
@@ -32,6 +33,7 @@ public sealed partial class TranslationWindow : Window
 
     internal TranslationViewModel ViewModel { get; }
 
+    internal void InitializeForTray() { Activate(); _appWindow.Hide(); }
     internal void ShowPopup(string? sourceText)
     {
         if (_lifetimeCancellation.IsCancellationRequested)

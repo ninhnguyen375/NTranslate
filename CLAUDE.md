@@ -1,48 +1,38 @@
+# NTranslate Windows
+
+## Branch scope
+
+- `windows-app` is primary branch for Windows app development.
+- `windows-app` is permanently separate from `main`; never merge it into `main` and never create a PR targeting `main`.
+- Keep Windows commits and releases on `windows-app` or branches explicitly based on and targeting `windows-app`.
+- Do not merge, rebase, or cherry-pick between `windows-app` and `main` unless user explicitly requests a specific operation.
+- Ignore Swift, macOS `.app`, DMG, `install-app.sh`, and `release-dmg.sh` workflows on this branch.
+- Windows source, tests, packaging, and release files live under `windows/`.
+
 ## Workflow
 
-- Chỉ chạy `./install-app.sh` sau khi hoàn thành task có thay đổi source, resource, metadata, hoặc build/release script ảnh hưởng đến `NTranslate.app`.
-- Không chạy script cho task chỉ đọc, phân tích, review, lập plan, hoặc chỉ sửa tài liệu; tránh build/install và bump version không cần thiết.
-- Khi đã chạy script, luôn báo user version/build từ output để user test.
+- After completing changes to Windows source, resources, manifest, build scripts, packaging scripts, or release metadata, run:
 
-## Release (DMG → GitHub Releases)
+  ```powershell
+  .\install-app.ps1
+  ```
 
-Khi user muốn đóng gói và/hoặc đăng bản build lên GitHub Releases, dùng:
+- Do not run installer for read-only analysis, review, planning, or documentation-only changes.
+- Root installer reads version from `windows/packaging/manifest/AppxManifest.xml`; do not bump version unless task requires it.
+- Before installation, ensure manifest version is greater than installed MSIX version; Windows rejects package downgrades with `0x80073D06`.
+- When version bump is approved, update manifest and its pinned expectation in `windows/packaging/tests/Manifest.Tests.ps1` together.
+- Installer runs locked restore, Release build, full tests, publish, MSIX packaging, signing, installation, verification, and app launch through `windows/install-app.ps1`.
+- Before installation, run `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\windows\packaging\scripts\Invoke-ScriptTests.ps1` and `dotnet test .\windows\NTranslate.slnx --no-restore`.
+- Always report `Version`, `Build`, package path, and test result from installer output.
+- If tests fail, report exact failures. Do not bypass or hide failures to install.
 
-```bash
-./release-dmg.sh
-```
+## Development certificate
 
-Script sẽ:
+- `.\install-app.ps1` may create a self-signed code-signing certificate and trust it in `CurrentUser\TrustedPeople` and `LocalMachine\TrustedPeople`.
+- Machine trust requires UAC elevation and affects every user until exact certificate thumbprint is removed. Use this only on development machines. Never disable MSIX signature verification.
 
-1. Chạy `./install-app.sh` (bump patch version mặc định) trừ khi `SKIP_INSTALL=1`
-2. Đóng gói app đã ký từ `/Applications/NTranslate.app` thành `dist/NTranslate-<version>-<arch>.dmg` (có shortcut Applications)
-3. Cập nhật dòng **Latest:** trong `README.md` cho khớp version/DMG
-4. Tạo GitHub Release + upload DMG (cần `gh` đã login) trừ khi `SKIP_UPLOAD=1`
+## Release
 
-### Biến môi trường hữu ích
-
-| Biến | Ý nghĩa |
-| --- | --- |
-| `VERSION_BUMP=patch\|minor\|major` | Truyền xuống `install-app.sh` (mặc định `patch`) |
-| `SKIP_INSTALL=1` | Không build lại; dùng app đang có trong `/Applications` |
-| `SKIP_UPLOAD=1` | Chỉ tạo DMG local, không gọi `gh release` |
-| `DRAFT=1` | Tạo draft release trên GitHub |
-| `NOTES_FILE=path.md` | Release notes tùy chỉnh |
-
-### Ví dụ
-
-```bash
-# Release đầy đủ (build + dmg + upload)
-./release-dmg.sh
-
-# Bump minor rồi release
-VERSION_BUMP=minor ./release-dmg.sh
-
-# Chỉ đóng gói DMG, không upload
-SKIP_UPLOAD=1 ./release-dmg.sh
-
-# Dùng bản đã cài sẵn, upload draft
-SKIP_INSTALL=1 DRAFT=1 ./release-dmg.sh
-```
-
-Sau khi release xong: báo user URL release + version/build + tên file DMG. Nếu `README.md` đổi, commit + push thay đổi đó cùng (nếu user đang yêu cầu publish).
+- Windows release artifact is `NTranslate-<version>-win-x64.msix`.
+- Do not commit, push, publish, or create a GitHub Release unless user explicitly requests it.
+- Do not run macOS `release-dmg.sh` on this branch.
