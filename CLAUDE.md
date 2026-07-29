@@ -25,6 +25,8 @@
 - Before installation, run `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\windows\packaging\scripts\Invoke-ScriptTests.ps1` and `dotnet test .\windows\NTranslate.slnx --no-restore`.
 - Always report `Version`, `Build`, package path, and test result from installer output.
 - If tests fail, report exact failures. Do not bypass or hide failures to install.
+- For tray interaction fixes, `PostMessage` is not representative of Explorer callback delivery. Test dispatch through the window procedure with `SendMessage`, then verify the installed app. Do not claim physical tray clicks work until user confirmation or observed Explorer interaction.
+- For post-install Application Event Log checks, set baseline after `Add-AppxPackage -ForceApplicationShutdown`; shutdown events from replaced process do not describe newly launched process.
 
 ## Development certificate
 

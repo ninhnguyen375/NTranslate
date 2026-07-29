@@ -1,13 +1,13 @@
 ---
 name: project-start-check
-description: This skill should be used when starting work in NTranslate, checking whether main is current, preparing a task branch or worktree, or preserving existing local changes before coding. Trigger for “start this task,” “sync main safely,” “check the repo before coding,” and “create a worktree without losing my changes.”
+description: Use when starting work in NTranslate, checking whether a branch is current, preparing a task branch or worktree, or preserving local changes before coding.
 ---
 
 # Project Start Check
 
 ## Core rule
 
-Inspect before syncing. Never stash, reset, pull, checkout, delete, or overwrite a dirty checkout automatically.
+Inspect before syncing. Project branch policy constrains base. Never stash, reset, pull, checkout, delete, or overwrite dirty checkout automatically.
 
 ## Inspect
 
@@ -22,90 +22,114 @@ git branch --show-current
 git status --short
 git remote get-url origin
 git worktree list --porcelain
-git rev-list --left-right --count HEAD...origin/main
+git for-each-ref --format='%(upstream:remotename) %(upstream:remoteref)' "refs/heads/$(git branch --show-current)"
 ```
 
-Accept only `git@github.com:ninhnguyen375/NTranslate.git`, `https://github.com/ninhnguyen375/NTranslate`, or same HTTPS URL with `.git`. Report anything else as blocker. Then refresh remote state and measure current branch separately from local main:
+Accept only `git@github.com:ninhnguyen375/NTranslate.git`, `https://github.com/ninhnguyen375/NTranslate`, or same HTTPS URL with `.git`. Anything else blocks work.
+
+For read-only status, review, or planning requests: report inspection and stop. Do not fetch or create workspace unless requested information requires refreshed remote state.
+
+## Resolve base
+
+Determine `<base-branch>` before fetch, divergence checks, or worktree creation. Every candidate must satisfy project `CLAUDE.md` branch policy.
+
+1. User-named base, if policy-compatible.
+2. Branch explicitly required for task type by project policy.
+3. Current branch upstream, if policy-compatible.
+4. If none resolves uniquely, stop and ask.
+
+User request conflicting with project branch-separation policy is blocker. Never merge `windows-app` into `main`. A specifically requested rebase, cherry-pick, or other cross-history operation may proceed only when project policy permits that exact operation; it does not change default task base. Never infer `main` from Git default branch. For normal Windows work, policy makes `windows-app` valid base.
+
+Upstream fallback requires upstream remote `origin`; another remote is blocker. Convert `refs/remotes/origin/<base-branch>` upstream ref to `<base-branch>` only after checking this prefix.
+
+Use remote-tracking `<base-ref>` only: `refs/remotes/origin/<base-branch>`. Fetch does not update local base branch. Validate base as one branch name before using it as refspec:
 
 ```bash
-git fetch origin main
-git rev-list --left-right --count HEAD...origin/main
-git show-ref --verify --quiet refs/heads/main && git rev-list --left-right --count refs/heads/main...origin/main
+git check-ref-format --branch "<base-branch>"
+git fetch origin "<base-branch>"
+git show-ref --verify "refs/remotes/origin/<base-branch>"
+git rev-list --left-right --count HEAD..."refs/remotes/origin/<base-branch>"
 git log -1 --oneline HEAD
-git log -1 --oneline origin/main
+git log -1 --oneline "refs/remotes/origin/<base-branch>"
 ```
 
-Interpret counts as `<ahead> <behind>`. Report absent local main rather than creating it silently. A clean current main requires empty `git status --short` and local-main counts `0 0` after fetch.
+Interpret counts as `<ahead> <behind>`. Report missing local base branch; never create it silently.
+
+## Classify dirty work
+
+Before choosing workspace, compare dirty paths and user request:
+
+- Clearly same task: continue current checkout only when branch/base match; otherwise ask how to carry work.
+- Clearly unrelated: preserve untouched and use isolated worktree.
+- Ambiguous: stop and ask whether changes belong to task.
+
+Never silently leave relevant in-progress work behind in blank worktree.
 
 ## Choose workspace
 
 | State | Action |
 |---|---|
-| Dirty checkout | Preserve untouched; create isolated task worktree from `origin/main` |
-| Clean main | Create isolated task worktree from `origin/main` |
-| Existing worktree matches task | Continue only after checking its status, branch, base, and pending commits |
+| Read-only request | Stay in current checkout; no worktree |
+| Dirty, same task, compatible branch | Continue after explicit classification |
+| Dirty, unrelated task | Create isolated worktree from `<base-ref>` |
+| Existing worktree matches task | Check status, branch, base, and pending commits |
 | Existing worktree contains unrelated work | Create another worktree |
-| Detached HEAD or unexpected remote | Stop and report blocker |
+| Detached HEAD, unresolved base, or unexpected remote | Stop and report blocker |
 
-Determine primary checkout from first `worktree` record emitted by `git worktree list --porcelain`; Git lists main working tree first. Verify it is not itself under `.claude/worktrees/` or another `worktrees/` container. Set absolute task path under `<primary-checkout>/.claude/worktrees/`. Report blocker if topology is missing or nested; never derive container from current linked worktree or assume branch `main` identifies primary checkout.
+Determine primary checkout from first record from `git worktree list --porcelain`. Verify it is not under `.claude/worktrees/` or another `worktrees/` container. Put task path under `<primary-checkout>/.claude/worktrees/`. Never derive container from linked worktree or identify primary checkout by branch name.
 
-Before creating, check collisions:
+Validate task branch, then check collisions:
 
 ```bash
+git check-ref-format --branch "<task-name>"
 git worktree list --porcelain
-git show-ref --verify --quiet refs/heads/<task-name>
-test -e <absolute-task-path>
+git show-ref --verify --quiet "refs/heads/<task-name>"
+test -e "<absolute-task-path>"
 ```
 
-If branch or path exists, inspect it. Never delete, overwrite, or silently reuse it.
+Collision means inspect, never delete, overwrite, or silently reuse.
 
-Create new workspace:
+Create and verify:
 
 ```bash
-git worktree add -b <task-name> <absolute-task-path> origin/main
+git worktree add -b "<task-name>" "<absolute-task-path>" "refs/remotes/origin/<base-branch>"
+git -C "<absolute-task-path>" status --short
+git -C "<absolute-task-path>" branch --show-current
+git -C "<absolute-task-path>" rev-parse HEAD
+git rev-parse "refs/remotes/origin/<base-branch>"
 ```
 
-Use short kebab-case task name. Verify:
+New worktree requires empty status and matching `HEAD`/`<base-ref>`. Existing task worktree:
 
 ```bash
-git -C <absolute-task-path> status --short
-git -C <absolute-task-path> branch --show-current
-git -C <absolute-task-path> rev-parse HEAD
-git rev-parse origin/main
+git -C "<existing-task-path>" rev-list --left-right --count HEAD..."refs/remotes/origin/<base-branch>"
+git -C "<existing-task-path>" merge-base HEAD "refs/remotes/origin/<base-branch>"
+git -C "<existing-task-path>" status --short
 ```
 
-For newly created worktree, require empty status and matching `HEAD`/`origin/main` before editing. For existing task worktree, measure divergence and base explicitly:
-
-```bash
-git -C <existing-task-path> rev-list --left-right --count HEAD...origin/main
-git -C <existing-task-path> merge-base HEAD origin/main
-git -C <existing-task-path> status --short
-```
-
-Ahead-only task commits may continue when task matches. Behind-only or diverged state requires reporting commits and stopping for a rebase/merge decision; never update it silently.
+Ahead-only task commits may continue when task matches. Behind-only or diverged state requires reporting commits and stopping for merge/rebase decision.
 
 ## Preserve dirty work
 
 - Never use bare `git stash` or `git stash pop`; stash stack is shared across worktrees.
 - Never discard changes without explicit confirmation.
-- Never pull into dirty main.
-- Never move dirty files into task branch unless user confirms they belong there.
-- Treat modified binary/plist and untracked `.claude`, `.superpowers`, plan files as user work.
+- Never pull into dirty checkout.
+- Never move dirty files unless user confirms they belong to task.
+- Treat modified binary/plist and untracked `.claude`, `.superpowers`, and plan files as user work.
 
-If user explicitly requests moving changes, prefer dedicated branch plus temporary WIP commit after confirmation. If stash is explicitly required, name absolute source and target paths, require target clean, and scope every command:
+If user explicitly requires stash, name absolute source/target, require target clean, use unique tag, apply captured SHA, verify target diff, then drop only exact entry. Never use `pop`.
 
-```bash
-git -C <absolute-source-path> stash push -u -m "<unique-session-tag>"
-git -C <absolute-source-path> stash list --format='%H %gs'
-git -C <absolute-target-path> status --short
-git -C <absolute-target-path> stash apply <captured-sha>
-git -C <absolute-target-path> status --short
-git -C <absolute-target-path> diff --stat
-# After user-visible verification, locate exact tag again and drop only that entry.
-```
+## Red flags
 
-Never use `pop`; never drop before verifying target diff.
+- Command contains `origin/main` before base resolution.
+- Local base branch used after fetch instead of `refs/remotes/origin/...`.
+- Default branch freshness overrides project branch policy.
+- Read-only request creates branch or worktree.
+- Dirty paths may match task but are silently abandoned.
+- Dirty checkout receives pull, checkout, reset, or implicit file movement.
+
+Any red flag means stop and resolve intent, base, or workspace first.
 
 ## Report gate
 
-Report original path/branch, dirty files, ahead/behind counts, remote URL, chosen worktree path/branch, base commit, and blockers. Do not edit code until all are known.
+Report original path/branch, dirty-file classification, resolved base and why, ahead/behind counts, remote URL, chosen workspace path/branch, base commit, and blockers. Do not edit code until all are known.
