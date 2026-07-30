@@ -38,7 +38,7 @@ public sealed class UpdatePolicyTests
     [Fact]
     public void SelectsOnlyExactCaseSensitiveInstallerAndChecksumWithMatchingVersion()
     {
-        var release = Release("v1.2.3", "NTranslate-1.2.3-win-x64-setup.exe", "NTranslate-1.2.3-win-x64-setup.exe.sha256");
+        var release = Release("windows-v1.2.3", "NTranslate-1.2.3-win-x64-setup.exe", "NTranslate-1.2.3-win-x64-setup.exe.sha256");
 
         var update = WindowsUpdatePolicy.Select(new SemanticVersion(1, 2, 2), [release]);
 
@@ -55,7 +55,19 @@ public sealed class UpdatePolicyTests
     [InlineData("NTranslate-1.2.4-win-x64-setup.exe")]
     [InlineData("NTranslate-1.2.3-win-x64.msix")]
     public void RejectsInstallerNameMismatch(string installerName) =>
-        Assert.Null(WindowsUpdatePolicy.Select(new(1, 0, 0), [Release("v1.2.3", installerName, installerName + ".sha256")]));
+        Assert.Null(WindowsUpdatePolicy.Select(new(1, 0, 0), [Release("windows-v1.2.3", installerName, installerName + ".sha256")]));
+
+    [Theory]
+    [InlineData("v1.2.3")]
+    [InlineData("macos-v1.2.3")]
+    [InlineData("Windows-v1.2.3")]
+    [InlineData("windows-v1.2.3-beta")]
+    public void RejectsNonWindowsReleaseTags(string tag)
+    {
+        var installer = "NTranslate-1.2.3-win-x64-setup.exe";
+
+        Assert.Null(WindowsUpdatePolicy.Select(new(1, 0, 0), [Release(tag, installer, installer + ".sha256")]));
+    }
 
     [Fact]
     public void RejectsMissingChecksumAsset()
@@ -104,11 +116,11 @@ public sealed class UpdatePolicyTests
     public void RejectsDraftPrereleaseSameOlderAndMalformedReleases()
     {
         var current = new SemanticVersion(1, 2, 3);
-        Assert.Null(WindowsUpdatePolicy.Select(current, [Release("v2.0.0", "NTranslate-2.0.0-win-x64-setup.exe", "NTranslate-2.0.0-win-x64-setup.exe.sha256", draft: true)]));
-        Assert.Null(WindowsUpdatePolicy.Select(current, [Release("v2.0.0", "NTranslate-2.0.0-win-x64-setup.exe", "NTranslate-2.0.0-win-x64-setup.exe.sha256", prerelease: true)]));
-        Assert.Null(WindowsUpdatePolicy.Select(current, [Release("v1.2.3", "NTranslate-1.2.3-win-x64-setup.exe", "NTranslate-1.2.3-win-x64-setup.exe.sha256")]));
-        Assert.Null(WindowsUpdatePolicy.Select(current, [Release("v1.2.2", "NTranslate-1.2.2-win-x64-setup.exe", "NTranslate-1.2.2-win-x64-setup.exe.sha256")]));
-        Assert.Null(WindowsUpdatePolicy.Select(current, [Release("v2.0", "NTranslate-2.0-win-x64-setup.exe", "NTranslate-2.0-win-x64-setup.exe.sha256")]));
+        Assert.Null(WindowsUpdatePolicy.Select(current, [Release("windows-v2.0.0", "NTranslate-2.0.0-win-x64-setup.exe", "NTranslate-2.0.0-win-x64-setup.exe.sha256", draft: true)]));
+        Assert.Null(WindowsUpdatePolicy.Select(current, [Release("windows-v2.0.0", "NTranslate-2.0.0-win-x64-setup.exe", "NTranslate-2.0.0-win-x64-setup.exe.sha256", prerelease: true)]));
+        Assert.Null(WindowsUpdatePolicy.Select(current, [Release("windows-v1.2.3", "NTranslate-1.2.3-win-x64-setup.exe", "NTranslate-1.2.3-win-x64-setup.exe.sha256")]));
+        Assert.Null(WindowsUpdatePolicy.Select(current, [Release("windows-v1.2.2", "NTranslate-1.2.2-win-x64-setup.exe", "NTranslate-1.2.2-win-x64-setup.exe.sha256")]));
+        Assert.Null(WindowsUpdatePolicy.Select(current, [Release("windows-v2.0", "NTranslate-2.0-win-x64-setup.exe", "NTranslate-2.0-win-x64-setup.exe.sha256")]));
     }
 
     [Fact]
@@ -117,9 +129,9 @@ public sealed class UpdatePolicyTests
         var current = new SemanticVersion(1, 0, 0);
         var releases = new[]
         {
-            Release("v3.0.0", "NTranslate-3.0.0-win-x64-setup.exe", "NTranslate-3.0.0-win-x64-setup.exe.sha256", draft: true),
-            Release("v2.0.0", "NTranslate-2.0.0-win-x64-setup.exe", "NTranslate-2.0.0-win-x64-setup.exe.sha256"),
-            Release("v1.5.0", "NTranslate-1.5.0-win-x64-setup.exe", "NTranslate-1.5.0-win-x64-setup.exe.sha256"),
+            Release("windows-v3.0.0", "NTranslate-3.0.0-win-x64-setup.exe", "NTranslate-3.0.0-win-x64-setup.exe.sha256", draft: true),
+            Release("windows-v2.0.0", "NTranslate-2.0.0-win-x64-setup.exe", "NTranslate-2.0.0-win-x64-setup.exe.sha256"),
+            Release("windows-v1.5.0", "NTranslate-1.5.0-win-x64-setup.exe", "NTranslate-1.5.0-win-x64-setup.exe.sha256"),
         };
 
         var update = WindowsUpdatePolicy.Select(current, releases);

@@ -8,14 +8,17 @@ $text = Get-Content -LiteralPath $wf -Raw
 # Runner
 if ($text -notmatch 'windows-latest') { throw 'Workflow must run on windows-latest.' }
 
-# Triggers
-if ($text -notmatch 'release:' -or $text -notmatch 'types:.*published') { throw 'Workflow must trigger on release published.' }
+# Triggers and platform tag isolation
+if ($text -notmatch "tags:\s*\r?\n\s*- 'windows-v\*'") { throw 'Workflow must trigger only on windows-v* tags.' }
+if ($text -match 'types:.*published') { throw 'Workflow must not depend on release events from the default branch.' }
 if ($text -notmatch 'workflow_dispatch') { throw 'Workflow must support manual dispatch.' }
-if ($text -notmatch 'gh release view') { throw 'Manual dispatch must require an existing GitHub Release.' }
-if ($text -notmatch 'gh release upload') { throw 'Manual dispatch must upload assets to the existing GitHub Release.' }
-if ($text -notmatch '--clobber') { throw 'Manual dispatch must replace same-named Windows assets safely.' }
-if ($text -match 'gh release create') { throw 'Workflow must not create a release.' }
-if ($text -notmatch 'TAG=v\$v') { throw 'Manual dispatch must target tag v<version>.' }
+if ($text -notmatch "-replace '\^windows-v'") { throw 'Workflow must parse only windows-v<version> tags.' }
+if ($text -notmatch 'gh release view') { throw 'Workflow must check for an existing Windows release.' }
+if ($text -notmatch 'gh release create') { throw 'Workflow must create a missing Windows release.' }
+if ($text -notmatch 'gh release upload') { throw 'Workflow must upload Windows release assets.' }
+if ($text -notmatch '--clobber') { throw 'Workflow must replace same-named Windows assets safely.' }
+if ($text -notmatch 'TAG=windows-v\$v') { throw 'Workflow must target tag windows-v<version>.' }
+if ($text -match 'macos-v') { throw 'Windows workflow must not target macOS tags.' }
 
 # Build steps in required order
 $restoreIdx   = $text.IndexOf('--locked-mode', [StringComparison]::OrdinalIgnoreCase)

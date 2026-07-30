@@ -58,7 +58,10 @@ public static class WindowsUpdatePolicy
         WindowsUpdate? selected = null;
         foreach (var release in releases)
         {
-            if (release.Draft || release.Prerelease || !SemanticVersion.TryParse(release.Tag, out var version) || version <= currentVersion)
+            if (release.Draft || release.Prerelease ||
+                !release.Tag.StartsWith("windows-v", StringComparison.Ordinal) ||
+                !SemanticVersion.TryParse(release.Tag["windows-v".Length..], out var version) ||
+                version <= currentVersion)
                 continue;
 
             var installerName = $"NTranslate-{version}-win-x64-setup.exe";

@@ -1,8 +1,9 @@
 name: Windows Release
 
 on:
-  release:
-    types: [published]
+  push:
+    tags:
+      - 'windows-v*'
   workflow_dispatch:
     inputs:
       version:
@@ -24,14 +25,14 @@ jobs:
         id: version
         shell: pwsh
         run: |
-          if ('${{ github.event_name }}' -eq 'release') {
-            $v = '${{ github.event.release.tag_name }}' -replace '^v', ''
+          if ('${{ github.event_name }}' -eq 'push') {
+            $v = '${{ github.ref_name }}' -replace '^windows-v', ''
           } else {
             $v = '${{ inputs.version }}'
           }
-          if ($v -notmatch '^\d+\.\d+\.\d+$') { throw "Invalid version: $v" }
+          if ($v -notmatch '^\d+\.\d+\.\d+$') { throw "Invalid Windows version: $v" }
           echo "VERSION=$v" >> $env:GITHUB_OUTPUT
-          echo "TAG=v$v" >> $env:GITHUB_OUTPUT
+          echo "TAG=windows-v$v" >> $env:GITHUB_OUTPUT
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
@@ -96,6 +97,9 @@ jobs:
           $exe = "windows/artifacts/packages/NTranslate-$v-win-x64-setup.exe"
           $sha = "$exe.sha256"
           gh release view $tag --repo '${{ github.repository }}'
-          if ($LASTEXITCODE -ne 0) { throw "Existing release not found: $tag" }
+          if ($LASTEXITCODE -ne 0) {
+            gh release create $tag --repo '${{ github.repository }}' --title "NTranslate Windows $v" --notes "Windows release $v"
+            if ($LASTEXITCODE -ne 0) { throw "Release creation failed for $tag" }
+          }
           gh release upload $tag $exe $sha --clobber --repo '${{ github.repository }}'
           if ($LASTEXITCODE -ne 0) { throw "Release asset upload failed for $tag" }

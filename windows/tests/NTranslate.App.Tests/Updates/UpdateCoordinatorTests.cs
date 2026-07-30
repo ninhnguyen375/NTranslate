@@ -184,7 +184,7 @@ public sealed class UpdateCoordinatorTests
 
     private static WindowsUpdate Update(string notes) => new(
         new(2, 0, 0),
-        "v2.0.0",
+        "windows-v2.0.0",
         notes,
         new Uri("https://github.com/example/NTranslate-2.0.0-win-x64-setup.exe"),
         "NTranslate-2.0.0-win-x64-setup.exe",
