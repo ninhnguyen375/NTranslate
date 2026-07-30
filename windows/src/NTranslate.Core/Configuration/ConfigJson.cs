@@ -35,6 +35,10 @@ public static class ConfigJson
             merged[FindPropertyName(merged, "apiSpeechURL")!] = null;
         var config = merged.Deserialize<AppConfig>(Options)?.WithDerivedSpeechUrl()
             ?? throw new JsonException("Configuration could not be parsed.");
+        if (!config.Languages.Contains("Japanese", StringComparer.OrdinalIgnoreCase))
+            config = config with { Languages = [.. config.Languages, "Japanese"] };
+        if (string.IsNullOrWhiteSpace(config.SpeechSourceModelJapanese))
+            config = config with { SpeechSourceModelJapanese = "edge-tts/ja-JP-NanamiNeural" };
         return new(config, string.IsNullOrWhiteSpace(legacyKey) ? null : legacyKey, hasLegacyKey);
     }
 

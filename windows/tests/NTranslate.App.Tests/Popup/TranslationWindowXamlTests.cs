@@ -48,8 +48,8 @@ public sealed class TranslationWindowXamlTests
         Assert.Equal("ImageTranslateButton_Click", Attribute(FindNamed("ImageTranslateButton"), "Click"));
         Assert.Equal("{x:Bind ViewModel.CanUseSourceSpeech, Mode=OneWay}", Attribute(FindNamed("SourceSpeechButton"), "IsEnabled"));
         Assert.Equal("{x:Bind ViewModel.CanUseResultSpeech, Mode=OneWay}", Attribute(FindNamed("ResultSpeechButton"), "IsEnabled"));
-        Assert.Contains(FindNamed("SourceSpeechButton").Descendants(), element => element.Name.LocalName is "SymbolIcon" or "FontIcon");
-        Assert.Contains(FindNamed("ResultSpeechButton").Descendants(), element => element.Name.LocalName is "SymbolIcon" or "FontIcon");
+        Assert.Equal("SourceSpeechIcon", Attribute(FindNamed("SourceSpeechButton").Descendants().Single(element => element.Name.LocalName == "SymbolIcon"), "Name"));
+        Assert.Equal("ResultSpeechIcon", Attribute(FindNamed("ResultSpeechButton").Descendants().Single(element => element.Name.LocalName == "SymbolIcon"), "Name"));
         Assert.Equal("Image preview", Attribute(FindNamed("ImagePreview"), "AutomationProperties.Name"));
         Assert.Equal("{x:Bind ViewModel.IsLoading, Mode=OneWay}", Attribute(FindNamed("ProgressRing"), "IsActive"));
         Assert.Null(Attribute(FindNamed("TitleDragRegion"), "PointerPressed"));
@@ -184,6 +184,8 @@ public sealed class TranslationWindowXamlTests
         Assert.Contains("SetBorderAndTitleBar(true, false)", codeBehind, StringComparison.Ordinal);
         Assert.DoesNotContain("TitleDragRegion_Pointer", codeBehind, StringComparison.Ordinal);
         Assert.Contains("BookmarkButton.IsChecked = ViewModel.IsCurrentSaved", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("SourceSpeechIcon.Symbol = SpeechSymbol(ViewModel.SourceSpeechActionText)", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("ResultSpeechIcon.Symbol = SpeechSymbol(ViewModel.ResultSpeechActionText)", codeBehind, StringComparison.Ordinal);
         Assert.Contains("await EventBoundary.IgnoreCancellation(() => ViewModel.ToggleSavedAsync(_lifetimeCancellation.Token))", codeBehind, StringComparison.Ordinal);
         Assert.Contains("try { await ViewModel.ReportErrorAsync(error); }", codeBehind, StringComparison.Ordinal);
         Assert.Contains("catch (UiDispatchUnavailableException) { }", codeBehind, StringComparison.Ordinal);
@@ -202,6 +204,42 @@ public sealed class TranslationWindowXamlTests
         var footer = FindNamed("FooterGrid");
         Assert.Equal("3", Attribute(footer, "Grid.Row"));
         Assert.DoesNotContain(status, footer.Descendants());
+    }
+
+    [Fact]
+    public void SourceEditor_TranslatesForAltOrControlEnter()
+    {
+        Assert.Equal("SourceTextBox_KeyDown", Attribute(FindNamed("SourceTextBox"), "KeyDown"));
+
+        var codeBehind = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "TranslationWindow.xaml.cs"));
+        Assert.Contains("args.Key != Windows.System.VirtualKey.Enter", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("args.KeyStatus.IsMenuKeyDown", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("Windows.System.VirtualKey.Control", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("CoreVirtualKeyStates.Down", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("args.Handled = true", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("EventBoundary.IgnoreCancellation(() => ViewModel.TranslateAsync(OperationToken))", codeBehind, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SpeechIconsFollowSpeakerPausePlaySpeakerLifecycle()
+    {
+        var codeBehind = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "TranslationWindow.xaml.cs"));
+        Assert.Contains("actionText.StartsWith(\"Pause\"", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("actionText.StartsWith(\"Resume\"", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("Microsoft.UI.Xaml.Controls.Symbol.Play", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("Microsoft.UI.Xaml.Controls.Symbol.Volume", codeBehind, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void BookmarkHandlerReliesOnUiDispatchedPropertyChange()
+    {
+        var codeBehind = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "TranslationWindow.xaml.cs"));
+        var start = codeBehind.IndexOf("private async void BookmarkButton_Click", StringComparison.Ordinal);
+        var end = codeBehind.IndexOf("private void SwapButton_Click", start, StringComparison.Ordinal);
+        var handler = codeBehind[start..end];
+
+        Assert.DoesNotContain("BookmarkButton.IsChecked", handler, StringComparison.Ordinal);
+        Assert.Contains("EventBoundary.IgnoreCancellation(() => ViewModel.ToggleSavedAsync", handler, StringComparison.Ordinal);
     }
 
     [Fact]

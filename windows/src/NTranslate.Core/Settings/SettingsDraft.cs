@@ -22,6 +22,7 @@ public sealed class SettingsDraft
     public string SpeechSourceModel { get; set; } = string.Empty;
     public string SpeechSourceModelVietnamese { get; set; } = string.Empty;
     public string SpeechSourceModelChinese { get; set; } = string.Empty;
+    public string SpeechSourceModelJapanese { get; set; } = string.Empty;
     public string SpeechTargetModel { get; set; } = string.Empty;
     public double SpeechRate { get; set; } = 1;
     public string? HistoryDirectory { get; set; }
@@ -62,6 +63,7 @@ public sealed class SettingsDraft
         SpeechSourceModel = config.SpeechSourceModel;
         SpeechSourceModelVietnamese = config.SpeechSourceModelVietnamese;
         SpeechSourceModelChinese = config.SpeechSourceModelChinese;
+        SpeechSourceModelJapanese = config.SpeechSourceModelJapanese;
         SpeechTargetModel = config.SpeechTargetModel;
         SpeechRate = config.SpeechRate;
         HistoryDirectory = config.HistoryDirectory;
@@ -95,6 +97,7 @@ public sealed class SettingsDraft
         SpeechSourceModel = SpeechSourceModel.Trim(),
         SpeechSourceModelVietnamese = SpeechSourceModelVietnamese.Trim(),
         SpeechSourceModelChinese = SpeechSourceModelChinese.Trim(),
+        SpeechSourceModelJapanese = SpeechSourceModelJapanese.Trim(),
         SpeechTargetModel = SpeechTargetModel.Trim(),
         SpeechRate = SpeechRate,
         HistoryDirectory = HistoryDirectory?.Trim(),
@@ -114,6 +117,7 @@ public sealed class SettingsDraft
         AddBlank(SpeechSourceModel, nameof(SpeechSourceModel), issues);
         AddBlank(SpeechSourceModelVietnamese, nameof(SpeechSourceModelVietnamese), issues);
         AddBlank(SpeechSourceModelChinese, nameof(SpeechSourceModelChinese), issues);
+        AddBlank(SpeechSourceModelJapanese, nameof(SpeechSourceModelJapanese), issues);
         AddBlank(SpeechTargetModel, nameof(SpeechTargetModel), issues);
         if (SpeechRate is < 0.5 or > 1.5)
             issues.Add(new(nameof(SpeechRate), "Must be between 0.5 and 1.5."));

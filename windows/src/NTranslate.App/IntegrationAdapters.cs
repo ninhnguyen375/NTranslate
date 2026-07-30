@@ -45,7 +45,9 @@ internal sealed class HistoryRuntime(string root) : ITranslationHistoryStore, IC
 internal sealed class JsonConfigStore(string path) : IConfigStore
 {
     public async Task<AppConfig> LoadAsync(CancellationToken token = default) =>
-        ConfigJson.Parse(await File.ReadAllTextAsync(path, token).ConfigureAwait(false)).Config;
+        File.Exists(path)
+            ? ConfigJson.Parse(await File.ReadAllTextAsync(path, token).ConfigureAwait(false)).Config
+            : AppConfig.Default;
 
     public async Task SaveAsync(AppConfig config, CancellationToken token = default)
     {

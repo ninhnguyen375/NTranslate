@@ -1,3 +1,4 @@
+using NTranslate.Core.Configuration;
 using NTranslate.Core.Speech;
 
 namespace NTranslate.Core.Tests.Speech;
@@ -5,6 +6,48 @@ namespace NTranslate.Core.Tests.Speech;
 public sealed class SpeechCoordinatorTests
 {
     private static readonly byte[] ValidAudio = [1, 2, 3];
+
+    [Fact]
+    public void JapaneseModelResolverIsCaseInsensitive() =>
+        Assert.Equal(AppConfig.Default.SpeechSourceModelJapanese, SpeechModelResolver.Resolve("jApAnEsE", AppConfig.Default));
+
+    [Fact]
+    public async Task PlaybackStateChangesCoverPlayPauseResumeEndFailureAndInvalidation()
+    {
+        await using var fixture = new Fixture();
+        var states = new List<(SpeechChannel Channel, SpeechPhase Phase)>();
+        fixture.Coordinator.PlaybackStateChanged += (_, change) => states.Add((change.Channel, change.Phase));
+        var identity = Identity(SpeechChannel.Source);
+
+        await fixture.Coordinator.TogglePlaybackAsync(identity, 1, CancellationToken.None);
+        await fixture.Coordinator.TogglePlaybackAsync(identity, 1, CancellationToken.None);
+        await fixture.Coordinator.TogglePlaybackAsync(identity, 1, CancellationToken.None);
+        fixture.Player.RaiseEnded();
+        await fixture.Coordinator.TogglePlaybackAsync(identity, 1, CancellationToken.None);
+        fixture.Player.RaiseFailed();
+        fixture.Coordinator.Invalidate(SpeechChannel.Source, true);
+
+        Assert.Contains((SpeechChannel.Source, SpeechPhase.Playing), states);
+        Assert.Contains((SpeechChannel.Source, SpeechPhase.Paused), states);
+        Assert.True(states.Count(state => state == (SpeechChannel.Source, SpeechPhase.Playing)) >= 2);
+        Assert.Contains((SpeechChannel.Source, SpeechPhase.Failed), states);
+        Assert.Equal((SpeechChannel.Source, SpeechPhase.Idle), states[^1]);
+    }
+
+    [Fact]
+    public async Task PlayingNewChannelReturnsPreviousChannelToIdle()
+    {
+        await using var fixture = new Fixture();
+        var states = new List<(SpeechChannel Channel, SpeechPhase Phase)>();
+        fixture.Coordinator.PlaybackStateChanged += (_, change) => states.Add((change.Channel, change.Phase));
+
+        await fixture.Coordinator.TogglePlaybackAsync(Identity(SpeechChannel.Source), 1, CancellationToken.None);
+        await fixture.Coordinator.TogglePlaybackAsync(Identity(SpeechChannel.Result), 1, CancellationToken.None);
+
+        Assert.Equal(SpeechPhase.Idle, fixture.Coordinator.PhaseFor(SpeechChannel.Source));
+        Assert.Equal(SpeechPhase.Playing, fixture.Coordinator.PhaseFor(SpeechChannel.Result));
+        Assert.Contains((SpeechChannel.Source, SpeechPhase.Idle), states);
+    }
 
     [Fact]
     public async Task ToggleFetchesValidatesCachesAndPlays()
@@ -230,7 +273,7 @@ public sealed class SpeechCoordinatorTests
     private sealed class FakePlayer : ISpeechPlayer
     {
         public event EventHandler? PlaybackEnded;
-        public event EventHandler<Exception>? PlaybackFailed { add { } remove { } }
+        public event EventHandler<Exception>? PlaybackFailed;
         public int ValidateCount { get; private set; }
         public int PlayCount { get; private set; }
         public int PauseCount { get; private set; }
@@ -253,6 +296,7 @@ public sealed class SpeechCoordinatorTests
         public void Stop() { }
         public void SetRate(double rate) { }
         public void RaiseEnded() => PlaybackEnded?.Invoke(this, EventArgs.Empty);
+        public void RaiseFailed() => PlaybackFailed?.Invoke(this, new IOException("playback failed"));
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
 

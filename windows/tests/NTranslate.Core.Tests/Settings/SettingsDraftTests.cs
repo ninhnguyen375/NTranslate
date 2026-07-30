@@ -21,6 +21,19 @@ public sealed class SettingsDraftTests
     }
 
     [Fact]
+    public void JapaneseSpeechModelRoundTripsAndValidates()
+    {
+        var draft = SettingsDraft.From(AppConfig.Default, string.Empty);
+        Assert.Equal(AppConfig.Default.SpeechSourceModelJapanese, draft.SpeechSourceModelJapanese);
+
+        draft.SpeechSourceModelJapanese = " custom-japanese ";
+        Assert.Equal("custom-japanese", draft.ToAppConfig(AppConfig.Default).SpeechSourceModelJapanese);
+
+        draft.SpeechSourceModelJapanese = " ";
+        Assert.Contains(draft.Validate(), issue => issue.Field == nameof(draft.SpeechSourceModelJapanese));
+    }
+
+    [Fact]
     public void RevertRestoresDeepCopiesOfListsAndNestedValues()
     {
         var config = AppConfig.Default with

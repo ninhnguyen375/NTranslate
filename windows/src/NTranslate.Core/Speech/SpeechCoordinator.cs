@@ -2,6 +2,8 @@ namespace NTranslate.Core.Speech;
 
 public enum SpeechHistoryAudioKind { Source, Result }
 
+public sealed record SpeechPlaybackStateChangedEventArgs(SpeechChannel Channel, SpeechPhase Phase);
+
 public interface ISpeechSynthesisApi
 {
     Task<byte[]> SynthesizeAsync(SpeechCacheKey key, CancellationToken cancellationToken);
@@ -47,6 +49,10 @@ public sealed class SpeechCoordinator : IAsyncDisposable
     }
 
     public event EventHandler<string>? NonFatalError;
+    public event EventHandler<SpeechPlaybackStateChangedEventArgs>? PlaybackStateChanged;
+
+    private void Notify(SpeechChannel channel) =>
+        PlaybackStateChanged?.Invoke(this, new(channel, PhaseFor(channel)));
 
     public SpeechPhase PhaseFor(SpeechChannel channel)
     {
@@ -75,12 +81,14 @@ public sealed class SpeechCoordinator : IAsyncDisposable
         {
             player.Pause();
             lock (sync) state.Pause(identity);
+            Notify(identity.CacheKey.Channel);
             return;
         }
         if (action == SpeechButtonAction.Resume)
         {
             player.Resume();
             lock (sync) state.Resume(identity);
+            Notify(identity.CacheKey.Channel);
             return;
         }
 
@@ -95,11 +103,19 @@ public sealed class SpeechCoordinator : IAsyncDisposable
         try
         {
             await player.PlayAsync(identity.CacheKey.Channel, audio, rate, cancellationToken).ConfigureAwait(false);
+            SpeechChannel? replacedChannel = null;
             lock (sync)
             {
-                if (state.MarkPlaying(identity, generation)) activePlayback = identity;
+                if (state.MarkPlaying(identity, generation))
+                {
+                    if (activePlayback is { } previous && previous.CacheKey.Channel != identity.CacheKey.Channel && state.Finish(previous))
+                        replacedChannel = previous.CacheKey.Channel;
+                    activePlayback = identity;
+                }
                 else player.Stop();
             }
+            if (replacedChannel is { } channel) Notify(channel);
+            Notify(identity.CacheKey.Channel);
         }
         catch (OperationCanceledException)
         {
@@ -132,6 +148,7 @@ public sealed class SpeechCoordinator : IAsyncDisposable
         cancellation?.Cancel();
         cancellation?.Dispose();
         if (stopPlayback) player.Stop();
+        Notify(channel);
     }
 
     public void InvalidateAll(bool stopPlayback)
@@ -233,20 +250,26 @@ public sealed class SpeechCoordinator : IAsyncDisposable
 
     private void OnPlaybackEnded(object? sender, EventArgs args)
     {
+        SpeechChannel? channel;
         lock (sync)
         {
+            channel = activePlayback?.CacheKey.Channel;
             if (activePlayback is not null) state.Finish(activePlayback);
             activePlayback = null;
         }
+        if (channel is not null) Notify(channel.Value);
     }
 
     private void OnPlaybackFailed(object? sender, Exception exception)
     {
+        SpeechChannel? channel;
         lock (sync)
         {
-            if (activePlayback is not null) state.Invalidate(activePlayback.CacheKey.Channel);
+            channel = activePlayback?.CacheKey.Channel;
+            if (activePlayback is not null) state.Fail(activePlayback);
             activePlayback = null;
         }
+        if (channel is not null) Notify(channel.Value);
         NonFatalError?.Invoke(this, "Speech playback failed.");
     }
 

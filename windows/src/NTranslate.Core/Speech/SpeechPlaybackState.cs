@@ -25,6 +25,15 @@ public sealed class SpeechPlaybackState
     public bool MarkFailed(SpeechIdentity identity, long generation) =>
         TransitionLoading(identity, generation, SpeechPhase.Failed);
 
+    public bool Fail(SpeechIdentity identity)
+    {
+        var state = State(identity.CacheKey.Channel);
+        if (state.Identity != identity || state.Phase is not (SpeechPhase.Playing or SpeechPhase.Paused))
+            return false;
+        state.Phase = SpeechPhase.Failed;
+        return true;
+    }
+
     public bool Pause(SpeechIdentity identity) =>
         Transition(identity, SpeechPhase.Playing, SpeechPhase.Paused);
 

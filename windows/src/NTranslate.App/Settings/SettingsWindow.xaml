@@ -50,6 +50,7 @@
                         <TextBox Header="Speech source model" Text="{Binding Draft.SpeechSourceModel, Mode=TwoWay}" />
                         <TextBox Header="Vietnamese speech source model" Text="{Binding Draft.SpeechSourceModelVietnamese, Mode=TwoWay}" />
                         <TextBox Header="Chinese speech source model" Text="{Binding Draft.SpeechSourceModelChinese, Mode=TwoWay}" />
+                        <TextBox Header="Japanese speech source model" Text="{Binding Draft.SpeechSourceModelJapanese, Mode=TwoWay}" />
                         <TextBox Header="Speech target model" Text="{Binding Draft.SpeechTargetModel, Mode=TwoWay}" />
                         <TextBox Header="History directory" Text="{Binding Draft.HistoryDirectory, Mode=TwoWay}" />
                         <Button Content="Browse" AutomationProperties.Name="Browse history directory" Click="Browse_Click" />

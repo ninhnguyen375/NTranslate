@@ -25,10 +25,13 @@ public sealed partial class TranslationWindow : Window
         _checkForUpdates = checkForUpdates;
         InitializeComponent();
         BookmarkButton.IsChecked = ViewModel.IsCurrentSaved;
+        UpdateSpeechIcons();
         ViewModel.PropertyChanged += (_, args) =>
         {
             if (args.PropertyName == nameof(ViewModel.IsCurrentSaved))
                 BookmarkButton.IsChecked = ViewModel.IsCurrentSaved;
+            if (args.PropertyName is nameof(ViewModel.SourceSpeechActionText) or nameof(ViewModel.ResultSpeechActionText))
+                UpdateSpeechIcons();
         };
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(TitleDragRegion);
@@ -153,11 +156,8 @@ public sealed partial class TranslationWindow : Window
     }
     private void HistoryButton_Click(object sender, RoutedEventArgs e) => _showHistory();
     private async void UpdateButton_Click(object sender, RoutedEventArgs e) => await _checkForUpdates();
-    private async void BookmarkButton_Click(object sender, RoutedEventArgs e)
-    {
+    private async void BookmarkButton_Click(object sender, RoutedEventArgs e) =>
         await EventBoundary.IgnoreCancellation(() => ViewModel.ToggleSavedAsync(_lifetimeCancellation.Token));
-        BookmarkButton.IsChecked = ViewModel.IsCurrentSaved;
-    }
     private void SwapButton_Click(object sender, RoutedEventArgs e) => ViewModel.SwapLanguages();
     private async void LearnButton_Click(object sender, RoutedEventArgs e) => await ViewModel.LearnAsync(_lifetimeCancellation.Token);
     private async void ImagesButton_Click(object sender, RoutedEventArgs e) => await ViewModel.SearchImagesAsync(_lifetimeCancellation.Token);
@@ -227,6 +227,29 @@ public sealed partial class TranslationWindow : Window
             if (height > 0) return height;
         }
         return 0;
+    }
+
+    private void UpdateSpeechIcons()
+    {
+        SourceSpeechIcon.Symbol = SpeechSymbol(ViewModel.SourceSpeechActionText);
+        ResultSpeechIcon.Symbol = SpeechSymbol(ViewModel.ResultSpeechActionText);
+    }
+
+    private static Microsoft.UI.Xaml.Controls.Symbol SpeechSymbol(string actionText) =>
+        actionText.StartsWith("Pause", StringComparison.Ordinal)
+            ? Microsoft.UI.Xaml.Controls.Symbol.Pause
+            : actionText.StartsWith("Resume", StringComparison.Ordinal)
+                ? Microsoft.UI.Xaml.Controls.Symbol.Play
+                : Microsoft.UI.Xaml.Controls.Symbol.Volume;
+
+    private async void SourceTextBox_KeyDown(object sender, KeyRoutedEventArgs args)
+    {
+        var controlDown = Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(Windows.System.VirtualKey.Control)
+            .HasFlag(Windows.UI.Core.CoreVirtualKeyStates.Down);
+        if (args.Key != Windows.System.VirtualKey.Enter || (!args.KeyStatus.IsMenuKeyDown && !controlDown))
+            return;
+        args.Handled = true;
+        await EventBoundary.IgnoreCancellation(() => ViewModel.TranslateAsync(OperationToken));
     }
 
     private void CloseAccelerator_Invoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args) { CancelOperations(); _coordinator.Close(); args.Handled = true; }

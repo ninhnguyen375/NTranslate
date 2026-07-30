@@ -13,7 +13,8 @@ public sealed class AppConfigTests
         Assert.Equal("http://localhost:20128/v1/chat/completions", config.ApiBaseUrl);
         Assert.Equal("http://localhost:20128/v1/audio/speech", config.ApiSpeechUrl);
         Assert.Equal("9r-gemini-low", config.Model);
-        Assert.Equal(["Auto detect", "English", "Vietnamese", "Chinese"], config.Languages);
+        Assert.Equal(["Auto detect", "English", "Vietnamese", "Chinese", "Japanese"], config.Languages);
+        Assert.Equal("edge-tts/ja-JP-NanamiNeural", config.SpeechSourceModelJapanese);
         Assert.Equal(["English", "Vietnamese"], config.TargetLanguages);
         Assert.Equal(5000, config.MaxTranslateLength);
         Assert.Equal(1d, config.SpeechRate);
@@ -101,6 +102,18 @@ public sealed class AppConfigTests
         var config = AppConfig.Default with { SpeechRate = rate };
 
         Assert.Equal(["SpeechRate"], config.Validate().Select(issue => issue.Field));
+    }
+
+    [Theory]
+    [InlineData("[\"English\",\"Vietnamese\"]", "English,Vietnamese,Japanese")]
+    [InlineData("[\"English\",\"jApAnEsE\",\"Vietnamese\"]", "English,jApAnEsE,Vietnamese")]
+    public void LegacyConfigMigratesJapaneseWithoutDuplicate(string languages, string expected)
+    {
+        var config = ConfigJson.Parse($$"""{"languages":{{languages}},"speechSourceModelJapanese":" "}""").Config;
+
+        Assert.Equal(expected.Split(','), config.Languages);
+        Assert.Equal("edge-tts/ja-JP-NanamiNeural", config.SpeechSourceModelJapanese);
+        Assert.Equal(ConfigJson.Serialize(config), ConfigJson.Serialize(ConfigJson.Parse(ConfigJson.Serialize(config)).Config));
     }
 
     [Fact]

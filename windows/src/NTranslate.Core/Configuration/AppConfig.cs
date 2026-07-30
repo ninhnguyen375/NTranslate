@@ -22,6 +22,7 @@ public sealed record AppConfig(
     string SpeechSourceModel,
     string SpeechSourceModelVietnamese,
     string SpeechSourceModelChinese,
+    string SpeechSourceModelJapanese,
     string SpeechTargetModel,
     double SpeechRate,
     string? HistoryDirectory,

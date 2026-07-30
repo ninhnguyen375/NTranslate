@@ -9,7 +9,8 @@
     "Auto detect",
     "English",
     "Vietnamese",
-    "Chinese"
+    "Chinese",
+    "Japanese"
   ],
   "targetLanguages": [
     "English",
@@ -23,6 +24,7 @@
   "speechSourceModel": "edge-tts/en-US-AvaMultilingualNeural",
   "speechSourceModelVietnamese": "edge-tts/vi-VN-HoaiMyNeural",
   "speechSourceModelChinese": "edge-tts/zh-CN-XiaoxiaoNeural",
+  "speechSourceModelJapanese": "edge-tts/ja-JP-NanamiNeural",
   "speechTargetModel": "edge-tts/vi-VN-HoaiMyNeural",
   "speechRate": 1.0,
   "historyDirectory": "",

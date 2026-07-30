@@ -19,7 +19,7 @@ public sealed class SettingsWindowXamlTests
             "API key", "API base URL", "Speech API URL", "Model", "System prompt", "Learn prompt",
             "Sentence learn prompt", "Grammar prompt", "Source language", "Target language", "Native language",
             "Languages", "Target languages", "Maximum translation length", "Speech source model",
-            "Vietnamese speech source model", "Chinese speech source model", "Speech target model", "Speech rate",
+            "Vietnamese speech source model", "Chinese speech source model", "Japanese speech source model", "Speech target model", "Speech rate",
             "History directory", "Hotkey", "Window width", "Window height", "Auto-copy", "Simulate copy",
             "Auto-prefetch speech", "Start with Windows"
         })

@@ -8,6 +8,7 @@ public static class SpeechModelResolver
     {
         "VIETNAMESE" => config.SpeechSourceModelVietnamese,
         "CHINESE" => config.SpeechSourceModelChinese,
+        "JAPANESE" => config.SpeechSourceModelJapanese,
         _ => config.SpeechSourceModel
     };
 }

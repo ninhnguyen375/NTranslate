@@ -904,6 +904,28 @@ public sealed class TranslationViewModelTests
         Assert.Equal(persistedRate, config.SpeechRate);
     }
 
+    [Theory]
+    [InlineData(SpeechChannel.Source, SpeechPhase.Playing, "Pause source speech")]
+    [InlineData(SpeechChannel.Source, SpeechPhase.Paused, "Resume source speech")]
+    [InlineData(SpeechChannel.Source, SpeechPhase.Idle, "Play source speech")]
+    [InlineData(SpeechChannel.Source, SpeechPhase.Failed, "Retry source speech")]
+    [InlineData(SpeechChannel.Result, SpeechPhase.Playing, "Pause result speech")]
+    [InlineData(SpeechChannel.Result, SpeechPhase.Paused, "Resume result speech")]
+    [InlineData(SpeechChannel.Result, SpeechPhase.Idle, "Play result speech")]
+    [InlineData(SpeechChannel.Result, SpeechPhase.Failed, "Retry result speech")]
+    public void PlaybackStateMapsToSpeechAction(SpeechChannel channel, SpeechPhase phase, string expected)
+    {
+        var speech = new RecordingSpeech();
+        var vm = CreateAdvancedViewModel(ScriptedHandler.Sync(_ => JsonResponse("unused")), speech: speech);
+        var changes = new List<string?>();
+        vm.PropertyChanged += (_, args) => changes.Add(args.PropertyName);
+
+        speech.RaiseState(channel, phase);
+
+        Assert.Equal(expected, channel == SpeechChannel.Source ? vm.SourceSpeechActionText : vm.ResultSpeechActionText);
+        Assert.Contains(channel == SpeechChannel.Source ? nameof(vm.SourceSpeechActionText) : nameof(vm.ResultSpeechActionText), changes);
+    }
+
     [Fact]
     public async Task SpeechCompletionDispatchesUiMutations()
     {
@@ -1159,6 +1181,8 @@ public sealed class TranslationViewModelTests
 
     private sealed class RecordingSpeech : ITranslationSpeech
     {
+        public event EventHandler<SpeechPlaybackStateChangedEventArgs>? PlaybackStateChanged;
+        public void RaiseState(SpeechChannel channel, SpeechPhase phase) => PlaybackStateChanged?.Invoke(this, new(channel, phase));
         public Exception? Error { get; set; }
         public List<SpeechIdentity> Prefetched { get; } = [];
         public List<(SpeechIdentity Identity, double Rate)> Playbacks { get; } = [];

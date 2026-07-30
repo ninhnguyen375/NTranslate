@@ -42,6 +42,7 @@ public sealed record TranslationHistoryEntry(
 
 public interface ITranslationSpeech
 {
+    event EventHandler<SpeechPlaybackStateChangedEventArgs>? PlaybackStateChanged;
     Task PrefetchAsync(SpeechIdentity identity, CancellationToken cancellationToken);
     Task TogglePlaybackAsync(SpeechIdentity identity, double rate, CancellationToken cancellationToken);
     void SetRate(double rate);
@@ -116,6 +117,7 @@ public sealed class TranslationViewModel : INotifyPropertyChanged
         _imageNormalizer = imageNormalizer;
         _browserLauncher = browserLauncher;
         _speech = speech;
+        if (_speech is not null) _speech.PlaybackStateChanged += OnPlaybackStateChanged;
         _recordHistory = recordHistory;
         _setSaved = setSaved;
         _sourceLang = config.SourceLang;
@@ -684,6 +686,12 @@ public sealed class TranslationViewModel : INotifyPropertyChanged
         }
     }
 
+    private async void OnPlaybackStateChanged(object? sender, SpeechPlaybackStateChangedEventArgs change)
+    {
+        try { await _dispatchUi(() => SetSpeechPhase(change.Channel, change.Phase)).ConfigureAwait(false); }
+        catch (UiDispatchUnavailableException) { }
+    }
+
     private void SetSpeechPhase(SpeechChannel channel, SpeechPhase phase)
     {
         if (channel == SpeechChannel.Source) _sourceSpeechPhase = phase;
@@ -815,8 +823,18 @@ public sealed class TranslationViewModel : INotifyPropertyChanged
     private void OnPropertyChanged(string? propertyName) =>
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
 
-    private sealed class SpeechCoordinatorBoundary(SpeechCoordinator coordinator) : ITranslationSpeech
+    private sealed class SpeechCoordinatorBoundary : ITranslationSpeech
     {
+        private readonly SpeechCoordinator coordinator;
+
+        public SpeechCoordinatorBoundary(SpeechCoordinator coordinator)
+        {
+            this.coordinator = coordinator;
+            coordinator.PlaybackStateChanged += (_, change) => PlaybackStateChanged?.Invoke(this, change);
+        }
+
+        public event EventHandler<SpeechPlaybackStateChangedEventArgs>? PlaybackStateChanged;
+
         public Task PrefetchAsync(SpeechIdentity identity, CancellationToken cancellationToken) =>
             coordinator.PrefetchAsync(identity, cancellationToken);
 
