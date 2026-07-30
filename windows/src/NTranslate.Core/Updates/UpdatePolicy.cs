@@ -42,7 +42,14 @@ public readonly record struct SemanticVersion(int Major, int Minor, int Patch) :
 
 public sealed record GitHubAsset(string Name, Uri DownloadUrl);
 public sealed record GitHubRelease(string Tag, string Notes, bool Draft, bool Prerelease, IReadOnlyList<GitHubAsset> Assets);
-public sealed record WindowsUpdate(SemanticVersion Version, string Tag, string Notes, Uri DownloadUrl, string AssetName);
+public sealed record WindowsUpdate(
+    SemanticVersion Version,
+    string Tag,
+    string Notes,
+    Uri InstallerDownloadUrl,
+    string InstallerAssetName,
+    Uri ChecksumDownloadUrl,
+    string ChecksumAssetName);
 
 public static class WindowsUpdatePolicy
 {
@@ -54,12 +61,21 @@ public static class WindowsUpdatePolicy
             if (release.Draft || release.Prerelease || !SemanticVersion.TryParse(release.Tag, out var version) || version <= currentVersion)
                 continue;
 
-            var expectedName = $"NTranslate-{version}-win-x64.msix";
-            var matches = release.Assets.Where(asset => string.Equals(asset.Name, expectedName, StringComparison.Ordinal)).ToArray();
-            if (matches.Length != 1)
+            var installerName = $"NTranslate-{version}-win-x64-setup.exe";
+            var checksumName = installerName + ".sha256";
+            var installerMatches = release.Assets.Where(asset => string.Equals(asset.Name, installerName, StringComparison.Ordinal)).ToArray();
+            var checksumMatches = release.Assets.Where(asset => string.Equals(asset.Name, checksumName, StringComparison.Ordinal)).ToArray();
+            if (installerMatches.Length != 1 || checksumMatches.Length != 1)
                 continue;
 
-            var candidate = new WindowsUpdate(version, release.Tag, release.Notes, matches[0].DownloadUrl, matches[0].Name);
+            var candidate = new WindowsUpdate(
+                version,
+                release.Tag,
+                release.Notes,
+                installerMatches[0].DownloadUrl,
+                installerMatches[0].Name,
+                checksumMatches[0].DownloadUrl,
+                checksumMatches[0].Name);
             if (selected is null || candidate.Version > selected.Version)
                 selected = candidate;
         }

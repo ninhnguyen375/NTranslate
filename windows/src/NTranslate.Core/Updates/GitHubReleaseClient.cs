@@ -8,7 +8,8 @@ public sealed class UpdateClientException(string message, Exception? innerExcept
 
 public sealed class GitHubReleaseClient
 {
-    public const long MaximumMsixBytes = 512L * 1024 * 1024;
+    public const long MaximumInstallerBytes = 512L * 1024 * 1024;
+    public const long MaximumChecksumBytes = 4L * 1024;
     private static readonly HashSet<string> AllowedDownloadHosts = new(StringComparer.OrdinalIgnoreCase)
     {
         "github.com",
@@ -55,10 +56,12 @@ public sealed class GitHubReleaseClient
         }
     }
 
-    public async Task DownloadAsync(Uri downloadUrl, string destinationPath, CancellationToken token)
+    public async Task DownloadAsync(Uri downloadUrl, string destinationPath, long maximumBytes, CancellationToken token)
     {
         ValidateDownloadUrl(downloadUrl);
         ArgumentException.ThrowIfNullOrWhiteSpace(destinationPath);
+        if (maximumBytes <= 0)
+            throw new ArgumentOutOfRangeException(nameof(maximumBytes), "Maximum download size must be positive.");
         var fullDestination = Path.GetFullPath(destinationPath);
         var directory = Path.GetDirectoryName(fullDestination) ?? throw new ArgumentException("Destination must include a directory.", nameof(destinationPath));
         Directory.CreateDirectory(directory);
@@ -72,8 +75,8 @@ public sealed class GitHubReleaseClient
             using var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, token).ConfigureAwait(false);
             EnsureSuccess(response);
             ValidateDownloadUrl(response.RequestMessage?.RequestUri ?? downloadUrl);
-            if (response.Content.Headers.ContentLength > MaximumMsixBytes)
-                throw new UpdateClientException("Update package exceeds the 512 MiB limit.");
+            if (response.Content.Headers.ContentLength > maximumBytes)
+                throw new UpdateClientException($"Download exceeds the {maximumBytes} byte limit.");
             await using (var source = await response.Content.ReadAsStreamAsync(token).ConfigureAwait(false))
             await using (var destination = new FileStream(partialPath, FileMode.CreateNew, FileAccess.Write, FileShare.None, 81920, FileOptions.Asynchronous | FileOptions.WriteThrough))
             {
@@ -83,8 +86,8 @@ public sealed class GitHubReleaseClient
                 while ((read = await source.ReadAsync(buffer, token).ConfigureAwait(false)) != 0)
                 {
                     total += read;
-                    if (total > MaximumMsixBytes)
-                        throw new UpdateClientException("Update package exceeds the 512 MiB limit.");
+                    if (total > maximumBytes)
+                        throw new UpdateClientException($"Download exceeds the {maximumBytes} byte limit.");
                     await destination.WriteAsync(buffer.AsMemory(0, read), token).ConfigureAwait(false);
                 }
                 await destination.FlushAsync(token).ConfigureAwait(false);

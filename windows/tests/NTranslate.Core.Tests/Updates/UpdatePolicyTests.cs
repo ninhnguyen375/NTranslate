@@ -36,47 +36,110 @@ public sealed class UpdatePolicyTests
     }
 
     [Fact]
-    public void SelectsOnlyExactCaseSensitiveAssetWithMatchingVersion()
+    public void SelectsOnlyExactCaseSensitiveInstallerAndChecksumWithMatchingVersion()
     {
-        var release = Release("v1.2.3", "NTranslate-1.2.3-win-x64.msix");
+        var release = Release("v1.2.3", "NTranslate-1.2.3-win-x64-setup.exe", "NTranslate-1.2.3-win-x64-setup.exe.sha256");
 
         var update = WindowsUpdatePolicy.Select(new SemanticVersion(1, 2, 2), [release]);
 
         Assert.NotNull(update);
         Assert.Equal(new SemanticVersion(1, 2, 3), update.Version);
-        Assert.Equal("NTranslate-1.2.3-win-x64.msix", update.AssetName);
+        Assert.Equal("NTranslate-1.2.3-win-x64-setup.exe", update.InstallerAssetName);
+        Assert.Equal("NTranslate-1.2.3-win-x64-setup.exe.sha256", update.ChecksumAssetName);
     }
 
     [Theory]
-    [InlineData("NTranslate-1.2.3-win-X64.msix")]
-    [InlineData("ntranslate-1.2.3-win-x64.msix")]
-    [InlineData("NTranslate-v1.2.3-win-x64.msix")]
-    [InlineData("NTranslate-1.2.4-win-x64.msix")]
-    public void RejectsAssetNameMismatch(string assetName) =>
-        Assert.Null(WindowsUpdatePolicy.Select(new(1, 0, 0), [Release("v1.2.3", assetName)]));
+    [InlineData("NTranslate-1.2.3-win-X64-setup.exe")]
+    [InlineData("ntranslate-1.2.3-win-x64-setup.exe")]
+    [InlineData("NTranslate-v1.2.3-win-x64-setup.exe")]
+    [InlineData("NTranslate-1.2.4-win-x64-setup.exe")]
+    [InlineData("NTranslate-1.2.3-win-x64.msix")]
+    public void RejectsInstallerNameMismatch(string installerName) =>
+        Assert.Null(WindowsUpdatePolicy.Select(new(1, 0, 0), [Release("v1.2.3", installerName, installerName + ".sha256")]));
 
     [Fact]
-    public void RejectsDraftPrereleaseSameOlderMultipleAndMalformedReleases()
+    public void RejectsMissingChecksumAsset()
+    {
+        var release = new GitHubRelease(
+            "v1.2.3",
+            "notes",
+            false,
+            false,
+            [new GitHubAsset("NTranslate-1.2.3-win-x64-setup.exe", new Uri("https://github.com/example/NTranslate-1.2.3-win-x64-setup.exe"))]);
+
+        Assert.Null(WindowsUpdatePolicy.Select(new(1, 0, 0), [release]));
+    }
+
+    [Fact]
+    public void RejectsDuplicateInstallerOrChecksumAsset()
+    {
+        var installerName = "NTranslate-1.2.3-win-x64-setup.exe";
+        var checksumName = installerName + ".sha256";
+        var duplicateInstaller = new GitHubRelease(
+            "v1.2.3",
+            "notes",
+            false,
+            false,
+            [
+                new(installerName, new Uri($"https://github.com/example/{installerName}")),
+                new(installerName, new Uri($"https://objects.githubusercontent.com/example/{installerName}")),
+                new(checksumName, new Uri($"https://github.com/example/{checksumName}")),
+            ]);
+        var duplicateChecksum = new GitHubRelease(
+            "v1.2.3",
+            "notes",
+            false,
+            false,
+            [
+                new(installerName, new Uri($"https://github.com/example/{installerName}")),
+                new(checksumName, new Uri($"https://github.com/example/{checksumName}")),
+                new(checksumName, new Uri($"https://objects.githubusercontent.com/example/{checksumName}")),
+            ]);
+
+        Assert.Null(WindowsUpdatePolicy.Select(new(1, 0, 0), [duplicateInstaller]));
+        Assert.Null(WindowsUpdatePolicy.Select(new(1, 0, 0), [duplicateChecksum]));
+    }
+
+    [Fact]
+    public void RejectsDraftPrereleaseSameOlderAndMalformedReleases()
     {
         var current = new SemanticVersion(1, 2, 3);
-        Assert.Null(WindowsUpdatePolicy.Select(current, [Release("v2.0.0", "NTranslate-2.0.0-win-x64.msix", draft: true)]));
-        Assert.Null(WindowsUpdatePolicy.Select(current, [Release("v2.0.0", "NTranslate-2.0.0-win-x64.msix", prerelease: true)]));
-        Assert.Null(WindowsUpdatePolicy.Select(current, [Release("v1.2.3", "NTranslate-1.2.3-win-x64.msix")]));
-        Assert.Null(WindowsUpdatePolicy.Select(current, [Release("v1.2.2", "NTranslate-1.2.2-win-x64.msix")]));
-        Assert.Null(WindowsUpdatePolicy.Select(current, [Release("v2.0.0", "NTranslate-2.0.0-win-x64.msix", secondAsset: true)]));
-        Assert.Null(WindowsUpdatePolicy.Select(current, [Release("v2.0", "NTranslate-2.0-win-x64.msix")]));
+        Assert.Null(WindowsUpdatePolicy.Select(current, [Release("v2.0.0", "NTranslate-2.0.0-win-x64-setup.exe", "NTranslate-2.0.0-win-x64-setup.exe.sha256", draft: true)]));
+        Assert.Null(WindowsUpdatePolicy.Select(current, [Release("v2.0.0", "NTranslate-2.0.0-win-x64-setup.exe", "NTranslate-2.0.0-win-x64-setup.exe.sha256", prerelease: true)]));
+        Assert.Null(WindowsUpdatePolicy.Select(current, [Release("v1.2.3", "NTranslate-1.2.3-win-x64-setup.exe", "NTranslate-1.2.3-win-x64-setup.exe.sha256")]));
+        Assert.Null(WindowsUpdatePolicy.Select(current, [Release("v1.2.2", "NTranslate-1.2.2-win-x64-setup.exe", "NTranslate-1.2.2-win-x64-setup.exe.sha256")]));
+        Assert.Null(WindowsUpdatePolicy.Select(current, [Release("v2.0", "NTranslate-2.0-win-x64-setup.exe", "NTranslate-2.0-win-x64-setup.exe.sha256")]));
+    }
+
+    [Fact]
+    public void SelectsHighestValidStableReleaseEvenWhenNewerReleaseIsMalformed()
+    {
+        var current = new SemanticVersion(1, 0, 0);
+        var releases = new[]
+        {
+            Release("v3.0.0", "NTranslate-3.0.0-win-x64-setup.exe", "NTranslate-3.0.0-win-x64-setup.exe.sha256", draft: true),
+            Release("v2.0.0", "NTranslate-2.0.0-win-x64-setup.exe", "NTranslate-2.0.0-win-x64-setup.exe.sha256"),
+            Release("v1.5.0", "NTranslate-1.5.0-win-x64-setup.exe", "NTranslate-1.5.0-win-x64-setup.exe.sha256"),
+        };
+
+        var update = WindowsUpdatePolicy.Select(current, releases);
+
+        Assert.NotNull(update);
+        Assert.Equal(new SemanticVersion(2, 0, 0), update.Version);
     }
 
     private static GitHubRelease Release(
         string tag,
-        string assetName,
+        string installerName,
+        string checksumName,
         bool draft = false,
-        bool prerelease = false,
-        bool secondAsset = false)
+        bool prerelease = false)
     {
-        var assets = new List<GitHubAsset> { new(assetName, new Uri($"https://github.com/example/{assetName}")) };
-        if (secondAsset)
-            assets.Add(new(assetName, new Uri($"https://objects.githubusercontent.com/example/{assetName}")));
+        var assets = new List<GitHubAsset>
+        {
+            new(installerName, new Uri($"https://github.com/example/{installerName}")),
+            new(checksumName, new Uri($"https://github.com/example/{checksumName}")),
+        };
         return new(tag, "notes", draft, prerelease, assets);
     }
 }

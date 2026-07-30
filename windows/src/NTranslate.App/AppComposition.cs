@@ -143,17 +143,6 @@ internal sealed class AppComposition : IDisposable
         var currentVersion = CurrentVersionResolver.Resolve(
             () => { var value = Package.Current.Id.Version; return new Version(value.Major, value.Minor, value.Build, value.Revision); },
             Assembly.GetExecutingAssembly().GetName().Version);
-        _updates = new UpdateCoordinator(
-            currentVersion,
-            async token =>
-            {
-                var selected = WindowsUpdatePolicy.Select(currentVersion, await releases.GetReleasesAsync(token).ConfigureAwait(false));
-                return selected is null ? [] : [selected];
-            },
-            releases.DownloadAsync,
-            new MsixPackageVerifier(),
-            info => Process.Start(info));
-        _manualUpdates = new ManualUpdateFlow(_updates, new UpdateDialog(() => ContentRoot));
         _recovery = new RecoveryCoordinator(
             _historyRuntime,
             new RecoveryNotice(() => ContentRoot),
@@ -187,6 +176,18 @@ internal sealed class AppComposition : IDisposable
                 _settingsWindow.Close();
                 _window.CloseForShutdown();
             });
+        _updates = new UpdateCoordinator(
+            currentVersion,
+            async token =>
+            {
+                var selected = WindowsUpdatePolicy.Select(currentVersion, await releases.GetReleasesAsync(token).ConfigureAwait(false));
+                return selected is null ? [] : [selected];
+            },
+            releases.DownloadAsync,
+            new InstallerChecksumVerifier(),
+            info => Process.Start(info),
+            _shutdown.Run);
+        _manualUpdates = new ManualUpdateFlow(_updates, new UpdateDialog(() => ContentRoot));
 
         _hotkey.Pressed += (_, _) => _ = CaptureAndShowAsync();
         _tray.OpenTranslatorRequested += (_, _) => ShowManual();

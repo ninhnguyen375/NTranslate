@@ -79,13 +79,14 @@ public sealed class AppCompositionTests
     }
 
     [Fact]
-    public void DevelopmentCertificateVerificationChecksCodeSigningEku()
+    public void CompositionUsesChecksumVerifiedPerUserInstaller()
     {
         var root = FindRepositoryRoot();
-        var script = File.ReadAllText(Path.Combine(root, "windows", "packaging", "scripts", "Manage-DevelopmentCertificate.ps1"));
+        var composition = File.ReadAllText(Path.Combine(root, "windows", "src", "NTranslate.App", "AppComposition.cs"));
 
-        Assert.Contains("EnhancedKeyUsageList | ForEach-Object { $_.ObjectId }", script, StringComparison.Ordinal);
-        Assert.DoesNotContain("Extensions.Oid.Value -contains '1.3.6.1.5.5.7.3.3'", script, StringComparison.Ordinal);
+        Assert.Contains("InstallerChecksumVerifier", composition, StringComparison.Ordinal);
+        Assert.Contains("_shutdown.Run", composition, StringComparison.Ordinal);
+        Assert.DoesNotContain("MsixPackageVerifier", composition, StringComparison.Ordinal);
     }
 
     [Fact]

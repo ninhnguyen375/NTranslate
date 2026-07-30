@@ -68,7 +68,7 @@ public sealed class GitHubReleaseClientTests
             return Response(HttpStatusCode.OK, "new package");
         });
 
-        await Client(handler).DownloadAsync(new Uri("https://objects.githubusercontent.com/update.msix"), destination, CancellationToken.None);
+        await Client(handler).DownloadAsync(new Uri("https://objects.githubusercontent.com/update.msix"), destination, GitHubReleaseClient.MaximumInstallerBytes, CancellationToken.None);
 
         Assert.Equal("new package", await File.ReadAllTextAsync(destination));
         Assert.False(File.Exists(destination + ".partial"));
@@ -84,7 +84,7 @@ public sealed class GitHubReleaseClientTests
         using var cancellation = new CancellationTokenSource();
         cancellation.Cancel();
 
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => Client(handler).DownloadAsync(new Uri("https://github.com/update.msix"), destination, cancellation.Token));
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => Client(handler).DownloadAsync(new Uri("https://github.com/update.msix"), destination, GitHubReleaseClient.MaximumInstallerBytes, cancellation.Token));
 
         Assert.Equal("installed", await File.ReadAllTextAsync(destination));
         Assert.False(File.Exists(destination + ".partial"));
@@ -97,7 +97,7 @@ public sealed class GitHubReleaseClientTests
         var destination = Path.Combine(directory.Path, "update.msix");
         await File.WriteAllTextAsync(destination, "installed");
 
-        await Assert.ThrowsAsync<UpdateClientException>(() => Client(new StubHandler((_, _) => Response(HttpStatusCode.BadGateway, "private"))).DownloadAsync(new Uri("https://github.com/update.msix"), destination, CancellationToken.None));
+        await Assert.ThrowsAsync<UpdateClientException>(() => Client(new StubHandler((_, _) => Response(HttpStatusCode.BadGateway, "private"))).DownloadAsync(new Uri("https://github.com/update.msix"), destination, GitHubReleaseClient.MaximumInstallerBytes, CancellationToken.None));
 
         Assert.Equal("installed", await File.ReadAllTextAsync(destination));
         Assert.False(File.Exists(destination + ".partial"));
@@ -109,13 +109,27 @@ public sealed class GitHubReleaseClientTests
         using var directory = new TemporaryDirectory();
         var destination = Path.Combine(directory.Path, "update.msix");
         var response = Response(HttpStatusCode.OK, "small");
-        response.Content.Headers.ContentLength = GitHubReleaseClient.MaximumMsixBytes + 1;
+        response.Content.Headers.ContentLength = GitHubReleaseClient.MaximumInstallerBytes + 1;
 
-        var error = await Assert.ThrowsAsync<UpdateClientException>(() => Client(new StubHandler((_, _) => response)).DownloadAsync(new Uri("https://github.com/update.msix"), destination, CancellationToken.None));
+        var error = await Assert.ThrowsAsync<UpdateClientException>(() => Client(new StubHandler((_, _) => response)).DownloadAsync(new Uri("https://github.com/update.msix"), destination, GitHubReleaseClient.MaximumInstallerBytes, CancellationToken.None));
 
-        Assert.Equal("Update package exceeds the 512 MiB limit.", error.Message);
+        Assert.Equal($"Download exceeds the {GitHubReleaseClient.MaximumInstallerBytes} byte limit.", error.Message);
         Assert.False(File.Exists(destination));
         Assert.False(File.Exists(destination + ".partial"));
+    }
+
+    [Fact]
+    public async Task RejectsChecksumSizedContentAboveChecksumLimit()
+    {
+        using var directory = new TemporaryDirectory();
+        var destination = Path.Combine(directory.Path, "update.sha256");
+        var response = Response(HttpStatusCode.OK, "small");
+        response.Content.Headers.ContentLength = GitHubReleaseClient.MaximumChecksumBytes + 1;
+
+        var error = await Assert.ThrowsAsync<UpdateClientException>(() => Client(new StubHandler((_, _) => response)).DownloadAsync(new Uri("https://github.com/update.sha256"), destination, GitHubReleaseClient.MaximumChecksumBytes, CancellationToken.None));
+
+        Assert.Equal($"Download exceeds the {GitHubReleaseClient.MaximumChecksumBytes} byte limit.", error.Message);
+        Assert.False(File.Exists(destination));
     }
 
     [Fact]
@@ -123,11 +137,11 @@ public sealed class GitHubReleaseClientTests
     {
         using var directory = new TemporaryDirectory();
         var destination = Path.Combine(directory.Path, "update.msix");
-        var content = new StreamContent(new RepeatingStream(GitHubReleaseClient.MaximumMsixBytes + 1));
+        var content = new StreamContent(new RepeatingStream(GitHubReleaseClient.MaximumInstallerBytes + 1));
         content.Headers.ContentLength = null;
         var response = new HttpResponseMessage(HttpStatusCode.OK) { Content = content };
 
-        await Assert.ThrowsAsync<UpdateClientException>(() => Client(new StubHandler((_, _) => response)).DownloadAsync(new Uri("https://github.com/update.msix"), destination, CancellationToken.None));
+        await Assert.ThrowsAsync<UpdateClientException>(() => Client(new StubHandler((_, _) => response)).DownloadAsync(new Uri("https://github.com/update.msix"), destination, GitHubReleaseClient.MaximumInstallerBytes, CancellationToken.None));
 
         Assert.False(File.Exists(destination));
         Assert.False(File.Exists(destination + ".partial"));
@@ -140,7 +154,7 @@ public sealed class GitHubReleaseClientTests
         var response = Response(HttpStatusCode.OK, "package");
         response.RequestMessage = new HttpRequestMessage(HttpMethod.Get, "https://evil.example/update.msix");
 
-        await Assert.ThrowsAsync<UpdateClientException>(() => Client(new StubHandler((_, _) => response)).DownloadAsync(new Uri("https://github.com/update.msix"), Path.Combine(directory.Path, "update.msix"), CancellationToken.None));
+        await Assert.ThrowsAsync<UpdateClientException>(() => Client(new StubHandler((_, _) => response)).DownloadAsync(new Uri("https://github.com/update.msix"), Path.Combine(directory.Path, "update.msix"), GitHubReleaseClient.MaximumInstallerBytes, CancellationToken.None));
     }
 
     private static GitHubReleaseClient Client(HttpMessageHandler handler) => new(new HttpClient(handler), "ninhnguyen375", "NTranslate");

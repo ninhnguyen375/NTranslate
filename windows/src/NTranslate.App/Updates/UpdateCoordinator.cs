@@ -10,9 +10,10 @@ public sealed class UpdateCoordinator
 {
     private readonly SemanticVersion _currentVersion;
     private readonly Func<CancellationToken, Task<IReadOnlyList<WindowsUpdate>>> _check;
-    private readonly Func<Uri, string, CancellationToken, Task> _download;
-    private readonly IMsixPackageVerifier _verifier;
+    private readonly Func<Uri, string, long, CancellationToken, Task> _download;
+    private readonly IInstallerChecksumVerifier _verifier;
     private readonly Action<ProcessStartInfo> _launch;
+    private readonly Action _requestShutdown;
     private readonly string _downloadDirectory;
     private int _busy;
     private WindowsUpdate? _available;
@@ -20,9 +21,10 @@ public sealed class UpdateCoordinator
     public UpdateCoordinator(
         SemanticVersion currentVersion,
         Func<CancellationToken, Task<IReadOnlyList<WindowsUpdate>>> check,
-        Func<Uri, string, CancellationToken, Task> download,
-        IMsixPackageVerifier verifier,
+        Func<Uri, string, long, CancellationToken, Task> download,
+        IInstallerChecksumVerifier verifier,
         Action<ProcessStartInfo> launch,
+        Action requestShutdown,
         string? downloadDirectory = null)
     {
         _currentVersion = currentVersion;
@@ -30,6 +32,7 @@ public sealed class UpdateCoordinator
         _download = download;
         _verifier = verifier;
         _launch = launch;
+        _requestShutdown = requestShutdown;
         _downloadDirectory = downloadDirectory ?? Path.Combine(Path.GetTempPath(), "NTranslate", "Updates");
     }
 
@@ -75,12 +78,19 @@ public sealed class UpdateCoordinator
         {
             State = UpdateState.Installing;
             Directory.CreateDirectory(_downloadDirectory);
-            var path = Path.Combine(_downloadDirectory, _available.AssetName);
-            await _download(_available.DownloadUrl, path, token).ConfigureAwait(false);
-            var verified = await _verifier.VerifyAsync(path, token).ConfigureAwait(false);
-            if (verified.Version != _available.Version)
-                throw new MsixVerificationException("Verified package version does not match selected update.");
-            _launch(new ProcessStartInfo(verified.Path) { UseShellExecute = true });
+            var installerPath = Path.Combine(_downloadDirectory, _available.InstallerAssetName);
+            var checksumPath = Path.Combine(_downloadDirectory, _available.ChecksumAssetName);
+            await _download(_available.InstallerDownloadUrl, installerPath, GitHubReleaseClient.MaximumInstallerBytes, token).ConfigureAwait(false);
+            await _download(_available.ChecksumDownloadUrl, checksumPath, GitHubReleaseClient.MaximumChecksumBytes, token).ConfigureAwait(false);
+            var verified = await _verifier.VerifyAsync(installerPath, checksumPath, _available.InstallerAssetName, _available.Version, token).ConfigureAwait(false);
+            var startInfo = new ProcessStartInfo(verified.Path) { UseShellExecute = true };
+            startInfo.ArgumentList.Add("/NORESTART");
+            startInfo.ArgumentList.Add("/VERYSILENT");
+            startInfo.ArgumentList.Add("/SUPPRESSMSGBOXES");
+            startInfo.ArgumentList.Add("/CLOSEAPPLICATIONS");
+            startInfo.ArgumentList.Add("/RESTARTAPPLICATIONS");
+            _launch(startInfo);
+            _requestShutdown();
             State = UpdateState.Idle;
             _available = null;
         }
@@ -102,5 +112,13 @@ public sealed class UpdateCoordinator
 internal static class UpdateCandidates
 {
     public static IEnumerable<GitHubRelease> SelectReleases(this IReadOnlyList<WindowsUpdate> updates) =>
-        updates.Select(update => new GitHubRelease(update.Tag, update.Notes, false, false, [new GitHubAsset(update.AssetName, update.DownloadUrl)]));
+        updates.Select(update => new GitHubRelease(
+            update.Tag,
+            update.Notes,
+            false,
+            false,
+            [
+                new GitHubAsset(update.InstallerAssetName, update.InstallerDownloadUrl),
+                new GitHubAsset(update.ChecksumAssetName, update.ChecksumDownloadUrl),
+            ]));
 }
