@@ -27,3 +27,4 @@ obj/
 *.appxbundle
 *.pfx
 *.cer
+/windows/packaging/tmp/
