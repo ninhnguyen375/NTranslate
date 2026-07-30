@@ -171,8 +171,10 @@ public sealed class UpdateCoordinatorTests
         await new ManualUpdateFlow(coordinator, dialog).RunAsync(CancellationToken.None);
 
         Assert.Equal(0, installs);
-        Assert.Contains(dialog.States, state => state.State == UpdateState.Checking);
-        Assert.Contains(dialog.States, state => state.State == UpdateState.Available && state.ReleaseNotes == "notes");
+        Assert.DoesNotContain("ConfigureAwait(false)", File.ReadAllText(Path.Combine(FindRepositoryRoot(), "windows", "src", "NTranslate.App", "Updates", "ManualUpdateFlow.cs")), StringComparison.Ordinal);
+        var state = Assert.Single(dialog.States);
+        Assert.Equal(UpdateState.Available, state.State);
+        Assert.Equal("notes", state.ReleaseNotes);
     }
 
     [Fact]
@@ -180,6 +182,14 @@ public sealed class UpdateCoordinatorTests
     {
         Assert.Equal(new SemanticVersion(2, 3, 4), CurrentVersionResolver.Resolve(() => new Version(2, 3, 4, 5), new Version(1, 0, 0)));
         Assert.Equal(new SemanticVersion(1, 0, 0), CurrentVersionResolver.Resolve(() => throw new InvalidOperationException(), new Version(1, 0, 0)));
+    }
+
+    private static string FindRepositoryRoot()
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null && !Directory.Exists(Path.Combine(directory.FullName, "windows", "src")))
+            directory = directory.Parent;
+        return directory?.FullName ?? throw new DirectoryNotFoundException("Repository root not found.");
     }
 
     private static WindowsUpdate Update(string notes) => new(

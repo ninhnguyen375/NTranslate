@@ -1,5 +1,6 @@
 ﻿using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Input;
+using NTranslate.Core.Updates;
 using Microsoft.UI.Xaml.Media.Imaging;
 using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.WindowsRuntime;
@@ -18,9 +19,10 @@ public sealed partial class TranslationWindow : Window
     private CancellationTokenSource _lifetimeCancellation = new();
     private bool _shuttingDown;
 
-    internal TranslationWindow(TranslationViewModel viewModel, double width, double height, Action cancelWork, Action showHistory, Func<Task> checkForUpdates)
+    internal TranslationWindow(TranslationViewModel viewModel, SemanticVersion version, double width, double height, Action cancelWork, Action showHistory, Func<Task> checkForUpdates)
     {
         ViewModel = viewModel;
+        TitleText = $"NTranslate {version}";
         _showHistory = showHistory;
         _checkForUpdates = checkForUpdates;
         InitializeComponent();
@@ -49,6 +51,7 @@ public sealed partial class TranslationWindow : Window
     }
 
     internal TranslationViewModel ViewModel { get; }
+    internal string TitleText { get; }
     internal CancellationToken OperationToken => _lifetimeCancellation.Token;
 
     internal void InitializeForTray() { Activate(); _appWindow.Hide(); }

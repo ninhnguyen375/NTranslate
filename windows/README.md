@@ -112,4 +112,4 @@ Use Accessibility Insights for Windows to verify the application tree.
 
 ## Release Process
 
-GitHub Actions builds and uploads `NTranslate-<version>-win-x64-setup.exe` and its `.sha256` sidecar on each published release. No manual signing step is required.
+Build locally with `windows/install-app.ps1`, then upload `NTranslate-<version>-win-x64-setup.exe` and its `.sha256` sidecar to the matching `windows-v<version>` GitHub Release with `gh release upload`. No hosted build or manual signing step is required.

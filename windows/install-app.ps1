@@ -39,9 +39,9 @@ if ($osBuild -lt $minimumBuild) { throw "Windows build $minimumBuild or newer re
 
 if (-not $SkipBuild) {
     Invoke-Checked dotnet @('restore', $solution, '--locked-mode')
-    Invoke-Checked dotnet @('build', $solution, '-c', $Configuration, '--no-restore')
+    Invoke-Checked dotnet @('build', $solution, '-c', $Configuration, '--no-restore', "-p:Version=$Version")
     Invoke-Checked dotnet @('test', $solution, '-c', $Configuration, '--no-build', '--no-restore')
-    Invoke-Checked dotnet @('publish', (Join-Path $root 'src\NTranslate.App\NTranslate.App.csproj'), '-c', $Configuration, '-r', $Runtime, '--no-restore', '-o', $publish)
+    Invoke-Checked dotnet @('publish', (Join-Path $root 'src\NTranslate.App\NTranslate.App.csproj'), '-c', $Configuration, '-r', $Runtime, '--no-restore', "-p:Version=$Version", '-o', $publish)
 }
 
 New-Item -ItemType Directory -Path (Split-Path $setupExe) -Force | Out-Null

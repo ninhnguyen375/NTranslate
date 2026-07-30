@@ -102,7 +102,10 @@ internal sealed class AppComposition : IDisposable
             DispatchAsync,
             _historyRuntime.SetSavedAsync);
         _viewModel.SetStartupGuidance(startup.Guidance);
-        _window = new TranslationWindow(_viewModel, _config.Ui.Width, _config.Ui.Height, CancelPopupWork, ShowHistory, RunManualUpdateAsync);
+        var currentVersion = CurrentVersionResolver.Resolve(
+            () => { var value = Package.Current.Id.Version; return new Version(value.Major, value.Minor, value.Build, value.Revision); },
+            Assembly.GetExecutingAssembly().GetName().Version);
+        _window = new TranslationWindow(_viewModel, currentVersion, _config.Ui.Width, _config.Ui.Height, CancelPopupWork, ShowHistory, RunManualUpdateAsync);
         _window.InitializeForTray();
 
         var deleteConfirmation = new HistoryDeleteConfirmation(() => _historyWindow?.Content is FrameworkElement content ? content.XamlRoot : null);
@@ -140,9 +143,6 @@ internal sealed class AppComposition : IDisposable
         _settingsViewModel.SetFolderPicker(new WinUiSettingsFolderPicker(_settingsWindow));
 
         var releases = new GitHubReleaseClient(http, "ninhnguyen375", "NTranslate");
-        var currentVersion = CurrentVersionResolver.Resolve(
-            () => { var value = Package.Current.Id.Version; return new Version(value.Major, value.Minor, value.Build, value.Revision); },
-            Assembly.GetExecutingAssembly().GetName().Version);
         _recovery = new RecoveryCoordinator(
             _historyRuntime,
             new RecoveryNotice(() => ContentRoot),

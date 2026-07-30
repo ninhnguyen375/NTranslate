@@ -11,11 +11,10 @@ public sealed class ManualUpdateFlow(UpdateCoordinator coordinator, IUpdateDialo
 {
     public async Task RunAsync(CancellationToken token)
     {
-        await dialog.ShowAsync(UpdateState.Checking, "Checking for updates…", null, token).ConfigureAwait(false);
-        await coordinator.CheckAsync(manual: true, token).ConfigureAwait(false);
-        if (await dialog.ShowAsync(coordinator.State, coordinator.StatusMessage, coordinator.ReleaseNotes, token).ConfigureAwait(false) &&
+        await coordinator.CheckAsync(manual: true, token);
+        if (await dialog.ShowAsync(coordinator.State, coordinator.StatusMessage, coordinator.ReleaseNotes, token) &&
             coordinator.State == UpdateState.Available)
-            await coordinator.InstallAsync(token).ConfigureAwait(false);
+            await coordinator.InstallAsync(token);
     }
 }
 

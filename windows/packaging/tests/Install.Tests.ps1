@@ -13,6 +13,7 @@ if ($text -match 'dotnet\s+workload') { throw 'Workload commands forbidden.' }
 if ($text -match 'MakeAppx|SignTool|Add-AppxPackage|TrustDevelopmentCertificate|TrustedPeople|ZeroFreeBSTR|Get-AuthenticodeSignature') { throw 'MSIX/cert code must be removed from install-app.ps1.' }
 
 # Functional: restore/build/test/publish/ISCC/hash/verify order
+if ([regex]::Matches($text, [regex]::Escape('"-p:Version=$Version"')).Count -lt 2) { throw 'Build and publish must stamp the requested app version.' }
 $isccCalls = [Collections.Generic.List[object]]::new()
 $hashCalls = [Collections.Generic.List[string]]::new()
 & $script -Version '1.2.3' -NativeArchitecture AMD64 `

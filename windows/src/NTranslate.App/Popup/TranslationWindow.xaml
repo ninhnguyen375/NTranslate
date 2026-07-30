@@ -14,7 +14,7 @@
         <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
         <Grid x:Name="HeaderGrid" ColumnSpacing="4" MinHeight="36">
             <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-            <Grid x:Name="TitleDragRegion"><TextBlock VerticalAlignment="Center" Text="NTranslate" Style="{StaticResource TitleTextBlockStyle}" /></Grid>
+            <Grid x:Name="TitleDragRegion"><TextBlock x:Name="TitleTextBlock" VerticalAlignment="Center" Text="{x:Bind TitleText}" Style="{StaticResource TitleTextBlockStyle}" /></Grid>
             <Button x:Name="UpdateButton" Grid.Column="1" Style="{StaticResource CompactIconButtonStyle}" AutomationProperties.Name="Check for updates" ToolTipService.ToolTip="Check for updates" Click="UpdateButton_Click"><SymbolIcon Symbol="Sync" /></Button>
             <Button x:Name="HistoryButton" Grid.Column="2" Style="{StaticResource CompactIconButtonStyle}" AutomationProperties.Name="Open history" ToolTipService.ToolTip="History" Click="HistoryButton_Click"><SymbolIcon Symbol="Clock" /></Button>
             <ToggleButton x:Name="PinButton" Grid.Column="3" Style="{StaticResource CompactIconToggleButtonStyle}" AutomationProperties.Name="Pin popup" ToolTipService.ToolTip="Pin popup" Click="PinButton_Click"><SymbolIcon Symbol="Pin" /></ToggleButton>

@@ -56,6 +56,10 @@ public sealed class TranslationWindowXamlTests
         Assert.Null(Attribute(FindNamed("TitleDragRegion"), "PointerMoved"));
         Assert.Null(Attribute(FindNamed("TitleDragRegion"), "PointerReleased"));
         Assert.Null(Attribute(FindNamed("RootGrid"), "PointerMoved"));
+        Assert.Equal("{x:Bind TitleText}", Attribute(FindNamed("TitleTextBlock"), "Text"));
+
+        var codeBehind = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "TranslationWindow.xaml.cs"));
+        Assert.Contains("TitleText = $\"NTranslate {version}\"", codeBehind, StringComparison.Ordinal);
     }
 
     [Fact]
