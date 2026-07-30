@@ -281,6 +281,7 @@ internal sealed class AppComposition : IDisposable
 
     private async Task ShowSettingsAsync()
     {
+        _settingsWindow.PrepareToShow();
         await _settingsViewModel.RefreshAsync(_lifetime.Token);
         _settingsWindow.Activate();
     }

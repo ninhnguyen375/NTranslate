@@ -70,6 +70,17 @@ public sealed class AppCompositionTests
     }
 
     [Fact]
+    public void ReopeningSettingsRenewsWindowLifetimeBeforeRefresh()
+    {
+        var root = FindRepositoryRoot();
+        var composition = File.ReadAllText(Path.Combine(root, "windows", "src", "NTranslate.App", "AppComposition.cs"));
+        var prepare = composition.IndexOf("_settingsWindow.PrepareToShow();", StringComparison.Ordinal);
+        var refresh = composition.IndexOf("await _settingsViewModel.RefreshAsync(_lifetime.Token);", StringComparison.Ordinal);
+
+        Assert.True(prepare >= 0 && prepare < refresh);
+    }
+
+    [Fact]
     public void TranslationWindowHasSingleTrayInitializer()
     {
         var root = FindRepositoryRoot();
