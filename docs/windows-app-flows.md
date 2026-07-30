@@ -183,13 +183,13 @@ Người dùng mở luồng cập nhật từ menu khay hoặc nút trên popup.
 
 1. Ứng dụng đọc các release GitHub của `ninhnguyen375/NTranslate`.
 2. Policy bỏ qua draft, prerelease, tag không phải semantic version và phiên bản không mới hơn bản đang chạy.
-3. Release chỉ hợp lệ khi có đúng một asset tên `NTranslate-<version>-win-x64.msix`.
+3. Release chỉ hợp lệ khi có đúng một asset tên `NTranslate-<version>-win-x64-setup.exe` và một asset `NTranslate-<version>-win-x64-setup.exe.sha256`.
 4. Nếu không có bản mới, kiểm tra thủ công báo `NTranslate is up to date.`
 5. Nếu có bản mới, dialog hiển thị trạng thái và release notes để người dùng chọn cài.
-6. Ứng dụng tải MSIX vào `%TEMP%\NTranslate\Updates`, xác minh package và kiểm tra version package trùng release đã chọn.
-7. Sau xác minh, ứng dụng mở đường dẫn MSIX bằng Windows Shell với `UseShellExecute = true`.
+6. Ứng dụng tải setup EXE và file `.sha256` vào `%TEMP%\NTranslate\Updates`, xác minh SHA-256 digest so với sidecar, kiểm tra tên file và version khớp đúng.
+7. Sau xác minh, ứng dụng chạy setup EXE ở chế độ silent (`/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CLOSEAPPLICATIONS /RESTARTAPPLICATIONS`) và tự thoát.
 
-Bước cuối là handoff cho trình cài đặt MSIX của Windows. Source không tự thay file ứng dụng, không tự thoát và không tự khởi động lại sau cập nhật. Lỗi kiểm tra, xác minh hoặc mở installer được hiển thị qua trạng thái cập nhật/hướng dẫn popup.
+Bước cuối là handoff cho Inno Setup installer. Source không tự thay file ứng dụng, không giữ lại bản cũ để rollback. Lỗi tải, xác minh hoặc chạy installer được hiển thị qua trạng thái cập nhật/hướng dẫn popup.
 
 ## 14. Thoát ứng dụng
 
