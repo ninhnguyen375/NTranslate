@@ -11,6 +11,11 @@ if ($text -notmatch 'windows-latest') { throw 'Workflow must run on windows-late
 # Triggers
 if ($text -notmatch 'release:' -or $text -notmatch 'types:.*published') { throw 'Workflow must trigger on release published.' }
 if ($text -notmatch 'workflow_dispatch') { throw 'Workflow must support manual dispatch.' }
+if ($text -notmatch 'gh release view') { throw 'Manual dispatch must require an existing GitHub Release.' }
+if ($text -notmatch 'gh release upload') { throw 'Manual dispatch must upload assets to the existing GitHub Release.' }
+if ($text -notmatch '--clobber') { throw 'Manual dispatch must replace same-named Windows assets safely.' }
+if ($text -match 'gh release create') { throw 'Workflow must not create a release.' }
+if ($text -notmatch 'TAG=v\$v') { throw 'Manual dispatch must target tag v<version>.' }
 
 # Build steps in required order
 $restoreIdx   = $text.IndexOf('--locked-mode', [StringComparison]::OrdinalIgnoreCase)
@@ -32,9 +37,9 @@ if ($publishIdx -gt $isccIdx)   { throw 'Publish must come before ISCC.' }
 if ($isccIdx    -gt $hashIdx)   { throw 'ISCC must come before SHA-256.' }
 
 # Exact two release assets: setup EXE + .sha256 sidecar
-if (($text | Select-String 'upload-release-asset|softprops/action-gh-release' -AllMatches).Matches.Count -lt 1) { throw 'Workflow must upload release assets.' }
+if ($text -notmatch 'gh release upload') { throw 'Workflow must upload release assets.' }
 if ($text -notmatch 'win-x64-setup\.exe') { throw 'Workflow must upload the setup EXE.' }
-if ($text -notmatch 'win-x64-setup\.exe\.sha256') { throw 'Workflow must upload the SHA-256 sidecar.' }
+if ($text -notmatch '\$sha\s*=\s*"\$exe\.sha256"' -or $text -notmatch 'gh release upload \$tag \$exe \$sha') { throw 'Workflow must upload the SHA-256 sidecar.' }
 
 # No MSIX/signing steps
 if ($text -match 'MakeAppx|SignTool|Add-AppxPackage|TrustedPeople|\.msix') { throw 'Workflow must not contain MSIX or signing steps.' }

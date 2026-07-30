@@ -31,6 +31,7 @@ jobs:
           }
           if ($v -notmatch '^\d+\.\d+\.\d+$') { throw "Invalid version: $v" }
           echo "VERSION=$v" >> $env:GITHUB_OUTPUT
+          echo "TAG=v$v" >> $env:GITHUB_OUTPUT
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
@@ -85,19 +86,16 @@ jobs:
           Set-Content -LiteralPath "$exe.sha256" -Encoding ASCII -Value "$hash *$name"
           Write-Output "sha256: $hash"
 
-      - name: Upload release assets
-        if: github.event_name == 'release'
-        uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            windows/artifacts/packages/NTranslate-${{ steps.version.outputs.VERSION }}-win-x64-setup.exe
-            windows/artifacts/packages/NTranslate-${{ steps.version.outputs.VERSION }}-win-x64-setup.exe.sha256
-
-      - name: Upload workflow artifacts (manual dispatch)
-        if: github.event_name == 'workflow_dispatch'
-        uses: actions/upload-artifact@v4
-        with:
-          name: NTranslate-${{ steps.version.outputs.VERSION }}-win-x64
-          path: |
-            windows/artifacts/packages/NTranslate-${{ steps.version.outputs.VERSION }}-win-x64-setup.exe
-            windows/artifacts/packages/NTranslate-${{ steps.version.outputs.VERSION }}-win-x64-setup.exe.sha256
+      - name: Upload Windows assets to existing release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $v = '${{ steps.version.outputs.VERSION }}'
+          $tag = '${{ steps.version.outputs.TAG }}'
+          $exe = "windows/artifacts/packages/NTranslate-$v-win-x64-setup.exe"
+          $sha = "$exe.sha256"
+          gh release view $tag --repo '${{ github.repository }}'
+          if ($LASTEXITCODE -ne 0) { throw "Existing release not found: $tag" }
+          gh release upload $tag $exe $sha --clobber --repo '${{ github.repository }}'
+          if ($LASTEXITCODE -ne 0) { throw "Release asset upload failed for $tag" }
