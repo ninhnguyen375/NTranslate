@@ -347,18 +347,27 @@ public sealed class TranslationViewModel : INotifyPropertyChanged
         }
         catch (Exception error) when (error is not OperationCanceledException)
         {
-            await _dispatchUi(() =>
+            try
             {
-                if (CurrentHistoryId == historyId) StatusMessage = error.Message;
-            }).ConfigureAwait(false);
+                await _dispatchUi(() =>
+                {
+                    if (CurrentHistoryId == historyId)
+                        StatusMessage = $"Could not update bookmark. Try again. {error.Message}";
+                }).ConfigureAwait(false);
+            }
+            catch (UiDispatchUnavailableException) { }
             return;
         }
-        await _dispatchUi(() =>
+        try
         {
-            if (CurrentHistoryId != historyId) return;
-            IsCurrentSavedValue = next;
-            StatusMessage = null;
-        }).ConfigureAwait(false);
+            await _dispatchUi(() =>
+            {
+                if (CurrentHistoryId != historyId) return;
+                IsCurrentSavedValue = next;
+                StatusMessage = null;
+            }).ConfigureAwait(false);
+        }
+        catch (UiDispatchUnavailableException) { }
     }
 
     public async Task SpeakSourceAsync(CancellationToken cancellationToken)

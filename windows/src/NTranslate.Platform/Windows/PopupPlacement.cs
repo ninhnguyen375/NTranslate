@@ -25,10 +25,13 @@ public static class PopupPlacement
                 return candidate;
         }
 
-        return new ScreenPoint(
-            Clamp(cursor.X, workArea.Left, (long)workArea.Right - popup.Width),
-            Clamp((long)cursor.Y + gap, workArea.Top, (long)workArea.Bottom - popup.Height));
+        return ClampToWorkArea(new(cursor.X, Saturate((long)cursor.Y + gap)), popup, workArea);
     }
+
+    public static ScreenPoint ClampToWorkArea(ScreenPoint point, PopupSize popup, ScreenRect workArea) =>
+        new(
+            Clamp(point.X, workArea.Left, (long)workArea.Right - popup.Width),
+            Clamp(point.Y, workArea.Top, (long)workArea.Bottom - popup.Height));
 
     public static PopupSize ToPhysicalPixels(double width, double height, uint dpi)
     {

@@ -1,3 +1,4 @@
+using System.Reflection;
 using NTranslate.Core.Speech;
 using NTranslate.Platform.Media;
 
@@ -9,7 +10,30 @@ public sealed class WindowsSpeechPlayerTests
     private static readonly string FixtureDirectory = Path.GetFullPath(
         Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "Media"));
     private static readonly byte[] ValidMp3 = File.ReadAllBytes(Path.Combine(FixtureDirectory, "valid.mp3"));
+    private static readonly byte[] ShortValidMp3 = File.ReadAllBytes(Path.Combine(FixtureDirectory, "short-valid.mp3"));
     private static readonly byte[] InvalidAudio = File.ReadAllBytes(Path.Combine(FixtureDirectory, "invalid.bin"));
+
+    [Fact]
+    public void Uses_MP3_content_type_for_media_source()
+    {
+        Assert.Equal("audio/mpeg", WindowsSpeechPlayer.Mp3ContentType);
+    }
+
+    [Fact]
+    public async Task ValidateAsync_accepts_short_valid_MP3()
+    {
+        await using var player = new WindowsSpeechPlayer();
+
+        await player.ValidateAsync(ShortValidMp3, CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task PlayAsync_accepts_short_valid_MP3()
+    {
+        await using var player = new WindowsSpeechPlayer();
+
+        await player.PlayAsync(SpeechChannel.Source, ShortValidMp3, 1, CancellationToken.None);
+    }
 
     [Fact]
     public async Task ValidateAsync_accepts_valid_MP3()
@@ -17,6 +41,31 @@ public sealed class WindowsSpeechPlayerTests
         await using var player = new WindowsSpeechPlayer();
 
         await player.ValidateAsync(ValidMp3, CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task ConcurrentValidateAndPlayCompleteWithoutSharingOpenState()
+    {
+        await using var player = new WindowsSpeechPlayer();
+
+        var validate = player.ValidateAsync(ValidMp3, CancellationToken.None);
+        var play = player.PlayAsync(SpeechChannel.Result, ValidMp3, 1, CancellationToken.None);
+
+        await Task.WhenAll(validate, play).WaitAsync(TimeSpan.FromSeconds(5));
+    }
+
+    [Fact]
+    public async Task CanceledWaiterDoesNotInterruptActiveOpenOrDeadlockLaterPlay()
+    {
+        await using var player = new WindowsSpeechPlayer();
+        var active = player.ValidateAsync(ValidMp3, CancellationToken.None);
+        using var cancellation = new CancellationTokenSource();
+        var waiting = player.PlayAsync(SpeechChannel.Result, ValidMp3, 1, cancellation.Token);
+        cancellation.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => waiting);
+        await active.WaitAsync(TimeSpan.FromSeconds(5));
+        await player.PlayAsync(SpeechChannel.Source, ValidMp3, 1, CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(5));
     }
 
     [Fact]
@@ -117,6 +166,37 @@ public sealed class WindowsSpeechPlayerTests
         await player.PlayAsync(SpeechChannel.Result, ValidMp3, 1, CancellationToken.None);
 
         Assert.Equal(SpeechChannel.Result, player.ActiveChannel);
+    }
+
+    [Theory]
+    [InlineData(nameof(WindowsSpeechPlayer.Pause))]
+    [InlineData(nameof(WindowsSpeechPlayer.Stop))]
+    public async Task Synchronous_controls_wait_for_active_media_operation(string methodName)
+    {
+        await using var player = new WindowsSpeechPlayer();
+        var gate = (SemaphoreSlim)typeof(WindowsSpeechPlayer)
+            .GetField("mediaGate", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .GetValue(player)!;
+        await gate.WaitAsync();
+        using var started = new ManualResetEventSlim();
+        using var completed = new ManualResetEventSlim();
+        var control = Task.Run(() =>
+        {
+            started.Set();
+            typeof(WindowsSpeechPlayer).GetMethod(methodName)!.Invoke(player, null);
+            completed.Set();
+        });
+
+        try
+        {
+            Assert.True(started.Wait(TimeSpan.FromSeconds(5)));
+            Assert.False(completed.Wait(TimeSpan.FromMilliseconds(250)));
+        }
+        finally
+        {
+            gate.Release();
+        }
+        await control.WaitAsync(TimeSpan.FromSeconds(5));
     }
 
     [Fact]

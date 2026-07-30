@@ -28,7 +28,21 @@ internal sealed class PopupCoordinator
         _lifecycle = new PopupLifecycle(cancelWork, _appWindow.Hide);
     }
 
-    public bool IsPinned { get => _lifecycle.IsPinned; set => _lifecycle.IsPinned = value; }
+    public bool IsPinned
+    {
+        get => _lifecycle.IsPinned;
+        set
+        {
+            _foreground.SetTopmost(WindowNative.GetWindowHandle(_window), value);
+            _lifecycle.IsPinned = value;
+        }
+    }
+
+    internal static int CalculateHeight(int configuredHeight, int desiredHeight, int workAreaHeight)
+    {
+        var maximum = (int)Math.Floor(workAreaHeight * 0.8);
+        return Math.Min(Math.Max(configuredHeight, desiredHeight), maximum);
+    }
 
     public void Show(string? sourceText)
     {
@@ -51,6 +65,31 @@ internal sealed class PopupCoordinator
         _foreground.Raise(hwnd, _window.Activate);
     }
 
+    public void ResizeToContent(double desiredHeight)
+    {
+        var hwnd = WindowNative.GetWindowHandle(_window);
+        var monitor = MonitorFromWindow(hwnd, MonitorDefaultToNearest);
+        var info = new MonitorInfo { Size = Marshal.SizeOf<MonitorInfo>() };
+        if (!GetMonitorInfo(monitor, ref info))
+            throw new InvalidOperationException($"GetMonitorInfo failed (Win32 error {Marshal.GetLastPInvokeError()}).");
+
+        var dpi = GetDpiForMonitor(monitor);
+        var configuredSize = PopupPlacement.ToPhysicalPixels(_width, _height, dpi);
+        var desiredSize = PopupPlacement.ToPhysicalPixels(_width, desiredHeight, dpi);
+        var height = CalculateHeight(configuredSize.Height, desiredSize.Height, info.Work.Bottom - info.Work.Top);
+        if (_appWindow.Size.Height == height)
+            return;
+
+        var size = new PopupSize(configuredSize.Width, height);
+        _appWindow.Resize(new(size.Width, size.Height));
+        var position = _appWindow.Position;
+        var point = PopupPlacement.ClampToWorkArea(
+            new(position.X, position.Y), size,
+            new(info.Work.Left, info.Work.Top, info.Work.Right, info.Work.Bottom));
+        if (point.X != position.X || point.Y != position.Y)
+            _appWindow.Move(new(point.X, point.Y));
+    }
+
     public void Close() => _lifecycle.Close();
     public void Deactivate() => _lifecycle.Deactivate();
     public void Drag() => _lifecycle.Drag();
@@ -62,6 +101,7 @@ internal sealed class PopupCoordinator
     [StructLayout(LayoutKind.Sequential)] private struct MonitorInfo { public int Size; public Rect Monitor; public Rect Work; public uint Flags; }
     [DllImport("user32.dll")] private static extern bool GetCursorPos(out Point point);
     [DllImport("user32.dll")] private static extern nint MonitorFromPoint(Point point, uint flags);
+    [DllImport("user32.dll")] private static extern nint MonitorFromWindow(nint hwnd, uint flags);
     [DllImport("user32.dll", SetLastError = true)] private static extern bool GetMonitorInfo(nint monitor, ref MonitorInfo info);
     [DllImport("user32.dll")] private static extern uint GetDpiForWindow(nint hwnd);
     [DllImport("shcore.dll")] private static extern int GetDpiForMonitor(nint monitor, int type, out uint dpiX, out uint dpiY);

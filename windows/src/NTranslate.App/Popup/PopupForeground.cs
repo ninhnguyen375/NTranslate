@@ -10,11 +10,20 @@ internal interface IPopupForegroundNative
 
 internal sealed class PopupForeground(IPopupForegroundNative native)
 {
+    private static readonly nint HwndTopmost = (nint)(-1);
+    private static readonly nint HwndNoTopmost = (nint)(-2);
+
     public void Raise(nint hwnd, Action activate)
     {
         activate();
         native.SetWindowPos(hwnd, 0);
         native.SetForeground(hwnd);
+    }
+
+    public void SetTopmost(nint hwnd, bool isTopmost)
+    {
+        if (!native.SetWindowPos(hwnd, isTopmost ? HwndTopmost : HwndNoTopmost))
+            throw new InvalidOperationException($"SetWindowPos failed (Win32 error {Marshal.GetLastPInvokeError()}).");
     }
 }
 

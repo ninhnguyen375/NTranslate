@@ -69,9 +69,16 @@ public sealed partial class SettingsWindow : Window
     private void RemoveLanguage_Click(object sender, RoutedEventArgs args) { if (LanguagesList.SelectedItem is string value) _viewModel.RemoveLanguage(value); }
     private void AddTargetLanguage_Click(object sender, RoutedEventArgs args) => _viewModel.AddTargetLanguage();
     private void RemoveTargetLanguage_Click(object sender, RoutedEventArgs args) { if (TargetLanguagesList.SelectedItem is string value) _viewModel.RemoveTargetLanguage(value); }
-    private async void Save_Click(object sender, RoutedEventArgs args) => await _viewModel.SaveAsync(_lifetime.Token);
+    private async void Save_Click(object sender, RoutedEventArgs args) => await RunUiActionAsync(() => _viewModel.SaveAsync(_lifetime.Token));
     private void Cancel_Click(object sender, RoutedEventArgs args) => _viewModel.Cancel();
     private void Revert_Click(object sender, RoutedEventArgs args) => _viewModel.Revert();
-    private async void Browse_Click(object sender, RoutedEventArgs args) => await _viewModel.BrowseHistoryDirectoryAsync(_lifetime.Token);
-    private async void SaveAccelerator_Invoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args) { args.Handled = true; await _viewModel.SaveAsync(_lifetime.Token); }
+    private async void Browse_Click(object sender, RoutedEventArgs args) => await RunUiActionAsync(() => _viewModel.BrowseHistoryDirectoryAsync(_lifetime.Token));
+    private async void SaveAccelerator_Invoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args) { args.Handled = true; await RunUiActionAsync(() => _viewModel.SaveAsync(_lifetime.Token)); }
+
+    private async Task RunUiActionAsync(Func<Task> action)
+    {
+        try { await action(); }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
+        catch (Exception exception) { _viewModel.ReportError(exception); }
+    }
 }

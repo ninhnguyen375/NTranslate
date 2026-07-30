@@ -212,8 +212,32 @@ public sealed class TranslationWindowXamlTests
             .Select(e => (Key: Attribute(e, "Key"), Modifiers: Attribute(e, "Modifiers"))).ToHashSet();
         Assert.Contains(("Escape", "None"), accelerators);
         Assert.Contains(("Enter", "Control"), accelerators);
+        Assert.Contains(("Enter", "Menu"), accelerators);
         Assert.Contains(("C", "Control,Shift"), accelerators);
         Assert.Contains(("L", "Control,Shift"), accelerators);
+    }
+
+    [Fact]
+    public void Popup_ReopeningResetsContentHeightMeasurement()
+    {
+        var codeBehind = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "TranslationWindow.xaml.cs"));
+        Assert.Contains("private void ShowAtConfiguredSize(string? sourceText)", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("_lastDesiredHeight = double.NaN", codeBehind, StringComparison.Ordinal);
+        Assert.Equal(4, codeBehind.Split("ShowAtConfiguredSize(", StringSplitOptions.None).Length - 1);
+    }
+
+    [Fact]
+    public void Popup_TextPanesScrollAndReportContentSizeChanges()
+    {
+        Assert.Equal("Auto", Attribute(FindNamed("SourceTextBox"), "ScrollViewer.VerticalScrollBarVisibility"));
+        Assert.Equal("Auto", Attribute(FindNamed("ResultTextBox"), "ScrollViewer.VerticalScrollBarVisibility"));
+        Assert.Equal("PopupContent_LayoutUpdated", Attribute(FindNamed("RootGrid"), "LayoutUpdated"));
+
+        var codeBehind = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "TranslationWindow.xaml.cs"));
+        Assert.Contains("EventBoundary.IgnoreCancellation(() => ViewModel.TranslateAsync(OperationToken))", codeBehind, StringComparison.Ordinal);
+        Assert.DoesNotContain("ViewModel.TranslateCommand.ExecuteAsync()", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("args.Handled = true", codeBehind, StringComparison.Ordinal);
+        Assert.Contains("_coordinator.ResizeToContent", codeBehind, StringComparison.Ordinal);
     }
 
     private static XElement FindNamed(string name) => XDocument.Load(XamlPath).Descendants()

@@ -37,6 +37,7 @@ public sealed class SettingsSaveCoordinator
     private readonly IApiKeyStore _apiKeyStore;
     private readonly IHistoryDirectoryMigrator _historyMigrator;
     private readonly Func<AppConfig, double, bool, CancellationToken, Task> _applyRuntime;
+    private readonly SemaphoreSlim _saveGate = new(1, 1);
 
     public SettingsSaveCoordinator(
         IConfigStore configStore,
@@ -63,6 +64,28 @@ public sealed class SettingsSaveCoordinator
         if (issues.Count != 0)
             throw new SettingsValidationException(issues);
 
+        await _saveGate.WaitAsync(token).ConfigureAwait(false);
+        try
+        {
+            await SaveSerializedAsync(config, apiKey, speechRate, startWithWindows, currentHistoryRoot, requestedHistoryRoot, token).ConfigureAwait(false);
+        }
+        finally
+        {
+            _saveGate.Release();
+        }
+    }
+
+    private async Task SaveSerializedAsync(
+        AppConfig config,
+        string apiKey,
+        double speechRate,
+        bool startWithWindows,
+        string currentHistoryRoot,
+        string requestedHistoryRoot,
+        CancellationToken token)
+    {
+        var currentRoot = NormalizeRoot(currentHistoryRoot);
+        var requestedRoot = NormalizeRoot(requestedHistoryRoot);
         HistoryMigrationReceipt? receipt = null;
         string? oldApiKey = null;
         AppConfig? oldConfig = null;
@@ -71,23 +94,34 @@ public sealed class SettingsSaveCoordinator
 
         try
         {
-            receipt = await _historyMigrator.PrepareAsync(currentHistoryRoot, requestedHistoryRoot, token).ConfigureAwait(false);
+            if (!string.Equals(currentRoot, requestedRoot, StringComparison.OrdinalIgnoreCase))
+                receipt = await _historyMigrator.PrepareAsync(currentRoot, requestedRoot, token).ConfigureAwait(false);
 
             oldApiKey = await _apiKeyStore.LoadAsync(token).ConfigureAwait(false);
-            credentialAttempted = true;
-            if (string.IsNullOrEmpty(apiKey))
-                await _apiKeyStore.DeleteAsync(token).ConfigureAwait(false);
-            else
-                await _apiKeyStore.SaveAsync(apiKey, token).ConfigureAwait(false);
+            var credentialChanged = !string.Equals(oldApiKey ?? string.Empty, apiKey, StringComparison.Ordinal);
+
+            if (credentialChanged)
+            {
+                credentialAttempted = true;
+                if (string.IsNullOrEmpty(apiKey))
+                    await _apiKeyStore.DeleteAsync(token).ConfigureAwait(false);
+                else
+                    await _apiKeyStore.SaveAsync(apiKey, token).ConfigureAwait(false);
+            }
 
             oldConfig = await _configStore.LoadAsync(token).ConfigureAwait(false);
-            configAttempted = true;
-            await _configStore.SaveAsync(config, token).ConfigureAwait(false);
+            var configChanged = !ConfigEquals(oldConfig, config);
+            if (configChanged)
+            {
+                configAttempted = true;
+                await _configStore.SaveAsync(config, token).ConfigureAwait(false);
+            }
 
             if (receipt is not null)
                 await _historyMigrator.CommitAsync(receipt, token).ConfigureAwait(false);
 
-            await _applyRuntime(config, speechRate, startWithWindows, token).ConfigureAwait(false);
+            if (configChanged)
+                await _applyRuntime(config, speechRate, startWithWindows, token).ConfigureAwait(false);
         }
         catch (Exception primaryException)
         {
@@ -109,6 +143,9 @@ public sealed class SettingsSaveCoordinator
             if (receipt is not null)
                 await TryRollbackAsync(() => _historyMigrator.RollbackAsync(receipt, rollbackToken), rollbackExceptions).ConfigureAwait(false);
 
+            if (primaryException is OperationCanceledException && token.IsCancellationRequested && rollbackExceptions.Count == 0)
+                throw;
+
             throw new SettingsCommitException(primaryException, rollbackExceptions);
         }
     }
@@ -128,6 +165,14 @@ public sealed class SettingsSaveCoordinator
             issues.Add(new(nameof(requestedHistoryRoot), "Must be an absolute path."));
         return issues;
     }
+
+    private static string NormalizeRoot(string path) =>
+        Path.TrimEndingDirectorySeparator(Path.GetFullPath(path));
+
+    private static bool ConfigEquals(AppConfig left, AppConfig right) =>
+        left.Languages.SequenceEqual(right.Languages, StringComparer.Ordinal) &&
+        left.TargetLanguages.SequenceEqual(right.TargetLanguages, StringComparer.Ordinal) &&
+        left with { Languages = right.Languages, TargetLanguages = right.TargetLanguages } == right;
 
     private static async Task TryRollbackAsync(Func<Task> rollback, List<Exception> exceptions)
     {

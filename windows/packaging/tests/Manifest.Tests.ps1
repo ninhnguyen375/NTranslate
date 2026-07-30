@@ -14,7 +14,7 @@ $ns.AddNamespace('desktop', 'http://schemas.microsoft.com/appx/manifest/desktop/
 $identity = $manifest.SelectSingleNode('/m:Package/m:Identity', $ns)
 if ($identity.Name -ne 'NinhNguyen375.NTranslate') { throw 'Wrong package identity.' }
 if ($identity.Publisher -ne 'CN=Ninh Nguyen') { throw 'Wrong publisher.' }
-if ($identity.Version -ne '1.2.10.0') { throw 'Wrong pinned manifest version.' }
+if ($identity.Version -ne '1.2.12.0') { throw 'Wrong pinned manifest version.' }
 if ($identity.ProcessorArchitecture -ne 'x64') { throw 'Wrong architecture.' }
 $target = $manifest.SelectSingleNode('/m:Package/m:Dependencies/m:TargetDeviceFamily', $ns)
 if ($target.Name -ne 'Windows.Desktop' -or $target.MinVersion -ne '10.0.19045.0' -or $target.MaxVersionTested -ne '10.0.22621.0') { throw 'Wrong OS policy.' }

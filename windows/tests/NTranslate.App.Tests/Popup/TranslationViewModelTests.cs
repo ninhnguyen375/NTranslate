@@ -711,7 +711,40 @@ public sealed class TranslationViewModelTests
         await vm.ToggleSavedAsync(CancellationToken.None);
 
         Assert.False(vm.IsCurrentSaved);
-        Assert.Equal("bookmark unavailable", vm.StatusMessage);
+        Assert.Equal("Could not update bookmark. Try again. bookmark unavailable", vm.StatusMessage);
+    }
+
+    [Fact]
+    public async Task FailedBookmarkToggleDoesNotEscapeWhenUiDispatchIsUnavailable()
+    {
+        var bookmarks = new RecordingBookmarks { Error = new IOException("bookmark unavailable") };
+        var vm = CreateAdvancedViewModel(
+            ScriptedHandler.Sync(_ => JsonResponse("translated")),
+            bookmarks: bookmarks,
+            dispatch: _ => throw new UiDispatchUnavailableException());
+        vm.OpenHistoryRecord(new(
+            Guid.NewGuid(), DateTimeOffset.UtcNow, "source", "result", "English", "Vietnamese", null, null, false));
+
+        await vm.ToggleSavedAsync(CancellationToken.None);
+
+        Assert.False(vm.IsCurrentSaved);
+    }
+
+    [Fact]
+    public async Task SuccessfulBookmarkPersistenceDoesNotEscapeWhenUiDispatchIsUnavailable()
+    {
+        var bookmarks = new RecordingBookmarks();
+        var vm = CreateAdvancedViewModel(
+            ScriptedHandler.Sync(_ => JsonResponse("translated")),
+            bookmarks: bookmarks,
+            dispatch: _ => throw new UiDispatchUnavailableException());
+        vm.OpenHistoryRecord(new(
+            Guid.NewGuid(), DateTimeOffset.UtcNow, "source", "result", "English", "Vietnamese", null, null, false));
+
+        await vm.ToggleSavedAsync(CancellationToken.None);
+
+        Assert.Single(bookmarks.Calls);
+        Assert.False(vm.IsCurrentSaved);
     }
 
     [Fact]
@@ -751,7 +784,7 @@ public sealed class TranslationViewModelTests
 
         Assert.Equal(1, dispatches);
         Assert.Equal(!fails, vm.IsCurrentSaved);
-        Assert.Equal(fails ? "bookmark unavailable" : null, vm.StatusMessage);
+        Assert.Equal(fails ? "Could not update bookmark. Try again. bookmark unavailable" : null, vm.StatusMessage);
     }
 
     [Fact]

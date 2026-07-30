@@ -63,7 +63,7 @@ public sealed partial class TranslationWindow : Window
         }
         ImagePreview.Source = null;
         ViewModel.OpenHistoryRecord(record);
-        _coordinator.Show(null);
+        ShowAtConfiguredSize(null);
     }
     internal Task ShowAndTranslateTextAsync(string text, CancellationToken cancellationToken)
     {
@@ -88,7 +88,7 @@ public sealed partial class TranslationWindow : Window
             _lifetimeCancellation = new();
         }
         ViewModel.EnterTextMode();
-        _coordinator.Show(sourceText);
+        ShowAtConfiguredSize(sourceText);
     }
 
     internal void ShowImagePopup(byte[] imageBytes)
@@ -103,7 +103,13 @@ public sealed partial class TranslationWindow : Window
         var preview = new BitmapImage();
         preview.SetSource(image.AsRandomAccessStream());
         ImagePreview.Source = preview;
-        _coordinator.Show(null);
+        ShowAtConfiguredSize(null);
+    }
+
+    private void ShowAtConfiguredSize(string? sourceText)
+    {
+        _lastDesiredHeight = double.NaN;
+        _coordinator.Show(sourceText);
     }
 
     internal void RestoreWindowProcedure() => _coordinator.RestoreWindowProcedure();
@@ -130,7 +136,21 @@ public sealed partial class TranslationWindow : Window
     }
 
     private void CloseButton_Click(object sender, RoutedEventArgs e) { CancelOperations(); _coordinator.Close(); }
-    private void PinButton_Click(object sender, RoutedEventArgs e) => _coordinator.IsPinned = PinButton.IsChecked == true;
+    private void PinButton_Click(object sender, RoutedEventArgs e)
+    {
+        try { _coordinator.IsPinned = PinButton.IsChecked == true; }
+        catch (Exception error)
+        {
+            PinButton.IsChecked = _coordinator.IsPinned;
+            _ = ReportPinErrorAsync(error);
+        }
+    }
+
+    private async Task ReportPinErrorAsync(Exception error)
+    {
+        try { await ViewModel.ReportErrorAsync(error); }
+        catch (UiDispatchUnavailableException) { }
+    }
     private void HistoryButton_Click(object sender, RoutedEventArgs e) => _showHistory();
     private async void UpdateButton_Click(object sender, RoutedEventArgs e) => await _checkForUpdates();
     private async void BookmarkButton_Click(object sender, RoutedEventArgs e)
@@ -177,8 +197,44 @@ public sealed partial class TranslationWindow : Window
         }
     }
 
+    private double _lastDesiredHeight;
+
+    internal static double CalculateDesiredContentHeight(
+        double chromeHeight,
+        double sourceContentHeight,
+        double resultContentHeight) =>
+        chromeHeight + sourceContentHeight + resultContentHeight;
+
+    private void PopupContent_LayoutUpdated(object? sender, object args)
+    {
+        var sourceHeight = ContentHeight(SourceTextBox);
+        var resultHeight = ContentHeight(ResultTextBox);
+        var chromeHeight = Math.Max(0, RootGrid.ActualHeight - SourceTextBox.ActualHeight - ResultTextBox.ActualHeight);
+        var desiredHeight = CalculateDesiredContentHeight(chromeHeight, sourceHeight, resultHeight);
+        if (desiredHeight == _lastDesiredHeight)
+            return;
+        _lastDesiredHeight = desiredHeight;
+        _coordinator.ResizeToContent(desiredHeight);
+    }
+
+    private static double ContentHeight(DependencyObject element)
+    {
+        if (element is Microsoft.UI.Xaml.Controls.ScrollViewer scrollViewer)
+            return scrollViewer.ExtentHeight;
+        for (var index = 0; index < Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChildrenCount(element); index++)
+        {
+            var height = ContentHeight(Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChild(element, index));
+            if (height > 0) return height;
+        }
+        return 0;
+    }
+
     private void CloseAccelerator_Invoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args) { CancelOperations(); _coordinator.Close(); args.Handled = true; }
-    private void TranslateAccelerator_Invoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args) { if (ViewModel.TranslateCommand.CanExecute(null)) ViewModel.TranslateCommand.Execute(null); args.Handled = true; }
+    private async void TranslateAccelerator_Invoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
+    {
+        args.Handled = true;
+        await EventBoundary.IgnoreCancellation(() => ViewModel.TranslateAsync(OperationToken));
+    }
     private async void LearnAccelerator_Invoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args) { args.Handled = true; await ViewModel.LearnAsync(_lifetimeCancellation.Token); }
     private void CopyAccelerator_Invoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args) { if (ViewModel.CopyCommand.CanExecute(null)) ViewModel.CopyCommand.Execute(null); args.Handled = true; }
 }

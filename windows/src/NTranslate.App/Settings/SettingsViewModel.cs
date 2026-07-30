@@ -87,10 +87,18 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
     public async Task BrowseHistoryDirectoryAsync(CancellationToken token)
     {
         if (_folderPicker is null) return;
-        var path = await _folderPicker.PickAsync(_folderPicker.OwnerHwnd, token).ConfigureAwait(false);
-        if (path is null) return;
-        Draft.HistoryDirectory = path;
-        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Draft)));
+        try
+        {
+            var path = await _folderPicker.PickAsync(_folderPicker.OwnerHwnd, token);
+            if (path is null) return;
+            Draft.HistoryDirectory = path;
+            ErrorMessage = null;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Draft)));
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            ErrorMessage = $"Could not select history folder: {exception.Message}";
+        }
     }
 
     public async Task SaveAsync(CancellationToken token)
@@ -105,7 +113,14 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         try
         {
             var config = Draft.ToAppConfig(_originalConfig);
-            await _save(new(config, Draft.ApiKey, Draft.SpeechRate, Draft.StartWithWindows), token).ConfigureAwait(false);
+            if (ConfigEquals(_originalConfig, config) && string.Equals(_originalApiKey, Draft.ApiKey, StringComparison.Ordinal))
+            {
+                ErrorMessage = null;
+                _requestClose();
+                return;
+            }
+
+            await _save(new(config, Draft.ApiKey, Draft.SpeechRate, Draft.StartWithWindows), token);
             _originalConfig = config;
             _originalApiKey = Draft.ApiKey;
             Draft.Revert(_originalConfig, _originalApiKey);
@@ -114,9 +129,25 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
-            ErrorMessage = exception.Message;
+            ErrorMessage = FormatError(exception);
         }
     }
+
+    internal void ReportError(Exception exception) => ErrorMessage = FormatError(exception);
+
+    private static string FormatError(Exception exception)
+    {
+        if (exception is not SettingsCommitException commit) return exception.Message;
+        var message = commit.PrimaryException.Message;
+        return commit.RollbackExceptions.Count == 0
+            ? message
+            : $"{message}{Environment.NewLine}Rollback failed: {string.Join("; ", commit.RollbackExceptions.Select(error => error.Message))}";
+    }
+
+    private static bool ConfigEquals(AppConfig left, AppConfig right) =>
+        left.Languages.SequenceEqual(right.Languages, StringComparer.Ordinal) &&
+        left.TargetLanguages.SequenceEqual(right.TargetLanguages, StringComparer.Ordinal) &&
+        left with { Languages = right.Languages, TargetLanguages = right.TargetLanguages } == right;
 
     private void Add(string value, List<string> values)
     {
