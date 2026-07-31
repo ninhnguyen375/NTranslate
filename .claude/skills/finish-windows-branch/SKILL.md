@@ -1,6 +1,6 @@
 ---
 name: finish-windows-branch
-description: Use when a user asks to commit Windows changes, push windows-app directly, push only with no PR, push an existing commit, or keep completed NTranslate Windows work without integration.
+description: This skill should be used when a user asks to commit Windows changes, push windows-app directly, push only with no PR, push an existing commit, or keep completed NTranslate Windows work without integration.
 ---
 
 # Finish Windows Branch
@@ -40,12 +40,16 @@ Required Windows commands, in order:
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\windows\packaging\scripts\Invoke-ScriptTests.ps1
 dotnet test .\windows\NTranslate.slnx --no-restore
-.\install-app.ps1
+.\install-app.ps1 -Version <version>
 ```
 
-Before installer, manifest version must exceed installed MSIX version. Version bump requires manifest and pinned `Manifest.Tests.ps1` update together. Never bypass failed tests or signature verification. Any required failure blocks commit and push; report exact failure.
+Determine `<version>` from task/release intent. For release preparation, require it to exceed latest `windows-v<version>` release. For non-release verification, reuse explicitly authorized task version. If no version was supplied or previously authorized, ask for one and do not install, commit, or push.
 
-Installer success report must retain `Version`, `Build`, package path, and test result.
+For “push existing commit,” require a clean working tree or verify exact committed SHA in a clean worktree; never test unrelated uncommitted files as evidence for pushed commit.
+
+Windows install is unpackaged Inno Setup. Require build and publish to receive `-p:Version=$Version`, because installer filename does not stamp assembly version. Never bypass failed tests or installer verification. Any required failure blocks commit and push; report exact failure.
+
+Installer success report must retain `Version`, `Build`, setup EXE path, checksum path, and test result.
 
 ## Commit and push
 
@@ -80,5 +84,7 @@ Require matching SHA. Report commit, verification counts, installer fields when 
 - Force-push after rejection.
 - Staging all dirty files without classifying scope.
 - Claiming success before independent remote SHA verification.
+- Calling root installer without explicit `-Version`.
+- Treating Inno Setup install as MSIX or reading version only from `Package.Current`.
 
 Any red flag means stop and follow explicit intent contract.

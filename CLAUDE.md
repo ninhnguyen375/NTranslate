@@ -14,27 +14,30 @@
 - After completing changes to Windows source, resources, manifest, build scripts, packaging scripts, or release metadata, run:
 
   ```powershell
-  .\install-app.ps1
+  .\install-app.ps1 -Version <version>
   ```
 
 - Do not run installer for read-only analysis, review, planning, or documentation-only changes.
-- Root installer reads version from `windows/packaging/manifest/AppxManifest.xml`; do not bump version unless task requires it.
-- Before installation, ensure manifest version is greater than installed MSIX version; Windows rejects package downgrades with `0x80073D06`.
-- When version bump is approved, update manifest and its pinned expectation in `windows/packaging/tests/Manifest.Tests.ps1` together.
-- Installer runs locked restore, Release build, full tests, publish, MSIX packaging, signing, installation, verification, and app launch through `windows/install-app.ps1`.
+- Root installer requires explicit semantic `-Version`; use a version greater than latest Windows release when preparing a new release build.
+- Windows app is unpackaged under Inno Setup. `Package.Current.Id.Version` may fail; runtime version resolution must retain assembly-version fallback.
+- `windows/install-app.ps1` must pass `-p:Version=$Version` to both `dotnet build` and `dotnet publish`; installer filename alone does not stamp assembly version.
+- Installer runs locked restore, Release build, full tests, publish, Inno Setup packaging, SHA-256 generation, per-user installation, verification, and app launch.
 - Before installation, run `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\windows\packaging\scripts\Invoke-ScriptTests.ps1` and `dotnet test .\windows\NTranslate.slnx --no-restore`.
-- Always report `Version`, `Build`, package path, and test result from installer output.
+- Always report `Version`, `Build`, setup EXE path, checksum path, and test result from installer output.
 - If tests fail, report exact failures. Do not bypass or hide failures to install.
 - For tray interaction fixes, `PostMessage` is not representative of Explorer callback delivery. Test dispatch through the window procedure with `SendMessage`, then verify the installed app. Do not claim physical tray clicks work until user confirmation or observed Explorer interaction.
-- For post-install Application Event Log checks, set baseline after `Add-AppxPackage -ForceApplicationShutdown`; shutdown events from replaced process do not describe newly launched process.
 
-## Development certificate
+## Update flow
 
-- `.\install-app.ps1` may create a self-signed code-signing certificate and trust it in `CurrentUser\TrustedPeople` and `LocalMachine\TrustedPeople`.
-- Machine trust requires UAC elevation and affects every user until exact certificate thumbprint is removed. Use this only on development machines. Never disable MSIX signature verification.
+- Manual update checks must run network lookup before showing result dialog; never await a modal “Checking” dialog before starting lookup.
+- WinUI dialogs must be created on UI thread. Do not use `ConfigureAwait(false)` across an await whose continuation opens `ContentDialog`.
+- Current version, release tag, installer filename, checksum filename, and assembly version must describe same semantic version.
+- Valid Windows releases use tag `windows-v<version>` and exactly one matching setup EXE plus one `.sha256` sidecar.
 
 ## Release
 
-- Windows release artifact is `NTranslate-<version>-win-x64.msix`.
+- Windows release artifacts are `NTranslate-<version>-win-x64-setup.exe` and `NTranslate-<version>-win-x64-setup.exe.sha256`.
+- Build and test Windows releases locally; GitHub Actions does not build Windows artifacts.
+- Upload both local artifacts to matching `windows-v<version>` GitHub Release. Do not mix Windows assets into macOS `v<version>` releases.
 - Do not commit, push, publish, or create a GitHub Release unless user explicitly requests it.
 - Do not run macOS `release-dmg.sh` on this branch.

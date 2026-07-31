@@ -1,6 +1,6 @@
 ---
 name: deploy-release
-description: This skill should be used when the user asks to “deploy NTranslate,” “merge and publish,” “create a GitHub Release,” “ship a DMG,” or synchronize development and release versions after publishing.
+description: This skill should be used when a user asks to publish NTranslate macOS, create a v-prefixed DMG release, or ship a signed DMG from main. It must not be used for Windows releases or ordinary branch merges.
 ---
 
 # Deploy NTranslate Release
@@ -8,6 +8,8 @@ description: This skill should be used when the user asks to “deploy NTranslat
 ## Core rule
 
 Publish one reviewed, tested, immutable commit. Never bypass failing tests, mutate dirty main, overwrite user changes, or create a release before version metadata reaches `origin/main`.
+
+This skill is macOS-only. For `windows-app`, `windows-v<version>`, setup EXE, or Windows release requests, use `deploy-windows-release`; never apply this workflow to Windows.
 
 **REQUIRED SUB-SKILL:** Use superpowers:verification-before-completion.
 
@@ -23,7 +25,7 @@ gh auth status
 gh release list --limit 10
 ```
 
-Accept only `git@github.com:ninhnguyen375/NTranslate.git` or `https://github.com/ninhnguyen375/NTranslate(.git)`. Preserve dirty main untouched. Merge through feature branch + GitHub PR. Never use bare stash/pop. Stage explicit files, never `git add .`. Scan staged files for secrets.
+Accept only `git@github.com:ninhnguyen375/NTranslate.git`, `https://github.com/ninhnguyen375/NTranslate`, or `https://github.com/ninhnguyen375/NTranslate.git`. Require feature branch ancestry from `origin/main`; reject `windows-app`, branches derived from it, and Windows release changes. When invoked from Windows checkout, create a separate main-compatible worktree. Preserve dirty main untouched. Merge through feature branch + GitHub PR. Never use bare stash/pop. Stage explicit files, never `git add .`. Scan staged files for secrets.
 
 ## 2. Test and review feature
 
@@ -55,7 +57,7 @@ swift build -c release
 
 ## 3. Merge feature
 
-Commit explicit feature files with required co-author trailer. Push feature branch, create PR, wait for configured required checks, merge, and capture merge SHA:
+Commit explicit feature files using repository/harness commit convention. Push feature branch, create PR, wait for configured required checks, merge, and capture merge SHA:
 
 ```bash
 git push -u origin <feature-branch>
@@ -137,7 +139,7 @@ RELEASE_SHA=$(git rev-parse origin/main)
 
 Verify `origin/main` plist equals target version/build and README names target DMG.
 
-Create a second clean verification worktree at exact `RELEASE_SHA`. Run full tests, `git diff --check`, and `swift build -c release` again there. Require `99/99` or current exact suite count pass.
+Create a second clean verification worktree at exact `RELEASE_SHA`. Run full tests, `git diff --check`, and `swift build -c release` again there. Require current exact suite count pass with zero failures.
 
 Set absolute paths once:
 
