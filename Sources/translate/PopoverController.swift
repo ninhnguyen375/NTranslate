@@ -2011,8 +2011,20 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
             updateBusyState()
             return
         }
+        let sourceWasAutoDetect = selectedSourceLanguage() == LanguageDetector.autoDetect
         let pair = resolvedLanguagePair(for: text)
         updateLanguageSelection(for: text)
+        if let record = historyStore.reusableRecord(
+            mode: .translate,
+            sourceText: text,
+            sourceLanguage: pair.source,
+            targetLanguage: pair.target,
+            sourceIsAutoDetect: sourceWasAutoDetect
+        ) {
+            applyReusableRecord(record, mode: .translate, generation: generation)
+            finishRequest(generation: generation)
+            return
+        }
         if PopoverIntegrationPolicy.shouldPrefetchSource(
             enabled: config.autoPrefetchSpeech,
             hasPendingImage: pendingImage != nil,
@@ -2054,27 +2066,32 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
             }
             let sourceLanguage = effectiveSourceLanguage(for: source)
             let record = TranslationRecord(
-                id: UUID(), timestamp: Date(), sourceText: source, resultText: value.text,
+                id: UUID(), timestamp: Date(), mode: .translate, sourceText: source, resultText: value.text,
                 sourceLanguage: sourceLanguage, targetLanguage: pair.target,
                 sourceAudioPath: nil, resultAudioPath: nil, isSaved: false
             )
             setResultText(value.text)
             do {
-                try historyStore.append(record)
-                currentRecordID = record.id
-                attachPendingSourceSpeech(for: generation, recordID: record.id)
-                historyWindowController.reloadHistory()
+                let stored = try historyStore.appendIfAbsent(record)
+                if stored.id != record.id {
+                    pendingSourceSpeech.removeValue(forKey: generation)
+                    applyReusableRecord(stored, mode: .translate, generation: generation)
+                } else {
+                    currentRecordID = stored.id
+                    attachPendingSourceSpeech(for: generation, recordID: stored.id)
+                    historyWindowController.reloadHistory()
+                    prefetchSpeech(sourceSpeechIdentity(recordID: stored.id), translationGeneration: generation)
+                    prefetchSpeech(resultSpeechIdentity(recordID: stored.id), translationGeneration: nil)
+                    updatePaneLanguageLabels()
+                    if config.ui.autoCopy {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(value.text, forType: .string)
+                        flashCopied()
+                    }
+                }
             } catch {
                 currentRecordID = nil
                 setStatus("History failed: \(error.localizedDescription)", autoClearAfter: 12)
-            }
-            prefetchSpeech(sourceSpeechIdentity(recordID: currentRecordID), translationGeneration: generation)
-            prefetchSpeech(resultSpeechIdentity(recordID: currentRecordID), translationGeneration: nil)
-            updatePaneLanguageLabels()
-            if config.ui.autoCopy {
-                NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(value.text, forType: .string)
-                flashCopied()
             }
         case let .failure(error):
             invalidateCurrentRecord()
@@ -2118,9 +2135,21 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         let text = inputTextView.string.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { setResultText(PopoverFeedback.emptyInputHint); reflowLayout(); updateBusyState(); return }
         guard text.count <= config.maxTranslateLength else { setResultText(PopoverFeedback.textTooLong); reflowLayout(); updateBusyState(); return }
+        let sourceWasAutoDetect = selectedSourceLanguage() == LanguageDetector.autoDetect
         let pair = resolvedLanguagePair(for: text)
         updateLanguageSelection(for: text)
         let generation = beginRequest()
+        if let record = historyStore.reusableRecord(
+            mode: .learn,
+            sourceText: text,
+            sourceLanguage: pair.source,
+            targetLanguage: pair.target,
+            sourceIsAutoDetect: sourceWasAutoDetect
+        ) {
+            applyReusableRecord(record, mode: .learn, generation: generation)
+            finishRequest(generation: generation)
+            return
+        }
         setResultText(PopoverFeedback.learning)
         reflowLayout()
         translator.learn(text, sourceLang: pair.source, targetLang: pair.target) { [weak self] result in
@@ -2129,13 +2158,77 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
                 defer { self.finishRequest(generation: generation) }
                 guard generation == self.requestGeneration else { return }
                 switch result {
-                case let .success(value): self.setResultText(value)
-                case let .failure(error): self.setResultText("Error: \(error.localizedDescription)")
+                case let .success(value):
+                    self.setResultText(value)
+                    let record = TranslationRecord(
+                        id: UUID(), timestamp: Date(), mode: .learn, sourceText: text, resultText: value,
+                        sourceLanguage: self.effectiveSourceLanguage(for: text), targetLanguage: pair.target,
+                        isSaved: false
+                    )
+                    do {
+                        let stored = try self.historyStore.appendIfAbsent(record)
+                        if stored.id != record.id {
+                            self.applyReusableRecord(stored, mode: .learn, generation: generation)
+                        } else {
+                            self.currentRecordID = stored.id
+                            self.historyWindowController.reloadHistory()
+                            self.prefetchSpeech(self.sourceSpeechIdentity(recordID: stored.id), translationGeneration: generation)
+                            self.prefetchSpeech(self.resultSpeechIdentity(recordID: stored.id), translationGeneration: nil)
+                        }
+                    } catch {
+                        self.currentRecordID = nil
+                        self.setStatus("History failed: \(error.localizedDescription)", autoClearAfter: 12)
+                    }
+                case let .failure(error):
+                    self.invalidateCurrentRecord()
+                    self.setResultText("Error: \(error.localizedDescription)")
                 }
                 self.reflowLayout()
                 self.textView.scrollToBeginningOfDocument(nil)
                 self.updateBusyState()
             }
+        }
+    }
+
+    private func applyReusableRecord(_ record: TranslationRecord, mode: TranslationMode, generation: Int) {
+        guard generation == requestGeneration, pendingImage == nil else { return }
+        if selectedSourceLanguage() == LanguageDetector.autoDetect {
+            resolvedSourceLanguage = record.sourceLanguage
+        }
+        setResultText(record.resultText)
+        currentRecordID = record.id
+        hydrateStoredAudio(for: record)
+        let sourceIdentity = sourceSpeechIdentity(recordID: record.id)
+        let resultIdentity = resultSpeechIdentity(recordID: record.id)
+        if sourceIdentity.map({ speechCache[$0] == nil }) == true {
+            prefetchSpeech(sourceIdentity, translationGeneration: generation)
+        }
+        if resultIdentity.map({ speechCache[$0] == nil }) == true {
+            prefetchSpeech(resultIdentity, translationGeneration: nil)
+        }
+        updatePaneLanguageLabels()
+        updateSaveWordButton()
+        if mode == .translate, config.ui.autoCopy {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(record.resultText, forType: .string)
+            flashCopied()
+        }
+        reflowLayout()
+        textView.scrollToBeginningOfDocument(nil)
+        updateBusyState()
+    }
+
+    private func hydrateStoredAudio(for record: TranslationRecord) {
+        let identities: [(TranslationAudioKind, SpeechIdentity?)] = [
+            (.source, sourceSpeechIdentity(recordID: record.id)),
+            (.result, resultSpeechIdentity(recordID: record.id))
+        ]
+        for (kind, identity) in identities {
+            guard let identity,
+                  let data = try? historyStore.audioData(for: record.id, kind: kind),
+                  SpeechAudioPolicy.isValid(data)
+            else { continue }
+            speechCache[identity] = data
         }
     }
 
@@ -2283,8 +2376,7 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     private func attachAudio(_ data: Data, identity: SpeechIdentity) {
         guard PopoverIntegrationPolicy.canAttachAudio(identity: identity, currentRecordID: currentRecordID),
               let recordID = identity.recordID,
-              let record = historyStore.records.first(where: { $0.id == recordID }),
-              identity.kind == .source ? record.sourceAudioPath == nil : record.resultAudioPath == nil
+              historyStore.records.contains(where: { $0.id == recordID })
         else { return }
         do {
             try historyStore.attachAudio(data, kind: identity.kind == .source ? .source : .result, recordID: recordID)
