@@ -227,10 +227,11 @@ final class HistoryWindowController: NSWindowController, NSWindowDelegate, NSTab
 
         let timestamp = record.timestamp.formatted(date: .abbreviated, time: .shortened)
         let savedState = record.isSaved ? "Saved" : "Not saved"
-        let context = "\(timestamp), \(record.sourceLanguage) to \(record.targetLanguage), \(savedState)"
+        let mode = record.mode == .translate ? "Translate" : "Learn"
+        let context = "\(mode), \(timestamp), \(record.sourceLanguage) to \(record.targetLanguage), \(savedState)"
 
         let metadata = historyTextField(
-            "\(timestamp)  ·  \(record.sourceLanguage) → \(record.targetLanguage)",
+            "\(mode)  ·  \(timestamp)  ·  \(record.sourceLanguage) → \(record.targetLanguage)",
             accessibilityLabel: "Metadata for \(context)"
         )
         metadata.font = .systemFont(ofSize: 11, weight: .medium)

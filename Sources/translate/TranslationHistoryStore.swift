@@ -1,8 +1,14 @@
 import Foundation
 
+enum TranslationMode: String, Codable, Equatable, Sendable {
+    case translate
+    case learn
+}
+
 struct TranslationRecord: Codable, Equatable, Identifiable, Sendable {
     let id: UUID
     let timestamp: Date
+    let mode: TranslationMode
     let sourceText: String
     let resultText: String
     let sourceLanguage: String
@@ -10,6 +16,51 @@ struct TranslationRecord: Codable, Equatable, Identifiable, Sendable {
     var sourceAudioPath: String?
     var resultAudioPath: String?
     var isSaved: Bool
+
+    init(
+        id: UUID,
+        timestamp: Date,
+        mode: TranslationMode = .translate,
+        sourceText: String,
+        resultText: String,
+        sourceLanguage: String,
+        targetLanguage: String,
+        sourceAudioPath: String? = nil,
+        resultAudioPath: String? = nil,
+        isSaved: Bool
+    ) {
+        self.id = id
+        self.timestamp = timestamp
+        self.mode = mode
+        self.sourceText = sourceText
+        self.resultText = resultText
+        self.sourceLanguage = sourceLanguage
+        self.targetLanguage = targetLanguage
+        self.sourceAudioPath = sourceAudioPath
+        self.resultAudioPath = resultAudioPath
+        self.isSaved = isSaved
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, timestamp, mode, sourceText, resultText, sourceLanguage, targetLanguage
+        case sourceAudioPath, resultAudioPath, isSaved
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        id = try values.decode(UUID.self, forKey: .id)
+        timestamp = try values.decode(Date.self, forKey: .timestamp)
+        mode = values.contains(.mode)
+            ? try values.decode(TranslationMode.self, forKey: .mode)
+            : .translate
+        sourceText = try values.decode(String.self, forKey: .sourceText)
+        resultText = try values.decode(String.self, forKey: .resultText)
+        sourceLanguage = try values.decode(String.self, forKey: .sourceLanguage)
+        targetLanguage = try values.decode(String.self, forKey: .targetLanguage)
+        sourceAudioPath = try values.decodeIfPresent(String.self, forKey: .sourceAudioPath)
+        resultAudioPath = try values.decodeIfPresent(String.self, forKey: .resultAudioPath)
+        isSaved = try values.decode(Bool.self, forKey: .isSaved)
+    }
 }
 
 enum TranslationAudioKind: String, Sendable {
@@ -61,15 +112,44 @@ final class TranslationHistoryStore {
     }
 
     func append(_ record: TranslationRecord) throws {
-        try ensureWritable()
-        guard Self.hasContent(record.sourceText), Self.hasContent(record.resultText),
-              Self.hasContent(record.sourceLanguage), Self.hasContent(record.targetLanguage)
-        else { throw StoreError.invalidRecord }
+        try validateForMutation(record)
         var updated = records.filter { $0.id != record.id }
         updated.append(record)
         updated.sort { $0.timestamp > $1.timestamp }
         try persist(updated)
         records = updated
+    }
+
+    func reusableRecord(
+        mode: TranslationMode,
+        sourceText: String,
+        sourceLanguage: String,
+        targetLanguage: String,
+        sourceIsAutoDetect: Bool
+    ) -> TranslationRecord? {
+        let sourceText = Self.trim(sourceText)
+        return records.first {
+            $0.mode == mode
+                && Self.trim($0.sourceText) == sourceText
+                && $0.targetLanguage == targetLanguage
+                && (sourceIsAutoDetect || $0.sourceLanguage == sourceLanguage)
+        }
+    }
+
+    @discardableResult
+    func appendIfAbsent(_ record: TranslationRecord) throws -> TranslationRecord {
+        try validateForMutation(record)
+        if let existing = reusableRecord(
+            mode: record.mode,
+            sourceText: record.sourceText,
+            sourceLanguage: record.sourceLanguage,
+            targetLanguage: record.targetLanguage,
+            sourceIsAutoDetect: false
+        ) {
+            return existing
+        }
+        try append(record)
+        return record
     }
 
     func setSaved(_ isSaved: Bool, recordID: UUID) throws {
@@ -183,9 +263,21 @@ final class TranslationHistoryStore {
         return resolved
     }
 
-    private static func hasContent(_ text: String) -> Bool {
-        !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    private func validateForMutation(_ record: TranslationRecord) throws {
+        try ensureWritable()
+        guard Self.hasContent(record.sourceText), Self.hasContent(record.resultText),
+              Self.hasContent(record.sourceLanguage), Self.hasContent(record.targetLanguage)
+        else { throw StoreError.invalidRecord }
     }
+
+    private static func trim(_ text: String) -> String {
+        text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private static func hasContent(_ text: String) -> Bool {
+        !trim(text).isEmpty
+    }
+
     func remove(recordID: UUID) throws {
         try remove(recordIDs: [recordID])
     }

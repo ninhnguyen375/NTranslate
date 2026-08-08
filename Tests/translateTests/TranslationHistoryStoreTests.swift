@@ -22,6 +22,89 @@ struct TranslationHistoryStoreTests {
         #expect(reloaded.records.first(where: { $0.id == older.id })?.isSaved == true)
     }
 
+    @Test func legacyHistoryDefaultsToTranslate() throws {
+        let directory = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let legacy = """
+        [{"id":"00000000-0000-0000-0000-000000000001","timestamp":"1970-01-01T00:00:01Z","sourceText":"hello","resultText":"xin chào","sourceLanguage":"English","targetLanguage":"Vietnamese","isSaved":false}]
+        """
+        try Data(legacy.utf8).write(to: directory.appendingPathComponent("history.json"))
+
+        let store = TranslationHistoryStore(directoryURL: directory)
+
+        #expect(store.records.first?.mode == .translate)
+    }
+
+    @Test func nullModeLocksHistoryInsteadOfDefaulting() throws {
+        let directory = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let malformed = """
+        [{"id":"00000000-0000-0000-0000-000000000001","timestamp":"1970-01-01T00:00:01Z","mode":null,"sourceText":"hello","resultText":"xin chào","sourceLanguage":"English","targetLanguage":"Vietnamese","isSaved":false}]
+        """
+        try Data(malformed.utf8).write(to: directory.appendingPathComponent("history.json"))
+
+        let store = TranslationHistoryStore(directoryURL: directory)
+
+        #expect(store.loadError != nil)
+        #expect(store.records.isEmpty)
+    }
+
+    @Test func reusesNewestRecordByModeTextAndLanguages() throws {
+        let directory = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = TranslationHistoryStore(directoryURL: directory)
+        let older = record(timestamp: Date(timeIntervalSince1970: 1))
+        let newer = record(timestamp: Date(timeIntervalSince1970: 2), result: "chào")
+        let learn = record(timestamp: Date(timeIntervalSince1970: 3), mode: .learn, result: "Từ gốc: hello")
+        try store.append(older)
+        try store.append(newer)
+        try store.append(learn)
+
+        let translated = store.reusableRecord(
+            mode: .translate, sourceText: " hello ", sourceLanguage: "English",
+            targetLanguage: "Vietnamese", sourceIsAutoDetect: false
+        )
+        let learned = store.reusableRecord(
+            mode: .learn, sourceText: "hello", sourceLanguage: "English",
+            targetLanguage: "Vietnamese", sourceIsAutoDetect: false
+        )
+
+        #expect(translated?.id == newer.id)
+        #expect(learned?.id == learn.id)
+    }
+
+    @Test func appendIfAbsentPreservesExistingRecord() throws {
+        let directory = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = TranslationHistoryStore(directoryURL: directory)
+        var saved = record(timestamp: Date(timeIntervalSince1970: 1))
+        saved.isSaved = true
+        try store.append(saved)
+
+        let reused = try store.appendIfAbsent(record(timestamp: Date(timeIntervalSince1970: 2), result: "new result"))
+
+        #expect(reused.id == saved.id)
+        #expect(reused.isSaved)
+        #expect(store.records.count == 1)
+    }
+
+    @Test func autoDetectReuseIgnoresStoredSourceButNotTarget() throws {
+        let directory = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = TranslationHistoryStore(directoryURL: directory)
+        let item = record(sourceLanguage: "Chinese")
+        try store.append(item)
+
+        #expect(store.reusableRecord(
+            mode: .translate, sourceText: "hello", sourceLanguage: LanguageDetector.autoDetect,
+            targetLanguage: "Vietnamese", sourceIsAutoDetect: true
+        )?.id == item.id)
+        #expect(store.reusableRecord(
+            mode: .translate, sourceText: "hello", sourceLanguage: LanguageDetector.autoDetect,
+            targetLanguage: "English", sourceIsAutoDetect: true
+        ) == nil)
+    }
+
     @Test func rejectsEmptyRecords() throws {
         let directory = try temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -327,16 +410,20 @@ struct TranslationHistoryStoreTests {
 
     private func record(
         timestamp: Date = Date(timeIntervalSince1970: 1),
+        mode: TranslationMode = .translate,
         source: String = "hello",
-        result: String = "xin chào"
+        result: String = "xin chào",
+        sourceLanguage: String = "English",
+        targetLanguage: String = "Vietnamese"
     ) -> TranslationRecord {
         TranslationRecord(
             id: UUID(),
             timestamp: timestamp,
+            mode: mode,
             sourceText: source,
             resultText: result,
-            sourceLanguage: "English",
-            targetLanguage: "Vietnamese",
+            sourceLanguage: sourceLanguage,
+            targetLanguage: targetLanguage,
             sourceAudioPath: nil,
             resultAudioPath: nil,
             isSaved: false
