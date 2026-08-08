@@ -74,6 +74,25 @@ struct TranslateTests {
         #expect(HotkeyKeyCode.code(for: "a") == HotkeyKeyCode.code(for: "A"))
     }
 
+    @Test func dedicatedCopyShortcutConflictRequiresExactModifiers() {
+        #expect(PopoverIntegrationPolicy.hotkeyIntent(id: 1) == .translate)
+        #expect(PopoverIntegrationPolicy.hotkeyIntent(id: 2) == .copyAndTranslate)
+        #expect(PopoverIntegrationPolicy.hotkeyIntent(id: 3) == nil)
+        #expect(PopoverIntegrationPolicy.usesDedicatedCopyShortcut(.init(key: "d", option: true, command: false, control: true, shift: false)))
+        #expect(!PopoverIntegrationPolicy.usesDedicatedCopyShortcut(.init(key: "D", option: true, command: true, control: true, shift: false)))
+        #expect(!PopoverIntegrationPolicy.usesDedicatedCopyShortcut(.init(key: "D", option: true, command: false, control: false, shift: false)))
+        #expect(PopoverIntegrationPolicy.shouldSimulateCopy(force: true, configured: false))
+        #expect(!PopoverIntegrationPolicy.shouldSimulateCopy(force: false, configured: false))
+    }
+
+    @Test func sourceLanguagePolicyHonorsExplicitSelectionAndResolvedAutoDetect() {
+        #expect(PopoverIntegrationPolicy.effectiveSourceLanguage(selected: "English", resolved: "Vietnamese", text: "xin chào") == "English")
+        #expect(PopoverIntegrationPolicy.effectiveSourceLanguage(selected: LanguageDetector.autoDetect, resolved: "Chinese", text: "hello") == "Chinese")
+        #expect(PopoverIntegrationPolicy.effectiveSourceLanguage(selected: LanguageDetector.autoDetect, resolved: nil, text: "xin chào") == "Vietnamese")
+        #expect(!PopoverIntegrationPolicy.shouldPrefetchSource(selected: LanguageDetector.autoDetect, resolved: nil))
+        #expect(PopoverIntegrationPolicy.shouldPrefetchSource(selected: LanguageDetector.autoDetect, resolved: "English"))
+    }
+
     @Test func languageDetectorNormalizesUnknownSourceToAutoDetect() {
         #expect(LanguageDetector.normalizeSource("French") == "Auto detect")
     }
@@ -577,6 +596,134 @@ struct TranslateTests {
         #expect(throws: Translator.ResponseError.self) { try Translator.responseContent(from: empty) }
         #expect(throws: Translator.ResponseError.self) { try Translator.responseContent(from: Data("{}".utf8)) }
         #expect(throws: Translator.ResponseError.self) { try Translator.responseContent(from: Data("invalid".utf8)) }
+    }
+
+    @Test func structuredAutoDetectResultSeparatesTranslationAndCanonicalLanguage() throws {
+        let result = try Translator.translationResult(
+            from: """
+            ```json
+            {"translation":"**Xin chào**","sourceLanguage":"english"}
+            ```
+            """,
+            requestedSource: LanguageDetector.autoDetect,
+            inputText: "hello",
+            supportedLanguages: AppConfig.defaultLanguages
+        )
+        #expect(result == TranslationResult(text: "**Xin chào**", sourceLanguage: "English"))
+    }
+
+    @Test func autoDetectResultFallsBackForLegacyAndUnsupportedMetadata() throws {
+        let legacy = try Translator.translationResult(
+            from: "xin chào",
+            requestedSource: LanguageDetector.autoDetect,
+            inputText: "hello",
+            supportedLanguages: AppConfig.defaultLanguages
+        )
+        let unsupported = try Translator.translationResult(
+            from: #"{"translation":"hello","sourceLanguage":"French"}"#,
+            requestedSource: LanguageDetector.autoDetect,
+            inputText: "xin chào",
+            supportedLanguages: AppConfig.defaultLanguages
+        )
+        #expect(legacy == TranslationResult(text: "xin chào", sourceLanguage: "English"))
+        #expect(unsupported.sourceLanguage == "Vietnamese")
+    }
+
+    @Test func autoDetectResultRejectsMalformedJSONLikePrefixes() {
+        for content in ["[{\"translation\":\"xin chào\"}", "\"translated"] {
+            #expect(throws: Translator.ResponseError.self) {
+                try Translator.translationResult(
+                    from: content,
+                    requestedSource: LanguageDetector.autoDetect,
+                    inputText: "hello",
+                    supportedLanguages: AppConfig.defaultLanguages
+                )
+            }
+        }
+    }
+
+    @Test func autoDetectRetainsLegacyPlainTextBeginningWithDigits() throws {
+        let result = try Translator.translationResult(
+            from: "2026 is the year",
+            requestedSource: LanguageDetector.autoDetect,
+            inputText: "Năm 2026",
+            supportedLanguages: AppConfig.defaultLanguages
+        )
+        #expect(result.text == "2026 is the year")
+    }
+
+    @Test func autoDetectResultRejectsJSONScalars() {
+        for scalar in [#""translated""#, "null", "true", "false", "42", "-1.5", "1e3"] {
+            #expect(throws: Translator.ResponseError.self) {
+                try Translator.translationResult(
+                    from: scalar,
+                    requestedSource: LanguageDetector.autoDetect,
+                    inputText: "hello",
+                    supportedLanguages: AppConfig.defaultLanguages
+                )
+            }
+        }
+    }
+
+    @Test func structuredResultRejectsMalformedJSONAndEmptyTranslation() {
+        #expect(throws: Translator.ResponseError.self) {
+            try Translator.translationResult(
+                from: #"{"translation":}"#,
+                requestedSource: LanguageDetector.autoDetect,
+                inputText: "hello",
+                supportedLanguages: AppConfig.defaultLanguages
+            )
+        }
+        #expect(throws: Translator.ResponseError.self) {
+            try Translator.translationResult(
+                from: #"{"translation":"  ","sourceLanguage":"English"}"#,
+                requestedSource: LanguageDetector.autoDetect,
+                inputText: "hello",
+                supportedLanguages: AppConfig.defaultLanguages
+            )
+        }
+        #expect(throws: Translator.ResponseError.self) {
+            try Translator.translationResult(
+                from: #"["translation","hello"]"#,
+                requestedSource: LanguageDetector.autoDetect,
+                inputText: "hello",
+                supportedLanguages: AppConfig.defaultLanguages
+            )
+        }
+        #expect(throws: Translator.ResponseError.self) {
+            try Translator.translationResult(
+                from: "```json\n{\"translation\":}",
+                requestedSource: LanguageDetector.autoDetect,
+                inputText: "hello",
+                supportedLanguages: AppConfig.defaultLanguages
+            )
+        }
+    }
+
+    @Test func manualSourceResultUsesSelectionWithoutStructuredContent() throws {
+        let result = try Translator.translationResult(
+            from: "xin chào",
+            requestedSource: "English",
+            inputText: "tôi",
+            supportedLanguages: AppConfig.defaultLanguages
+        )
+        #expect(result == TranslationResult(text: "xin chào", sourceLanguage: "English"))
+    }
+
+    @Test func languageDetectorCanonicalizesConfiguredLanguagesOnly() {
+        #expect(LanguageDetector.canonicalLanguage(" english ", supportedLanguages: AppConfig.defaultLanguages) == "English")
+        #expect(LanguageDetector.canonicalLanguage("Auto detect", supportedLanguages: AppConfig.defaultLanguages) == nil)
+        #expect(LanguageDetector.canonicalLanguage("French", supportedLanguages: AppConfig.defaultLanguages) == nil)
+        #expect(LanguageDetector.canonicalLanguage(" ", supportedLanguages: AppConfig.defaultLanguages) == nil)
+    }
+
+    @Test func sentenceLearnPromptRequestsBoundedPronunciationAndMemoryChunks() {
+        let prompt = AppConfig.defaultSentenceLearnPrompt
+        #expect(prompt.contains("Pronunciation and memory chunks"))
+        #expect(prompt.contains("IPA"))
+        #expect(prompt.contains("3-8"))
+        #expect(prompt.localizedCaseInsensitiveContains("memory"))
+        #expect(prompt.localizedCaseInsensitiveContains("not every word"))
     }
 
     private func testPNG() throws -> Data {

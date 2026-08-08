@@ -19,6 +19,21 @@ struct AsyncGeneration {
 }
 
 enum PopoverIntegrationPolicy {
+    enum HotkeyIntent: Equatable {
+        case translate
+        case copyAndTranslate
+    }
+
+    static func hotkeyIntent(id: UInt32) -> HotkeyIntent? {
+        switch id {
+        case 1: .translate
+        case 2: .copyAndTranslate
+        default: nil
+        }
+    }
+
+    static func shouldSimulateCopy(force: Bool, configured: Bool) -> Bool { force || configured }
+
     static func sourceControlsEnabled(hasPendingImage: Bool) -> Bool { !hasPendingImage }
 
     static func imagesEnabled(isRequestInFlight: Bool, hasPendingImage: Bool, sourceText: String) -> Bool {
@@ -58,6 +73,21 @@ enum PopoverIntegrationPolicy {
         return trim(record.sourceText) == trim(sourceText) && trim(record.resultText) == trim(resultText)
     }
 
+    static func effectiveSourceLanguage(selected: String, resolved: String?, text: String) -> String {
+        selected == LanguageDetector.autoDetect
+            ? resolved ?? LanguageDetector.detectedLanguage(text)
+            : selected
+    }
+
+    static func shouldPrefetchSource(selected: String, resolved: String?) -> Bool {
+        selected != LanguageDetector.autoDetect || resolved != nil
+    }
+
+    static func usesDedicatedCopyShortcut(_ hotkey: AppConfig.Hotkey) -> Bool {
+        hotkey.key.caseInsensitiveCompare("D") == .orderedSame
+            && hotkey.option && hotkey.control && !hotkey.command && !hotkey.shift
+    }
+
     static func imageSearchURL(query: String) -> URL? {
         var components = URLComponents()
         components.scheme = "https"
@@ -95,10 +125,48 @@ enum SpeechRatePolicy {
     }
 }
 
-/// Borderless windows don't become key by default; override so the input text view can accept typing.
-final class TranslatePanelWindow: NSWindow {
+/// Borderless windows don't become key by default; override so popup controls can accept input.
+final class LiquidGlassWindow: NSWindow {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { true }
+}
+
+@MainActor
+enum LiquidGlassChrome {
+    static let cornerRadius: CGFloat = 22
+
+    static func configure(window: NSWindow) {
+        window.appearance = NSAppearance(named: .aqua)
+        window.isOpaque = false
+        window.backgroundColor = .clear
+        window.hasShadow = true
+        window.isMovableByWindowBackground = true
+    }
+
+    static func configure(container: NSGlassEffectContainerView, shell: NSGlassEffectView, host: NSView) {
+        let light = NSAppearance(named: .aqua)
+        container.appearance = light
+        container.spacing = 0
+        container.focusRingType = .none
+
+        shell.appearance = light
+        shell.cornerRadius = cornerRadius
+        shell.style = .regular
+        shell.focusRingType = .none
+        shell.wantsLayer = true
+        shell.layer?.cornerRadius = cornerRadius
+        shell.layer?.cornerCurve = .continuous
+        shell.layer?.masksToBounds = true
+        shell.layer?.borderWidth = 0
+        shell.layer?.borderColor = nil
+        shell.contentView = host
+
+        host.appearance = light
+        host.focusRingType = .none
+        host.wantsLayer = true
+        host.layer?.borderWidth = 0
+        host.layer?.borderColor = nil
+    }
 }
 
 final class InputTextView: NSTextView {
@@ -168,7 +236,7 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     }
 
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-    private let panel = TranslatePanelWindow(
+    private let panel = LiquidGlassWindow(
         contentRect: NSRect(x: 0, y: 0, width: 1, height: 1),
         styleMask: [.borderless],
         backing: .buffered,
@@ -195,6 +263,7 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     private let targetLanguageButton = NSButton(frame: .zero)
     private var sourceLanguageSelection = ""
     private var targetLanguageSelection = ""
+    private var resolvedSourceLanguage: String?
     private var sourceLanguageOptions: [String] = []
     private var targetLanguageOptions: [String] = []
     private let swapLanguagesButton = NSButton(frame: .zero)
@@ -214,6 +283,7 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     private var splitDividerGradient: CAGradientLayer?
     private var translator: Translator?
     private var hotKeyRef: EventHotKeyRef?
+    private var copyAndTranslateHotKeyRef: EventHotKeyRef?
     private var hotKeyEventHandlerRef: EventHandlerRef?
     private var config = AppConfig.load()
     private var apiKey = ""
@@ -284,12 +354,9 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         statusItem.button?.target = self
         CrashRecovery.presentCrashAlertIfNeeded()
         requestAccessibilityPermissionIfNeeded()
-        panel.isOpaque = false
+        LiquidGlassChrome.configure(window: panel)
         panel.ignoresMouseEvents = false
-        panel.backgroundColor = .clear
-        panel.hasShadow = true
         panel.level = .statusBar
-        panel.isMovableByWindowBackground = true
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient]
         panel.delegate = self
         buildPopover()
@@ -332,24 +399,12 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         let height = currentPopoverHeight()
         let L = ChromeLayout.self
 
-        // Always light chrome — white glass, dark text/icons (matches design sample).
-        let light = NSAppearance(named: .aqua)
-        panel.appearance = light
-        glassContainer.appearance = light
-        chromeHost.appearance = light
-
+        LiquidGlassChrome.configure(window: panel)
         glassContainer.frame = NSRect(x: 0, y: 0, width: width, height: height)
-        glassContainer.spacing = 0
-        glassContainer.focusRingType = .none
-
         shellGlass.frame = glassContainer.bounds
-        shellGlass.cornerRadius = L.glassCornerRadius
-        shellGlass.style = .regular
-        shellGlass.focusRingType = .none
-        shellGlass.contentView = chromeHost
+        LiquidGlassChrome.configure(container: glassContainer, shell: shellGlass, host: chromeHost)
         chromeHost.frame = shellGlass.bounds
         chromeHost.autoresizingMask = [.width, .height]
-        chromeHost.focusRingType = .none
 
         titleLabel.stringValue = "NTranslate"
         titleLabel.font = .systemFont(ofSize: 13, weight: .bold)
@@ -578,7 +633,7 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
             let trimmed = inputTextView.string.trimmingCharacters(in: .whitespacesAndNewlines)
             sourceHeaderLabel.stringValue = trimmed.isEmpty
                 ? "AUTO"
-                : paneLanguageCode(LanguageDetector.detectedLanguage(trimmed))
+                : paneLanguageCode(effectiveSourceLanguage(for: trimmed))
         } else {
             sourceHeaderLabel.stringValue = paneLanguageCode(sourceTitle)
         }
@@ -987,6 +1042,7 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     private func invalidateTranslationRequest() {
         requestGeneration += 1
         isRequestInFlight = false
+        resolvedSourceLanguage = nil
         pendingSourceSpeech.removeAll()
         invalidateCurrentRecord()
         updateBusyState()
@@ -1152,6 +1208,7 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         guard let kind = LanguageButtonKind(rawValue: sender.tag),
               let language = sender.representedObject as? String
         else { return }
+        if kind == .source { resolvedSourceLanguage = nil }
         selectLanguage(language, kind: kind)
         languageSelectionChanged()
     }
@@ -1221,7 +1278,7 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     }
 
     @objc private func languageSelectionChanged() {
-        invalidateCurrentRecord()
+        invalidateTranslationRequest()
         invalidateSpeech(stopPlayback: true)
         if pendingImage != nil {
             UserDefaults.standard.set(selectedTargetLanguage(), forKey: Self.lastTargetLangKey)
@@ -1335,11 +1392,16 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         )
     }
 
+    private func effectiveSourceLanguage(for text: String) -> String {
+        PopoverIntegrationPolicy.effectiveSourceLanguage(
+            selected: selectedSourceLanguage(),
+            resolved: resolvedSourceLanguage,
+            text: text
+        )
+    }
+
     private func sourceSpeechModel(for text: String) -> String {
-        if LanguageDetector.looksVietnamese(text) {
-            return config.speechSourceModelVietnamese
-        }
-        return SpeechModelResolver.model(for: LanguageDetector.detectedLanguage(text), config: config)
+        SpeechModelResolver.model(for: effectiveSourceLanguage(for: text), config: config)
     }
 
     private func buildMenu() {
@@ -1516,9 +1578,13 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
             guard let event, let userData else { return noErr }
             var hotKeyID = EventHotKeyID()
             GetEventParameter(event, EventParamName(kEventParamDirectObject), EventParamType(typeEventHotKeyID), nil, MemoryLayout<EventHotKeyID>.size, nil, &hotKeyID)
-            if hotKeyID.id == 1 {
-                let controller = Unmanaged<PopoverController>.fromOpaque(userData).takeUnretainedValue()
+            let controller = Unmanaged<PopoverController>.fromOpaque(userData).takeUnretainedValue()
+            switch PopoverIntegrationPolicy.hotkeyIntent(id: hotKeyID.id) {
+            case .translate:
                 controller.perform(#selector(PopoverController.hotKeyPressed), on: .main, with: nil, waitUntilDone: false)
+            case .copyAndTranslate:
+                controller.perform(#selector(PopoverController.copyAndTranslateHotKeyPressed), on: .main, with: nil, waitUntilDone: false)
+            case nil: break
             }
             return noErr
         }, 1, &eventSpec, Unmanaged.passUnretained(self).toOpaque(), &hotKeyEventHandlerRef)
@@ -1526,17 +1592,42 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
 
     private func registerHotKey() {
         if let hotKeyRef { UnregisterEventHotKey(hotKeyRef) }
+        if let copyAndTranslateHotKeyRef { UnregisterEventHotKey(copyAndTranslateHotKeyRef) }
         hotKeyRef = nil
-        let hotKeyID = EventHotKeyID(signature: OSType(0x54524E53), id: 1)
-        let status = RegisterEventHotKey(HotkeyKeyCode.code(for: config.hotkey.key), hotKeyModifiers(), hotKeyID, GetApplicationEventTarget(), 0, &hotKeyRef)
-        guard status == noErr else {
-            setResultText("Failed to register hotkey")
+        copyAndTranslateHotKeyRef = nil
+        let signature = OSType(0x54524E53)
+        let copyStatus = RegisterEventHotKey(
+            HotkeyKeyCode.code(for: "D"), UInt32(controlKey | optionKey),
+            EventHotKeyID(signature: signature, id: 2), GetApplicationEventTarget(), 0,
+            &copyAndTranslateHotKeyRef
+        )
+        let fixedFailed = copyStatus != noErr
+        if PopoverIntegrationPolicy.usesDedicatedCopyShortcut(config.hotkey) {
+            setStatus(fixedFailed
+                ? "Failed to register Control+Option+D"
+                : "Control+Option+D is reserved for copy and translate")
             return
+        }
+        let status = RegisterEventHotKey(
+            HotkeyKeyCode.code(for: config.hotkey.key), hotKeyModifiers(),
+            EventHotKeyID(signature: signature, id: 1), GetApplicationEventTarget(), 0,
+            &hotKeyRef
+        )
+        if fixedFailed && status != noErr {
+            setStatus("Failed to register both hotkeys")
+        } else if fixedFailed {
+            setStatus("Failed to register Control+Option+D")
+        } else if status != noErr {
+            setStatus("Failed to register configured hotkey")
         }
     }
 
     @objc private func hotKeyPressed() {
         translateAtCursor()
+    }
+
+    @objc private func copyAndTranslateHotKeyPressed() {
+        translateAtCursor(forceSimulatedCopy: true)
     }
 
     @objc private func manualToggle() {
@@ -1555,6 +1646,7 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     func applicationWillTerminate(_ notification: Notification) {
         if let hotKeyEventHandlerRef { RemoveEventHandler(hotKeyEventHandlerRef) }
         if let hotKeyRef { UnregisterEventHotKey(hotKeyRef) }
+        if let copyAndTranslateHotKeyRef { UnregisterEventHotKey(copyAndTranslateHotKeyRef) }
         CrashRecovery.markCleanShutdown()
     }
 
@@ -1572,6 +1664,7 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         invalidateTranslationRequest()
         invalidateSpeech(stopPlayback: true)
         config = outcome.config
+        registerHotKey()
         do {
             apiKey = try APIKeyStore.shared.load() ?? ""
         } catch {
@@ -1599,7 +1692,6 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         }
         translator = Translator(config: config, apiKey: trimmedAPIKey)
         configureLanguageControls()
-        registerHotKey()
         assert(URL(string: config.apiBaseURL) != nil)
         assert(URL(string: config.apiSpeechURL) != nil)
         if let message = outcome.message {
@@ -1834,12 +1926,15 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         updateBusyState()
     }
 
-    func translateAtCursor() {
+    func translateAtCursor(forceSimulatedCopy: Bool = false) {
         if !AXIsProcessTrusted() { requestAccessibilityPermissionIfNeeded(forcePrompt: true) }
         previousApp = NSWorkspace.shared.frontmostApplication
         let resolved: TranslatableInputResolution
         do {
-            guard let value = try SelectionReader.resolveTranslatableInputWithDiagnostics(simulateCopy: config.ui.simulateCopy) else {
+            guard let value = try SelectionReader.resolveTranslatableInputWithDiagnostics(
+                simulateCopy: PopoverIntegrationPolicy.shouldSimulateCopy(force: forceSimulatedCopy, configured: config.ui.simulateCopy),
+                forceCopy: forceSimulatedCopy
+            ) else {
                 showEmptySelectionPanel()
                 return
             }
@@ -1922,6 +2017,9 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
             enabled: config.autoPrefetchSpeech,
             hasPendingImage: pendingImage != nil,
             text: text
+        ), PopoverIntegrationPolicy.shouldPrefetchSource(
+            selected: selectedSourceLanguage(),
+            resolved: resolvedSourceLanguage
         ) {
             prefetchSpeech(sourceSpeechIdentity(recordID: nil), translationGeneration: generation)
         }
@@ -1946,17 +2044,21 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         updateBusyState()
     }
 
-    private func finishTextTranslation(_ result: Result<String, Error>, generation: Int, source: String, pair: (source: String, target: String)) {
+    private func finishTextTranslation(_ result: Result<TranslationResult, Error>, generation: Int, source: String, pair: (source: String, target: String)) {
         defer { finishRequest(generation: generation) }
         guard generation == requestGeneration, pendingImage == nil else { return }
         switch result {
         case let .success(value):
+            if selectedSourceLanguage() == LanguageDetector.autoDetect {
+                resolvedSourceLanguage = value.sourceLanguage
+            }
+            let sourceLanguage = effectiveSourceLanguage(for: source)
             let record = TranslationRecord(
-                id: UUID(), timestamp: Date(), sourceText: source, resultText: value,
-                sourceLanguage: pair.source, targetLanguage: pair.target,
+                id: UUID(), timestamp: Date(), sourceText: source, resultText: value.text,
+                sourceLanguage: sourceLanguage, targetLanguage: pair.target,
                 sourceAudioPath: nil, resultAudioPath: nil, isSaved: false
             )
-            setResultText(value)
+            setResultText(value.text)
             do {
                 try historyStore.append(record)
                 currentRecordID = record.id
@@ -1966,10 +2068,12 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
                 currentRecordID = nil
                 setStatus("History failed: \(error.localizedDescription)", autoClearAfter: 12)
             }
+            prefetchSpeech(sourceSpeechIdentity(recordID: currentRecordID), translationGeneration: generation)
             prefetchSpeech(resultSpeechIdentity(recordID: currentRecordID), translationGeneration: nil)
+            updatePaneLanguageLabels()
             if config.ui.autoCopy {
                 NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(value, forType: .string)
+                NSPasteboard.general.setString(value.text, forType: .string)
                 flashCopied()
             }
         case let .failure(error):
@@ -2336,6 +2440,7 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         invalidateSpeech(stopPlayback: true)
         setPendingImage(nil)
 
+        resolvedSourceLanguage = record.sourceLanguage
         sourceLanguageSelection = record.sourceLanguage
         targetLanguageSelection = record.targetLanguage
         styleLanguageButtonTitle(sourceLanguageButton, language: sourceLanguageSelection)

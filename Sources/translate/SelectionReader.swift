@@ -62,9 +62,9 @@ struct SelectionReader {
     static let maximumImageBytes = 10 * 1024 * 1024
     static let maximumDecodedImageBytes: UInt64 = 100 * 1024 * 1024
 
-    static func resolveTranslatableInputWithDiagnostics(simulateCopy: Bool = false) throws -> TranslatableInputResolution? {
+    static func resolveTranslatableInputWithDiagnostics(simulateCopy: Bool = false, forceCopy: Bool = false) throws -> TranslatableInputResolution? {
         var accessibilityError: String?
-        if AXIsProcessTrusted() {
+        if !forceCopy, AXIsProcessTrusted() {
             do {
                 if let text = try accessibilityText() {
                     return TranslatableInputResolution(input: .text(text), source: .selection, accessibilityError: nil)
@@ -73,9 +73,10 @@ struct SelectionReader {
                 accessibilityError = String(describing: error)
             }
         }
-        if simulateCopy, let input = try copyViaKeyboard() {
+        if (simulateCopy || forceCopy), let input = try copyViaKeyboard() {
             return TranslatableInputResolution(input: input, source: .simulatedCopy, accessibilityError: accessibilityError)
         }
+        if forceCopy { return nil }
         return try translatableInput(from: .general).map {
             TranslatableInputResolution(input: $0, source: .clipboard, accessibilityError: accessibilityError)
         }

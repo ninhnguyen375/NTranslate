@@ -42,6 +42,13 @@ enum LanguageDetector {
         return "English"
     }
 
+    static func canonicalLanguage(_ candidate: String, supportedLanguages: [String]) -> String? {
+        let trimmed = candidate.trimmingCharacters(in: .whitespacesAndNewlines)
+        return supportedLanguages.first {
+            $0 != autoDetect && $0.caseInsensitiveCompare(trimmed) == .orderedSame
+        }
+    }
+
     /// `recentTargets` is ordered most-recently-used first. On auto detect, we pick the most
     /// recently used target language that differs from the detected source, falling back to
     /// the configured native/other default when nothing in the history qualifies.

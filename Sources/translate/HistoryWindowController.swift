@@ -2,10 +2,11 @@ import AppKit
 import AVFoundation
 
 enum HistoryTimeRange: CaseIterable {
-    case today, hours24, week, month
+    case all, today, hours24, week, month
 
-    func cutoff(from now: Date, calendar: Calendar = .current) -> Date {
+    func cutoff(from now: Date, calendar: Calendar = .current) -> Date? {
         switch self {
+        case .all: return nil
         case .today: return calendar.startOfDay(for: now)
         case .hours24: return now.addingTimeInterval(-86_400)
         case .week: return now.addingTimeInterval(-7 * 86_400)
@@ -21,7 +22,7 @@ final class HistoryWindowController: NSWindowController, NSWindowDelegate, NSTab
     private let tableView = NSTableView()
     private let searchField = NSSearchField()
     private let filterSegmentedControl = NSSegmentedControl(labels: ["History", "Saved"], trackingMode: .selectOne, target: nil, action: nil)
-    private let timeSegmentedControl = NSSegmentedControl(labels: ["Today", "24h", "Week", "Month"], trackingMode: .selectOne, target: nil, action: nil)
+    private let timeSegmentedControl = NSSegmentedControl(labels: ["All", "Today", "24h", "Week", "Month"], trackingMode: .selectOne, target: nil, action: nil)
     private let deleteVisibleButton = NSButton()
     private var audioPlayer: AVAudioPlayer?
     private(set) var filteredRecords: [TranslationRecord] = []
@@ -30,7 +31,7 @@ final class HistoryWindowController: NSWindowController, NSWindowDelegate, NSTab
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         return records.filter { record in
             if savedOnly && !record.isSaved { return false }
-            if let timeRange, record.timestamp < timeRange.cutoff(from: now, calendar: calendar) { return false }
+            if let cutoff = timeRange?.cutoff(from: now, calendar: calendar), record.timestamp < cutoff { return false }
             if trimmed.isEmpty { return true }
             return record.sourceText.lowercased().contains(trimmed) || record.resultText.lowercased().contains(trimmed)
         }
@@ -45,17 +46,13 @@ final class HistoryWindowController: NSWindowController, NSWindowDelegate, NSTab
         self.onOpenRecord = onOpenRecord
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 720, height: 520),
-            styleMask: [.titled, .closable, .resizable, .fullSizeContentView],
+            styleMask: [.titled, .closable, .resizable],
             backing: .buffered,
             defer: false
         )
         window.title = "Translation History"
         window.setFrameAutosaveName("TranslationHistoryWindow")
-
-        window.titlebarAppearsTransparent = true
-        window.titleVisibility = .hidden
-        window.isMovableByWindowBackground = true
-        window.backgroundColor = .clear
+        window.backgroundColor = .white
 
         super.init(window: window)
         window.delegate = self
@@ -83,11 +80,12 @@ final class HistoryWindowController: NSWindowController, NSWindowDelegate, NSTab
         let savedOnly = filterSegmentedControl.selectedSegment == 1
         let timeRange: HistoryTimeRange?
         switch timeSegmentedControl.selectedSegment {
-        case 0: timeRange = .today
-        case 1: timeRange = .hours24
-        case 2: timeRange = .week
-        case 3: timeRange = .month
-        default: timeRange = nil
+        case 0: timeRange = .all
+        case 1: timeRange = .today
+        case 2: timeRange = .hours24
+        case 3: timeRange = .week
+        case 4: timeRange = .month
+        default: timeRange = .today
         }
         filteredRecords = Self.filter(records: store.records, query: searchField.stringValue, savedOnly: savedOnly, timeRange: timeRange)
     }
@@ -133,15 +131,12 @@ final class HistoryWindowController: NSWindowController, NSWindowDelegate, NSTab
     }
 
     private func configureContent() {
-        guard let window, let contentLayoutGuide = window.contentLayoutGuide as? NSLayoutGuide else { return }
+        guard let window else { return }
 
-        let visualEffect = NSVisualEffectView()
-        visualEffect.material = .hudWindow
-        visualEffect.blendingMode = .behindWindow
-        visualEffect.state = .active
-        visualEffect.wantsLayer = true
-        visualEffect.layer?.cornerRadius = 22
-        visualEffect.layer?.masksToBounds = true
+        let contentHost = NSView()
+        contentHost.wantsLayer = true
+        contentHost.layer?.backgroundColor = NSColor.white.cgColor
+        window.contentView = contentHost
 
         filterSegmentedControl.selectedSegment = 0
         filterSegmentedControl.target = self
@@ -155,7 +150,7 @@ final class HistoryWindowController: NSWindowController, NSWindowDelegate, NSTab
             forSegment: 1
         )
 
-        timeSegmentedControl.selectedSegment = 0
+        timeSegmentedControl.selectedSegment = 1
         timeSegmentedControl.target = self
         timeSegmentedControl.action = #selector(filterChanged)
 
@@ -204,14 +199,13 @@ final class HistoryWindowController: NSWindowController, NSWindowDelegate, NSTab
         container.alignment = .leading
         container.translatesAutoresizingMaskIntoConstraints = false
 
-        visualEffect.addSubview(container)
-        window.contentView = visualEffect
+        contentHost.addSubview(container)
 
         NSLayoutConstraint.activate([
-            container.leadingAnchor.constraint(equalTo: visualEffect.leadingAnchor, constant: 16),
-            container.trailingAnchor.constraint(equalTo: visualEffect.trailingAnchor, constant: -16),
-            container.topAnchor.constraint(equalTo: contentLayoutGuide.topAnchor, constant: 16),
-            container.bottomAnchor.constraint(equalTo: visualEffect.bottomAnchor, constant: -16),
+            container.leadingAnchor.constraint(equalTo: contentHost.leadingAnchor, constant: 16),
+            container.trailingAnchor.constraint(equalTo: contentHost.trailingAnchor, constant: -16),
+            container.topAnchor.constraint(equalTo: contentHost.topAnchor, constant: 16),
+            container.bottomAnchor.constraint(equalTo: contentHost.bottomAnchor, constant: -16),
 
             topBar.leadingAnchor.constraint(equalTo: container.leadingAnchor),
             topBar.trailingAnchor.constraint(equalTo: container.trailingAnchor),
@@ -220,7 +214,7 @@ final class HistoryWindowController: NSWindowController, NSWindowDelegate, NSTab
             scrollView.trailingAnchor.constraint(equalTo: container.trailingAnchor)
         ])
 
-        visualEffect.layoutSubtreeIfNeeded()
+        contentHost.layoutSubtreeIfNeeded()
         tableView.sizeLastColumnToFit()
         updateFilteredRecords()
     }

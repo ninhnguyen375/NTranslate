@@ -4,6 +4,12 @@
 - Không chạy script cho task chỉ đọc, phân tích, review, lập plan, hoặc chỉ sửa tài liệu; tránh build/install và bump version không cần thiết.
 - Khi đã chạy script, luôn báo user version/build từ output để user test.
 
+## SPDD
+
+- Với yêu cầu từ GitHub Issue, tên mọi file SPDD phải dùng prefix `GITHUB-<github issue id>` thay cho `GGQPA-XXX`, ví dụ `GITHUB-17-202608081430-[Fix]-ui-popup-focus.md`.
+- Với tài liệu gộp nhiều GitHub Issues, dùng `GITHUB-<id1>-<id2>-...` theo thứ tự ID tăng dần.
+- Với yêu cầu không có GitHub Issue ID, dùng prefix `ISSUE-`; không thêm `XXX`, ví dụ `ISSUE-202608081444-[Feat]-release-macos-platform-update-isolation.md`.
+
 ## Release (DMG → GitHub Releases)
 
 Khi user muốn đóng gói và/hoặc đăng bản build lên GitHub Releases, dùng:

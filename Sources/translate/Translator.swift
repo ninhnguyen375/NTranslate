@@ -1,6 +1,15 @@
 import Foundation
 
+struct TranslationResult: Equatable, Sendable {
+    let text: String
+    let sourceLanguage: String
+}
+
 final class Translator {
+    private struct TranslationResponsePayload: Decodable {
+        let translation: String
+        let sourceLanguage: String
+    }
     let config: AppConfig
     let apiKey: String
 
@@ -43,6 +52,13 @@ final class Translator {
     }
 
     static let imageSearchPrompt = "Return only a short, concrete English query for Google Images. No quotes, no markdown, no filler."
+    private static func autoDetectResponseContract(languages: [String]) -> String {
+        let allowed = languages.filter { $0 != LanguageDetector.autoDetect }.joined(separator: ", ")
+        return """
+
+        Return exactly one JSON object with this shape: {"translation":"<translated text>","sourceLanguage":"<detected source language>"}. sourceLanguage must be one of: \(allowed). No markdown fence, intro, commentary, or extra keys.
+        """
+    }
 
     private func request(_ text: String, mode: RequestMode, completion: @escaping @Sendable (Result<String, Error>) -> Void) {
         guard let url = URL(string: config.apiBaseURL) else {
@@ -60,6 +76,7 @@ final class Translator {
             systemPrompt = renderGrammarPrompt(lang: targetLang)
         case let .translate(sourceLang, targetLang):
             systemPrompt = renderSystemPrompt(sourceLang: sourceLang, targetLang: targetLang)
+                + (sourceLang == LanguageDetector.autoDetect ? Self.autoDetectResponseContract(languages: config.languages) : "")
         case .imageSearch:
             systemPrompt = Self.imageSearchPrompt
         case let .learn(sourceLang, targetLang):
@@ -135,8 +152,64 @@ final class Translator {
         return trimmed
     }
 
-    func translate(_ text: String, sourceLang: String, targetLang: String, completion: @escaping @Sendable (Result<String, Error>) -> Void) {
-        request(text, mode: .translate(sourceLang: sourceLang, targetLang: targetLang), completion: completion)
+    static func translationResult(
+        from content: String,
+        requestedSource: String,
+        inputText: String,
+        supportedLanguages: [String]
+    ) throws -> TranslationResult {
+        let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { throw ResponseError.emptyContent }
+        if requestedSource != LanguageDetector.autoDetect {
+            let source = LanguageDetector.canonicalLanguage(requestedSource, supportedLanguages: supportedLanguages)
+                ?? requestedSource
+            return TranslationResult(text: trimmed, sourceLanguage: source)
+        }
+
+        var payloadText = trimmed
+        let fenced = payloadText.hasPrefix("```")
+        if fenced {
+            guard payloadText.hasSuffix("```") else { throw ResponseError.invalidSchema }
+            payloadText.removeFirst(3)
+            payloadText.removeLast(3)
+            payloadText = payloadText.trimmingCharacters(in: .whitespacesAndNewlines)
+            if payloadText.lowercased().hasPrefix("json") {
+                payloadText.removeFirst(4)
+                payloadText = payloadText.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+        }
+        let isJSON = payloadText.data(using: .utf8).map {
+            (try? JSONSerialization.jsonObject(with: $0, options: .fragmentsAllowed)) != nil
+        } ?? false
+        guard payloadText.first == "{" else {
+            if fenced || isJSON || payloadText.first == "[" || payloadText.first == "\"" {
+                throw ResponseError.invalidSchema
+            }
+            return TranslationResult(text: trimmed, sourceLanguage: LanguageDetector.detectedLanguage(inputText))
+        }
+        guard let data = payloadText.data(using: .utf8),
+              let payload = try? JSONDecoder().decode(TranslationResponsePayload.self, from: data)
+        else { throw ResponseError.invalidSchema }
+        let translation = payload.translation.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !translation.isEmpty else { throw ResponseError.emptyContent }
+        let source = LanguageDetector.canonicalLanguage(payload.sourceLanguage, supportedLanguages: supportedLanguages)
+            ?? LanguageDetector.detectedLanguage(inputText)
+        return TranslationResult(text: translation, sourceLanguage: source)
+    }
+
+    func translate(_ text: String, sourceLang: String, targetLang: String, completion: @escaping @Sendable (Result<TranslationResult, Error>) -> Void) {
+        request(text, mode: .translate(sourceLang: sourceLang, targetLang: targetLang)) { [config] result in
+            completion(result.flatMap { content in
+                Result {
+                    try Self.translationResult(
+                        from: content,
+                        requestedSource: sourceLang,
+                        inputText: text,
+                        supportedLanguages: config.languages
+                    )
+                }
+            })
+        }
     }
 
     func learn(_ text: String, sourceLang: String, targetLang: String, completion: @escaping @Sendable (Result<String, Error>) -> Void) {

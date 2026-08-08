@@ -108,12 +108,18 @@ struct AppConfig: Codable {
     Useful phrases in context
     - <phrase>: <meaning and use in this context>
 
+    Pronunciation and memory chunks
+    - <useful phrase or notable word> | IPA: /.../ | <meaning in context> | Memory: <one short cue>
+
     Natural variation: <one natural variation with the same core meaning>
 
     Hard rules:
     - Explain the full sentence or phrase, not isolated dictionary entries.
     - Include only important grammar or structure.
     - Include useful phrases as they are used in this context.
+    - Include 3-8 useful phrases or notable words when available.
+    - Give IPA, contextual meaning, and one short memory cue for each chunk.
+    - Analyze useful chunks, not every word; omit trivial words unless grammatically important.
     - Give exactly one natural variation.
     - Write every explanation in {{config.targetLang}}.
     """

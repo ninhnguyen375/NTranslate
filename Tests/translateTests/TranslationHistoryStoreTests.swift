@@ -103,6 +103,24 @@ struct TranslationHistoryStoreTests {
         #expect(store.audioDirectoryURL.path == customDir.appendingPathComponent("audio").standardizedFileURL.path)
     }
 
+    @Test func historyWindowUsesInteractiveWhiteNativeChrome() throws {
+        let store = TranslationHistoryStore(directoryURL: try temporaryDirectory())
+        defer { try? FileManager.default.removeItem(at: store.directoryURL) }
+        let controller = HistoryWindowController(store: store)
+        let window = try #require(controller.window)
+        let content = try #require(window.contentView)
+
+        #expect(window.styleMask.contains(.titled))
+        #expect(window.styleMask.contains(.closable))
+        #expect(window.styleMask.contains(.resizable))
+        #expect(!(content is NSGlassEffectContainerView))
+        #expect(content.layer?.backgroundColor == NSColor.white.cgColor)
+        content.layoutSubtreeIfNeeded()
+        let searchField = try #require(descendantViews(of: content).compactMap { $0 as? NSSearchField }.first)
+        let point = searchField.convert(NSPoint(x: searchField.bounds.midX, y: searchField.bounds.midY), to: content)
+        #expect(content.hitTest(point) === searchField)
+    }
+
     @Test func filterRecords() {
         let r1 = TranslationRecord(id: UUID(), timestamp: Date(), sourceText: "hello world", resultText: "xin chào thế giới", sourceLanguage: "en", targetLanguage: "vi", isSaved: true)
         let r2 = TranslationRecord(id: UUID(), timestamp: Date(), sourceText: "apple", resultText: "quả táo", sourceLanguage: "en", targetLanguage: "vi", isSaved: false)
@@ -362,6 +380,29 @@ struct TranslationHistoryStoreTests {
         let filtered = HistoryWindowController.filter(records: [recent, old], query: "galaxy", savedOnly: true, timeRange: .week, now: now)
 
         #expect(filtered.map(\.id) == [recent.id])
+    }
+
+    @Test func allHistoryIncludesOldRecordsAndComposesWithFilters() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let recent = TranslationRecord(id: UUID(), timestamp: now, sourceText: "Galaxy", resultText: "Thiên hà", sourceLanguage: "English", targetLanguage: "Vietnamese", isSaved: false)
+        let oldSaved = TranslationRecord(id: UUID(), timestamp: now.addingTimeInterval(-400 * 86_400), sourceText: "Old galaxy", resultText: "Thiên hà cũ", sourceLanguage: "English", targetLanguage: "Vietnamese", isSaved: true)
+
+        #expect(HistoryTimeRange.all.cutoff(from: now) == nil)
+        #expect(HistoryWindowController.filter(records: [recent, oldSaved], query: "", savedOnly: false, timeRange: .all, now: now).map(\.id) == [recent.id, oldSaved.id])
+        #expect(HistoryWindowController.filter(records: [recent, oldSaved], query: "old", savedOnly: true, timeRange: .all, now: now).map(\.id) == [oldSaved.id])
+        #expect(HistoryWindowController.deleteSnapshot(records: [recent, oldSaved]).count == 2)
+    }
+
+    @Test func historyToolbarOffersAllButDefaultsToToday() throws {
+        let directory = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let controller = HistoryWindowController(store: TranslationHistoryStore(directoryURL: directory))
+        let controls = descendantViews(of: try #require(controller.window?.contentView))
+        let time = try #require(controls.compactMap { $0 as? NSSegmentedControl }.first { $0.segmentCount == 5 })
+
+        #expect(time.label(forSegment: 0) == "All")
+        #expect(time.label(forSegment: 1) == "Today")
+        #expect(time.selectedSegment == 1)
     }
 
     @Test func deleteVisibleSnapshotKeepsConfirmedCountAndIDs() {
