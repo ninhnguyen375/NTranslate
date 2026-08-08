@@ -41,7 +41,7 @@ case "$ARCH_RAW" in
   *) ARCH="unknown" ;;
 esac
 
-TAG="v${VERSION}"
+TAG="macos-v${VERSION}"
 DMG_NAME="NTranslate-${VERSION}-${ARCH}.dmg"
 DMG_PATH="$DIST_DIR/$DMG_NAME"
 
@@ -68,7 +68,7 @@ echo "DMG: $DMG_PATH"
 # Keep README "Latest:" line in sync when present.
 README="$PROJECT_DIR/README.md"
 if [ -f "$README" ]; then
-  perl -0pi -e "s|Latest: \\*\\*\\[v[0-9.]+\\]\\(https://github.com/${REPO_SLUG}/releases/tag/v[0-9.]+\\)\\*\\* — download \`NTranslate-[0-9.]+-[^\\\`]+\\.dmg\`|Latest: **[${TAG}](https://github.com/${REPO_SLUG}/releases/tag/${TAG})** — download \`${DMG_NAME}\`|s" "$README" || true
+  perl -0pi -e "s|Latest: \\*\\*\\[(?:macos-)?v[0-9.]+\\]\\(https://github.com/${REPO_SLUG}/releases/tag/(?:macos-)?v[0-9.]+\\)\\*\\* — download \`NTranslate-[0-9.]+-[^\\\`]+\\.dmg\`|Latest: **[${TAG}](https://github.com/${REPO_SLUG}/releases/tag/${TAG})** — download \`${DMG_NAME}\`|s" "$README" || true
 fi
 
 if [ "${SKIP_UPLOAD:-0}" = "1" ]; then

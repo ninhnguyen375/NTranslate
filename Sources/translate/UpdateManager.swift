@@ -13,6 +13,8 @@ public final class UpdateManager: @unchecked Sendable {
     struct GitHubRelease: Decodable {
         let tag_name: String
         let body: String?
+        let draft: Bool
+        let prerelease: Bool
         let assets: [GitHubAsset]
     }
 
@@ -38,18 +40,53 @@ public final class UpdateManager: @unchecked Sendable {
         return false
     }
 
-    public static func parseRelease(from data: Data) throws -> ReleaseInfo {
-        let decoder = JSONDecoder()
-        let release = try decoder.decode(GitHubRelease.self, from: data)
-        guard let dmgAsset = release.assets.first(where: { $0.name.hasSuffix(".dmg") }),
-              let url = URL(string: dmgAsset.browser_download_url) else {
-            throw NSError(domain: "UpdateManager", code: 1, userInfo: [NSLocalizedDescriptionKey: "No DMG asset found in release"])
+    private static func macOSVersion(from tag: String) -> String? {
+        let prefix = "macos-v"
+        guard tag.hasPrefix(prefix) else { return nil }
+        let version = String(tag.dropFirst(prefix.count))
+        let range = NSRange(version.startIndex..., in: version)
+        let pattern = #"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$"#
+        guard try! NSRegularExpression(pattern: pattern).firstMatch(in: version, range: range) != nil else {
+            return nil
         }
-        return ReleaseInfo(tag: release.tag_name, notes: release.body ?? "", dmgURL: url)
+        return version
+    }
+
+    public static func selectRelease(from data: Data, newerThan currentVersion: String) throws -> ReleaseInfo? {
+        let releases = try JSONDecoder().decode([GitHubRelease].self, from: data)
+        var best: (version: String, release: ReleaseInfo)?
+
+        for release in releases {
+            guard !release.draft,
+                  !release.prerelease,
+                  let version = macOSVersion(from: release.tag_name),
+                  isVersion(version, newerThan: currentVersion)
+            else { continue }
+
+            let escapedVersion = NSRegularExpression.escapedPattern(for: version)
+            let pattern = "^NTranslate-\(escapedVersion)-(arm64|x86_64|universal)\\.dmg$"
+            let regex = try! NSRegularExpression(pattern: pattern)
+            let assets = release.assets.filter { asset in
+                regex.firstMatch(
+                    in: asset.name,
+                    range: NSRange(asset.name.startIndex..., in: asset.name)
+                ) != nil
+            }
+            guard assets.count == 1,
+                  let url = URL(string: assets[0].browser_download_url)
+            else { continue }
+
+            let candidate = ReleaseInfo(tag: release.tag_name, notes: release.body ?? "", dmgURL: url)
+            if best == nil || isVersion(version, newerThan: best!.version) {
+                best = (version, candidate)
+            }
+        }
+
+        return best?.release
     }
 
     public func checkForUpdate() async throws -> ReleaseInfo? {
-        guard let url = URL(string: "https://api.github.com/repos/ninhnguyen375/NTranslate/releases/latest") else { return nil }
+        guard let url = URL(string: "https://api.github.com/repos/ninhnguyen375/NTranslate/releases?per_page=100") else { return nil }
         var request = URLRequest(url: url)
         request.setValue("application/vnd.github.v3+json", forHTTPHeaderField: "Accept")
         request.setValue("NTranslate-AutoUpdater", forHTTPHeaderField: "User-Agent")
@@ -57,13 +94,8 @@ public final class UpdateManager: @unchecked Sendable {
         let (data, response) = try await URLSession.shared.data(for: request)
         guard (response as? HTTPURLResponse)?.statusCode == 200 else { return nil }
 
-        let release = try UpdateManager.parseRelease(from: data)
         let currentVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0"
-
-        if UpdateManager.isVersion(release.tag, newerThan: currentVersion) {
-            return release
-        }
-        return nil
+        return try UpdateManager.selectRelease(from: data, newerThan: currentVersion)
     }
 
     public func downloadDMG(from url: URL) async throws -> URL {
