@@ -4,6 +4,7 @@
 - Không chạy script cho task chỉ đọc, phân tích, review, lập plan, hoặc chỉ sửa tài liệu; tránh build/install và bump version không cần thiết.
 - Khi đã chạy script, luôn báo user version/build từ output để user test.
 - Sau khi PR/feature/release đã merge thành công vào `main`, kiểm tra rồi xóa branch local/remote đã merge và worktree liên quan nếu sạch; không xóa branch chưa merge hoặc worktree có thay đổi chưa commit, chạy `git worktree prune`, và báo rõ mọi branch/worktree được giữ lại.
+- Không bao giờ xóa branch local/remote `windows-app` khi cleanup branch/worktree. Đây là nhánh phát triển app Windows độc lập, tồn tại lâu dài và không merge vào `main`.
 
 ## SPDD
 
