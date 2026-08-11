@@ -205,20 +205,31 @@ struct SelectionReader {
 
     private static func copyViaKeyboard() throws -> TranslatableInput? {
         try simulatedCopyInput(from: .general) { previousChangeCount in
-            guard let source = CGEventSource(stateID: .combinedSessionState) else { return false }
-            let keyDown = CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(kVK_ANSI_C), keyDown: true)
-            let keyUp = CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(kVK_ANSI_C), keyDown: false)
-            keyDown?.flags = .maskCommand
-            keyUp?.flags = .maskCommand
-            keyDown?.post(tap: .cghidEventTap)
-            keyUp?.post(tap: .cghidEventTap)
+            // The hotkey's Control+Option are still down when Carbon fires. Wait for release,
+            // then use private state so only Command reaches the target app.
+            waitForModifierRelease()
+            guard let source = CGEventSource(stateID: .privateState),
+                  let keyDown = CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(kVK_ANSI_C), keyDown: true),
+                  let keyUp = CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(kVK_ANSI_C), keyDown: false)
+            else { return false }
+            keyDown.flags = .maskCommand
+            keyUp.flags = .maskCommand
+            keyDown.post(tap: .cghidEventTap)
+            keyUp.post(tap: .cghidEventTap)
 
-            var attempts = 0
-            while NSPasteboard.general.changeCount == previousChangeCount && attempts < 20 {
-                RunLoop.current.run(until: Date().addingTimeInterval(0.01))
-                attempts += 1
+            for _ in 0..<80 {
+                if NSPasteboard.general.changeCount != previousChangeCount { return true }
+                Thread.sleep(forTimeInterval: 0.01)
             }
             return NSPasteboard.general.changeCount != previousChangeCount
+        }
+    }
+
+    private static func waitForModifierRelease() {
+        for _ in 0..<35 {
+            let flags = CGEventSource.flagsState(.combinedSessionState)
+            if flags.intersection([.maskControl, .maskAlternate, .maskCommand, .maskShift]).isEmpty { return }
+            Thread.sleep(forTimeInterval: 0.01)
         }
     }
 

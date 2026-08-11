@@ -13,7 +13,7 @@ ICON_SRC="$PROJECT_DIR/icon.jpg"
 ICONSET_DIR="$PROJECT_DIR/NTranslate.iconset"
 ICON_ICNS="$PROJECT_DIR/NTranslate.icns"
 APP_ICON_DST="$APP_SRC/Contents/Resources/NTranslate.icns"
-SIGN_IDENTITY="Apple Development: ninhnguyen375@gmail.com (7GMHS3RDUF)"
+SIGN_IDENTITY="${SIGN_IDENTITY:-NTranslate Local Development}"
 
 cd "$PROJECT_DIR"
 swift build -c release
