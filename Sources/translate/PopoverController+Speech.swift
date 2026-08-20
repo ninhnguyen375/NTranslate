@@ -34,7 +34,7 @@ extension PopoverController {
         button.title = ""
         button.image = NSImage(systemSymbolName: presentation.symbol, accessibilityDescription: label)
         button.imagePosition = .imageOnly
-        button.contentTintColor = NSColor.black.withAlphaComponent(0.4)
+        button.contentTintColor = Palette.iconTint
         button.toolTip = label
         button.setAccessibilityLabel(label)
         button.isEnabled = presentation.enabled && !isRequestInFlight

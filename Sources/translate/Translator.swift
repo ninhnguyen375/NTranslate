@@ -27,6 +27,7 @@ final class Translator {
     private enum RequestMode {
         case translate(sourceLang: String, targetLang: String, context: [ContextPair])
         case learn(sourceLang: String, targetLang: String)
+        case proofread(lang: String)
         case imageSearch
     }
 
@@ -41,7 +42,7 @@ final class Translator {
             .replacingOccurrences(of: "{{config.targetLang}}", with: targetLang)
     }
 
-    /// Source and target language are the same: user wants grammar-check, not translation.
+    /// Proofread mode: grammar-check the text in its own language instead of translating it.
     private func renderGrammarPrompt(lang: String) -> String {
         config.grammarPrompt
             .replacingOccurrences(of: "{{lang}}", with: lang)
@@ -109,8 +110,8 @@ final class Translator {
         let wrappedText = "<selected-text>\(text)</selected-text>"
         let systemPrompt: String
         switch mode {
-        case let .translate(sourceLang, targetLang, _) where sourceLang == targetLang:
-            systemPrompt = renderGrammarPrompt(lang: targetLang)
+        case let .proofread(lang):
+            systemPrompt = renderGrammarPrompt(lang: lang)
         case let .translate(sourceLang, targetLang, context):
             systemPrompt = renderSystemPrompt(sourceLang: sourceLang, targetLang: targetLang)
                 + (sourceLang == LanguageDetector.autoDetect ? Self.autoDetectResponseContract(languages: config.languages) : "")
@@ -258,6 +259,10 @@ final class Translator {
 
     func learn(_ text: String, sourceLang: String, targetLang: String, completion: @escaping @Sendable (Result<String, Error>) -> Void) {
         request(text, mode: .learn(sourceLang: sourceLang, targetLang: targetLang), completion: completion)
+    }
+
+    func proofread(_ text: String, lang: String, completion: @escaping @Sendable (Result<String, Error>) -> Void) {
+        request(text, mode: .proofread(lang: lang), completion: completion)
     }
 
     func imageSearchQuery(_ text: String, completion: @escaping @Sendable (Result<String, Error>) -> Void) {

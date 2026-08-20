@@ -52,9 +52,6 @@ enum LanguageDetector {
     /// `recentTargets` is ordered most-recently-used first. On auto detect, we pick the most
     /// recently used target language that differs from the detected source, falling back to
     /// the configured native/other default when nothing in the history qualifies.
-    /// When the user explicitly picks the same source and target language (only possible via
-    /// manual selection, not auto-detect), that's honored as-is — it triggers grammar-check mode
-    /// instead of translation (see `Translator`).
     static func resolvedPair(
         selectedSource: String,
         selectedTarget: String,

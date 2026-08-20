@@ -78,7 +78,8 @@ struct TranslateTests {
         #expect(PopoverIntegrationPolicy.hotkeyIntent(id: 1) == .translate)
         #expect(PopoverIntegrationPolicy.hotkeyIntent(id: 2) == .copyAndTranslate)
         #expect(PopoverIntegrationPolicy.hotkeyIntent(id: 3) == .learn)
-        #expect(PopoverIntegrationPolicy.hotkeyIntent(id: 4) == nil)
+        #expect(PopoverIntegrationPolicy.hotkeyIntent(id: 4) == .proofread)
+        #expect(PopoverIntegrationPolicy.hotkeyIntent(id: 5) == nil)
         #expect(AppConfig.Hotkey.isSameCombination(
             .init(key: "d", option: true, command: false, control: true, shift: false),
             .init(key: "D", option: true, command: false, control: true, shift: false)
@@ -113,7 +114,7 @@ struct TranslateTests {
         #expect(pair.target == "English")
     }
 
-    @Test func languageDetectorAllowsSameSourceAndTargetForGrammarMode() {
+    @Test func languageDetectorAllowsSameSourceAndTarget() {
         let pair = LanguageDetector.resolvedPair(selectedSource: "English", selectedTarget: "English", text: "hello")
         #expect(pair.source == "English")
         #expect(pair.target == "English")

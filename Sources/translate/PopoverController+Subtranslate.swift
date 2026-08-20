@@ -26,7 +26,7 @@ extension PopoverController {
             textView.isSelectable = true
             textView.drawsBackground = false
             textView.font = .systemFont(ofSize: ChromeLayout.bodyFontSize)
-            textView.textColor = NSColor.black.withAlphaComponent(0.88)
+            textView.textColor = Palette.bodyText
             textView.focusRingType = .none
             textView.textContainerInset = NSSize(width: 12, height: 10)
             textView.minSize = NSSize(width: 0, height: 40)
@@ -85,12 +85,13 @@ extension PopoverController {
         let L = ChromeLayout.self
         section.splitHost.frame = NSRect(x: x, y: y, width: width, height: height)
         section.splitHost.layer?.borderWidth = 1
-        section.splitHost.layer?.borderColor = NSColor.black.withAlphaComponent(0.06).cgColor
-        section.splitHost.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.72).cgColor
+        section.splitHost.layer?.borderColor = Palette.cg(Palette.hairline, in: section.splitHost)
+        section.splitHost.layer?.backgroundColor = Palette.cg(Palette.paneFill, in: section.splitHost)
 
         section.sourceCard.frame = NSRect(x: 0, y: 0, width: panes.left, height: height)
         section.splitDivider.frame = NSRect(x: panes.left, y: 14, width: max(1, L.dividerWidth), height: max(0, height - 28))
         section.dividerGradient?.frame = section.splitDivider.bounds
+        section.dividerGradient?.colors = Self.dividerGradientColors(in: section.splitDivider)
         section.splitHost.addSubview(section.splitDivider, positioned: .above, relativeTo: nil)
         section.resultCard.frame = NSRect(x: panes.left + L.dividerWidth, y: 0, width: panes.right, height: height)
 
@@ -125,8 +126,8 @@ extension PopoverController {
         let style = PopoverFeedback.resultStyle(for: value)
         let color: NSColor
         switch style {
-        case .normal: color = NSColor.black.withAlphaComponent(0.88)
-        case .loading: color = NSColor.black.withAlphaComponent(0.4)
+        case .normal: color = Palette.bodyText
+        case .loading: color = Palette.loadingText
         case .error: color = .systemRed
         }
         section.setResult(value, font: .systemFont(ofSize: ChromeLayout.bodyFontSize), color: color)
@@ -144,7 +145,7 @@ extension PopoverController {
             systemSymbolName: isSaved ? "bookmark.fill" : "bookmark",
             accessibilityDescription: isSaved ? "Remove Saved Word" : "Save Word"
         )
-        section.saveWordButton.contentTintColor = isSaved ? .controlAccentColor : NSColor.black.withAlphaComponent(0.4)
+        section.saveWordButton.contentTintColor = isSaved ? .controlAccentColor : Palette.iconTint
     }
 
     /// Runs Translate or Learn for a freshly selected phrase into the secondary pane, leaving the
@@ -178,8 +179,14 @@ extension PopoverController {
         section.targetLanguage = pair.target
         section.sourceHeaderLabel.stringValue = paneLanguageCode(displaySource)
         section.resultHeaderLabel.stringValue = paneLanguageCode(pair.target)
-        section.setSource(text, font: .systemFont(ofSize: ChromeLayout.bodyFontSize), color: NSColor.black.withAlphaComponent(0.88))
-        setSubResultText(section, mode == .learn ? PopoverFeedback.learning : PopoverFeedback.translating)
+        section.setSource(text, font: .systemFont(ofSize: ChromeLayout.bodyFontSize), color: Palette.bodyText)
+        let waitingText: String
+        switch mode {
+        case .learn: waitingText = PopoverFeedback.learning
+        case .proofread: waitingText = PopoverFeedback.proofreading
+        case .translate: waitingText = PopoverFeedback.translating
+        }
+        setSubResultText(section, waitingText)
         reflowLayout()
 
         if let record = historyStore.reusableRecord(
@@ -201,7 +208,9 @@ extension PopoverController {
                 )
             }
         }
-        if mode == .learn {
+        if mode == .proofread {
+            translator.proofread(text, lang: displaySource, completion: handler)
+        } else if mode == .learn {
             translator.learn(text, sourceLang: pair.source, targetLang: pair.target, completion: handler)
         } else {
             let context = historyStore.recentContext(

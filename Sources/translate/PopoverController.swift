@@ -72,7 +72,7 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     /// Official Liquid Glass container — merges nearby glass views.
     let glassContainer = NSGlassEffectContainerView(frame: .zero)
     let shellGlass = NSGlassEffectView(frame: .zero)
-    let chromeHost = NSView(frame: .zero)
+    let chromeHost = ThemedView(frame: .zero)
     let splitHost = NSView(frame: .zero)
     let splitDivider = NSView(frame: .zero)
     let sourceCard = NSView(frame: .zero)
@@ -98,6 +98,7 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     let translateButton = NSButton(frame: .zero)
     let learnButton = NSButton(frame: .zero)
     let imagesButton = NSButton(frame: .zero)
+    let proofreadButton = NSButton(frame: .zero)
     let copyButton = NSButton(frame: .zero)
     let saveWordButton = NSButton(frame: .zero)
     let titleLabel = NSTextField(labelWithString: "Translate")
@@ -213,6 +214,10 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
             }
             if flags == [.command, .shift], event.keyCode == UInt16(kVK_ANSI_L) {
                 self.runLearn()
+                return nil
+            }
+            if flags == [.command, .shift], event.keyCode == UInt16(kVK_ANSI_P) {
+                self.runProofread()
                 return nil
             }
             return event

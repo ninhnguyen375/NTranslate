@@ -345,6 +345,69 @@ extension PopoverController {
         }
     }
 
+    /// Grammar-checks the source text in its own language. Replaces the old "pick the same source
+    /// and target language" trick, so the language dropdowns stay free for real translation.
+    @objc func runProofread() {
+        if let text = panelSelectionForSubtranslate() {
+            runSubRequest(text: text, mode: .proofread)
+            return
+        }
+        guard pendingImage == nil, let translator else { return }
+        invalidateCurrentRecord()
+        invalidateSpeech(stopPlayback: true)
+        let text = inputTextView.string.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { setResultText(PopoverFeedback.emptyInputHint); reflowLayout(); updateBusyState(); return }
+        guard text.count <= config.maxTranslateLength else { setResultText(PopoverFeedback.textTooLong); reflowLayout(); updateBusyState(); return }
+        let lang = effectiveSourceLanguage(for: text)
+        let generation = beginRequest()
+        if let record = historyStore.reusableRecord(
+            mode: .proofread,
+            sourceText: text,
+            sourceLanguage: lang,
+            targetLanguage: lang,
+            sourceIsAutoDetect: false
+        ) {
+            applyReusableRecord(record, mode: .proofread, generation: generation)
+            finishRequest(generation: generation)
+            return
+        }
+        setResultText(PopoverFeedback.proofreading)
+        reflowLayout()
+        translator.proofread(text, lang: lang) { [weak self] result in
+            Task { @MainActor in
+                guard let self else { return }
+                defer { self.finishRequest(generation: generation) }
+                guard generation == self.requestGeneration else { return }
+                switch result {
+                case let .success(value):
+                    self.setResultText(value)
+                    let record = TranslationRecord(
+                        id: UUID(), timestamp: Date(), mode: .proofread, sourceText: text, resultText: value,
+                        sourceLanguage: lang, targetLanguage: lang, isSaved: false
+                    )
+                    do {
+                        let stored = try self.historyStore.appendIfAbsent(record)
+                        if stored.id != record.id {
+                            self.applyReusableRecord(stored, mode: .proofread, generation: generation)
+                        } else {
+                            self.currentRecordID = stored.id
+                            self.historyWindowController.reloadHistory()
+                        }
+                    } catch {
+                        self.currentRecordID = nil
+                        self.setStatus("History failed: \(error.localizedDescription)", autoClearAfter: 12)
+                    }
+                case let .failure(error):
+                    self.invalidateCurrentRecord()
+                    self.setResultText("Error: \(error.localizedDescription)")
+                }
+                self.reflowLayout()
+                self.textView.scrollToBeginningOfDocument(nil)
+                self.updateBusyState()
+            }
+        }
+    }
+
     func applyReusableRecord(_ record: TranslationRecord, mode: TranslationMode, generation: Int) {
         guard generation == requestGeneration, pendingImage == nil else { return }
         if selectedSourceLanguage() == LanguageDetector.autoDetect {

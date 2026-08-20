@@ -9,6 +9,7 @@ enum PopoverFeedback {
     static let emptyInputHint = "Enter or paste text, then Translate."
     static let translating = "Translating..."
     static let learning = "Learning..."
+    static let proofreading = "Proofreading..."
 
     enum ResultStyle: Equatable {
         case normal
@@ -17,7 +18,7 @@ enum PopoverFeedback {
     }
 
     static func resultStyle(for text: String) -> ResultStyle {
-        if text == translating || text == learning
+        if text == translating || text == learning || text == proofreading
             || text == emptySelectionGuidance || text == emptyInputHint
         {
             return .loading
@@ -40,7 +41,7 @@ enum PopoverFeedback {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return false }
         switch trimmed {
-        case translating, learning, emptySelectionGuidance, emptyInputHint, textTooLong:
+        case translating, learning, proofreading, emptySelectionGuidance, emptyInputHint, textTooLong:
             return false
         default:
             return !trimmed.hasPrefix("Error:")

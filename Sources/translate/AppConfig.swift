@@ -61,10 +61,12 @@ struct AppConfig: Codable {
     var hotkey: Hotkey
     var copyTranslateHotkey: Hotkey
     var learnHotkey: Hotkey
+    var proofreadHotkey: Hotkey
     var ui: UI
 
     static let defaultCopyTranslateHotkey = Hotkey(key: "D", option: true, command: false, control: true, shift: false)
     static let defaultLearnHotkey = Hotkey(key: "L", option: true, command: false, control: false, shift: false)
+    static let defaultProofreadHotkey = Hotkey(key: "P", option: true, command: false, control: false, shift: false)
 
     var historyDirectoryURL: URL {
         if let historyDirectory, !historyDirectory.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -233,7 +235,8 @@ struct AppConfig: Codable {
         hotkey: .init(key: "D", option: true, command: false, control: false, shift: false),
         copyTranslateHotkey: .init(key: "D", option: true, command: false, control: true, shift: false),
         learnHotkey: .init(key: "L", option: true, command: false, control: false, shift: false),
-        ui: .init(width: 630, height: 320, autoCopy: false, simulateCopy: false)
+        proofreadHotkey: defaultProofreadHotkey,
+        ui: .init(width: 760, height: 320, autoCopy: false, simulateCopy: false)
     )
 
     init(
@@ -257,6 +260,7 @@ struct AppConfig: Codable {
         hotkey: Hotkey,
         copyTranslateHotkey: Hotkey = AppConfig.defaultCopyTranslateHotkey,
         learnHotkey: Hotkey = AppConfig.defaultLearnHotkey,
+        proofreadHotkey: Hotkey = AppConfig.defaultProofreadHotkey,
         ui: UI
     ) {
         self.apiBaseURL = apiBaseURL
@@ -279,6 +283,7 @@ struct AppConfig: Codable {
         self.hotkey = hotkey
         self.copyTranslateHotkey = copyTranslateHotkey
         self.learnHotkey = learnHotkey
+        self.proofreadHotkey = proofreadHotkey
         self.ui = ui
     }
 
@@ -310,6 +315,7 @@ struct AppConfig: Codable {
         copyTranslateHotkey = try container.decodeIfPresent(Hotkey.self, forKey: .copyTranslateHotkey)
             ?? Self.defaultCopyTranslateHotkey
         learnHotkey = try container.decodeIfPresent(Hotkey.self, forKey: .learnHotkey) ?? Self.defaultLearnHotkey
+        proofreadHotkey = try container.decodeIfPresent(Hotkey.self, forKey: .proofreadHotkey) ?? Self.defaultProofreadHotkey
         ui = try container.decode(UI.self, forKey: .ui)
         let legacy = try decoder.container(keyedBy: LegacySpeechKeys.self)
         // Pre-1.3 configs stored speech models per role; map them onto the per-language dictionary.
@@ -546,6 +552,7 @@ struct AppConfig: Codable {
             ("Global hotkey", hotkey),
             ("Copy & Translate hotkey", copyTranslateHotkey),
             ("Learn hotkey", learnHotkey),
+            ("Proofread hotkey", proofreadHotkey),
         ]
         for (name, entry) in named {
             let key = entry.key.uppercased()

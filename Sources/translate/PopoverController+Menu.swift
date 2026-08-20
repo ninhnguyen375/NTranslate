@@ -186,6 +186,8 @@ extension PopoverController {
                 controller.perform(#selector(PopoverController.copyAndTranslateHotKeyPressed), on: .main, with: nil, waitUntilDone: false)
             case .learn:
                 controller.perform(#selector(PopoverController.learnHotKeyPressed), on: .main, with: nil, waitUntilDone: false)
+            case .proofread:
+                controller.perform(#selector(PopoverController.proofreadHotKeyPressed), on: .main, with: nil, waitUntilDone: false)
             case nil: break
             }
             return noErr
@@ -200,6 +202,7 @@ extension PopoverController {
             (name: "Translate", hotkey: config.hotkey, id: 1),
             (name: "Copy & Translate", hotkey: config.copyTranslateHotkey, id: 2),
             (name: "Learn", hotkey: config.learnHotkey, id: 3),
+            (name: "Proofread", hotkey: config.proofreadHotkey, id: 4),
         ])
         var failed: [String] = []
         for entry in register {
@@ -232,6 +235,25 @@ extension PopoverController {
 
     @objc func learnHotKeyPressed() {
         learnAtCursor()
+    }
+
+    @objc func proofreadHotKeyPressed() {
+        proofreadAtCursor()
+    }
+
+    func proofreadAtCursor() {
+        guard let resolved = readSelection(forceSimulatedCopy: false) else { return }
+        guard prepareInputFromSelection(resolved) else { return }
+        // Proofread works on text only; a pasted image would silently do nothing.
+        guard pendingImage == nil else {
+            setStatus("Proofread does not support images.")
+            presentPanel(activatesApp: true, restoresPreviousAppOnCloseValue: false)
+            return
+        }
+        setResultText(PopoverFeedback.proofreading)
+        reflowLayout()
+        presentPanel(activatesApp: true, restoresPreviousAppOnCloseValue: false)
+        runProofread()
     }
 
     func learnAtCursor() {
@@ -512,7 +534,7 @@ extension PopoverController {
             pinButton.bezelColor = nil
             let mutedSymbol = NSImage.SymbolConfiguration(pointSize: 12, weight: .medium)
             pinButton.image = base?.withSymbolConfiguration(mutedSymbol)
-            pinButton.contentTintColor = NSColor.black.withAlphaComponent(0.55)
+            pinButton.contentTintColor = Palette.chromeIconTint
         }
     }
 

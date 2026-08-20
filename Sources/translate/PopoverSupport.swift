@@ -24,6 +24,7 @@ enum PopoverIntegrationPolicy {
         case translate
         case copyAndTranslate
         case learn
+        case proofread
     }
 
     static func hotkeyIntent(id: UInt32) -> HotkeyIntent? {
@@ -31,6 +32,7 @@ enum PopoverIntegrationPolicy {
         case 1: .translate
         case 2: .copyAndTranslate
         case 3: .learn
+        case 4: .proofread
         default: nil
         }
     }
@@ -150,12 +152,82 @@ final class LiquidGlassWindow: NSWindow {
     override var canBecomeMain: Bool { true }
 }
 
+/// Layer-backed colors are baked CGColors, so the popup has to repaint them when the system
+/// switches between light and dark.
+final class ThemedView: NSView {
+    var onAppearanceChange: (() -> Void)?
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        onAppearanceChange?()
+    }
+}
+
+/// Popup colors that follow the system light/dark appearance. NSColor resolves the dynamic
+/// provider at draw time, so text/tint colors update on their own; layer colors must be resolved
+/// through `cg(_:in:)` at layout time.
+enum Palette {
+    static func dynamic(light: NSColor, dark: NSColor) -> NSColor {
+        NSColor(name: nil) { appearance in
+            appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? dark : light
+        }
+    }
+
+    private static func ink(_ lightAlpha: CGFloat, _ darkAlpha: CGFloat) -> NSColor {
+        dynamic(light: .black.withAlphaComponent(lightAlpha), dark: .white.withAlphaComponent(darkAlpha))
+    }
+
+    /// Panel title.
+    static let titleText = ink(0.92, 0.95)
+    /// Source / result body text.
+    static let bodyText = ink(0.88, 0.92)
+    /// Status line and image placeholder.
+    static let mutedText = ink(0.45, 0.55)
+    static let placeholderText = ink(0.55, 0.6)
+    /// Pane header language code.
+    static let paneLabel = ink(0.38, 0.5)
+    /// Loading/secondary result text.
+    static let loadingText = ink(0.4, 0.5)
+    /// Inline icon buttons (speak/copy/bookmark).
+    static let iconTint = ink(0.4, 0.65)
+    /// Chrome icon buttons and language controls.
+    static let chromeIconTint = ink(0.55, 0.75)
+    static let languageTint = ink(0.75, 0.85)
+    static let languageTitle = ink(0.78, 0.88)
+    static let menuItemTitle = ink(0.85, 0.92)
+    /// Split-prism hairline border.
+    static let hairline = ink(0.06, 0.16)
+    /// Split-prism fill behind the panes.
+    static let paneFill = dynamic(
+        light: .white.withAlphaComponent(0.72),
+        dark: .black.withAlphaComponent(0.42)
+    )
+    /// Bright ends of the vertical divider gradient.
+    static let dividerSheen = dynamic(
+        light: .white.withAlphaComponent(0.7),
+        dark: .white.withAlphaComponent(0.18)
+    )
+    static let dividerSheenClear = dynamic(
+        light: .white.withAlphaComponent(0),
+        dark: .white.withAlphaComponent(0)
+    )
+
+    /// Layers cache their CGColor, so resolve against the view's current appearance at layout time.
+    @MainActor
+    static func cg(_ color: NSColor, in view: NSView) -> CGColor {
+        var resolved = color.cgColor
+        view.effectiveAppearance.performAsCurrentDrawingAppearance { resolved = color.cgColor }
+        return resolved
+    }
+}
+
 @MainActor
 enum LiquidGlassChrome {
     static let cornerRadius: CGFloat = 22
 
     static func configure(window: NSWindow) {
-        window.appearance = NSAppearance(named: .aqua)
+        // No forced appearance — the popup follows the system light/dark setting.
+        window.appearance = nil
         window.isOpaque = false
         window.backgroundColor = .clear
         window.hasShadow = true
@@ -163,12 +235,11 @@ enum LiquidGlassChrome {
     }
 
     static func configure(container: NSGlassEffectContainerView, shell: NSGlassEffectView, host: NSView) {
-        let light = NSAppearance(named: .aqua)
-        container.appearance = light
+        container.appearance = nil
         container.spacing = 0
         container.focusRingType = .none
 
-        shell.appearance = light
+        shell.appearance = nil
         shell.cornerRadius = cornerRadius
         shell.style = .regular
         shell.focusRingType = .none
@@ -180,7 +251,7 @@ enum LiquidGlassChrome {
         shell.layer?.borderColor = nil
         shell.contentView = host
 
-        host.appearance = light
+        host.appearance = nil
         host.focusRingType = .none
         host.wantsLayer = true
         host.layer?.borderWidth = 0

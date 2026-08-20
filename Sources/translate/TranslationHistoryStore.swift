@@ -3,6 +3,15 @@ import Foundation
 enum TranslationMode: String, Codable, Equatable, Sendable {
     case translate
     case learn
+    case proofread
+
+    var displayName: String {
+        switch self {
+        case .translate: "Translate"
+        case .learn: "Learn"
+        case .proofread: "Proofread"
+        }
+    }
 }
 
 struct TranslationRecord: Codable, Equatable, Identifiable, Sendable {

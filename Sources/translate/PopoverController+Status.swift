@@ -7,9 +7,9 @@ extension PopoverController {
         let color: NSColor
         switch resolved {
         case .normal:
-            color = NSColor.black.withAlphaComponent(0.88)
+            color = Palette.bodyText
         case .loading:
-            color = NSColor.black.withAlphaComponent(0.4)
+            color = Palette.loadingText
         case .error:
             color = .systemRed
         }
@@ -77,6 +77,7 @@ extension PopoverController {
     func updateBusyState() {
         translateButton.isEnabled = !isRequestInFlight
         learnButton.isEnabled = !isRequestInFlight && pendingImage == nil
+        proofreadButton.isEnabled = !isRequestInFlight && pendingImage == nil
         imagesButton.isEnabled = PopoverIntegrationPolicy.imagesEnabled(
             isRequestInFlight: isRequestInFlight,
             hasPendingImage: pendingImage != nil,

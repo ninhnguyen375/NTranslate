@@ -35,11 +35,12 @@ Latest: **[macos-v1.3.0](https://github.com/ninhnguyen375/NTranslate/releases/ta
 ## Features
 
 - Global hotkey (default `Option+D`) to translate the current selection
-- Popup near the cursor with **Translate**, **Learn**, **Copy**, **Save Word**, and source/result speech controls
+- Popup near the cursor with **Translate**, **Proofread**, **Learn**, **Copy**, **Save Word**, and source/result speech controls
 - Clipboard PNG/TIFF image translation through a configured vision-capable multimodal model
 - Local translation history with persistent bookmarks and optional cached audio
-- Same source/target language → grammar check instead of translation
+- **Proofread** (`Option+P`, or the popup button) grammar-checks the text in its own language
 - TTS for source and translated text with Play/Pause/Resume (voice models configurable)
+- Follows the system light/dark appearance
 - Configurable languages, prompts, hotkey, and UI size
 - Runtime config in Application Support (API key never needs to live in the repo)
 - Built for [9router](https://github.com/decolua/9router) (local OpenAI-compatible gateway)
@@ -120,8 +121,15 @@ After editing the Application Support file, use the menu bar item **Reload Confi
     "control": false,
     "shift": false
   },
+  "proofreadHotkey": {
+    "key": "P",
+    "option": true,
+    "command": false,
+    "control": false,
+    "shift": false
+  },
   "ui": {
-    "width": 720,
+    "width": 760,
     "height": 320,
     "autoCopy": false,
     "simulateCopy": false
@@ -129,7 +137,7 @@ After editing the Application Support file, use the menu bar item **Reload Confi
 }
 ```
 
-Prompts (`systemPrompt`, `learnPrompt`, `sentenceLearnPrompt`, `grammarPrompt`) and TTS model IDs are also in the example file. Learn uses `learnPrompt` for one whitespace-delimited token and `sentenceLearnPrompt` for phrases/sentences. Placeholders like `{{config.sourceLang}}` and `{{lang}}` are substituted at request time. `autoPrefetchSpeech` defaults to `false`; explicit speech always fetches on demand, and its button changes between Play, Pause, Resume, and loading.
+Prompts (`systemPrompt`, `learnPrompt`, `sentenceLearnPrompt`, `grammarPrompt`, used by Proofread) and TTS model IDs are also in the example file. Learn uses `learnPrompt` for one whitespace-delimited token and `sentenceLearnPrompt` for phrases/sentences. Placeholders like `{{config.sourceLang}}` and `{{lang}}` are substituted at request time. `autoPrefetchSpeech` defaults to `false`; explicit speech always fetches on demand, and its button changes between Play, Pause, Resume, and loading.
 
 ## Image translation and local history
 

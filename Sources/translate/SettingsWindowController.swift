@@ -90,6 +90,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
     private let hotkeyFields = HotkeyFields()
     private let copyTranslateHotkeyFields = HotkeyFields()
     private let learnHotkeyFields = HotkeyFields()
+    private let proofreadHotkeyFields = HotkeyFields()
 
     init(config: AppConfig, apiKey: String, onSave: @escaping SaveHandler) {
         originalConfig = config
@@ -135,7 +136,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         maxTranslateLengthField.formatter = integerFormatter(minimum: 1)
         widthField.formatter = integerFormatter(minimum: 1)
         heightField.formatter = integerFormatter(minimum: 1)
-        [hotkeyFields, copyTranslateHotkeyFields, learnHotkeyFields].forEach { $0.configure() }
+        [hotkeyFields, copyTranslateHotkeyFields, learnHotkeyFields, proofreadHotkeyFields].forEach { $0.configure() }
         speechModelsStack.orientation = .vertical
         speechModelsStack.alignment = .width
         speechModelsStack.spacing = 12
@@ -279,6 +280,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
             labeledRow("Global Hotkey", hotkeyFields.makeRow()),
             labeledRow("Copy & Translate Hotkey", copyTranslateHotkeyFields.makeRow()),
             labeledRow("Learn Hotkey", learnHotkeyFields.makeRow()),
+            labeledRow("Proofread Hotkey", proofreadHotkeyFields.makeRow()),
         ])
     }
 
@@ -481,6 +483,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         hotkeyFields.populate(config.hotkey)
         copyTranslateHotkeyFields.populate(config.copyTranslateHotkey)
         learnHotkeyFields.populate(config.learnHotkey)
+        proofreadHotkeyFields.populate(config.proofreadHotkey)
         languagesTable.reloadData()
         targetLanguagesTable.reloadData()
         reloadLanguagePopups(
@@ -543,6 +546,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         config.hotkey = hotkeyFields.collect(fallbackKey: "D")
         config.copyTranslateHotkey = copyTranslateHotkeyFields.collect(fallbackKey: "D")
         config.learnHotkey = learnHotkeyFields.collect(fallbackKey: "L")
+        config.proofreadHotkey = proofreadHotkeyFields.collect(fallbackKey: "P")
 
         let issues = config.validationIssues()
         if !issues.isEmpty { throw SettingsError.validation(issues) }

@@ -228,7 +228,7 @@ final class HistoryWindowController: NSWindowController, NSWindowDelegate, NSTab
 
         let timestamp = record.timestamp.formatted(date: .abbreviated, time: .shortened)
         let savedState = record.isSaved ? "Saved" : "Not saved"
-        let mode = record.mode == .translate ? "Translate" : "Learn"
+        let mode = record.mode.displayName
         let context = "\(mode), \(timestamp), \(record.sourceLanguage) to \(record.targetLanguage), \(savedState)"
 
         let metadata = historyTextField(

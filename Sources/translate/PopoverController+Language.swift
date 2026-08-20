@@ -39,7 +39,7 @@ extension PopoverController {
         button.action = #selector(showLanguageMenu(_:))
         button.tag = kind.rawValue
         button.font = languageMenuFont()
-        button.contentTintColor = NSColor.black.withAlphaComponent(0.75)
+        button.contentTintColor = Palette.languageTint
         let chevron = NSImage.SymbolConfiguration(pointSize: 8, weight: .medium)
         button.image = NSImage(
             systemSymbolName: "chevron.up.chevron.down",
@@ -54,7 +54,7 @@ extension PopoverController {
             string: language,
             attributes: [
                 .font: languageMenuFont(),
-                .foregroundColor: NSColor.black.withAlphaComponent(0.78)
+                .foregroundColor: Palette.languageTitle
             ]
         )
         button.toolTip = language
@@ -93,7 +93,7 @@ extension PopoverController {
                 string: language,
                 attributes: [
                     .font: font,
-                    .foregroundColor: NSColor.black.withAlphaComponent(0.85)
+                    .foregroundColor: Palette.menuItemTitle
                 ]
             )
             item.representedObject = language
@@ -164,7 +164,7 @@ extension PopoverController {
         swapLanguagesButton.target = self
         swapLanguagesButton.action = #selector(swapLanguages)
         swapLanguagesButton.toolTip = "Swap languages"
-        swapLanguagesButton.contentTintColor = NSColor.black.withAlphaComponent(0.55)
+        swapLanguagesButton.contentTintColor = Palette.chromeIconTint
         applyControlCornerRadius(swapLanguagesButton, radius: ChromeLayout.languageCornerRadius)
         updatePaneLanguageLabels()
     }
@@ -191,15 +191,6 @@ extension PopoverController {
             return
         }
         let text = inputTextView.string
-        // User manually picked a target that matches the auto-detected source language —
-        // that's a request for grammar-check mode, so pin the source dropdown to match
-        // instead of letting auto-detect's target override snap it back.
-        if selectedSourceLanguage() == "Auto detect" {
-            let detected = LanguageDetector.detectedLanguage(text)
-            if selectedTargetLanguage() == detected {
-                selectLanguage(detected, kind: .source)
-            }
-        }
         let pair = resolvedLanguagePair(for: text)
         if selectedSourceLanguage() != pair.source {
             selectLanguage(pair.source, kind: .source)

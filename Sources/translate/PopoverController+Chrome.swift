@@ -14,15 +14,16 @@ extension PopoverController {
         LiquidGlassChrome.configure(container: glassContainer, shell: shellGlass, host: chromeHost)
         chromeHost.frame = shellGlass.bounds
         chromeHost.autoresizingMask = [.width, .height]
+        chromeHost.onAppearanceChange = { [weak self] in self?.reflowLayout() }
 
         titleLabel.stringValue = "NTranslate"
         titleLabel.font = .systemFont(ofSize: 13, weight: .bold)
-        titleLabel.textColor = NSColor.black.withAlphaComponent(0.92)
+        titleLabel.textColor = Palette.titleText
         titleLabel.drawsBackground = false
         titleLabel.toolTip = "NTranslate v\(Self.buildVersion)"
 
         statusLabel.font = .systemFont(ofSize: 10)
-        statusLabel.textColor = NSColor.black.withAlphaComponent(0.45)
+        statusLabel.textColor = Palette.mutedText
         statusLabel.lineBreakMode = .byTruncatingTail
         statusLabel.stringValue = ""
         statusLabel.isHidden = true
@@ -62,7 +63,7 @@ extension PopoverController {
         }
         inputTextView.font = .systemFont(ofSize: ChromeLayout.bodyFontSize)
         inputTextView.drawsBackground = false
-        inputTextView.textColor = NSColor.black.withAlphaComponent(0.88)
+        inputTextView.textColor = Palette.bodyText
         inputTextView.insertionPointColor = .controlAccentColor
         inputTextView.focusRingType = .none
         inputTextView.textContainerInset = NSSize(width: 12, height: 10)
@@ -82,7 +83,7 @@ extension PopoverController {
         inputScrollView.scrollerStyle = .overlay
         inputScrollView.documentView = inputTextView
         imagePlaceholderLabel.font = .systemFont(ofSize: ChromeLayout.bodyFontSize)
-        imagePlaceholderLabel.textColor = NSColor.black.withAlphaComponent(0.55)
+        imagePlaceholderLabel.textColor = Palette.placeholderText
         imagePlaceholderLabel.isHidden = true
         imagePlaceholderLabel.setAccessibilityLabel("Image from clipboard")
 
@@ -90,7 +91,7 @@ extension PopoverController {
         textView.isSelectable = true
         textView.drawsBackground = false
         textView.font = .systemFont(ofSize: ChromeLayout.bodyFontSize)
-        textView.textColor = NSColor.black.withAlphaComponent(0.88)
+        textView.textColor = Palette.bodyText
         textView.focusRingType = .none
         textView.textContainerInset = NSSize(width: 12, height: 10)
         textView.minSize = NSSize(width: 0, height: 40)
@@ -116,6 +117,9 @@ extension PopoverController {
         configurePrimaryButton(imagesButton, title: "Images", symbol: "photo", action: #selector(runImages), accent: false)
         imagesButton.toolTip = "Search Images"
         imagesButton.setAccessibilityLabel("Search Images")
+        configurePrimaryButton(proofreadButton, title: "Proofread", symbol: "text.badge.checkmark", action: #selector(runProofread), accent: false)
+        proofreadButton.toolTip = "Proofread"
+        proofreadButton.setAccessibilityLabel("Proofread")
         configureIconButton(speakSourceButton, symbol: "speaker.wave.2", action: #selector(speakInput), label: "Speak source")
         configureIconButton(speakResultButton, symbol: "speaker.wave.2", action: #selector(speakResult), label: "Speak translation")
         configureIconButton(copyButton, symbol: "doc.on.doc", action: #selector(copyResult), label: "Copy")
@@ -155,6 +159,7 @@ extension PopoverController {
         chromeHost.addSubview(swapLanguagesButton)
         chromeHost.addSubview(targetLanguageButton)
         chromeHost.addSubview(imagesButton)
+        chromeHost.addSubview(proofreadButton)
         chromeHost.addSubview(learnButton)
         chromeHost.addSubview(translateButton)
 
@@ -179,13 +184,7 @@ extension PopoverController {
         divider.layer?.backgroundColor = NSColor.clear.cgColor
         divider.layer?.masksToBounds = true
         let gradient = CAGradientLayer()
-        gradient.colors = [
-            NSColor.white.withAlphaComponent(0.0).cgColor,
-            NSColor.white.withAlphaComponent(0.7).cgColor,
-            NSColor.black.withAlphaComponent(0.06).cgColor,
-            NSColor.white.withAlphaComponent(0.7).cgColor,
-            NSColor.white.withAlphaComponent(0.0).cgColor
-        ]
+        gradient.colors = Self.dividerGradientColors(in: divider)
         gradient.locations = [0, 0.18, 0.5, 0.82, 1]
         gradient.startPoint = CGPoint(x: 0.5, y: 1)
         gradient.endPoint = CGPoint(x: 0.5, y: 0)
@@ -193,10 +192,21 @@ extension PopoverController {
         return gradient
     }
 
+    static func dividerGradientColors(in view: NSView) -> [CGColor] {
+        [
+            Palette.cg(Palette.dividerSheenClear, in: view),
+            Palette.cg(Palette.dividerSheen, in: view),
+            Palette.cg(Palette.hairline, in: view),
+            Palette.cg(Palette.dividerSheen, in: view),
+            Palette.cg(Palette.dividerSheenClear, in: view)
+        ]
+    }
+
     func applySplitHostChrome() {
         splitHost.layer?.borderWidth = 1
-        splitHost.layer?.borderColor = NSColor.black.withAlphaComponent(0.06).cgColor
-        splitHost.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.72).cgColor
+        splitHost.layer?.borderColor = Palette.cg(Palette.hairline, in: splitHost)
+        splitHost.layer?.backgroundColor = Palette.cg(Palette.paneFill, in: splitHost)
+        splitDividerGradient?.colors = Self.dividerGradientColors(in: splitDivider)
     }
 
     func applyControlCornerRadius(_ view: NSView, radius: CGFloat? = nil) {
@@ -220,7 +230,7 @@ extension PopoverController {
     func configurePaneHeaderLabel(_ label: NSTextField, title: String) {
         label.stringValue = title
         label.font = .systemFont(ofSize: 9, weight: .bold)
-        label.textColor = NSColor.black.withAlphaComponent(0.38)
+        label.textColor = Palette.paneLabel
         label.isBezeled = false
         label.drawsBackground = false
         label.isEditable = false
@@ -293,7 +303,7 @@ extension PopoverController {
         button.action = action
         button.toolTip = label
         button.setAccessibilityLabel(label)
-        button.contentTintColor = NSColor.black.withAlphaComponent(0.55)
+        button.contentTintColor = Palette.chromeIconTint
         applyControlCornerRadius(button, radius: ChromeLayout.chromeIconSize / 2)
     }
 
@@ -308,7 +318,7 @@ extension PopoverController {
         button.action = action
         button.toolTip = label
         button.setAccessibilityLabel(label)
-        button.contentTintColor = NSColor.black.withAlphaComponent(0.4)
+        button.contentTintColor = Palette.iconTint
     }
 
     func resetCopyButtonAppearance() {
@@ -316,7 +326,7 @@ extension PopoverController {
         copyButton.attributedTitle = NSAttributedString(string: "")
         copyButton.image = NSImage(systemSymbolName: "doc.on.doc", accessibilityDescription: "Copy")
         copyButton.imagePosition = .imageOnly
-        copyButton.contentTintColor = NSColor.black.withAlphaComponent(0.4)
+        copyButton.contentTintColor = Palette.iconTint
     }
 
     func reflowLayout() {
@@ -432,23 +442,31 @@ extension PopoverController {
             bodyHeight: bodyHeight
         )
 
-        // Bottom bar: Images | Learn | Translate | spacer | EN | swap | VI
+        // Bottom bar: Images | Proofread | Learn | Translate | spacer | EN | swap | VI
         translateButton.sizeToFit()
         learnButton.sizeToFit()
         imagesButton.sizeToFit()
+        proofreadButton.sizeToFit()
         let btnH = L.controlHeight
         let btnY = bottomY
         let translateW = max(92, translateButton.frame.width)
         let learnW = max(72, learnButton.frame.width)
         let imagesW = max(72, imagesButton.frame.width)
+        let proofreadW = max(88, proofreadButton.frame.width)
         imagesButton.frame = NSRect(
             x: L.padding,
             y: btnY,
             width: imagesW,
             height: btnH
         )
-        learnButton.frame = NSRect(
+        proofreadButton.frame = NSRect(
             x: imagesButton.frame.maxX + 5,
+            y: btnY,
+            width: proofreadW,
+            height: btnH
+        )
+        learnButton.frame = NSRect(
+            x: proofreadButton.frame.maxX + 5,
             y: btnY,
             width: learnW,
             height: btnH
@@ -462,13 +480,17 @@ extension PopoverController {
         applyControlCornerRadius(translateButton)
         applyControlCornerRadius(learnButton)
         applyControlCornerRadius(imagesButton)
+        applyControlCornerRadius(proofreadButton)
 
-        let dropdownWidth = L.languageWidth
         let langH = L.languageControlHeight
         let langY = btnY + (btnH - langH) / 2
         let swapSize = L.swapWidth
+        let trailingX = width - L.padding
+        let availableLangWidth = max(140, trailingX - (translateButton.frame.maxX + 12))
+        let dropdownWidth = min(L.languageWidth, max(75, (availableLangWidth - swapSize - 10) / 2))
+
         targetLanguageButton.frame = NSRect(
-            x: width - L.padding - dropdownWidth,
+            x: trailingX - dropdownWidth,
             y: langY,
             width: dropdownWidth,
             height: langH
