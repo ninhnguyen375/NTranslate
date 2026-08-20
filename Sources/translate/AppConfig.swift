@@ -1,12 +1,20 @@
 import Foundation
 
 struct AppConfig: Codable {
-    struct Hotkey: Codable {
+    struct Hotkey: Codable, Equatable {
         var key: String
         var option: Bool
         var command: Bool
         var control: Bool
         var shift: Bool
+
+        static func isSameCombination(_ lhs: Hotkey, _ rhs: Hotkey) -> Bool {
+            lhs.key.caseInsensitiveCompare(rhs.key) == .orderedSame
+                && lhs.option == rhs.option
+                && lhs.command == rhs.command
+                && lhs.control == rhs.control
+                && lhs.shift == rhs.shift
+        }
     }
 
     struct UI: Codable {
@@ -45,13 +53,18 @@ struct AppConfig: Codable {
     var sentenceLearnPrompt: String
     var grammarPrompt: String
     var autoPrefetchSpeech: Bool
-    var speechSourceModel: String
-    var speechSourceModelVietnamese: String
-    var speechSourceModelChinese: String
-    var speechTargetModel: String
+    /// Speech model per language name, e.g. ["English": "edge-tts/en-US-AvaMultilingualNeural"].
+    var speechModels: [String: String]
+    /// Used for languages that have no entry in `speechModels`.
+    var speechFallbackModel: String
     var historyDirectory: String?
     var hotkey: Hotkey
+    var copyTranslateHotkey: Hotkey
+    var learnHotkey: Hotkey
     var ui: UI
+
+    static let defaultCopyTranslateHotkey = Hotkey(key: "D", option: true, command: false, control: true, shift: false)
+    static let defaultLearnHotkey = Hotkey(key: "L", option: true, command: false, control: false, shift: false)
 
     var historyDirectoryURL: URL {
         if let historyDirectory, !historyDirectory.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -211,11 +224,15 @@ struct AppConfig: Codable {
         sentenceLearnPrompt: defaultSentenceLearnPrompt,
         grammarPrompt: defaultGrammarPrompt,
         autoPrefetchSpeech: false,
-        speechSourceModel: "edge-tts/en-US-AvaMultilingualNeural",
-        speechSourceModelVietnamese: "edge-tts/vi-VN-HoaiMyNeural",
-        speechSourceModelChinese: "edge-tts/zh-CN-XiaoxiaoNeural",
-        speechTargetModel: "edge-tts/vi-VN-HoaiMyNeural",
+        speechModels: [
+            "English": "edge-tts/en-US-AvaMultilingualNeural",
+            "Vietnamese": "edge-tts/vi-VN-HoaiMyNeural",
+            "Chinese": "edge-tts/zh-CN-XiaoxiaoNeural",
+        ],
+        speechFallbackModel: "edge-tts/en-US-AvaMultilingualNeural",
         hotkey: .init(key: "D", option: true, command: false, control: false, shift: false),
+        copyTranslateHotkey: .init(key: "D", option: true, command: false, control: true, shift: false),
+        learnHotkey: .init(key: "L", option: true, command: false, control: false, shift: false),
         ui: .init(width: 630, height: 320, autoCopy: false, simulateCopy: false)
     )
 
@@ -234,12 +251,12 @@ struct AppConfig: Codable {
         sentenceLearnPrompt: String,
         grammarPrompt: String,
         autoPrefetchSpeech: Bool,
-        speechSourceModel: String,
-        speechSourceModelVietnamese: String,
-        speechSourceModelChinese: String,
-        speechTargetModel: String,
+        speechModels: [String: String],
+        speechFallbackModel: String,
         historyDirectory: String? = nil,
         hotkey: Hotkey,
+        copyTranslateHotkey: Hotkey = AppConfig.defaultCopyTranslateHotkey,
+        learnHotkey: Hotkey = AppConfig.defaultLearnHotkey,
         ui: UI
     ) {
         self.apiBaseURL = apiBaseURL
@@ -256,17 +273,21 @@ struct AppConfig: Codable {
         self.sentenceLearnPrompt = sentenceLearnPrompt
         self.grammarPrompt = grammarPrompt
         self.autoPrefetchSpeech = autoPrefetchSpeech
-        self.speechSourceModel = speechSourceModel
-        self.speechSourceModelVietnamese = speechSourceModelVietnamese
-        self.speechSourceModelChinese = speechSourceModelChinese
-        self.speechTargetModel = speechTargetModel
+        self.speechModels = speechModels
+        self.speechFallbackModel = speechFallbackModel
         self.historyDirectory = historyDirectory
         self.hotkey = hotkey
+        self.copyTranslateHotkey = copyTranslateHotkey
+        self.learnHotkey = learnHotkey
         self.ui = ui
     }
 
     private enum LegacySpeechKeys: String, CodingKey {
         case speechURL
+        case speechSourceModel
+        case speechSourceModelVietnamese
+        case speechSourceModelChinese
+        case speechTargetModel
     }
 
     init(from decoder: Decoder) throws {
@@ -284,14 +305,30 @@ struct AppConfig: Codable {
         sentenceLearnPrompt = try container.decodeIfPresent(String.self, forKey: .sentenceLearnPrompt) ?? Self.defaultSentenceLearnPrompt
         grammarPrompt = try container.decodeIfPresent(String.self, forKey: .grammarPrompt) ?? Self.defaultGrammarPrompt
         autoPrefetchSpeech = try container.decodeIfPresent(Bool.self, forKey: .autoPrefetchSpeech) ?? false
-        speechSourceModel = try container.decode(String.self, forKey: .speechSourceModel)
-        speechSourceModelVietnamese = try container.decode(String.self, forKey: .speechSourceModelVietnamese)
-        speechSourceModelChinese = try container.decode(String.self, forKey: .speechSourceModelChinese)
-        speechTargetModel = try container.decode(String.self, forKey: .speechTargetModel)
         historyDirectory = try container.decodeIfPresent(String.self, forKey: .historyDirectory)
         hotkey = try container.decode(Hotkey.self, forKey: .hotkey)
+        copyTranslateHotkey = try container.decodeIfPresent(Hotkey.self, forKey: .copyTranslateHotkey)
+            ?? Self.defaultCopyTranslateHotkey
+        learnHotkey = try container.decodeIfPresent(Hotkey.self, forKey: .learnHotkey) ?? Self.defaultLearnHotkey
         ui = try container.decode(UI.self, forKey: .ui)
         let legacy = try decoder.container(keyedBy: LegacySpeechKeys.self)
+        // Pre-1.3 configs stored speech models per role; map them onto the per-language dictionary.
+        let legacySource = try legacy.decodeIfPresent(String.self, forKey: .speechSourceModel)
+        if let models = try container.decodeIfPresent([String: String].self, forKey: .speechModels), !models.isEmpty {
+            speechModels = models
+            speechFallbackModel = try container.decodeIfPresent(String.self, forKey: .speechFallbackModel)
+                ?? legacySource
+                ?? Self.default.speechFallbackModel
+        } else {
+            var migrated: [String: String] = [:]
+            migrated["English"] = legacySource
+            migrated["Vietnamese"] = try legacy.decodeIfPresent(String.self, forKey: .speechTargetModel)
+            migrated["Chinese"] = try legacy.decodeIfPresent(String.self, forKey: .speechSourceModelChinese)
+            speechModels = migrated.isEmpty ? Self.default.speechModels : migrated
+            speechFallbackModel = try container.decodeIfPresent(String.self, forKey: .speechFallbackModel)
+                ?? legacySource
+                ?? Self.default.speechFallbackModel
+        }
         if let explicit = try container.decodeIfPresent(String.self, forKey: .apiSpeechURL),
            !explicit.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             apiSpeechURL = explicit
@@ -505,12 +542,24 @@ struct AppConfig: Codable {
         if !targetLanguages.contains(targetLang) { issues.append("Target language must exist in Target Languages.") }
         if maxTranslateLength <= 0 { issues.append("Maximum translation length must be greater than zero.") }
         if ui.width <= 0 || ui.height <= 0 { issues.append("Panel width and height must be greater than zero.") }
-        let key = hotkey.key.uppercased()
-        if key.count != 1 || !key.unicodeScalars.allSatisfy({ (65...90).contains(Int($0.value)) }) {
-            issues.append("Hotkey must be one letter from A to Z.")
+        let named: [(String, Hotkey)] = [
+            ("Global hotkey", hotkey),
+            ("Copy & Translate hotkey", copyTranslateHotkey),
+            ("Learn hotkey", learnHotkey),
+        ]
+        for (name, entry) in named {
+            let key = entry.key.uppercased()
+            if key.count != 1 || !key.unicodeScalars.allSatisfy({ (65...90).contains(Int($0.value)) }) {
+                issues.append("\(name) must be one letter from A to Z.")
+            }
+            if !entry.option && !entry.command && !entry.control && !entry.shift {
+                issues.append("\(name) requires at least one modifier.")
+            }
         }
-        if !hotkey.option && !hotkey.command && !hotkey.control && !hotkey.shift {
-            issues.append("Hotkey requires at least one modifier.")
+        for (index, lhs) in named.enumerated() {
+            for rhs in named.dropFirst(index + 1) where Hotkey.isSameCombination(lhs.1, rhs.1) {
+                issues.append("\(lhs.0) and \(rhs.0) use the same key combination.")
+            }
         }
         return issues
     }

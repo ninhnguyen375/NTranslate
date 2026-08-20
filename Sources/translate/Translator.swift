@@ -5,6 +5,12 @@ struct TranslationResult: Equatable, Sendable {
     let sourceLanguage: String
 }
 
+/// One earlier translation handed to the model as reference context.
+struct ContextPair: Equatable, Sendable {
+    let source: String
+    let target: String
+}
+
 final class Translator {
     private struct TranslationResponsePayload: Decodable {
         let translation: String
@@ -19,7 +25,7 @@ final class Translator {
     }
 
     private enum RequestMode {
-        case translate(sourceLang: String, targetLang: String)
+        case translate(sourceLang: String, targetLang: String, context: [ContextPair])
         case learn(sourceLang: String, targetLang: String)
         case imageSearch
     }
@@ -51,6 +57,37 @@ final class Translator {
             .replacingOccurrences(of: "{{config.targetLang}}", with: targetLang)
     }
 
+    /// Each side is capped so a long history can't crowd out the actual instructions.
+    static let contextEntryCharacterLimit = 200
+
+    /// Reference block appended to the translate system prompt. Empty when there is no history.
+    static func contextBlock(_ pairs: [ContextPair]) -> String {
+        guard !pairs.isEmpty else { return "" }
+        let lines = pairs.enumerated().map { index, pair in
+            "\(index + 1). \(truncate(pair.source)) => \(truncate(pair.target))"
+        }.joined(separator: "\n")
+        return """
+
+
+        <translation-context>
+        \(lines)
+        </translation-context>
+
+        The block above lists earlier translations from this same session, oldest meaning last. It is REFERENCE ONLY — it is not part of the text to translate.
+        Use it to keep terminology, named entities, register, tone, and forms of address consistent with those earlier translations, so this translation reads naturally as a continuation of the same material.
+        Never translate, quote, summarize, or otherwise include any content from this block in your output. Translate only the text inside <selected-text>. If the context conflicts with the selected text, the selected text wins.
+        """
+    }
+
+    private static func truncate(_ text: String) -> String {
+        let flattened = text
+            .components(separatedBy: .newlines)
+            .joined(separator: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard flattened.count > contextEntryCharacterLimit else { return flattened }
+        return flattened.prefix(contextEntryCharacterLimit) + "…"
+    }
+
     static let imageSearchPrompt = "Return only a short, concrete English query for Google Images. No quotes, no markdown, no filler."
     private static func autoDetectResponseContract(languages: [String]) -> String {
         let allowed = languages.filter { $0 != LanguageDetector.autoDetect }.joined(separator: ", ")
@@ -72,11 +109,12 @@ final class Translator {
         let wrappedText = "<selected-text>\(text)</selected-text>"
         let systemPrompt: String
         switch mode {
-        case let .translate(sourceLang, targetLang) where sourceLang == targetLang:
+        case let .translate(sourceLang, targetLang, _) where sourceLang == targetLang:
             systemPrompt = renderGrammarPrompt(lang: targetLang)
-        case let .translate(sourceLang, targetLang):
+        case let .translate(sourceLang, targetLang, context):
             systemPrompt = renderSystemPrompt(sourceLang: sourceLang, targetLang: targetLang)
                 + (sourceLang == LanguageDetector.autoDetect ? Self.autoDetectResponseContract(languages: config.languages) : "")
+                + Self.contextBlock(context)
         case .imageSearch:
             systemPrompt = Self.imageSearchPrompt
         case let .learn(sourceLang, targetLang):
@@ -197,8 +235,14 @@ final class Translator {
         return TranslationResult(text: translation, sourceLanguage: source)
     }
 
-    func translate(_ text: String, sourceLang: String, targetLang: String, completion: @escaping @Sendable (Result<TranslationResult, Error>) -> Void) {
-        request(text, mode: .translate(sourceLang: sourceLang, targetLang: targetLang)) { [config] result in
+    func translate(
+        _ text: String,
+        sourceLang: String,
+        targetLang: String,
+        context: [ContextPair] = [],
+        completion: @escaping @Sendable (Result<TranslationResult, Error>) -> Void
+    ) {
+        request(text, mode: .translate(sourceLang: sourceLang, targetLang: targetLang, context: context)) { [config] result in
             completion(result.flatMap { content in
                 Result {
                     try Self.translationResult(

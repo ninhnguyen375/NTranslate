@@ -136,6 +136,22 @@ final class TranslationHistoryStore {
         }
     }
 
+    /// Recent translations for the same language pair, newest first, used as translation context.
+    func recentContext(
+        sourceLanguage: String,
+        targetLanguage: String,
+        excludingText: String,
+        limit: Int = 10
+    ) -> [TranslationRecord] {
+        let excluded = Self.trim(excludingText)
+        return records.filter {
+            $0.mode == .translate
+                && $0.sourceLanguage == sourceLanguage
+                && $0.targetLanguage == targetLanguage
+                && Self.trim($0.sourceText) != excluded
+        }.prefix(limit).map { $0 }
+    }
+
     @discardableResult
     func appendIfAbsent(_ record: TranslationRecord) throws -> TranslationRecord {
         try validateForMutation(record)

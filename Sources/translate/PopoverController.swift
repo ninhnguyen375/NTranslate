@@ -22,12 +22,14 @@ enum PopoverIntegrationPolicy {
     enum HotkeyIntent: Equatable {
         case translate
         case copyAndTranslate
+        case learn
     }
 
     static func hotkeyIntent(id: UInt32) -> HotkeyIntent? {
         switch id {
         case 1: .translate
         case 2: .copyAndTranslate
+        case 3: .learn
         default: nil
         }
     }
@@ -83,9 +85,25 @@ enum PopoverIntegrationPolicy {
         selected != LanguageDetector.autoDetect || resolved != nil
     }
 
-    static func usesDedicatedCopyShortcut(_ hotkey: AppConfig.Hotkey) -> Bool {
-        hotkey.key.caseInsensitiveCompare("D") == .orderedSame
-            && hotkey.option && hotkey.control && !hotkey.command && !hotkey.shift
+    /// Registration order matters: an earlier hotkey wins, later duplicates are skipped.
+    static func registrableHotkeys(_ entries: [(name: String, hotkey: AppConfig.Hotkey, id: UInt32)])
+        -> (register: [(name: String, hotkey: AppConfig.Hotkey, id: UInt32)], skipped: [String]) {
+        var register: [(name: String, hotkey: AppConfig.Hotkey, id: UInt32)] = []
+        var skipped: [String] = []
+        for entry in entries {
+            if register.contains(where: { AppConfig.Hotkey.isSameCombination($0.hotkey, entry.hotkey) }) {
+                skipped.append(entry.name)
+            } else {
+                register.append(entry)
+            }
+        }
+        return (register, skipped)
+    }
+
+    /// A fresh selection becomes a subtranslate pane only when the popup is already open and the
+    /// main pane holds a usable translation; otherwise it replaces the main pane.
+    static func usesSubtranslate(panelVisible: Bool, primaryResult: String, hasPendingImage: Bool) -> Bool {
+        panelVisible && !hasPendingImage && PopoverFeedback.isCopyableResult(primaryResult)
     }
 
     static func imageSearchURL(query: String) -> URL? {
@@ -211,7 +229,13 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         static let paneHeaderHeight: CGFloat = 30
         static let paneHeaderTopInset: CGFloat = 4
         static let splitMinPaneHeight: CGFloat = 160
+        static let splitMinStackedPaneHeight: CGFloat = 120
+        /// Vertical gap between the main pane and the subtranslate pane.
+        static let sectionGap: CGFloat = 10
         static let splitMaxPaneHeight: CGFloat = 420
+        /// Per-section cap once a subtranslate pane exists — two panes at `splitMaxPaneHeight` each
+        /// overflow the panel.
+        static let splitMaxStackedPaneHeight: CGFloat = 300
         static let dividerWidth: CGFloat = 1
         /// Shared height for Learn / Translate.
         static let controlHeight: CGFloat = 32
@@ -269,6 +293,8 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     private let swapLanguagesButton = NSButton(frame: .zero)
     private let historyButton = NSButton(frame: .zero)
     private let updateButton = NSButton(frame: .zero)
+    /// Hover-only indicator listing the recent translations sent as context with the next Translate.
+    private let contextButton = NSButton(frame: .zero)
     private let pinButton = NSButton(frame: .zero)
     private let closeButton = NSButton(frame: .zero)
     private let translateButton = NSButton(frame: .zero)
@@ -282,8 +308,7 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     private let speakResultButton = NSButton(frame: .zero)
     private var splitDividerGradient: CAGradientLayer?
     private var translator: Translator?
-    private var hotKeyRef: EventHotKeyRef?
-    private var copyAndTranslateHotKeyRef: EventHotKeyRef?
+    private var registeredHotKeys: [EventHotKeyRef] = []
     private var hotKeyEventHandlerRef: EventHandlerRef?
     private var config = AppConfig.load()
     private var apiKey = ""
@@ -323,6 +348,9 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     private var isPinned = false
     private var statusClearWorkItem: DispatchWorkItem?
     private var copyFlashWorkItem: DispatchWorkItem?
+    /// At most one secondary pane (see `PopoverIntegrationPolicy.usesSubtranslate`).
+    private var subSection: SubtranslateSection?
+    private var subGeneration = 0
 
     private var speechRate: Float {
         get { SpeechRatePolicy.resolved(UserDefaults.standard.float(forKey: SpeechRatePolicy.defaultsKey)) }
@@ -423,6 +451,8 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         configureChromeIconButton(pinButton, symbol: "pin", action: #selector(togglePin), label: "Pin")
         configureChromeIconButton(historyButton, symbol: "clock.arrow.circlepath", action: #selector(openTranslationHistory), label: "Translation History")
         configureChromeIconButton(updateButton, symbol: "arrow.triangle.2.circlepath", action: #selector(checkForUpdatesClicked), label: "Check for Updates")
+        configureChromeIconButton(contextButton, symbol: "text.quote", action: #selector(showContextTooltip), label: "Translation context")
+        contextButton.isHidden = true
         updatePinButton()
 
         configureLanguageControls()
@@ -535,6 +565,7 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
 
         chromeHost.addSubview(titleLabel)
         chromeHost.addSubview(statusLabel)
+        chromeHost.addSubview(contextButton)
         chromeHost.addSubview(historyButton)
         chromeHost.addSubview(pinButton)
         chromeHost.addSubview(closeButton)
@@ -557,10 +588,15 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     }
 
     private func installSplitDividerGradient() {
-        splitDivider.wantsLayer = true
-        splitDivider.layer?.backgroundColor = NSColor.clear.cgColor
-        splitDivider.layer?.masksToBounds = true
         splitDividerGradient?.removeFromSuperlayer()
+        splitDividerGradient = installDividerGradient(on: splitDivider)
+    }
+
+    @discardableResult
+    private func installDividerGradient(on divider: NSView) -> CAGradientLayer {
+        divider.wantsLayer = true
+        divider.layer?.backgroundColor = NSColor.clear.cgColor
+        divider.layer?.masksToBounds = true
         let gradient = CAGradientLayer()
         gradient.colors = [
             NSColor.white.withAlphaComponent(0.0).cgColor,
@@ -572,8 +608,8 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         gradient.locations = [0, 0.18, 0.5, 0.82, 1]
         gradient.startPoint = CGPoint(x: 0.5, y: 1)
         gradient.endPoint = CGPoint(x: 0.5, y: 0)
-        splitDivider.layer?.addSublayer(gradient)
-        splitDividerGradient = gradient
+        divider.layer?.addSublayer(gradient)
+        return gradient
     }
 
     private func applySplitHostChrome() {
@@ -722,12 +758,17 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         let splitY = bottomY + L.bottomBarHeight + L.footerGap
         // Pin body under the header so extra panel height grows the pane — never a dead gap.
         let splitTop = (statusH > 0 ? statusY : headerY) - L.headerGap
-        let availableSplitHeight = max(0, splitTop - splitY)
-        let measuredSplitHeight = currentSplitPaneHeight(paneWidth: panes.left)
-        let splitHeight = min(
-            L.splitMaxPaneHeight,
-            max(measuredSplitHeight, availableSplitHeight)
+        // The panel height is already the clamped truth; the split gets exactly what's left over.
+        // Measuring again here and taking the larger value is what pushed panes past the chrome.
+        let totalSplitHeight = max(0, splitTop - splitY)
+        let heights = PopoverLayoutMath.stackedSectionHeights(
+            available: totalSplitHeight,
+            primaryNeeded: measuredPrimaryPaneHeight(paneWidth: panes.left),
+            secondaryNeeded: subSection.map { measuredSubPaneHeight($0, paneWidth: panes.left) },
+            gap: L.sectionGap,
+            minPaneHeight: stackedMinPaneHeight
         )
+        let splitHeight = heights.primary
         let bodyHeight = max(0, splitHeight - L.paneHeaderHeight)
 
         glassContainer.frame = NSRect(x: 0, y: 0, width: width, height: height)
@@ -765,12 +806,25 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
             width: chromeIcon,
             height: chromeIcon
         )
+        contextButton.frame = NSRect(
+            x: updateButton.frame.minX - 6 - chromeIcon,
+            y: closeButton.frame.minY,
+            width: chromeIcon,
+            height: chromeIcon
+        )
         applyControlCornerRadius(closeButton, radius: chromeIcon / 2)
         applyControlCornerRadius(pinButton, radius: chromeIcon / 2)
         applyControlCornerRadius(historyButton, radius: chromeIcon / 2)
         applyControlCornerRadius(updateButton, radius: chromeIcon / 2)
+        applyControlCornerRadius(contextButton, radius: chromeIcon / 2)
 
-        splitHost.frame = NSRect(x: L.padding, y: splitY, width: contentWidth, height: splitHeight)
+        // Subtranslate sits below the main pane; AppKit's origin is bottom-left, so the main pane
+        // gets the higher y.
+        let primaryY = heights.secondary.map { splitY + $0 + L.sectionGap } ?? splitY
+        splitHost.frame = NSRect(x: L.padding, y: primaryY, width: contentWidth, height: splitHeight)
+        if let sub = subSection, let subHeight = heights.secondary {
+            layoutSubSection(sub, x: L.padding, y: splitY, width: contentWidth, height: subHeight, panes: panes)
+        }
 
         sourceCard.frame = NSRect(x: 0, y: 0, width: panes.left, height: splitHeight)
         splitDivider.frame = NSRect(x: panes.left, y: 14, width: max(1, L.dividerWidth), height: max(0, splitHeight - 28))
@@ -898,18 +952,50 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         }
     }
 
+    /// Height the split body wants before the panel clamp — the sum of both sections plus the gap.
     private func currentSplitPaneHeight(paneWidth: CGFloat) -> CGFloat {
+        let primary = measuredPrimaryPaneHeight(paneWidth: paneWidth)
+        guard let sub = subSection else { return primary }
+        return primary + ChromeLayout.sectionGap + measuredSubPaneHeight(sub, paneWidth: paneWidth)
+    }
+
+    private func measuredPrimaryPaneHeight(paneWidth: CGFloat) -> CGFloat {
+        paneHeight(
+            source: inputTextView.attributedString(),
+            result: textView.attributedString(),
+            paneWidth: paneWidth
+        )
+    }
+
+    private func measuredSubPaneHeight(_ section: SubtranslateSection, paneWidth: CGFloat) -> CGFloat {
+        paneHeight(
+            source: section.sourceTextView.attributedString(),
+            result: section.resultTextView.attributedString(),
+            paneWidth: paneWidth
+        )
+    }
+
+    private func paneHeight(source: NSAttributedString, result: NSAttributedString, paneWidth: CGFloat) -> CGFloat {
         let L = ChromeLayout.self
         let measureWidth = max(80, paneWidth - 24)
-        let sourceMeasured = measuredTextHeight(inputTextView.attributedString(), width: measureWidth) + 20
-        let resultMeasured = measuredTextHeight(textView.attributedString(), width: measureWidth) + 20
         return PopoverLayoutMath.splitPaneHeight(
-            sourceMeasured: sourceMeasured,
-            resultMeasured: resultMeasured,
+            sourceMeasured: measuredTextHeight(source, width: measureWidth) + 20,
+            resultMeasured: measuredTextHeight(result, width: measureWidth) + 20,
             paneHeaderHeight: L.paneHeaderHeight,
-            minPaneHeight: L.splitMinPaneHeight,
-            maxPaneHeight: L.splitMaxPaneHeight
+            minPaneHeight: stackedMinPaneHeight,
+            maxPaneHeight: maxSectionHeight
         )
+    }
+
+    /// Height ceiling for one pane — halved-ish once the subtranslate pane shares the panel.
+    private var maxSectionHeight: CGFloat {
+        subSection == nil ? ChromeLayout.splitMaxPaneHeight : ChromeLayout.splitMaxStackedPaneHeight
+    }
+
+    /// Floor for one pane. Two panes at the single-pane floor don't fit a short panel, so stacking
+    /// lowers it rather than letting the pair overflow.
+    private var stackedMinPaneHeight: CGFloat {
+        subSection == nil ? ChromeLayout.splitMinPaneHeight : ChromeLayout.splitMinStackedPaneHeight
     }
 
     /// Resizes/repositions the panel around `size`. While the panel hasn't been dragged by the
@@ -1062,6 +1148,33 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         updateSpeakButtons()
         updateCopyButtonEnabled()
         updateSaveWordButton()
+        updateContextButton()
+    }
+
+    /// Shows the context indicator only when the next Translate would actually carry reference pairs.
+    private func updateContextButton() {
+        let text = inputTextView.string.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard pendingImage == nil, !text.isEmpty else {
+            contextButton.isHidden = true
+            return
+        }
+        let pair = resolvedLanguagePair(for: text)
+        let tooltip = PopoverFeedback.contextTooltip(
+            historyStore.recentContext(
+                sourceLanguage: effectiveSourceLanguage(for: text),
+                targetLanguage: pair.target,
+                excludingText: text
+            ).reversed().map { (source: $0.sourceText, target: $0.resultText) }
+        )
+        contextButton.toolTip = tooltip
+        contextButton.setAccessibilityLabel(tooltip ?? "Translation context")
+        contextButton.isHidden = tooltip == nil
+    }
+
+    /// Clicking the indicator surfaces the same list as the tooltip, for keyboard/VoiceOver users.
+    @objc private func showContextTooltip() {
+        guard let tooltip = contextButton.toolTip else { return }
+        setStatus(tooltip.replacingOccurrences(of: "\n", with: "  "), autoClearAfter: 10)
     }
 
     private func updateCopyButtonEnabled() {
@@ -1088,7 +1201,12 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     }
 
     private func maxPopoverHeight() -> CGFloat {
-        CGFloat(config.ui.height) + 300
+        // A second pane needs its own room on top of the single-pane budget, but never more than
+        // the screen can show.
+        let base = CGFloat(config.ui.height) + 300
+            + (subSection == nil ? 0 : ChromeLayout.splitMaxStackedPaneHeight + ChromeLayout.sectionGap)
+        guard let screen = currentScreenFrame() else { return base }
+        return min(base, screen.height - 40)
     }
 
     private func currentPopoverHeight() -> CGFloat {
@@ -1269,6 +1387,8 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
 
     func textDidChange(_ notification: Notification) {
         guard notification.object as AnyObject? === inputTextView else { return }
+        // Editing the main source invalidates whatever phrase the sub pane was explaining.
+        removeSubSection()
         if pendingImage != nil { setPendingImage(nil) }
         invalidateTranslationRequest()
         invalidateSpeech(stopPlayback: true)
@@ -1345,6 +1465,15 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     private func updateSpeakButtons() {
         updateSpeechButton(speakSourceButton, identity: sourceSpeechIdentity(), baseLabel: "source")
         updateSpeechButton(speakResultButton, identity: resultSpeechIdentity(), baseLabel: "translation")
+        if let section = subSection {
+            updateSubSpeakButtons(section)
+        }
+    }
+
+    /// Same play/loading/pause/resume presentation as the main pane, for the subtranslate pane.
+    private func updateSubSpeakButtons(_ section: SubtranslateSection) {
+        updateSpeechButton(section.speakSourceButton, identity: subSpeechIdentity(kind: .source), baseLabel: "subtranslate source")
+        updateSpeechButton(section.speakResultButton, identity: subSpeechIdentity(kind: .result), baseLabel: "subtranslate translation")
     }
 
     private func updateSpeechButton(_ button: NSButton, identity: SpeechIdentity?, baseLabel: String) {
@@ -1562,12 +1691,12 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         return "\(short) (\(build))"
     }
 
-    private func hotKeyModifiers() -> UInt32 {
+    private static func hotKeyModifiers(_ hotkey: AppConfig.Hotkey) -> UInt32 {
         var flags: UInt32 = 0
-        if config.hotkey.option { flags |= UInt32(optionKey) }
-        if config.hotkey.command { flags |= UInt32(cmdKey) }
-        if config.hotkey.control { flags |= UInt32(controlKey) }
-        if config.hotkey.shift { flags |= UInt32(shiftKey) }
+        if hotkey.option { flags |= UInt32(optionKey) }
+        if hotkey.command { flags |= UInt32(cmdKey) }
+        if hotkey.control { flags |= UInt32(controlKey) }
+        if hotkey.shift { flags |= UInt32(shiftKey) }
         return flags
     }
 
@@ -1584,6 +1713,8 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
                 controller.perform(#selector(PopoverController.hotKeyPressed), on: .main, with: nil, waitUntilDone: false)
             case .copyAndTranslate:
                 controller.perform(#selector(PopoverController.copyAndTranslateHotKeyPressed), on: .main, with: nil, waitUntilDone: false)
+            case .learn:
+                controller.perform(#selector(PopoverController.learnHotKeyPressed), on: .main, with: nil, waitUntilDone: false)
             case nil: break
             }
             return noErr
@@ -1591,35 +1722,33 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     }
 
     private func registerHotKey() {
-        if let hotKeyRef { UnregisterEventHotKey(hotKeyRef) }
-        if let copyAndTranslateHotKeyRef { UnregisterEventHotKey(copyAndTranslateHotKeyRef) }
-        hotKeyRef = nil
-        copyAndTranslateHotKeyRef = nil
+        registeredHotKeys.forEach { UnregisterEventHotKey($0) }
+        registeredHotKeys.removeAll()
         let signature = OSType(0x54524E53)
-        let copyStatus = RegisterEventHotKey(
-            HotkeyKeyCode.code(for: "D"), UInt32(controlKey | optionKey),
-            EventHotKeyID(signature: signature, id: 2), GetApplicationEventTarget(), 0,
-            &copyAndTranslateHotKeyRef
-        )
-        let fixedFailed = copyStatus != noErr
-        if PopoverIntegrationPolicy.usesDedicatedCopyShortcut(config.hotkey) {
-            setStatus(fixedFailed
-                ? "Failed to register Control+Option+D"
-                : "Control+Option+D is reserved for copy and translate")
-            return
+        let (register, skipped) = PopoverIntegrationPolicy.registrableHotkeys([
+            (name: "Translate", hotkey: config.hotkey, id: 1),
+            (name: "Copy & Translate", hotkey: config.copyTranslateHotkey, id: 2),
+            (name: "Learn", hotkey: config.learnHotkey, id: 3),
+        ])
+        var failed: [String] = []
+        for entry in register {
+            var ref: EventHotKeyRef?
+            let status = RegisterEventHotKey(
+                HotkeyKeyCode.code(for: entry.hotkey.key),
+                Self.hotKeyModifiers(entry.hotkey),
+                EventHotKeyID(signature: signature, id: entry.id),
+                GetApplicationEventTarget(), 0, &ref
+            )
+            if status == noErr, let ref {
+                registeredHotKeys.append(ref)
+            } else {
+                failed.append(entry.name)
+            }
         }
-        let status = RegisterEventHotKey(
-            HotkeyKeyCode.code(for: config.hotkey.key), hotKeyModifiers(),
-            EventHotKeyID(signature: signature, id: 1), GetApplicationEventTarget(), 0,
-            &hotKeyRef
-        )
-        if fixedFailed && status != noErr {
-            setStatus("Failed to register both hotkeys")
-        } else if fixedFailed {
-            setStatus("Failed to register Control+Option+D")
-        } else if status != noErr {
-            setStatus("Failed to register configured hotkey")
-        }
+        var notes: [String] = []
+        if !failed.isEmpty { notes.append("Failed to register: \(failed.joined(separator: ", "))") }
+        if !skipped.isEmpty { notes.append("Duplicate hotkey ignored: \(skipped.joined(separator: ", "))") }
+        if !notes.isEmpty { setStatus(notes.joined(separator: " · ")) }
     }
 
     @objc private func hotKeyPressed() {
@@ -1628,6 +1757,29 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
 
     @objc private func copyAndTranslateHotKeyPressed() {
         translateAtCursor(forceSimulatedCopy: true)
+    }
+
+    @objc private func learnHotKeyPressed() {
+        learnAtCursor()
+    }
+
+    func learnAtCursor() {
+        guard let resolved = readSelection(forceSimulatedCopy: false) else { return }
+        if let text = subtranslateText(from: resolved) {
+            runSubRequest(text: text, mode: .learn)
+            return
+        }
+        guard prepareInputFromSelection(resolved) else { return }
+        // Learn has no image path; a pasted image would silently do nothing.
+        guard pendingImage == nil else {
+            setStatus("Learn does not support images.")
+            presentPanel(activatesApp: true, restoresPreviousAppOnCloseValue: false)
+            return
+        }
+        setResultText(PopoverFeedback.learning)
+        reflowLayout()
+        presentPanel(activatesApp: true, restoresPreviousAppOnCloseValue: false)
+        runLearn()
     }
 
     @objc private func manualToggle() {
@@ -1645,8 +1797,8 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
 
     func applicationWillTerminate(_ notification: Notification) {
         if let hotKeyEventHandlerRef { RemoveEventHandler(hotKeyEventHandlerRef) }
-        if let hotKeyRef { UnregisterEventHotKey(hotKeyRef) }
-        if let copyAndTranslateHotKeyRef { UnregisterEventHotKey(copyAndTranslateHotKeyRef) }
+        registeredHotKeys.forEach { UnregisterEventHotKey($0) }
+        registeredHotKeys.removeAll()
         CrashRecovery.markCleanShutdown()
     }
 
@@ -1711,7 +1863,7 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         let options = ["AXTrustedCheckOptionPrompt": true] as CFDictionary
         let trusted = AXIsProcessTrustedWithOptions(options)
         if !trusted {
-            setResultText("Grant Accessibility access in System Settings > Privacy & Security > Accessibility, then reopen or retry.")
+            setResultText(PopoverFeedback.accessibilityRequired)
         }
     }
 
@@ -1774,6 +1926,7 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
 
     private func closePanel() {
         guard panel.isVisible else { return }
+        removeSubSection()
         requestGeneration += 1
         isRequestInFlight = false
         invalidateCurrentRecord()
@@ -1927,22 +2080,67 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     }
 
     func translateAtCursor(forceSimulatedCopy: Bool = false) {
-        if !AXIsProcessTrusted() { requestAccessibilityPermissionIfNeeded(forcePrompt: true) }
+        // Read the selection once — simulated copy posts real key events, so a second read would
+        // fire Command+C twice.
+        guard let resolved = readSelection(forceSimulatedCopy: forceSimulatedCopy) else { return }
+        if let text = subtranslateText(from: resolved) {
+            runSubRequest(text: text, mode: .translate)
+            return
+        }
+        guard prepareInputFromSelection(resolved) else { return }
+        let generation = beginRequest()
+        setResultText(PopoverFeedback.translating)
+        reflowLayout()
+        presentPanel(activatesApp: true, restoresPreviousAppOnCloseValue: false)
+        performTranslate(generation: generation)
+    }
+
+    /// Returns the selected text when it should land in the subtranslate pane instead of replacing
+    /// the main pane. Returns nil when the caller should take the normal path.
+    private func subtranslateText(from resolved: TranslatableInputResolution) -> String? {
+        guard PopoverIntegrationPolicy.usesSubtranslate(
+            panelVisible: panel.isVisible,
+            primaryResult: textView.string,
+            hasPendingImage: pendingImage != nil
+        ), case let .text(text) = resolved.input else { return nil }
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Re-firing on the same text the main pane already holds should refresh it, not spawn a
+        // duplicate pane.
+        guard !trimmed.isEmpty,
+              trimmed != inputTextView.string.trimmingCharacters(in: .whitespacesAndNewlines)
+        else { return nil }
+        return trimmed
+    }
+
+    /// Reads the current selection. Returns nil after showing the relevant failure panel (missing
+    /// Accessibility, empty selection, read error).
+    private func readSelection(forceSimulatedCopy: Bool) -> TranslatableInputResolution? {
+        // Without Accessibility both paths are dead (no AXSelectedText, no synthetic Command+C),
+        // so prompt and stop instead of silently translating stale clipboard content.
+        guard AXIsProcessTrusted() else {
+            requestAccessibilityPermissionIfNeeded(forcePrompt: true)
+            showEmptySelectionPanel(message: PopoverFeedback.accessibilityRequired)
+            return nil
+        }
         previousApp = NSWorkspace.shared.frontmostApplication
-        let resolved: TranslatableInputResolution
         do {
             guard let value = try SelectionReader.resolveTranslatableInputWithDiagnostics(
                 simulateCopy: PopoverIntegrationPolicy.shouldSimulateCopy(force: forceSimulatedCopy, configured: config.ui.simulateCopy),
                 forceCopy: forceSimulatedCopy
             ) else {
                 showEmptySelectionPanel()
-                return
+                return nil
             }
-            resolved = value
+            return value
         } catch {
             showEmptySelectionPanel(message: "Error: \(error)")
-            return
+            return nil
         }
+    }
+
+    /// Loads an already-read selection into the main input pane. Returns false when it handled the
+    /// failure path (over-length text) and the caller should stop.
+    private func prepareInputFromSelection(_ resolved: TranslatableInputResolution) -> Bool {
         if !panel.isVisible { showMousePoint = NSEvent.mouseLocation }
         if resolved.accessibilityError != nil {
             setStatus(PopoverFeedback.accessibilityFallbackNote(source: resolved.source))
@@ -1960,23 +2158,46 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
                 reflowLayout()
                 updateBusyState()
                 presentPanel(activatesApp: true, restoresPreviousAppOnCloseValue: false)
-                return
+                return false
             }
             updateLanguageSelection(for: text)
         case let .image(data):
             inputTextView.string = ""
             setPendingImage(data)
         }
-        let generation = beginRequest()
-        setResultText(PopoverFeedback.translating)
-        reflowLayout()
-        presentPanel(activatesApp: true, restoresPreviousAppOnCloseValue: false)
-        performTranslate(generation: generation)
+        return true
     }
 
     @objc func runTranslate() {
+        if let text = panelSelectionForSubtranslate() {
+            runSubRequest(text: text, mode: .translate)
+            return
+        }
         invalidateSpeech(stopPlayback: true)
         performTranslate(generation: nil)
+    }
+
+    /// Text highlighted inside the popup that the Translate/Learn buttons should send to the
+    /// subtranslate pane instead of re-running the whole input. Nil when nothing is selected or the
+    /// popup isn't in a state that supports a secondary pane — the buttons then behave normally.
+    private func panelSelectionForSubtranslate() -> String? {
+        guard PopoverIntegrationPolicy.usesSubtranslate(
+            panelVisible: panel.isVisible,
+            primaryResult: textView.string,
+            hasPendingImage: pendingImage != nil
+        ) else { return nil }
+        let views = [inputTextView, textView] + (subSection.map { [$0.sourceTextView, $0.resultTextView] } ?? [])
+        for view in views {
+            let text = view.string
+            let range = view.selectedRange()
+            guard range.length > 0, let bounds = Range(range, in: text) else { continue }
+            let trimmed = text[bounds].trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty,
+                  trimmed != inputTextView.string.trimmingCharacters(in: .whitespacesAndNewlines)
+            else { continue }
+            return trimmed
+        }
+        return nil
     }
 
     private func performTranslate(generation existingGeneration: Int?) {
@@ -2035,7 +2256,13 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         ) {
             prefetchSpeech(sourceSpeechIdentity(recordID: nil), translationGeneration: generation)
         }
-        translator.translate(text, sourceLang: pair.source, targetLang: pair.target) { [weak self] result in
+        // Recent same-pair translations keep terminology and tone consistent across a document.
+        let context = historyStore.recentContext(
+            sourceLanguage: effectiveSourceLanguage(for: text),
+            targetLanguage: pair.target,
+            excludingText: text
+        ).reversed().map { ContextPair(source: $0.sourceText, target: $0.resultText) }
+        translator.translate(text, sourceLang: pair.source, targetLang: pair.target, context: context) { [weak self] result in
             Task { @MainActor in self?.finishTextTranslation(result, generation: generation, source: text, pair: pair) }
         }
     }
@@ -2129,6 +2356,10 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     }
 
     @objc func runLearn() {
+        if let text = panelSelectionForSubtranslate() {
+            runSubRequest(text: text, mode: .learn)
+            return
+        }
         guard pendingImage == nil, let translator else { return }
         invalidateCurrentRecord()
         invalidateSpeech(stopPlayback: true)
@@ -2527,6 +2758,290 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         restoresPreviousAppOnClose = true
         closePanel()
     }
+    // MARK: - Subtranslate
+
+    private func makeSubSection() -> SubtranslateSection {
+        let section = SubtranslateSection()
+
+        section.splitHost.wantsLayer = true
+        section.splitHost.layer?.cornerRadius = ChromeLayout.splitCornerRadius
+        section.splitHost.layer?.cornerCurve = .continuous
+        section.splitHost.layer?.masksToBounds = true
+
+        stylePane(section.sourceCard)
+        stylePane(section.resultCard)
+        stylePaneHeaderBar(section.sourceHeaderBar)
+        stylePaneHeaderBar(section.resultHeaderBar)
+        configurePaneHeaderLabel(section.sourceHeaderLabel, title: sourceHeaderLabel.stringValue)
+        configurePaneHeaderLabel(section.resultHeaderLabel, title: resultHeaderLabel.stringValue)
+        section.dividerGradient = installDividerGradient(on: section.splitDivider)
+
+        for textView in [section.sourceTextView, section.resultTextView] {
+            textView.isEditable = false
+            textView.isSelectable = true
+            textView.drawsBackground = false
+            textView.font = .systemFont(ofSize: ChromeLayout.bodyFontSize)
+            textView.textColor = NSColor.black.withAlphaComponent(0.88)
+            textView.focusRingType = .none
+            textView.textContainerInset = NSSize(width: 12, height: 10)
+            textView.minSize = NSSize(width: 0, height: 40)
+            textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+            textView.isVerticallyResizable = true
+            textView.isHorizontallyResizable = false
+            textView.autoresizingMask = [.width]
+            textView.textContainer?.widthTracksTextView = true
+        }
+        for (scroll, textView) in [
+            (section.sourceScrollView, section.sourceTextView),
+            (section.resultScrollView, section.resultTextView),
+        ] {
+            scroll.borderType = .noBorder
+            scroll.drawsBackground = false
+            scroll.focusRingType = .none
+            scroll.hasVerticalScroller = true
+            scroll.hasHorizontalScroller = false
+            scroll.autohidesScrollers = true
+            scroll.scrollerStyle = .overlay
+            scroll.documentView = textView
+        }
+
+        configureIconButton(section.speakSourceButton, symbol: "speaker.wave.2", action: #selector(speakSubSource), label: "Speak subtranslate source")
+        configureIconButton(section.speakResultButton, symbol: "speaker.wave.2", action: #selector(speakSubResult), label: "Speak subtranslate translation")
+        configureIconButton(section.copyButton, symbol: "doc.on.doc", action: #selector(copySubResult), label: "Copy subtranslate")
+        configureIconButton(section.saveWordButton, symbol: "bookmark", action: #selector(toggleSaveSubWord), label: "Save subtranslate")
+
+        section.sourceHeaderBar.addSubview(section.sourceHeaderLabel)
+        section.sourceHeaderBar.addSubview(section.speakSourceButton)
+        section.sourceCard.addSubview(section.sourceHeaderBar)
+        section.sourceCard.addSubview(section.sourceScrollView)
+
+        section.resultHeaderBar.addSubview(section.resultHeaderLabel)
+        section.resultHeaderBar.addSubview(section.speakResultButton)
+        section.resultHeaderBar.addSubview(section.copyButton)
+        section.resultHeaderBar.addSubview(section.saveWordButton)
+        section.resultCard.addSubview(section.resultHeaderBar)
+        section.resultCard.addSubview(section.resultScrollView)
+
+        section.splitHost.addSubview(section.sourceCard)
+        section.splitHost.addSubview(section.splitDivider)
+        section.splitHost.addSubview(section.resultCard)
+        chromeHost.addSubview(section.splitHost)
+        return section
+    }
+
+    private func layoutSubSection(
+        _ section: SubtranslateSection,
+        x: CGFloat,
+        y: CGFloat,
+        width: CGFloat,
+        height: CGFloat,
+        panes: (left: CGFloat, right: CGFloat)
+    ) {
+        let L = ChromeLayout.self
+        section.splitHost.frame = NSRect(x: x, y: y, width: width, height: height)
+        section.splitHost.layer?.borderWidth = 1
+        section.splitHost.layer?.borderColor = NSColor.black.withAlphaComponent(0.06).cgColor
+        section.splitHost.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.72).cgColor
+
+        section.sourceCard.frame = NSRect(x: 0, y: 0, width: panes.left, height: height)
+        section.splitDivider.frame = NSRect(x: panes.left, y: 14, width: max(1, L.dividerWidth), height: max(0, height - 28))
+        section.dividerGradient?.frame = section.splitDivider.bounds
+        section.splitHost.addSubview(section.splitDivider, positioned: .above, relativeTo: nil)
+        section.resultCard.frame = NSRect(x: panes.left + L.dividerWidth, y: 0, width: panes.right, height: height)
+
+        let bodyHeight = max(0, height - L.paneHeaderHeight)
+        layoutPaneChrome(
+            headerBar: section.sourceHeaderBar,
+            headerLabel: section.sourceHeaderLabel,
+            scrollView: section.sourceScrollView,
+            textView: section.sourceTextView,
+            trailingIcons: [section.speakSourceButton],
+            paneWidth: panes.left,
+            bodyHeight: bodyHeight
+        )
+        layoutPaneChrome(
+            headerBar: section.resultHeaderBar,
+            headerLabel: section.resultHeaderLabel,
+            scrollView: section.resultScrollView,
+            textView: section.resultTextView,
+            trailingIcons: [section.speakResultButton, section.copyButton, section.saveWordButton],
+            paneWidth: panes.right,
+            bodyHeight: bodyHeight
+        )
+    }
+
+    private func removeSubSection() {
+        subGeneration += 1
+        subSection?.removeFromSuperview()
+        subSection = nil
+    }
+
+    private func setSubResultText(_ section: SubtranslateSection, _ value: String) {
+        let style = PopoverFeedback.resultStyle(for: value)
+        let color: NSColor
+        switch style {
+        case .normal: color = NSColor.black.withAlphaComponent(0.88)
+        case .loading: color = NSColor.black.withAlphaComponent(0.4)
+        case .error: color = .systemRed
+        }
+        section.setResult(value, font: .systemFont(ofSize: ChromeLayout.bodyFontSize), color: color)
+        updateSubButtons(section)
+    }
+
+    private func updateSubButtons(_ section: SubtranslateSection) {
+        let copyable = PopoverFeedback.isCopyableResult(section.resultText)
+        section.copyButton.isEnabled = copyable
+        updateSubSpeakButtons(section)
+        section.saveWordButton.isHidden = !copyable
+        let isSaved = section.recordID
+            .flatMap { id in historyStore.records.first { $0.id == id } }?.isSaved == true
+        section.saveWordButton.image = NSImage(
+            systemSymbolName: isSaved ? "bookmark.fill" : "bookmark",
+            accessibilityDescription: isSaved ? "Remove Saved Word" : "Save Word"
+        )
+        section.saveWordButton.contentTintColor = isSaved ? .controlAccentColor : NSColor.black.withAlphaComponent(0.4)
+    }
+
+    /// Runs Translate or Learn for a freshly selected phrase into the secondary pane, leaving the
+    /// main pane untouched.
+    private func runSubRequest(text: String, mode: TranslationMode) {
+        guard let translator else { return }
+        guard text.count <= config.maxTranslateLength else {
+            setStatus(PopoverFeedback.textTooLong)
+            return
+        }
+        let section = subSection ?? makeSubSection()
+        subSection = section
+        subGeneration += 1
+        let generation = subGeneration
+        section.generation = generation
+        section.recordID = nil
+
+        let pair = LanguageDetector.resolvedPair(
+            selectedSource: selectedSourceLanguage(),
+            selectedTarget: selectedTargetLanguage(),
+            text: text,
+            recentTargets: recentTargets,
+            languages: config.languages,
+            targetLanguages: config.targetLanguages,
+            nativeLang: config.resolvedNativeLang
+        )
+        let displaySource = pair.source == LanguageDetector.autoDetect
+            ? LanguageDetector.detectedLanguage(text)
+            : pair.source
+        section.sourceLanguage = displaySource
+        section.targetLanguage = pair.target
+        section.sourceHeaderLabel.stringValue = paneLanguageCode(displaySource)
+        section.resultHeaderLabel.stringValue = paneLanguageCode(pair.target)
+        section.setSource(text, font: .systemFont(ofSize: ChromeLayout.bodyFontSize), color: NSColor.black.withAlphaComponent(0.88))
+        setSubResultText(section, mode == .learn ? PopoverFeedback.learning : PopoverFeedback.translating)
+        reflowLayout()
+
+        if let record = historyStore.reusableRecord(
+            mode: mode,
+            sourceText: text,
+            sourceLanguage: displaySource,
+            targetLanguage: pair.target,
+            sourceIsAutoDetect: selectedSourceLanguage() == LanguageDetector.autoDetect
+        ) {
+            finishSubRequest(generation: generation, text: text, mode: mode, pair: (displaySource, pair.target), result: .success(record.resultText), existingRecord: record)
+            return
+        }
+
+        let handler: @Sendable (Result<String, Error>) -> Void = { [weak self] result in
+            Task { @MainActor in
+                self?.finishSubRequest(
+                    generation: generation, text: text, mode: mode,
+                    pair: (displaySource, pair.target), result: result, existingRecord: nil
+                )
+            }
+        }
+        if mode == .learn {
+            translator.learn(text, sourceLang: pair.source, targetLang: pair.target, completion: handler)
+        } else {
+            let context = historyStore.recentContext(
+                sourceLanguage: displaySource,
+                targetLanguage: pair.target,
+                excludingText: text
+            ).reversed().map { ContextPair(source: $0.sourceText, target: $0.resultText) }
+            translator.translate(text, sourceLang: pair.source, targetLang: pair.target, context: context) { result in
+                handler(result.map(\.text))
+            }
+        }
+    }
+
+    private func finishSubRequest(
+        generation: Int,
+        text: String,
+        mode: TranslationMode,
+        pair: (source: String, target: String),
+        result: Result<String, Error>,
+        existingRecord: TranslationRecord?
+    ) {
+        guard let section = subSection, section.generation == generation, generation == subGeneration else { return }
+        switch result {
+        case let .success(value):
+            setSubResultText(section, value)
+            if let existingRecord {
+                section.recordID = existingRecord.id
+            } else {
+                let record = TranslationRecord(
+                    id: UUID(), timestamp: Date(), mode: mode, sourceText: text, resultText: value,
+                    sourceLanguage: pair.source, targetLanguage: pair.target, isSaved: false
+                )
+                do {
+                    section.recordID = try historyStore.appendIfAbsent(record).id
+                    historyWindowController.reloadHistory()
+                } catch {
+                    setStatus("History failed: \(error.localizedDescription)", autoClearAfter: 12)
+                }
+            }
+        case let .failure(error):
+            setSubResultText(section, "Error: \(error.localizedDescription)")
+        }
+        updateSubButtons(section)
+        reflowLayout()
+        section.resultTextView.scrollToBeginningOfDocument(nil)
+    }
+
+    private func subSpeechIdentity(kind: SpeechKind) -> SpeechIdentity? {
+        guard let section = subSection else { return nil }
+        let text = kind == .source ? section.sourceText : section.resultText
+        guard kind == .source ? !text.isEmpty : PopoverFeedback.isCopyableResult(text) else { return nil }
+        let language = kind == .source ? section.sourceLanguage : section.targetLanguage
+        return SpeechIdentity(
+            kind: kind,
+            text: text,
+            model: SpeechModelResolver.model(for: language, config: config),
+            recordID: section.recordID
+        )
+    }
+
+    @objc private func speakSubSource() { playSpeech(subSpeechIdentity(kind: .source)) }
+    @objc private func speakSubResult() { playSpeech(subSpeechIdentity(kind: .result)) }
+
+    @objc private func copySubResult() {
+        guard let section = subSection, PopoverFeedback.isCopyableResult(section.resultText) else { return }
+        guard writePasteboard(section.resultText) else {
+            setStatus("Copy failed")
+            return
+        }
+        setStatus("Copied")
+    }
+
+    @objc private func toggleSaveSubWord() {
+        guard let section = subSection, let recordID = section.recordID,
+              let record = historyStore.records.first(where: { $0.id == recordID })
+        else { return }
+        do {
+            try historyStore.setSaved(!record.isSaved, recordID: recordID)
+            historyWindowController.reloadHistory()
+            updateSubButtons(section)
+        } catch {
+            setStatus("Save Word failed: \(error.localizedDescription)", autoClearAfter: 12)
+        }
+    }
+
     private func openHistoryRecord(_ record: TranslationRecord) {
         invalidateTranslationRequest()
         invalidateSpeech(stopPlayback: true)

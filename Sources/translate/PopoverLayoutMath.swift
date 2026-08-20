@@ -58,6 +58,25 @@ enum PopoverLayoutMath {
         return min(max(minPaneHeight, needed), maxPaneHeight)
     }
 
+    /// Splits `available` between the primary pane and an optional subtranslate pane, keeping each
+    /// at least `minPaneHeight` and never above what it actually needs. Leftover goes to the primary.
+    /// When both panes want more than fits, neither takes more than half so one can't squeeze the
+    /// other down to the minimum.
+    static func stackedSectionHeights(
+        available: CGFloat,
+        primaryNeeded: CGFloat,
+        secondaryNeeded: CGFloat?,
+        gap: CGFloat,
+        minPaneHeight: CGFloat
+    ) -> (primary: CGFloat, secondary: CGFloat?) {
+        guard let secondaryNeeded else { return (max(minPaneHeight, available), nil) }
+        let usable = max(minPaneHeight * 2, available - gap)
+        let fairShare = max(minPaneHeight, (usable / 2).rounded(.down))
+        let cap = min(usable - minPaneHeight, max(fairShare, usable - primaryNeeded))
+        let secondary = min(max(minPaneHeight, secondaryNeeded), cap)
+        return (max(minPaneHeight, usable - secondary), secondary)
+    }
+
     /// Total Split Prism panel height from fixed chrome + split pane.
     static func splitPrismHeight(
         padding: CGFloat,

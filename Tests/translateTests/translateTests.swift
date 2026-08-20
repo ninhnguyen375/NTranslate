@@ -74,13 +74,19 @@ struct TranslateTests {
         #expect(HotkeyKeyCode.code(for: "a") == HotkeyKeyCode.code(for: "A"))
     }
 
-    @Test func dedicatedCopyShortcutConflictRequiresExactModifiers() {
+    @Test func hotkeyIntentsMapToRegisteredIDs() {
         #expect(PopoverIntegrationPolicy.hotkeyIntent(id: 1) == .translate)
         #expect(PopoverIntegrationPolicy.hotkeyIntent(id: 2) == .copyAndTranslate)
-        #expect(PopoverIntegrationPolicy.hotkeyIntent(id: 3) == nil)
-        #expect(PopoverIntegrationPolicy.usesDedicatedCopyShortcut(.init(key: "d", option: true, command: false, control: true, shift: false)))
-        #expect(!PopoverIntegrationPolicy.usesDedicatedCopyShortcut(.init(key: "D", option: true, command: true, control: true, shift: false)))
-        #expect(!PopoverIntegrationPolicy.usesDedicatedCopyShortcut(.init(key: "D", option: true, command: false, control: false, shift: false)))
+        #expect(PopoverIntegrationPolicy.hotkeyIntent(id: 3) == .learn)
+        #expect(PopoverIntegrationPolicy.hotkeyIntent(id: 4) == nil)
+        #expect(AppConfig.Hotkey.isSameCombination(
+            .init(key: "d", option: true, command: false, control: true, shift: false),
+            .init(key: "D", option: true, command: false, control: true, shift: false)
+        ))
+        #expect(!AppConfig.Hotkey.isSameCombination(
+            .init(key: "D", option: true, command: false, control: true, shift: false),
+            .init(key: "D", option: true, command: true, control: true, shift: false)
+        ))
         #expect(PopoverIntegrationPolicy.shouldSimulateCopy(force: true, configured: false))
         #expect(!PopoverIntegrationPolicy.shouldSimulateCopy(force: false, configured: false))
     }
@@ -848,11 +854,110 @@ struct TranslateTests {
         #expect(state.action(for: current) == .play)
     }
 
-    @Test func speechModelResolverUsesTargetLanguage() {
+    @Test func speechModelResolverUsesPerLanguageModels() {
         let config = AppConfig.default
-        #expect(SpeechModelResolver.model(for: "Vietnamese", config: config) == config.speechTargetModel)
-        #expect(SpeechModelResolver.model(for: "English", config: config) == config.speechSourceModel)
-        #expect(SpeechModelResolver.model(for: "Chinese", config: config) == config.speechSourceModelChinese)
+        #expect(SpeechModelResolver.model(for: "Vietnamese", config: config) == config.speechModels["Vietnamese"])
+        #expect(SpeechModelResolver.model(for: "English", config: config) == config.speechModels["English"])
+        #expect(SpeechModelResolver.model(for: "Chinese", config: config) == config.speechModels["Chinese"])
+    }
+
+    @Test func speechModelResolverFallsBackForUnknownLanguage() {
+        let config = AppConfig.default
+        #expect(SpeechModelResolver.model(for: "Klingon", config: config) == config.speechFallbackModel)
+    }
+
+    @Test func appConfigMigratesLegacySpeechModelKeys() throws {
+        let json = """
+        {"apiBaseURL":"http://localhost:1/v1/chat/completions","model":"m","sourceLang":"Auto detect","targetLang":"Vietnamese","systemPrompt":"p","speechSourceModel":"en-model","speechSourceModelVietnamese":"vi-src","speechSourceModelChinese":"zh-model","speechTargetModel":"vi-model","hotkey":{"key":"D","option":true,"command":false,"control":false,"shift":false},"ui":{"width":480,"height":320,"autoCopy":false}}
+        """
+        let outcome = AppConfig.decodeOutcome(data: Data(json.utf8))
+        guard case let .loaded(config) = outcome else {
+            Issue.record("Expected loaded outcome")
+            return
+        }
+        #expect(config.speechModels["English"] == "en-model")
+        #expect(config.speechModels["Vietnamese"] == "vi-model")
+        #expect(config.speechModels["Chinese"] == "zh-model")
+        #expect(config.speechFallbackModel == "en-model")
+        #expect(config.copyTranslateHotkey == AppConfig.defaultCopyTranslateHotkey)
+        #expect(config.learnHotkey == AppConfig.defaultLearnHotkey)
+    }
+
+    @Test func validationRejectsDuplicateHotkeyCombinations() {
+        var config = AppConfig.default
+        config.learnHotkey = config.hotkey
+        #expect(config.validationIssues().contains { $0.contains("same key combination") })
+    }
+
+    @Test func registrableHotkeysSkipsDuplicates() {
+        let shared = AppConfig.Hotkey(key: "D", option: true, command: false, control: false, shift: false)
+        let result = PopoverIntegrationPolicy.registrableHotkeys([
+            (name: "Translate", hotkey: shared, id: 1),
+            (name: "Learn", hotkey: shared, id: 3),
+        ])
+        #expect(result.register.map(\.id) == [1])
+        #expect(result.skipped == ["Learn"])
+    }
+
+    @Test func subtranslateOnlyWhenPopupHasUsableResult() {
+        #expect(PopoverIntegrationPolicy.usesSubtranslate(panelVisible: true, primaryResult: "xin chào", hasPendingImage: false))
+        #expect(!PopoverIntegrationPolicy.usesSubtranslate(panelVisible: false, primaryResult: "xin chào", hasPendingImage: false))
+        #expect(!PopoverIntegrationPolicy.usesSubtranslate(panelVisible: true, primaryResult: PopoverFeedback.translating, hasPendingImage: false))
+        #expect(!PopoverIntegrationPolicy.usesSubtranslate(panelVisible: true, primaryResult: "xin chào", hasPendingImage: true))
+    }
+
+    @Test func stackedSectionHeightsKeepsBothPanesAboveMinimum() {
+        let single = PopoverLayoutMath.stackedSectionHeights(
+            available: 400, primaryNeeded: 300, secondaryNeeded: nil, gap: 10, minPaneHeight: 160
+        )
+        #expect(single.primary == 400)
+        #expect(single.secondary == nil)
+
+        let pair = PopoverLayoutMath.stackedSectionHeights(
+            available: 500, primaryNeeded: 300, secondaryNeeded: 180, gap: 10, minPaneHeight: 160
+        )
+        #expect(pair.secondary == 180)
+        #expect(pair.primary == 310)
+
+        // Both panes want more than fits — neither drops below half, so no pane is squeezed to the
+        // minimum while the other keeps everything.
+        let squeezed = PopoverLayoutMath.stackedSectionHeights(
+            available: 400, primaryNeeded: 300, secondaryNeeded: 380, gap: 10, minPaneHeight: 160
+        )
+        #expect(squeezed.primary == 195)
+        #expect(squeezed.secondary == 195)
+
+        // Primary needs little, so the secondary may still take more than half.
+        let generous = PopoverLayoutMath.stackedSectionHeights(
+            available: 400, primaryNeeded: 160, secondaryNeeded: 380, gap: 10, minPaneHeight: 160
+        )
+        #expect(generous.secondary == 230)
+        #expect(generous.primary == 160)
+    }
+
+    @Test func contextTooltipListsPairsAndClipsLongSides() {
+        #expect(PopoverFeedback.contextTooltip([]) == nil)
+        let tooltip = PopoverFeedback.contextTooltip(
+            [(source: String(repeating: "a", count: 80), target: "xin chào")],
+            sideLimit: 10
+        )
+        #expect(tooltip?.contains("Context sent with Translate (1)") == true)
+        #expect(tooltip?.contains("aaaaaaaaaa… → xin chào") == true)
+    }
+
+    @Test func contextBlockIsEmptyWithoutHistoryAndMarksReferenceOnly() {
+        #expect(Translator.contextBlock([]).isEmpty)
+        let block = Translator.contextBlock([ContextPair(source: "data shows", target: "dữ liệu cho thấy")])
+        #expect(block.contains("<translation-context>"))
+        #expect(block.contains("data shows => dữ liệu cho thấy"))
+        #expect(block.contains("REFERENCE ONLY"))
+    }
+
+    @Test func contextBlockTruncatesLongEntries() {
+        let long = String(repeating: "a", count: Translator.contextEntryCharacterLimit + 50)
+        let block = Translator.contextBlock([ContextPair(source: long, target: "b")])
+        #expect(block.contains("…"))
+        #expect(!block.contains(long))
     }
 
     @Test func crashReportSummaryParsesExceptionType() {

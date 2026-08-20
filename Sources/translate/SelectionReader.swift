@@ -64,7 +64,9 @@ struct SelectionReader {
 
     static func resolveTranslatableInputWithDiagnostics(simulateCopy: Bool = false, forceCopy: Bool = false) throws -> TranslatableInputResolution? {
         var accessibilityError: String?
-        if !forceCopy, AXIsProcessTrusted() {
+        // `simulateCopy` means "skip the accessibility read entirely"; `forceCopy` is the
+        // dedicated copy-and-translate hotkey.
+        if !forceCopy, !simulateCopy, AXIsProcessTrusted() {
             do {
                 if let text = try accessibilityText() {
                     return TranslatableInputResolution(input: .text(text), source: .selection, accessibilityError: nil)
@@ -73,7 +75,9 @@ struct SelectionReader {
                 accessibilityError = String(describing: error)
             }
         }
-        if (simulateCopy || forceCopy), let input = try copyViaKeyboard() {
+        // Many apps (Chrome, Electron, PDF viewers) expose no AXSelectedText, so always fall back
+        // to a simulated Command+C before reading whatever stale content the clipboard holds.
+        if let input = try copyViaKeyboard() {
             return TranslatableInputResolution(input: input, source: .simulatedCopy, accessibilityError: accessibilityError)
         }
         if forceCopy { return nil }

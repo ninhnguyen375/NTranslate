@@ -52,7 +52,6 @@ final class HistoryWindowController: NSWindowController, NSWindowDelegate, NSTab
         )
         window.title = "Translation History"
         window.setFrameAutosaveName("TranslationHistoryWindow")
-        window.backgroundColor = .white
 
         super.init(window: window)
         window.delegate = self
@@ -134,8 +133,6 @@ final class HistoryWindowController: NSWindowController, NSWindowDelegate, NSTab
         guard let window else { return }
 
         let contentHost = NSView()
-        contentHost.wantsLayer = true
-        contentHost.layer?.backgroundColor = NSColor.white.cgColor
         window.contentView = contentHost
 
         filterSegmentedControl.selectedSegment = 0
@@ -220,10 +217,14 @@ final class HistoryWindowController: NSWindowController, NSWindowDelegate, NSTab
     }
 
     private func rowView(for record: TranslationRecord) -> NSView {
-        let view = NSTableCellView()
+        // NSVisualEffectView follows the system appearance on its own; a cached cgColor would not.
+        let view = NSVisualEffectView()
+        view.material = .contentBackground
+        view.blendingMode = .withinWindow
+        view.state = .followsWindowActiveState
         view.wantsLayer = true
         view.layer?.cornerRadius = 16
-        view.layer?.backgroundColor = NSColor.windowBackgroundColor.withAlphaComponent(0.2).cgColor
+        view.layer?.masksToBounds = true
 
         let timestamp = record.timestamp.formatted(date: .abbreviated, time: .shortened)
         let savedState = record.isSaved ? "Saved" : "Not saved"

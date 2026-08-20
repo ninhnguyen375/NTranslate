@@ -1,5 +1,44 @@
 import AppKit
 
+/// One editable hotkey (letter popup + modifier checkboxes).
+@MainActor
+final class HotkeyFields {
+    let popup = NSPopUpButton()
+    let option = NSButton(checkboxWithTitle: "Option", target: nil, action: nil)
+    let command = NSButton(checkboxWithTitle: "Command", target: nil, action: nil)
+    let control = NSButton(checkboxWithTitle: "Control", target: nil, action: nil)
+    let shift = NSButton(checkboxWithTitle: "Shift", target: nil, action: nil)
+
+    func configure() {
+        popup.addItems(withTitles: (65...90).compactMap { UnicodeScalar($0).map(String.init) })
+    }
+
+    func makeRow() -> NSStackView {
+        let row = NSStackView(views: [popup, option, command, control, shift])
+        row.orientation = .horizontal
+        row.spacing = 8
+        return row
+    }
+
+    func populate(_ hotkey: AppConfig.Hotkey) {
+        popup.selectItem(withTitle: hotkey.key.uppercased())
+        option.state = hotkey.option ? .on : .off
+        command.state = hotkey.command ? .on : .off
+        control.state = hotkey.control ? .on : .off
+        shift.state = hotkey.shift ? .on : .off
+    }
+
+    func collect(fallbackKey: String) -> AppConfig.Hotkey {
+        AppConfig.Hotkey(
+            key: popup.titleOfSelectedItem ?? fallbackKey,
+            option: option.state == .on,
+            command: command.state == .on,
+            control: control.state == .on,
+            shift: shift.state == .on
+        )
+    }
+}
+
 @MainActor
 final class SettingsWindowController: NSWindowController, NSTableViewDataSource, NSTableViewDelegate, NSTextFieldDelegate {
     typealias SaveHandler = (AppConfig, String) throws -> Void
@@ -31,10 +70,10 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         target: nil,
         action: nil
     )
-    private let speechSourceModelField = NSTextField()
-    private let speechSourceModelVietnameseField = NSTextField()
-    private let speechSourceModelChineseField = NSTextField()
-    private let speechTargetModelField = NSTextField()
+    /// Rebuilt whenever the Languages tab changes; one row per language plus a fallback row.
+    private let speechModelsStack = NSStackView()
+    private var speechModelFields: [String: NSTextField] = [:]
+    private let speechFallbackModelField = NSTextField()
     private let historyDirectoryField = NSTextField()
     private let widthField = NSTextField()
     private let heightField = NSTextField()
@@ -48,11 +87,9 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         target: nil,
         action: nil
     )
-    private let hotkeyPopup = NSPopUpButton()
-    private let optionCheckbox = NSButton(checkboxWithTitle: "Option", target: nil, action: nil)
-    private let commandCheckbox = NSButton(checkboxWithTitle: "Command", target: nil, action: nil)
-    private let controlCheckbox = NSButton(checkboxWithTitle: "Control", target: nil, action: nil)
-    private let shiftCheckbox = NSButton(checkboxWithTitle: "Shift", target: nil, action: nil)
+    private let hotkeyFields = HotkeyFields()
+    private let copyTranslateHotkeyFields = HotkeyFields()
+    private let learnHotkeyFields = HotkeyFields()
 
     init(config: AppConfig, apiKey: String, onSave: @escaping SaveHandler) {
         originalConfig = config
@@ -98,7 +135,10 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         maxTranslateLengthField.formatter = integerFormatter(minimum: 1)
         widthField.formatter = integerFormatter(minimum: 1)
         heightField.formatter = integerFormatter(minimum: 1)
-        hotkeyPopup.addItems(withTitles: (65...90).compactMap { UnicodeScalar($0).map(String.init) })
+        [hotkeyFields, copyTranslateHotkeyFields, learnHotkeyFields].forEach { $0.configure() }
+        speechModelsStack.orientation = .vertical
+        speechModelsStack.alignment = .width
+        speechModelsStack.spacing = 12
 
         [systemPromptView, learnPromptView, sentenceLearnPromptView, grammarPromptView].forEach {
             $0.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
@@ -228,28 +268,45 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         widthField.widthAnchor.constraint(equalToConstant: 90).isActive = true
         heightField.widthAnchor.constraint(equalToConstant: 90).isActive = true
 
-        let hotkey = NSStackView(views: [
-            hotkeyPopup,
-            optionCheckbox,
-            commandCheckbox,
-            controlCheckbox,
-            shiftCheckbox,
-        ])
-        hotkey.orientation = .horizontal
-        hotkey.spacing = 8
-
         return scrollableForm([
-            labeledRow("Source Speech Model", speechSourceModelField),
-            labeledRow("Vietnamese Model", speechSourceModelVietnameseField),
-            labeledRow("Chinese Model", speechSourceModelChineseField),
-            labeledRow("Target Speech Model", speechTargetModelField),
+            speechModelsStack,
+            labeledRow("Fallback Model", speechFallbackModelField),
             labeledRow("Speech", autoPrefetchSpeechCheckbox),
             labeledRow("History Directory", historyRow),
             labeledRow("Panel Width × Height", dimensions),
             labeledRow("Copy", autoCopyCheckbox),
             labeledRow("Paste", simulateCopyCheckbox),
-            labeledRow("Global Hotkey", hotkey),
+            labeledRow("Global Hotkey", hotkeyFields.makeRow()),
+            labeledRow("Copy & Translate Hotkey", copyTranslateHotkeyFields.makeRow()),
+            labeledRow("Learn Hotkey", learnHotkeyFields.makeRow()),
         ])
+    }
+
+    /// Languages the user can pick anywhere, minus the auto-detect pseudo-language.
+    private func speechModelLanguages() -> [String] {
+        var seen: Set<String> = []
+        return (workingConfig.languages + workingConfig.targetLanguages).filter {
+            $0 != LanguageDetector.autoDetect && seen.insert($0).inserted
+        }
+    }
+
+    private func rebuildSpeechModelRows() {
+        let languages = speechModelLanguages()
+        // Keep whatever the user already typed for languages that survived the edit.
+        var retained: [String: NSTextField] = [:]
+        for language in languages {
+            retained[language] = speechModelFields[language] ?? NSTextField()
+        }
+        speechModelFields = retained
+
+        speechModelsStack.arrangedSubviews.forEach {
+            speechModelsStack.removeArrangedSubview($0)
+            $0.removeFromSuperview()
+        }
+        for language in languages {
+            guard let field = speechModelFields[language] else { continue }
+            speechModelsStack.addArrangedSubview(labeledRow("\(language) Model", field))
+        }
     }
 
     private func tab(title: String, view: NSView) -> NSTabViewItem {
@@ -410,20 +467,20 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         sentenceLearnPromptView.string = config.sentenceLearnPrompt
         grammarPromptView.string = config.grammarPrompt
         autoPrefetchSpeechCheckbox.state = config.autoPrefetchSpeech ? .on : .off
-        speechSourceModelField.stringValue = config.speechSourceModel
-        speechSourceModelVietnameseField.stringValue = config.speechSourceModelVietnamese
-        speechSourceModelChineseField.stringValue = config.speechSourceModelChinese
-        speechTargetModelField.stringValue = config.speechTargetModel
+        speechModelFields.removeAll()
+        rebuildSpeechModelRows()
+        for (language, field) in speechModelFields {
+            field.stringValue = config.speechModels[language] ?? ""
+        }
+        speechFallbackModelField.stringValue = config.speechFallbackModel
         historyDirectoryField.stringValue = config.historyDirectory ?? ""
         widthField.doubleValue = config.ui.width
         heightField.doubleValue = config.ui.height
         autoCopyCheckbox.state = config.ui.autoCopy ? .on : .off
         simulateCopyCheckbox.state = config.ui.simulateCopy ? .on : .off
-        optionCheckbox.state = config.hotkey.option ? .on : .off
-        commandCheckbox.state = config.hotkey.command ? .on : .off
-        controlCheckbox.state = config.hotkey.control ? .on : .off
-        shiftCheckbox.state = config.hotkey.shift ? .on : .off
-        hotkeyPopup.selectItem(withTitle: config.hotkey.key.uppercased())
+        hotkeyFields.populate(config.hotkey)
+        copyTranslateHotkeyFields.populate(config.copyTranslateHotkey)
+        learnHotkeyFields.populate(config.learnHotkey)
         languagesTable.reloadData()
         targetLanguagesTable.reloadData()
         reloadLanguagePopups(
@@ -454,6 +511,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
             nativeLanguagePopup.addItem(withTitle: nativeSelection)
         }
         nativeLanguagePopup.selectItem(withTitle: nativeSelection)
+        rebuildSpeechModelRows()
     }
 
     private func collectConfig() throws -> AppConfig {
@@ -471,21 +529,20 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         config.sentenceLearnPrompt = sentenceLearnPromptView.string
         config.grammarPrompt = grammarPromptView.string
         config.autoPrefetchSpeech = autoPrefetchSpeechCheckbox.state == .on
-        config.speechSourceModel = speechSourceModelField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        config.speechSourceModelVietnamese = speechSourceModelVietnameseField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        config.speechSourceModelChinese = speechSourceModelChineseField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        config.speechTargetModel = speechTargetModelField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        config.speechModels = speechModelFields.reduce(into: [:]) { result, entry in
+            let value = entry.value.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !value.isEmpty { result[entry.key] = value }
+        }
+        config.speechFallbackModel = speechFallbackModelField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         let historyDirectory = historyDirectoryField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         config.historyDirectory = historyDirectory.isEmpty ? nil : historyDirectory
         config.ui.width = widthField.doubleValue
         config.ui.height = heightField.doubleValue
         config.ui.autoCopy = autoCopyCheckbox.state == .on
         config.ui.simulateCopy = simulateCopyCheckbox.state == .on
-        config.hotkey.key = hotkeyPopup.titleOfSelectedItem ?? "D"
-        config.hotkey.option = optionCheckbox.state == .on
-        config.hotkey.command = commandCheckbox.state == .on
-        config.hotkey.control = controlCheckbox.state == .on
-        config.hotkey.shift = shiftCheckbox.state == .on
+        config.hotkey = hotkeyFields.collect(fallbackKey: "D")
+        config.copyTranslateHotkey = copyTranslateHotkeyFields.collect(fallbackKey: "D")
+        config.learnHotkey = learnHotkeyFields.collect(fallbackKey: "L")
 
         let issues = config.validationIssues()
         if !issues.isEmpty { throw SettingsError.validation(issues) }

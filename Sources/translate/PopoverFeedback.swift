@@ -3,6 +3,8 @@ import Foundation
 enum PopoverFeedback {
     static let emptySelectionGuidance =
         "No text selected. Select text and press the hotkey, or type here then Translate."
+    static let accessibilityRequired =
+        "Grant Accessibility access in System Settings > Privacy & Security > Accessibility, then quit and reopen NTranslate."
     static let textTooLong = "Text is too long to translate."
     static let emptyInputHint = "Enter or paste text, then Translate."
     static let translating = "Translating..."
@@ -45,6 +47,20 @@ enum PopoverFeedback {
                 && !trimmed.hasPrefix("Config load error:")
                 && !trimmed.hasPrefix("Grant Accessibility")
         }
+    }
+
+    /// Tooltip body for the context indicator: one `source → target` line per reference pair, each
+    /// side clipped so a long paragraph can't blow the tooltip up.
+    static func contextTooltip(_ pairs: [(source: String, target: String)], sideLimit: Int = 60) -> String? {
+        guard !pairs.isEmpty else { return nil }
+        let lines = pairs.map { "• \(clip($0.source, sideLimit)) → \(clip($0.target, sideLimit))" }
+        return "Context sent with Translate (\(pairs.count)):\n" + lines.joined(separator: "\n")
+    }
+
+    private static func clip(_ text: String, _ limit: Int) -> String {
+        let flat = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "\n", with: " ")
+        return flat.count <= limit ? flat : String(flat.prefix(limit)) + "…"
     }
 
     static func accessibilityFallbackNote(source: TranslatableTextSource) -> String {

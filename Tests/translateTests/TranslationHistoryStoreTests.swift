@@ -404,6 +404,35 @@ struct TranslationHistoryStoreTests {
         })
     }
 
+    @Test func recentContextFiltersModeLanguagePairAndCurrentText() throws {
+        let directory = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = TranslationHistoryStore(directoryURL: directory)
+
+        try store.append(record(timestamp: Date(timeIntervalSince1970: 1), source: "first"))
+        try store.append(record(timestamp: Date(timeIntervalSince1970: 2), source: "second"))
+        try store.append(record(timestamp: Date(timeIntervalSince1970: 3), mode: .learn, source: "learned"))
+        try store.append(record(timestamp: Date(timeIntervalSince1970: 4), source: "other pair", targetLanguage: "Chinese"))
+        try store.append(record(timestamp: Date(timeIntervalSince1970: 5), source: "current"))
+
+        let context = store.recentContext(
+            sourceLanguage: "English",
+            targetLanguage: "Vietnamese",
+            excludingText: "  current  "
+        )
+        #expect(context.map(\.sourceText) == ["second", "first"])
+    }
+
+    @Test func recentContextRespectsLimit() throws {
+        let directory = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = TranslationHistoryStore(directoryURL: directory)
+        for index in 0..<15 {
+            try store.append(record(timestamp: Date(timeIntervalSince1970: TimeInterval(index + 1)), source: "s\(index)"))
+        }
+        #expect(store.recentContext(sourceLanguage: "English", targetLanguage: "Vietnamese", excludingText: "").count == 10)
+    }
+
     private func descendantViews(of view: NSView) -> [NSView] {
         view.subviews.flatMap { [$0] + descendantViews(of: $0) }
     }
