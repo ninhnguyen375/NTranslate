@@ -94,12 +94,25 @@ trap cleanup EXIT
 if [ -n "${NOTES_FILE:-}" ]; then
   cat "$NOTES_FILE" > "$NOTES_TMP"
 else
+  CHANGELOG=""
+  LAST_TAG="$(git describe --tags --abbrev=0 --match "macos-v*" 2>/dev/null || true)"
+  if [ -n "$LAST_TAG" ]; then
+    CHANGES="$(git log "${LAST_TAG}..HEAD" --pretty=format:"- %s (%h)" --no-merges || true)"
+    if [ -n "$CHANGES" ]; then
+      CHANGELOG="### What's Changed
+$CHANGES
+
+Full Changelog: https://github.com/${REPO_SLUG}/compare/${LAST_TAG}...${TAG}
+"
+    fi
+  fi
+
   cat > "$NOTES_TMP" <<EOF
 ## NTranslate $VERSION
 
 Prebuilt macOS app ($ARCH).
 
-### Install
+${CHANGELOG}### Install
 1. Download \`$DMG_NAME\`
 2. Open the DMG and drag **NTranslate** into **Applications**
 3. First launch: if Gatekeeper blocks it, Right-click the app → **Open** → confirm

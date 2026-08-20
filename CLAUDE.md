@@ -26,7 +26,8 @@ Script sẽ:
 1. Chạy `./install-app.sh` (bump patch version mặc định) trừ khi `SKIP_INSTALL=1`
 2. Đóng gói app đã ký từ `/Applications/NTranslate.app` thành `dist/NTranslate-<version>-<arch>.dmg` (có shortcut Applications)
 3. Cập nhật dòng **Latest:** trong `README.md` cho khớp version/DMG
-4. Tạo GitHub Release + upload DMG (cần `gh` đã login) trừ khi `SKIP_UPLOAD=1`
+4. Tự động lấy danh sách commit từ tag release gần nhất (`git log <last-tag>..HEAD --oneline`) đưa vào mục `### What's Changed` trong release notes (trừ khi truyền `NOTES_FILE`)
+5. Tạo GitHub Release + upload DMG (cần `gh` đã login) trừ khi `SKIP_UPLOAD=1`
 
 ### Biến môi trường hữu ích
 
@@ -36,7 +37,7 @@ Script sẽ:
 | `SKIP_INSTALL=1` | Không build lại; dùng app đang có trong `/Applications` |
 | `SKIP_UPLOAD=1` | Chỉ tạo DMG local, không gọi `gh release` |
 | `DRAFT=1` | Tạo draft release trên GitHub |
-| `NOTES_FILE=path.md` | Release notes tùy chỉnh |
+| `NOTES_FILE=path.md` | Release notes tùy chỉnh (bỏ qua auto changelog) |
 
 ### Ví dụ
 
@@ -54,4 +55,4 @@ SKIP_UPLOAD=1 ./release-dmg.sh
 SKIP_INSTALL=1 DRAFT=1 ./release-dmg.sh
 ```
 
-Sau khi release xong: báo user URL release + version/build + tên file DMG. Nếu `README.md` đổi, commit + push thay đổi đó cùng (nếu user đang yêu cầu publish).
+Sau khi release xong: báo user URL release + version/build + tên file DMG và tóm tắt changelog so với bản gần nhất. Nếu `README.md` đổi, commit + push thay đổi đó cùng (nếu user đang yêu cầu publish).
