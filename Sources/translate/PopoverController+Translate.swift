@@ -7,8 +7,15 @@ extension PopoverController {
         // Read the selection once — simulated copy posts real key events, so a second read would
         // fire Command+C twice.
         guard let resolved = readSelection(forceSimulatedCopy: forceSimulatedCopy) else { return }
-        if let text = subtranslateText(from: resolved) {
-            runSubRequest(text: text, mode: .translate)
+        if case let .text(candidate) = resolved.input,
+           PopoverIntegrationPolicy.shouldSubtranslate(
+               candidateText: candidate,
+               originalSourceText: inputTextView.string,
+               panelVisible: panel.isVisible,
+               primaryResult: textView.string,
+               hasPendingImage: pendingImage != nil
+           ) {
+            runSubRequest(text: candidate.trimmingCharacters(in: .whitespacesAndNewlines), mode: .translate)
             return
         }
         guard prepareInputFromSelection(resolved) else { return }
@@ -17,23 +24,6 @@ extension PopoverController {
         reflowLayout()
         presentPanel(activatesApp: true, restoresPreviousAppOnCloseValue: false)
         performTranslate(generation: generation)
-    }
-
-    /// Returns the selected text when it should land in the subtranslate pane instead of replacing
-    /// the main pane. Returns nil when the caller should take the normal path.
-    func subtranslateText(from resolved: TranslatableInputResolution) -> String? {
-        guard PopoverIntegrationPolicy.usesSubtranslate(
-            panelVisible: panel.isVisible,
-            primaryResult: textView.string,
-            hasPendingImage: pendingImage != nil
-        ), case let .text(text) = resolved.input else { return nil }
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        // Re-firing on the same text the main pane already holds should refresh it, not spawn a
-        // duplicate pane.
-        guard !trimmed.isEmpty,
-              trimmed != inputTextView.string.trimmingCharacters(in: .whitespacesAndNewlines)
-        else { return nil }
-        return trimmed
     }
 
     /// Reads the current selection. Returns nil after showing the relevant failure panel (missing

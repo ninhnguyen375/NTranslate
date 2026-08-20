@@ -25,8 +25,8 @@ final class Translator {
     }
 
     private enum RequestMode {
-        case translate(sourceLang: String, targetLang: String, context: [ContextPair])
-        case learn(sourceLang: String, targetLang: String)
+        case translate(sourceLang: String, targetLang: String, context: [ContextPair], parentContext: String?)
+        case learn(sourceLang: String, targetLang: String, parentContext: String?)
         case proofread(lang: String)
         case imageSearch
     }
@@ -98,6 +98,21 @@ final class Translator {
         """
     }
 
+    /// Subtranslate context block when translating a sub-phrase from a larger parent text.
+    static func parentContextBlock(_ parentText: String?) -> String {
+        guard let parent = parentText?.trimmingCharacters(in: .whitespacesAndNewlines), !parent.isEmpty else { return "" }
+        return """
+
+
+        <full-context-sentence>
+        \(parent)
+        </full-context-sentence>
+
+        The text to translate (<selected-text>) is a specific phrase or word excerpted from the full sentence/paragraph above (<full-context-sentence>).
+        Translate only the text inside <selected-text>, but select the precise meaning, nuance, and terminology that fits its role and context in <full-context-sentence>.
+        """
+    }
+
     private func request(_ text: String, mode: RequestMode, completion: @escaping @Sendable (Result<String, Error>) -> Void) {
         guard let url = URL(string: config.apiBaseURL) else {
             completion(.failure(NSError(domain: "Config", code: 1, userInfo: [NSLocalizedDescriptionKey: "Invalid apiBaseURL"])))
@@ -112,19 +127,20 @@ final class Translator {
         switch mode {
         case let .proofread(lang):
             systemPrompt = renderGrammarPrompt(lang: lang)
-        case let .translate(sourceLang, targetLang, context):
+        case let .translate(sourceLang, targetLang, context, parentContext):
             systemPrompt = renderSystemPrompt(sourceLang: sourceLang, targetLang: targetLang)
                 + (sourceLang == LanguageDetector.autoDetect ? Self.autoDetectResponseContract(languages: config.languages) : "")
                 + Self.contextBlock(context)
+                + Self.parentContextBlock(parentContext)
         case .imageSearch:
             systemPrompt = Self.imageSearchPrompt
-        case let .learn(sourceLang, targetLang):
+        case let .learn(sourceLang, targetLang, parentContext):
             systemPrompt = Self.renderLearnPrompt(
                 for: text,
                 sourceLang: sourceLang,
                 targetLang: targetLang,
                 config: config
-            )
+            ) + Self.parentContextBlock(parentContext)
         }
         do {
             req.httpBody = try Self.requestPayload(model: config.model, systemPrompt: systemPrompt, userContent: wrappedText)
@@ -241,9 +257,10 @@ final class Translator {
         sourceLang: String,
         targetLang: String,
         context: [ContextPair] = [],
+        parentContext: String? = nil,
         completion: @escaping @Sendable (Result<TranslationResult, Error>) -> Void
     ) {
-        request(text, mode: .translate(sourceLang: sourceLang, targetLang: targetLang, context: context)) { [config] result in
+        request(text, mode: .translate(sourceLang: sourceLang, targetLang: targetLang, context: context, parentContext: parentContext)) { [config] result in
             completion(result.flatMap { content in
                 Result {
                     try Self.translationResult(
@@ -257,8 +274,14 @@ final class Translator {
         }
     }
 
-    func learn(_ text: String, sourceLang: String, targetLang: String, completion: @escaping @Sendable (Result<String, Error>) -> Void) {
-        request(text, mode: .learn(sourceLang: sourceLang, targetLang: targetLang), completion: completion)
+    func learn(
+        _ text: String,
+        sourceLang: String,
+        targetLang: String,
+        parentContext: String? = nil,
+        completion: @escaping @Sendable (Result<String, Error>) -> Void
+    ) {
+        request(text, mode: .learn(sourceLang: sourceLang, targetLang: targetLang, parentContext: parentContext), completion: completion)
     }
 
     func proofread(_ text: String, lang: String, completion: @escaping @Sendable (Result<String, Error>) -> Void) {

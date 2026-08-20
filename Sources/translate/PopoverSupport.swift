@@ -103,10 +103,28 @@ enum PopoverIntegrationPolicy {
         return (register, skipped)
     }
 
-    /// A fresh selection becomes a subtranslate pane only when the popup is already open and the
-    /// main pane holds a usable translation; otherwise it replaces the main pane.
+    /// A selection inside the open popup becomes a subtranslate pane only when the popup is already
+    /// open and the main pane holds a usable translation; otherwise it replaces the main pane.
     static func usesSubtranslate(panelVisible: Bool, primaryResult: String, hasPendingImage: Bool) -> Bool {
         panelVisible && !hasPendingImage && PopoverFeedback.isCopyableResult(primaryResult)
+    }
+
+    /// Determines whether a new selection is a sub-phrase of the existing source text and should
+    /// open in the secondary subtranslate pane instead of replacing the main pane.
+    static func shouldSubtranslate(
+        candidateText: String,
+        originalSourceText: String,
+        panelVisible: Bool,
+        primaryResult: String,
+        hasPendingImage: Bool
+    ) -> Bool {
+        guard usesSubtranslate(panelVisible: panelVisible, primaryResult: primaryResult, hasPendingImage: hasPendingImage) else {
+            return false
+        }
+        let trimmedCandidate = candidateText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedOriginal = originalSourceText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedCandidate.isEmpty, trimmedCandidate != trimmedOriginal else { return false }
+        return trimmedOriginal.contains(trimmedCandidate)
     }
 
     static func imageSearchURL(query: String) -> URL? {

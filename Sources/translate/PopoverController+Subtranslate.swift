@@ -211,14 +211,14 @@ extension PopoverController {
         if mode == .proofread {
             translator.proofread(text, lang: displaySource, completion: handler)
         } else if mode == .learn {
-            translator.learn(text, sourceLang: pair.source, targetLang: pair.target, completion: handler)
+            translator.learn(text, sourceLang: pair.source, targetLang: pair.target, parentContext: inputTextView.string, completion: handler)
         } else {
             let context = historyStore.recentContext(
                 sourceLanguage: displaySource,
                 targetLanguage: pair.target,
                 excludingText: text
             ).reversed().map { ContextPair(source: $0.sourceText, target: $0.resultText) }
-            translator.translate(text, sourceLang: pair.source, targetLang: pair.target, context: context) { result in
+            translator.translate(text, sourceLang: pair.source, targetLang: pair.target, context: context, parentContext: inputTextView.string) { result in
                 handler(result.map(\.text))
             }
         }

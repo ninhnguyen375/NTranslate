@@ -905,6 +905,28 @@ struct TranslateTests {
         #expect(!PopoverIntegrationPolicy.usesSubtranslate(panelVisible: false, primaryResult: "xin chào", hasPendingImage: false))
         #expect(!PopoverIntegrationPolicy.usesSubtranslate(panelVisible: true, primaryResult: PopoverFeedback.translating, hasPendingImage: false))
         #expect(!PopoverIntegrationPolicy.usesSubtranslate(panelVisible: true, primaryResult: "xin chào", hasPendingImage: true))
+
+        #expect(PopoverIntegrationPolicy.shouldSubtranslate(
+            candidateText: "hello",
+            originalSourceText: "hello world",
+            panelVisible: true,
+            primaryResult: "xin chào thế giới",
+            hasPendingImage: false
+        ))
+        #expect(!PopoverIntegrationPolicy.shouldSubtranslate(
+            candidateText: "goodbye",
+            originalSourceText: "hello world",
+            panelVisible: true,
+            primaryResult: "xin chào thế giới",
+            hasPendingImage: false
+        ))
+        #expect(!PopoverIntegrationPolicy.shouldSubtranslate(
+            candidateText: "hello world",
+            originalSourceText: "hello world",
+            panelVisible: true,
+            primaryResult: "xin chào thế giới",
+            hasPendingImage: false
+        ))
     }
 
     @Test func stackedSectionHeightsKeepsBothPanesAboveMinimum() {

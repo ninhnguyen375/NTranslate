@@ -258,8 +258,15 @@ extension PopoverController {
 
     func learnAtCursor() {
         guard let resolved = readSelection(forceSimulatedCopy: false) else { return }
-        if let text = subtranslateText(from: resolved) {
-            runSubRequest(text: text, mode: .learn)
+        if case let .text(candidate) = resolved.input,
+           PopoverIntegrationPolicy.shouldSubtranslate(
+               candidateText: candidate,
+               originalSourceText: inputTextView.string,
+               panelVisible: panel.isVisible,
+               primaryResult: textView.string,
+               hasPendingImage: pendingImage != nil
+           ) {
+            runSubRequest(text: candidate.trimmingCharacters(in: .whitespacesAndNewlines), mode: .learn)
             return
         }
         guard prepareInputFromSelection(resolved) else { return }
