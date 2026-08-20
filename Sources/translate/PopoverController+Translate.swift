@@ -116,6 +116,8 @@ extension PopoverController {
 
     func performTranslate(generation existingGeneration: Int?) {
         invalidateCurrentRecord()
+        removeQASection()
+        qaInputField.stringValue = ""
         let generation = existingGeneration ?? beginRequest()
         guard let translator else {
             finishRequest(generation: generation)

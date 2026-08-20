@@ -426,6 +426,7 @@ extension PopoverController {
 
     func closePanel() {
         guard panel.isVisible else { return }
+        hideFloatingSelectionBar()
         removeSubSection()
         requestGeneration += 1
         isRequestInFlight = false

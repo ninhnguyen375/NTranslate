@@ -28,6 +28,7 @@ final class Translator {
         case translate(sourceLang: String, targetLang: String, context: [ContextPair], parentContext: String?)
         case learn(sourceLang: String, targetLang: String, parentContext: String?)
         case proofread(lang: String)
+        case ask(question: String, sourceText: String, translatedText: String, sourceLang: String, targetLang: String)
         case imageSearch
     }
 
@@ -47,6 +48,24 @@ final class Translator {
         config.grammarPrompt
             .replacingOccurrences(of: "{{lang}}", with: lang)
             .replacingOccurrences(of: "{{config.nativeLang}}", with: config.resolvedNativeLang)
+    }
+
+    private func renderQAPrompt(sourceText: String, translatedText: String, sourceLang: String, targetLang: String) -> String {
+        """
+        You are an expert language assistant analyzing a translation.
+        <source-text>
+        \(sourceText)
+        </source-text>
+
+        <translation>
+        \(translatedText)
+        </translation>
+
+        Source language: \(sourceLang)
+        Target language: \(targetLang)
+
+        Answer the user's question concisely, accurately, and directly in Vietnamese (or the language specified by the user). Focus directly on grammar, vocabulary, nuance, tone, or alternative phrasing as requested.
+        """
     }
 
     static func renderLearnPrompt(for text: String, sourceLang: String, targetLang: String, config: AppConfig) -> String {
@@ -134,6 +153,13 @@ final class Translator {
                 + Self.parentContextBlock(parentContext)
         case .imageSearch:
             systemPrompt = Self.imageSearchPrompt
+        case let .ask(_, sourceText, translatedText, sourceLang, targetLang):
+            systemPrompt = renderQAPrompt(
+                sourceText: sourceText,
+                translatedText: translatedText,
+                sourceLang: sourceLang,
+                targetLang: targetLang
+            )
         case let .learn(sourceLang, targetLang, parentContext):
             systemPrompt = Self.renderLearnPrompt(
                 for: text,
@@ -286,6 +312,27 @@ final class Translator {
 
     func proofread(_ text: String, lang: String, completion: @escaping @Sendable (Result<String, Error>) -> Void) {
         request(text, mode: .proofread(lang: lang), completion: completion)
+    }
+
+    func ask(
+        _ question: String,
+        sourceText: String,
+        translatedText: String,
+        sourceLang: String,
+        targetLang: String,
+        completion: @escaping @Sendable (Result<String, Error>) -> Void
+    ) {
+        request(
+            question,
+            mode: .ask(
+                question: question,
+                sourceText: sourceText,
+                translatedText: translatedText,
+                sourceLang: sourceLang,
+                targetLang: targetLang
+            ),
+            completion: completion
+        )
     }
 
     func imageSearchQuery(_ text: String, completion: @escaping @Sendable (Result<String, Error>) -> Void) {

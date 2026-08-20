@@ -37,6 +37,7 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         static let dividerWidth: CGFloat = 1
         /// Shared height for Learn / Translate.
         static let controlHeight: CGFloat = 32
+        static let qaInputHeight: CGFloat = 28
         static let bottomBarHeight: CGFloat = controlHeight
         /// Compact language selects (smaller than primary actions).
         static let languageControlHeight: CGFloat = 26
@@ -150,6 +151,15 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     /// At most one secondary pane (see `PopoverIntegrationPolicy.usesSubtranslate`).
     var subSection: SubtranslateSection?
     var subGeneration = 0
+    var qaSection: QAPaneSection?
+    var qaGeneration = 0
+    let qaInputField: NSTextField
+    let selectionFloatingBar = NSVisualEffectView(frame: .zero)
+    let floatingTranslateButton = NSButton(frame: .zero)
+    let floatingLearnButton = NSButton(frame: .zero)
+    let floatingSpeakButton = NSButton(frame: .zero)
+    let floatingCopyButton = NSButton(frame: .zero)
+    var currentFloatingSelectedText: String?
 
     var speechRate: Float {
         get { SpeechRatePolicy.resolved(UserDefaults.standard.float(forKey: SpeechRatePolicy.defaultsKey)) }
@@ -158,6 +168,9 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     let speechRatePopUp = NSPopUpButton()
 
     override init() {
+        let field = NSTextField(frame: .zero)
+        field.cell = VerticallyCenteredTextFieldCell(textCell: "")
+        self.qaInputField = field
         super.init()
         speechRatePopUp.isBordered = false
         speechRatePopUp.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)

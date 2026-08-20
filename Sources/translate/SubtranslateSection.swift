@@ -22,6 +22,7 @@ final class SubtranslateSection {
     let speakResultButton = NSButton(frame: .zero)
     let copyButton = NSButton(frame: .zero)
     let saveWordButton = NSButton(frame: .zero)
+    let closeButton = NSButton(frame: .zero)
     var dividerGradient: CAGradientLayer?
 
     /// Trimmed text currently displayed on each side.

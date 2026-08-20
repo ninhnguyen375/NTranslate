@@ -171,6 +171,7 @@ extension PopoverController {
 
     func textDidChange(_ notification: Notification) {
         guard notification.object as AnyObject? === inputTextView else { return }
+        hideFloatingSelectionBar()
         // Editing the main source invalidates whatever phrase the sub pane was explaining.
         removeSubSection()
         if pendingImage != nil { setPendingImage(nil) }
@@ -179,6 +180,11 @@ extension PopoverController {
         updateSpeakButtons()
         updatePaneLanguageLabels()
         reflowLayout()
+    }
+
+    func textViewDidChangeSelection(_ notification: Notification) {
+        guard notification.object as AnyObject? === inputTextView else { return }
+        updateFloatingSelectionBar()
     }
 
     @objc func languageSelectionChanged() {

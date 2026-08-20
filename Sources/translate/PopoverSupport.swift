@@ -277,6 +277,30 @@ enum LiquidGlassChrome {
     }
 }
 
+final class VerticallyCenteredTextFieldCell: NSTextFieldCell {
+    override func drawingRect(forBounds rect: NSRect) -> NSRect {
+        let newRect = super.drawingRect(forBounds: rect)
+        let textSize = cellSize(forBounds: rect)
+        let heightDelta = newRect.height - textSize.height
+        if heightDelta > 0 {
+            return NSRect(x: newRect.origin.x + 10, y: newRect.origin.y + (heightDelta / 2).rounded(.down), width: max(0, newRect.width - 20), height: textSize.height)
+        }
+        return newRect.insetBy(dx: 10, dy: 0)
+    }
+
+    override func titleRect(forBounds rect: NSRect) -> NSRect {
+        drawingRect(forBounds: rect)
+    }
+
+    override func edit(withFrame rect: NSRect, in controlView: NSView, editor textObj: NSText, delegate: Any?, event: NSEvent?) {
+        super.edit(withFrame: drawingRect(forBounds: rect), in: controlView, editor: textObj, delegate: delegate, event: event)
+    }
+
+    override func select(withFrame rect: NSRect, in controlView: NSView, editor textObj: NSText, delegate: Any?, start selStart: Int, length selLength: Int) {
+        super.select(withFrame: drawingRect(forBounds: rect), in: controlView, editor: textObj, delegate: delegate, start: selStart, length: selLength)
+    }
+}
+
 final class InputTextView: NSTextView {
     var onImagePasted: ((Data) -> Void)?
 

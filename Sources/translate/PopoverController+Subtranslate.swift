@@ -54,6 +54,7 @@ extension PopoverController {
         configureIconButton(section.speakResultButton, symbol: "speaker.wave.2", action: #selector(speakSubResult), label: "Speak subtranslate translation")
         configureIconButton(section.copyButton, symbol: "doc.on.doc", action: #selector(copySubResult), label: "Copy subtranslate")
         configureIconButton(section.saveWordButton, symbol: "bookmark", action: #selector(toggleSaveSubWord), label: "Save subtranslate")
+        configureIconButton(section.closeButton, symbol: "xmark", action: #selector(closeSubtranslate), label: "Close subtranslate")
 
         section.sourceHeaderBar.addSubview(section.sourceHeaderLabel)
         section.sourceHeaderBar.addSubview(section.speakSourceButton)
@@ -64,6 +65,7 @@ extension PopoverController {
         section.resultHeaderBar.addSubview(section.speakResultButton)
         section.resultHeaderBar.addSubview(section.copyButton)
         section.resultHeaderBar.addSubview(section.saveWordButton)
+        section.resultHeaderBar.addSubview(section.closeButton)
         section.resultCard.addSubview(section.resultHeaderBar)
         section.resultCard.addSubview(section.resultScrollView)
 
@@ -110,10 +112,15 @@ extension PopoverController {
             headerLabel: section.resultHeaderLabel,
             scrollView: section.resultScrollView,
             textView: section.resultTextView,
-            trailingIcons: [section.speakResultButton, section.copyButton, section.saveWordButton],
+            trailingIcons: [section.speakResultButton, section.copyButton, section.saveWordButton, section.closeButton],
             paneWidth: panes.right,
             bodyHeight: bodyHeight
         )
+    }
+
+    @objc func closeSubtranslate() {
+        removeSubSection()
+        reflowLayout()
     }
 
     func removeSubSection() {
@@ -316,5 +323,130 @@ extension PopoverController {
 
         focusInputTextView()
         reflowLayout()
+    }
+
+    // MARK: - Floating Selection Toolbar
+
+    func configureFloatingToolbar() {
+        selectionFloatingBar.state = .active
+        selectionFloatingBar.material = .hudWindow
+        selectionFloatingBar.blendingMode = .withinWindow
+        selectionFloatingBar.wantsLayer = true
+        selectionFloatingBar.layer?.cornerRadius = 14
+        selectionFloatingBar.layer?.cornerCurve = .continuous
+        selectionFloatingBar.layer?.masksToBounds = true
+        selectionFloatingBar.layer?.borderWidth = 1
+        selectionFloatingBar.layer?.borderColor = Palette.cg(Palette.hairline, in: selectionFloatingBar)
+        selectionFloatingBar.isHidden = true
+
+        configureFloatingButton(floatingTranslateButton, symbol: "arrow.right.circle", action: #selector(floatingTranslateClicked), label: "Subtranslate")
+        configureFloatingButton(floatingLearnButton, symbol: "brain.head.profile", action: #selector(floatingLearnClicked), label: "Learn Phrase")
+        configureFloatingButton(floatingSpeakButton, symbol: "speaker.wave.2", action: #selector(floatingSpeakClicked), label: "Speak Phrase")
+        configureFloatingButton(floatingCopyButton, symbol: "doc.on.doc", action: #selector(floatingCopyClicked), label: "Copy Phrase")
+
+        let stack = NSStackView(views: [floatingTranslateButton, floatingLearnButton, floatingSpeakButton, floatingCopyButton])
+        stack.orientation = .horizontal
+        stack.spacing = 4
+        stack.edgeInsets = NSEdgeInsets(top: 3, left: 6, bottom: 3, right: 6)
+        stack.translatesAutoresizingMaskIntoConstraints = false
+
+        selectionFloatingBar.addSubview(stack)
+        NSLayoutConstraint.activate([
+            stack.leadingAnchor.constraint(equalTo: selectionFloatingBar.leadingAnchor),
+            stack.trailingAnchor.constraint(equalTo: selectionFloatingBar.trailingAnchor),
+            stack.topAnchor.constraint(equalTo: selectionFloatingBar.topAnchor),
+            stack.bottomAnchor.constraint(equalTo: selectionFloatingBar.bottomAnchor),
+        ])
+    }
+
+    func configureFloatingButton(_ button: NSButton, symbol: String, action: Selector, label: String) {
+        button.title = ""
+        button.attributedTitle = NSAttributedString(string: "")
+        button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: label)
+        button.imagePosition = .imageOnly
+        button.isBordered = false
+        button.bezelStyle = .inline
+        button.target = self
+        button.action = action
+        button.toolTip = label
+        button.setAccessibilityLabel(label)
+        button.contentTintColor = Palette.iconTint
+        button.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            button.widthAnchor.constraint(equalToConstant: 22),
+            button.heightAnchor.constraint(equalToConstant: 22),
+        ])
+    }
+
+    func updateFloatingSelectionBar() {
+        let range = inputTextView.selectedRange()
+        guard range.length > 0,
+              let bounds = Range(range, in: inputTextView.string)
+        else {
+            hideFloatingSelectionBar()
+            return
+        }
+        let text = inputTextView.string[bounds].trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else {
+            hideFloatingSelectionBar()
+            return
+        }
+        currentFloatingSelectedText = text
+
+        guard let layoutManager = inputTextView.layoutManager,
+              let textContainer = inputTextView.textContainer
+        else {
+            hideFloatingSelectionBar()
+            return
+        }
+
+        let glyphRange = layoutManager.glyphRange(forCharacterRange: range, actualCharacterRange: nil)
+        let rectInTextView = layoutManager.boundingRect(forGlyphRange: glyphRange, in: textContainer)
+        let rectInScroll = inputTextView.convert(rectInTextView, to: inputScrollView)
+        guard inputScrollView.bounds.intersects(rectInScroll) else {
+            hideFloatingSelectionBar()
+            return
+        }
+
+        let rectInChrome = inputTextView.convert(rectInTextView, to: chromeHost)
+        let barWidth: CGFloat = 118
+        let barHeight: CGFloat = 28
+        let barX = max(ChromeLayout.padding, min(rectInChrome.midX - barWidth / 2, chromeHost.bounds.width - ChromeLayout.padding - barWidth))
+        let barY = rectInChrome.maxY + 6
+
+        selectionFloatingBar.frame = NSRect(x: barX, y: barY, width: barWidth, height: barHeight)
+        selectionFloatingBar.isHidden = false
+        chromeHost.addSubview(selectionFloatingBar, positioned: .above, relativeTo: nil)
+    }
+
+    func hideFloatingSelectionBar() {
+        selectionFloatingBar.isHidden = true
+        currentFloatingSelectedText = nil
+    }
+
+    @objc func floatingTranslateClicked() {
+        guard let text = currentFloatingSelectedText else { return }
+        runSubRequest(text: text, mode: .translate)
+    }
+
+    @objc func floatingLearnClicked() {
+        guard let text = currentFloatingSelectedText else { return }
+        runSubRequest(text: text, mode: .learn)
+    }
+
+    @objc func floatingSpeakClicked() {
+        guard let text = currentFloatingSelectedText else { return }
+        let lang = effectiveSourceLanguage(for: text)
+        let model = SpeechModelResolver.model(for: lang, config: config)
+        playSpeech(SpeechIdentity(kind: .source, text: text, model: model, recordID: nil))
+    }
+
+    @objc func floatingCopyClicked() {
+        guard let text = currentFloatingSelectedText else { return }
+        guard writePasteboard(text) else {
+            setStatus("Copy failed")
+            return
+        }
+        setStatus("Copied phrase")
     }
 }

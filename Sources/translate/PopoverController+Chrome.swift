@@ -163,6 +163,12 @@ extension PopoverController {
         chromeHost.addSubview(learnButton)
         chromeHost.addSubview(translateButton)
 
+        configureQAInputBar()
+        chromeHost.addSubview(qaInputField)
+
+        configureFloatingToolbar()
+        chromeHost.addSubview(selectionFloatingBar)
+
         let containerHost = NSView(frame: glassContainer.bounds)
         containerHost.autoresizingMask = [.width, .height]
         containerHost.addSubview(shellGlass)
@@ -346,16 +352,19 @@ extension PopoverController {
         let headerY = height - L.padding - L.headerHeight
         let statusY = headerY - statusH
         let bottomY = L.paddingBottom
-        let splitY = bottomY + L.bottomBarHeight + L.footerGap
+        let qaH = L.qaInputHeight
+        let qaY = bottomY + L.bottomBarHeight + 8
+        let splitY = qaY + qaH + L.footerGap
         // Pin body under the header so extra panel height grows the pane — never a dead gap.
         let splitTop = (statusH > 0 ? statusY : headerY) - L.headerGap
         // The panel height is already the clamped truth; the split gets exactly what's left over.
         // Measuring again here and taking the larger value is what pushed panes past the chrome.
         let totalSplitHeight = max(0, splitTop - splitY)
-        let heights = PopoverLayoutMath.stackedSectionHeights(
+        let heights = PopoverLayoutMath.multiStackedSectionHeights(
             available: totalSplitHeight,
             primaryNeeded: measuredPrimaryPaneHeight(paneWidth: panes.left),
-            secondaryNeeded: subSection.map { measuredSubPaneHeight($0, paneWidth: panes.left) },
+            subNeeded: subSection.map { measuredSubPaneHeight($0, paneWidth: panes.left) },
+            qaNeeded: qaSection.map { measuredQAPaneHeight($0, paneWidth: contentWidth) },
             gap: L.sectionGap,
             minPaneHeight: stackedMinPaneHeight
         )
@@ -409,13 +418,19 @@ extension PopoverController {
         applyControlCornerRadius(updateButton, radius: chromeIcon / 2)
         applyControlCornerRadius(contextButton, radius: chromeIcon / 2)
 
-        // Subtranslate sits below the main pane; AppKit's origin is bottom-left, so the main pane
-        // gets the higher y.
-        let primaryY = heights.secondary.map { splitY + $0 + L.sectionGap } ?? splitY
-        splitHost.frame = NSRect(x: L.padding, y: primaryY, width: contentWidth, height: splitHeight)
-        if let sub = subSection, let subHeight = heights.secondary {
-            layoutSubSection(sub, x: L.padding, y: splitY, width: contentWidth, height: subHeight, panes: panes)
+        // Stacked order from top to bottom:
+        // Main split pane (highest y) -> Subtranslate (middle y) -> QA pane (lowest y, just above splitY)
+        var currentY = splitY
+        if let qa = qaSection, let qaH = heights.qa {
+            layoutQASection(qa, x: L.padding, y: currentY, width: contentWidth, height: qaH)
+            currentY += qaH + L.sectionGap
         }
+        if let sub = subSection, let subH = heights.sub {
+            layoutSubSection(sub, x: L.padding, y: currentY, width: contentWidth, height: subH, panes: panes)
+            currentY += subH + L.sectionGap
+        }
+
+        splitHost.frame = NSRect(x: L.padding, y: currentY, width: contentWidth, height: splitHeight)
 
         sourceCard.frame = NSRect(x: 0, y: 0, width: panes.left, height: splitHeight)
         splitDivider.frame = NSRect(x: panes.left, y: 14, width: max(1, L.dividerWidth), height: max(0, splitHeight - 28))
@@ -512,6 +527,13 @@ extension PopoverController {
         applyControlCornerRadius(swapLanguagesButton, radius: L.languageCornerRadius)
         styleLanguageButtonTitle(sourceLanguageButton, language: sourceLanguageSelection)
         styleLanguageButtonTitle(targetLanguageButton, language: targetLanguageSelection)
+
+        qaInputField.frame = NSRect(
+            x: L.padding,
+            y: qaY,
+            width: contentWidth,
+            height: qaH
+        )
     }
 
     func layoutPaneChrome(
@@ -558,8 +580,14 @@ extension PopoverController {
     /// Height the split body wants before the panel clamp — the sum of both sections plus the gap.
     func currentSplitPaneHeight(paneWidth: CGFloat) -> CGFloat {
         let primary = measuredPrimaryPaneHeight(paneWidth: paneWidth)
-        guard let sub = subSection else { return primary }
-        return primary + ChromeLayout.sectionGap + measuredSubPaneHeight(sub, paneWidth: paneWidth)
+        var total = primary
+        if let sub = subSection {
+            total += ChromeLayout.sectionGap + measuredSubPaneHeight(sub, paneWidth: paneWidth)
+        }
+        if let qa = qaSection {
+            total += ChromeLayout.sectionGap + measuredQAPaneHeight(qa, paneWidth: paneWidth * 2 + ChromeLayout.dividerWidth)
+        }
+        return total
     }
 
     func measuredPrimaryPaneHeight(paneWidth: CGFloat) -> CGFloat {
@@ -578,6 +606,14 @@ extension PopoverController {
         )
     }
 
+    func measuredQAPaneHeight(_ section: QAPaneSection, paneWidth: CGFloat) -> CGFloat {
+        let L = ChromeLayout.self
+        let measureWidth = max(80, paneWidth - 24)
+        let measured = measuredTextHeight(section.textView.attributedString(), width: measureWidth) + 20
+        let needed = L.paneHeaderHeight + measured
+        return min(max(stackedMinPaneHeight, needed), maxSectionHeight)
+    }
+
     func paneHeight(source: NSAttributedString, result: NSAttributedString, paneWidth: CGFloat) -> CGFloat {
         let L = ChromeLayout.self
         let measureWidth = max(80, paneWidth - 24)
@@ -592,13 +628,13 @@ extension PopoverController {
 
     /// Height ceiling for one pane — halved-ish once the subtranslate pane shares the panel.
     var maxSectionHeight: CGFloat {
-        subSection == nil ? ChromeLayout.splitMaxPaneHeight : ChromeLayout.splitMaxStackedPaneHeight
+        (subSection == nil && qaSection == nil) ? ChromeLayout.splitMaxPaneHeight : ChromeLayout.splitMaxStackedPaneHeight
     }
 
     /// Floor for one pane. Two panes at the single-pane floor don't fit a short panel, so stacking
     /// lowers it rather than letting the pair overflow.
     var stackedMinPaneHeight: CGFloat {
-        subSection == nil ? ChromeLayout.splitMinPaneHeight : ChromeLayout.splitMinStackedPaneHeight
+        (subSection == nil && qaSection == nil) ? ChromeLayout.splitMinPaneHeight : ChromeLayout.splitMinStackedPaneHeight
     }
 
     /// Resizes/repositions the panel around `size`. While the panel hasn't been dragged by the
@@ -678,6 +714,7 @@ extension PopoverController {
             statusHeight: statusH,
             headerGap: L.headerGap,
             splitPaneHeight: splitHeight,
+            qaInputHeight: L.qaInputHeight,
             footerGap: L.footerGap,
             bottomBarHeight: L.bottomBarHeight
         )
@@ -686,8 +723,10 @@ extension PopoverController {
     func maxPopoverHeight() -> CGFloat {
         // A second pane needs its own room on top of the single-pane budget, but never more than
         // the screen can show.
-        let base = CGFloat(config.ui.height) + 300
-            + (subSection == nil ? 0 : ChromeLayout.splitMaxStackedPaneHeight + ChromeLayout.sectionGap)
+        var stackedAllowance: CGFloat = 0
+        if subSection != nil { stackedAllowance += ChromeLayout.splitMaxStackedPaneHeight + ChromeLayout.sectionGap }
+        if qaSection != nil { stackedAllowance += ChromeLayout.splitMaxStackedPaneHeight + ChromeLayout.sectionGap }
+        let base = CGFloat(config.ui.height) + 300 + stackedAllowance
         guard let screen = currentScreenFrame() else { return base }
         return min(base, screen.height - 40)
     }

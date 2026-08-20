@@ -58,6 +58,52 @@ enum PopoverLayoutMath {
         return min(max(minPaneHeight, needed), maxPaneHeight)
     }
 
+    /// Splits `available` across multiple stacked sections (e.g. Primary, Subtranslate, QA).
+    static func multiStackedSectionHeights(
+        available: CGFloat,
+        primaryNeeded: CGFloat,
+        subNeeded: CGFloat?,
+        qaNeeded: CGFloat?,
+        gap: CGFloat,
+        minPaneHeight: CGFloat
+    ) -> (primary: CGFloat, sub: CGFloat?, qa: CGFloat?) {
+        var activeCount = 1
+        if subNeeded != nil { activeCount += 1 }
+        if qaNeeded != nil { activeCount += 1 }
+
+        if activeCount == 1 {
+            return (max(minPaneHeight, available), nil, nil)
+        }
+
+        let totalGaps = CGFloat(activeCount - 1) * gap
+        let usable = max(minPaneHeight * CGFloat(activeCount), available - totalGaps)
+        let fairShare = max(minPaneHeight, (usable / CGFloat(activeCount)).rounded(.down))
+
+        var subHeight: CGFloat? = nil
+        var qaHeight: CGFloat? = nil
+
+        var remainingUsable = usable
+
+        if let subNeeded {
+            let cap = min(remainingUsable - minPaneHeight * CGFloat(activeCount - 1), max(fairShare, subNeeded))
+            let allocated = min(max(minPaneHeight, subNeeded), cap)
+            subHeight = allocated
+            remainingUsable -= allocated
+            activeCount -= 1
+        }
+
+        if let qaNeeded {
+            let cap = min(remainingUsable - minPaneHeight * CGFloat(activeCount - 1), max(fairShare, qaNeeded))
+            let allocated = min(max(minPaneHeight, qaNeeded), cap)
+            qaHeight = allocated
+            remainingUsable -= allocated
+            activeCount -= 1
+        }
+
+        let primaryHeight = max(minPaneHeight, remainingUsable)
+        return (primaryHeight, subHeight, qaHeight)
+    }
+
     /// Splits `available` between the primary pane and an optional subtranslate pane, keeping each
     /// at least `minPaneHeight` and never above what it actually needs. Leftover goes to the primary.
     /// When both panes want more than fits, neither takes more than half so one can't squeeze the
@@ -85,15 +131,18 @@ enum PopoverLayoutMath {
         statusHeight: CGFloat,
         headerGap: CGFloat,
         splitPaneHeight: CGFloat,
+        qaInputHeight: CGFloat = 0,
         footerGap: CGFloat,
         bottomBarHeight: CGFloat
     ) -> CGFloat {
         let bottom = paddingBottom ?? padding
+        let qaAddition = qaInputHeight > 0 ? (qaInputHeight + 8) : 0
         return padding
             + headerHeight
             + statusHeight
             + headerGap
             + splitPaneHeight
+            + qaAddition
             + footerGap
             + bottomBarHeight
             + bottom
