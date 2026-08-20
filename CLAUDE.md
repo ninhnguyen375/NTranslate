@@ -26,8 +26,12 @@ Script sẽ:
 1. Chạy `./install-app.sh` (bump patch version mặc định) trừ khi `SKIP_INSTALL=1`
 2. Đóng gói app đã ký từ `/Applications/NTranslate.app` thành `dist/NTranslate-<version>-<arch>.dmg` (có shortcut Applications)
 3. Cập nhật dòng **Latest:** trong `README.md` cho khớp version/DMG
-4. Tự động lấy danh sách commit từ tag release gần nhất (`git log <last-tag>..HEAD --oneline`) đưa vào mục `### What's Changed` trong release notes (trừ khi truyền `NOTES_FILE`)
-5. Tạo GitHub Release + upload DMG (cần `gh` đã login) trừ khi `SKIP_UPLOAD=1`
+4. Tạo GitHub Release + upload DMG (cần `gh` đã login) trừ khi `SKIP_UPLOAD=1`
+
+### Quy định Release Notes và Changes Log
+- **Mục "Điểm mới trong bản cập nhật (Changes log)"**: Bắt buộc diễn giải rõ ràng, dễ hiểu bằng **ngôn ngữ tự nhiên tiếng Việt** (tập trung vào tính năng mới, cải tiến, sửa lỗi từ góc nhìn người dùng), không để thô dạng danh sách git commit tiếng Anh ngắn củn.
+- Phải có link so sánh chi tiết (`Full Changelog` / `So sánh chi tiết`) dạng `https://github.com/<repo>/compare/<last-tag>...<current-tag>`.
+- Có thể chuẩn bị trước nội dung tiếng Việt vào file rồi truyền `NOTES_FILE=path.md ./release-dmg.sh`, hoặc sau khi release chạy lệnh `gh release edit <tag> --notes "..."` để cập nhật lại nội dung tiếng Việt chuẩn xác.
 
 ### Biến môi trường hữu ích
 
@@ -37,7 +41,7 @@ Script sẽ:
 | `SKIP_INSTALL=1` | Không build lại; dùng app đang có trong `/Applications` |
 | `SKIP_UPLOAD=1` | Chỉ tạo DMG local, không gọi `gh release` |
 | `DRAFT=1` | Tạo draft release trên GitHub |
-| `NOTES_FILE=path.md` | Release notes tùy chỉnh (bỏ qua auto changelog) |
+| `NOTES_FILE=path.md` | Release notes tùy chỉnh (tiếng Việt) |
 
 ### Ví dụ
 
@@ -55,4 +59,4 @@ SKIP_UPLOAD=1 ./release-dmg.sh
 SKIP_INSTALL=1 DRAFT=1 ./release-dmg.sh
 ```
 
-Sau khi release xong: báo user URL release + version/build + tên file DMG và tóm tắt changelog so với bản gần nhất. Nếu `README.md` đổi, commit + push thay đổi đó cùng (nếu user đang yêu cầu publish).
+Sau khi release xong: báo user URL release + version/build + tên file DMG và tóm tắt changes log bằng tiếng Việt so với bản gần nhất. Nếu `README.md` đổi, commit + push thay đổi đó cùng (nếu user đang yêu cầu publish).
