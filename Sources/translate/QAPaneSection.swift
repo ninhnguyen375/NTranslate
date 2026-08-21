@@ -53,7 +53,7 @@ final class QAPaneSection {
             body.append(.plainDisplay("\(turn.question)\n", font: questionFont, color: questionColor))
             if turn.isPending {
                 body.append(.plainDisplay(turn.answer, font: font, color: pendingColor))
-            } else if turn.answer.hasPrefix("Lỗi:") {
+            } else if turn.answer.hasPrefix("Error:") || turn.answer.hasPrefix("Lỗi:") {
                 body.append(.plainDisplay(turn.answer, font: font, color: errorColor))
             } else {
                 body.append(.markdownDisplay(turn.answer, font: font, color: answerColor))

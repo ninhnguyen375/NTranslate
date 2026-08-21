@@ -12,11 +12,11 @@ struct CrashRecovery {
         let terminationReason: String?
 
         var displayText: String {
-            var lines = ["NTranslate có thể đã bị crash ở lần chạy trước."]
-            if let timestamp { lines.append("Thời gian: \(timestamp)") }
-            if let exceptionType { lines.append("Lỗi: \(exceptionType)") }
-            if let terminationReason { lines.append("Kết thúc: \(terminationReason)") }
-            lines.append("Bạn có thể mở crash log để xem chi tiết.")
+            var lines = ["NTranslate may have crashed during the previous run."]
+            if let timestamp { lines.append("Time: \(timestamp)") }
+            if let exceptionType { lines.append("Error: \(exceptionType)") }
+            if let terminationReason { lines.append("Termination: \(terminationReason)") }
+            lines.append("You can open crash logs to view details.")
             return lines.joined(separator: "\n")
         }
     }
@@ -64,12 +64,12 @@ struct CrashRecovery {
         let summary = summary(fromCrashReportAt: latestReport)
 
         let alert = NSAlert()
-        alert.messageText = "NTranslate gặp sự cố lần chạy trước"
+        alert.messageText = "NTranslate Crashed Previously"
         alert.informativeText = summary?.displayText
-            ?? "NTranslate có thể đã bị crash ở lần chạy trước. Bạn có thể mở crash log để xem chi tiết."
+            ?? "NTranslate may have crashed during the previous run. You can open crash logs to view details."
         alert.alertStyle = .warning
         alert.addButton(withTitle: "OK")
-        alert.addButton(withTitle: "Mở crash log")
+        alert.addButton(withTitle: "Open Crash Log")
 
         let response = alert.runModal()
         defaults.set(latestReport.lastPathComponent, forKey: acknowledgedCrashReportKey)

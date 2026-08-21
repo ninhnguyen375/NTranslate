@@ -1,3 +1,8 @@
+## UI Language & Formatting
+
+- Toàn bộ text hiển thị trên giao diện người dùng (UI text, menu bar, button, placeholder, label, alert, notification...) bắt buộc sử dụng **tiếng Anh**.
+- Tuyệt đối **không sử dụng emoji** trên UI hoặc menu bar; sử dụng SF Symbols hoặc icon chuẩn macOS thay thế.
+
 ## Workflow
 
 - Chỉ chạy `./install-app.sh` sau khi hoàn thành task có thay đổi source, resource, metadata, hoặc build/release script ảnh hưởng đến `NTranslate.app`.

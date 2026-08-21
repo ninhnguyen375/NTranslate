@@ -101,7 +101,7 @@ extension PopoverController {
         let generation = prefetchGeneration
         prefetchingSpeech.insert(identity)
         updateSpeakButtons()
-        translator.speak(identity.text, model: identity.model) { [weak self] result in
+        translator.speak(identity.text, model: identity.model, speed: speechRate) { [weak self] result in
             Task { @MainActor in
                 guard let self else { return }
                 self.prefetchingSpeech.remove(identity)
@@ -156,7 +156,7 @@ extension PopoverController {
         guard let translator else { return }
         let generation = speechState.beginLoading(identity)
         updateSpeakButtons()
-        translator.speak(identity.text, model: identity.model) { [weak self] result in
+        translator.speak(identity.text, model: identity.model, speed: speechRate) { [weak self] result in
             Task { @MainActor in
                 guard let self, self.speechState.accepts(generation: generation, identity: identity) else { return }
                 switch result {

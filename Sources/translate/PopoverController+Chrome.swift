@@ -32,6 +32,18 @@ extension PopoverController {
         configureChromeIconButton(closeButton, symbol: "xmark", action: #selector(closePopover), label: "Close")
         configureChromeIconButton(pinButton, symbol: "pin", action: #selector(togglePin), label: "Pin")
         configureChromeIconButton(historyButton, symbol: "clock.arrow.circlepath", action: #selector(openTranslationHistory), label: "Translation History")
+        configureChromeIconButton(reviewButton, symbol: "rectangle.stack", action: #selector(openReviewWindow), label: "Review SRS")
+
+        reviewBadgeLabel.font = .systemFont(ofSize: 8, weight: .bold)
+        reviewBadgeLabel.textColor = .white
+        reviewBadgeLabel.backgroundColor = .systemRed
+        reviewBadgeLabel.drawsBackground = true
+        reviewBadgeLabel.alignment = .center
+        reviewBadgeLabel.wantsLayer = true
+        reviewBadgeLabel.layer?.cornerRadius = 6
+        reviewBadgeLabel.layer?.masksToBounds = true
+        reviewBadgeLabel.isHidden = true
+
         configureChromeIconButton(updateButton, symbol: "arrow.triangle.2.circlepath", action: #selector(checkForUpdatesClicked), label: "Check for Updates")
         configureChromeIconButton(contextButton, symbol: "text.quote", action: #selector(showContextTooltip), label: "Translation context")
         contextButton.isHidden = true
@@ -151,6 +163,9 @@ extension PopoverController {
         chromeHost.addSubview(titleLabel)
         chromeHost.addSubview(statusLabel)
         chromeHost.addSubview(contextButton)
+        chromeHost.addSubview(updateButton)
+        chromeHost.addSubview(reviewButton)
+        chromeHost.addSubview(reviewBadgeLabel)
         chromeHost.addSubview(historyButton)
         chromeHost.addSubview(pinButton)
         chromeHost.addSubview(closeButton)

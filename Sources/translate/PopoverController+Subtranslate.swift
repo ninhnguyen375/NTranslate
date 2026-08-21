@@ -246,8 +246,15 @@ extension PopoverController {
             if let existingRecord {
                 section.recordID = existingRecord.id
             } else {
+                let parent = self.inputTextView.string.trimmingCharacters(in: .whitespacesAndNewlines)
+                let recordedSource: String
+                if mode == .learn && !parent.isEmpty && parent != text {
+                    recordedSource = "\(text) (context: \(parent))"
+                } else {
+                    recordedSource = text
+                }
                 let record = TranslationRecord(
-                    id: UUID(), timestamp: Date(), mode: mode, sourceText: text, resultText: value,
+                    id: UUID(), timestamp: Date(), mode: mode, sourceText: recordedSource, resultText: value,
                     sourceLanguage: pair.source, targetLanguage: pair.target, isSaved: false
                 )
                 do {

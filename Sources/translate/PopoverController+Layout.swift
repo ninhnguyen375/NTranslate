@@ -67,8 +67,21 @@ extension PopoverController {
             width: chromeIcon,
             height: chromeIcon
         )
-        updateButton.frame = NSRect(
+        reviewButton.frame = NSRect(
             x: historyButton.frame.minX - 6 - chromeIcon,
+            y: closeButton.frame.minY,
+            width: chromeIcon,
+            height: chromeIcon
+        )
+        let badgeSize: CGFloat = 13
+        reviewBadgeLabel.frame = NSRect(
+            x: reviewButton.frame.maxX - 6,
+            y: reviewButton.frame.maxY - 6,
+            width: badgeSize,
+            height: badgeSize
+        )
+        updateButton.frame = NSRect(
+            x: reviewButton.frame.minX - 6 - chromeIcon,
             y: closeButton.frame.minY,
             width: chromeIcon,
             height: chromeIcon
@@ -82,6 +95,7 @@ extension PopoverController {
         applyControlCornerRadius(closeButton, radius: chromeIcon / 2)
         applyControlCornerRadius(pinButton, radius: chromeIcon / 2)
         applyControlCornerRadius(historyButton, radius: chromeIcon / 2)
+        applyControlCornerRadius(reviewButton, radius: chromeIcon / 2)
         applyControlCornerRadius(updateButton, radius: chromeIcon / 2)
         applyControlCornerRadius(contextButton, radius: chromeIcon / 2)
 

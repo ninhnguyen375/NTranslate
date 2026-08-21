@@ -4,7 +4,7 @@ extension PopoverController: NSTextFieldDelegate {
     // MARK: - QA Setup & Actions
 
     func configureQAInputBar() {
-        qaInputField.placeholderString = "Hỏi đáp thêm về bản dịch"
+        qaInputField.placeholderString = "Ask follow-up questions about translation..."
         qaInputField.font = .systemFont(ofSize: ChromeLayout.controlFontSize)
         qaInputField.textColor = Palette.bodyText
         qaInputField.backgroundColor = NSColor.clear
@@ -32,7 +32,7 @@ extension PopoverController: NSTextFieldDelegate {
 
         stylePane(section.card)
         stylePaneHeaderBar(section.headerBar)
-        configurePaneHeaderLabel(section.headerLabel, title: "Hỏi đáp / Q&A")
+        configurePaneHeaderLabel(section.headerLabel, title: "Q&A")
 
         section.textView.isEditable = false
         section.textView.isSelectable = true
@@ -134,12 +134,12 @@ extension PopoverController: NSTextFieldDelegate {
         let sourceText = inputTextView.string.trimmingCharacters(in: .whitespacesAndNewlines)
         let resultText = textView.string.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !resultText.isEmpty, PopoverFeedback.isCopyableResult(resultText) else {
-            setStatus("Chưa có bản dịch để hỏi đáp")
+            setStatus("No translation available for Q&A")
             return
         }
 
         guard let translator else {
-            setStatus("Chưa cấu hình API Key")
+            setStatus("API key is not configured")
             return
         }
 
@@ -151,7 +151,7 @@ extension PopoverController: NSTextFieldDelegate {
 
         // Prior turns go to the model before the new question, so follow-ups can refer back.
         let history = section.completedTurns
-        section.appendQuestion(question, placeholder: "Đang trả lời...")
+        section.appendQuestion(question, placeholder: "Answering...")
         renderQASection(section)
         sender.stringValue = ""
         reflowLayout()
@@ -174,7 +174,7 @@ extension PopoverController: NSTextFieldDelegate {
                 case let .success(answer):
                     currentSection.completeLastTurn(with: answer)
                 case let .failure(error):
-                    currentSection.completeLastTurn(with: "Lỗi: \(error.localizedDescription)")
+                    currentSection.completeLastTurn(with: "Error: \(error.localizedDescription)")
                 }
                 self.renderQASection(currentSection)
                 self.reflowLayout()

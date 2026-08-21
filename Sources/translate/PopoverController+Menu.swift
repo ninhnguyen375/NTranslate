@@ -33,16 +33,45 @@ extension PopoverController {
         versionItem.isEnabled = false
         statusMenu.addItem(versionItem)
         statusMenu.addItem(NSMenuItem.separator())
-        statusMenu.addItem(withTitle: "Open Translate Panel", action: #selector(openTranslatePanelMenu), keyEquivalent: "t")
-        statusMenu.addItem(withTitle: "Translation History", action: #selector(openTranslationHistory), keyEquivalent: "h")
-        statusMenu.addItem(withTitle: "Check for Updates...", action: #selector(checkForUpdatesClicked), keyEquivalent: "u")
+
+        let openPanelItem = NSMenuItem(title: "Open Translate Panel", action: #selector(openTranslatePanelMenu), keyEquivalent: "t")
+        openPanelItem.image = NSImage(systemSymbolName: "translate", accessibilityDescription: "Open Translate Panel")
+        statusMenu.addItem(openPanelItem)
+
+        let reviewItem = NSMenuItem(title: "Review SRS", action: #selector(openReviewWindow), keyEquivalent: "r")
+        reviewItem.image = NSImage(systemSymbolName: "rectangle.stack", accessibilityDescription: "Review SRS")
+        reviewItem.tag = Self.reviewMenuItemTag
+        statusMenu.addItem(reviewItem)
+
+        let historyItem = NSMenuItem(title: "Translation History", action: #selector(openTranslationHistory), keyEquivalent: "h")
+        historyItem.image = NSImage(systemSymbolName: "clock.arrow.circlepath", accessibilityDescription: "Translation History")
+        statusMenu.addItem(historyItem)
+
+        let statsItem = NSMenuItem(title: "Learning Progress...", action: #selector(showLearningStats), keyEquivalent: "")
+        statsItem.image = NSImage(systemSymbolName: "chart.line.uptrend.xyaxis", accessibilityDescription: "Learning Progress")
+        statsItem.tag = Self.statsMenuItemTag
+        statusMenu.addItem(statsItem)
+
+        let updateItem = NSMenuItem(title: "Check for Updates...", action: #selector(checkForUpdatesClicked), keyEquivalent: "u")
+        updateItem.image = NSImage(systemSymbolName: "arrow.triangle.2.circlepath", accessibilityDescription: "Check for Updates")
+        statusMenu.addItem(updateItem)
+
         statusMenu.addItem(NSMenuItem.separator())
+
         let accessibilityItem = NSMenuItem(title: "Grant Accessibility Access", action: #selector(requestAccessibilityPermissionMenu), keyEquivalent: "")
+        accessibilityItem.image = NSImage(systemSymbolName: "hand.raised", accessibilityDescription: "Grant Accessibility Access")
         accessibilityItem.tag = Self.accessibilityMenuItemTag
         statusMenu.addItem(accessibilityItem)
-        statusMenu.addItem(withTitle: "Settings…", action: #selector(openSettingsMenu), keyEquivalent: ",")
+
+        let settingsItem = NSMenuItem(title: "Settings…", action: #selector(openSettingsMenu), keyEquivalent: ",")
+        settingsItem.image = NSImage(systemSymbolName: "gearshape", accessibilityDescription: "Settings")
+        statusMenu.addItem(settingsItem)
+
         statusMenu.addItem(NSMenuItem.separator())
-        statusMenu.addItem(withTitle: "Quit", action: #selector(quitApp), keyEquivalent: "q")
+
+        let quitItem = NSMenuItem(title: "Quit", action: #selector(quitApp), keyEquivalent: "q")
+        quitItem.image = NSImage(systemSymbolName: "power", accessibilityDescription: "Quit")
+        statusMenu.addItem(quitItem)
         statusMenu.items.forEach { $0.target = self }
         statusMenu.delegate = self
         statusItem.menu = statusMenu
@@ -50,11 +79,49 @@ extension PopoverController {
     }
 
     static let accessibilityMenuItemTag = 9001
+    static let reviewMenuItemTag = 9002
+    static let statsMenuItemTag = 9003
 
     func menuWillOpen(_ menu: NSMenu) {
         if let item = menu.item(withTag: Self.accessibilityMenuItemTag) {
             item.isHidden = AXIsProcessTrusted()
         }
+        updateReviewBadge()
+    }
+
+    func updateReviewBadge() {
+        let stats = historyStore.computeStats()
+        let reviewTitle = stats.dueCount > 0 ? "Review SRS (\(stats.dueCount) cards)" : "Review SRS"
+        reviewButton.toolTip = reviewTitle
+        reviewButton.setAccessibilityLabel(reviewTitle)
+        if stats.dueCount > 0 {
+            reviewBadgeLabel.stringValue = stats.dueCount > 99 ? "99+" : "\(stats.dueCount)"
+            reviewBadgeLabel.isHidden = false
+        } else {
+            reviewBadgeLabel.isHidden = true
+        }
+        if let reviewItem = statusItem.menu?.item(withTag: Self.reviewMenuItemTag) {
+            reviewItem.title = reviewTitle
+        }
+        if let statsItem = statusItem.menu?.item(withTag: Self.statsMenuItemTag) {
+            statsItem.title = "Saved: \(stats.totalSaved) · Mastered: \(stats.totalMastered) · Streak: \(stats.dayStreak)d"
+        }
+    }
+
+    @objc func openReviewWindow() {
+        reviewWindowController.translator = translator
+        reviewWindowController.config = config
+        reviewWindowController.showReview()
+    }
+
+    @objc func showLearningStats() {
+        let stats = historyStore.computeStats()
+        let alert = NSAlert()
+        alert.messageText = "Learning Progress"
+        alert.informativeText = "• Saved words: \(stats.totalSaved)\n• Mastered (interval >= 21 days): \(stats.totalMastered)\n• Daily streak: \(stats.dayStreak) days\n• Cards due today: \(stats.dueCount) cards"
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
     }
 
     @objc func requestAccessibilityPermissionMenu() {

@@ -23,6 +23,7 @@ final class HistoryWindowController: NSWindowController, NSWindowDelegate, NSTab
     private let searchField = NSSearchField()
     private let filterSegmentedControl = NSSegmentedControl(labels: ["History", "Saved"], trackingMode: .selectOne, target: nil, action: nil)
     private let timeSegmentedControl = NSSegmentedControl(labels: ["All", "Today", "24h", "Week", "Month"], trackingMode: .selectOne, target: nil, action: nil)
+    private let exportButton = NSButton()
     private let deleteVisibleButton = NSButton()
     private var audioPlayer: AVAudioPlayer?
     private(set) var filteredRecords: [TranslationRecord] = []
@@ -102,6 +103,35 @@ final class HistoryWindowController: NSWindowController, NSWindowDelegate, NSTab
         reloadHistory()
     }
 
+    @objc private func exportTSV() {
+        guard let window = window, !filteredRecords.isEmpty else { return }
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.tabSeparatedText, .plainText]
+        panel.nameFieldStringValue = "NTranslate-Export-\(Date().formatted(date: .numeric, time: .omitted)).tsv"
+        panel.prompt = "Export"
+        panel.message = "Export \(filteredRecords.count) records to Anki TSV format"
+
+        panel.beginSheetModal(for: window) { [weak self] response in
+            guard let self, response == .OK, let url = panel.url else { return }
+            var tsvLines = ["Front\tBack\tMode\tSourceLang\tTargetLang"]
+            for record in self.filteredRecords {
+                let cleanSource = record.sourceText
+                    .replacingOccurrences(of: "\t", with: " ")
+                    .replacingOccurrences(of: "\n", with: "<br>")
+                let cleanResult = record.resultText
+                    .replacingOccurrences(of: "\t", with: " ")
+                    .replacingOccurrences(of: "\n", with: "<br>")
+                tsvLines.append("\(cleanSource)\t\(cleanResult)\t\(record.mode.displayName)\t\(record.sourceLanguage)\t\(record.targetLanguage)")
+            }
+            let tsvContent = tsvLines.joined(separator: "\n")
+            do {
+                try tsvContent.write(to: url, atomically: true, encoding: .utf8)
+            } catch {
+                self.presentError(title: "Export Failed", message: error.localizedDescription)
+            }
+        }
+    }
+
     @objc private func confirmDeleteVisible() {
         guard let window = window, !filteredRecords.isEmpty else { return }
         let snapshot = Self.deleteSnapshot(records: filteredRecords)
@@ -156,6 +186,14 @@ final class HistoryWindowController: NSWindowController, NSWindowDelegate, NSTab
         searchField.target = self
         searchField.action = #selector(filterChanged)
 
+        exportButton.image = NSImage(systemSymbolName: "square.and.arrow.up", accessibilityDescription: "Export to TSV/Anki")
+        exportButton.toolTip = "Export to TSV (Anki format)"
+        exportButton.target = self
+        exportButton.action = #selector(exportTSV)
+        exportButton.bezelStyle = .regularSquare
+        exportButton.isBordered = false
+        exportButton.imageScaling = .scaleProportionallyUpOrDown
+
         deleteVisibleButton.image = NSImage(systemSymbolName: "trash", accessibilityDescription: "Delete visible records")
         deleteVisibleButton.target = self
         deleteVisibleButton.action = #selector(confirmDeleteVisible)
@@ -163,7 +201,7 @@ final class HistoryWindowController: NSWindowController, NSWindowDelegate, NSTab
         deleteVisibleButton.isBordered = false
         deleteVisibleButton.imageScaling = .scaleProportionallyUpOrDown
 
-        let topBar = NSStackView(views: [searchField, filterSegmentedControl, timeSegmentedControl, deleteVisibleButton])
+        let topBar = NSStackView(views: [searchField, filterSegmentedControl, timeSegmentedControl, exportButton, deleteVisibleButton])
         topBar.orientation = .horizontal
         topBar.spacing = 8
         topBar.alignment = .centerY

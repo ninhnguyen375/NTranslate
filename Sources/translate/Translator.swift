@@ -448,7 +448,7 @@ final class Translator {
         }
     }
 
-    func speak(_ text: String, model: String, completion: @escaping @Sendable (Result<Data, Error>) -> Void) {
+    func speak(_ text: String, model: String, speed: Float? = nil, completion: @escaping @Sendable (Result<Data, Error>) -> Void) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
             completion(.failure(NSError(domain: "Speech", code: 1, userInfo: [NSLocalizedDescriptionKey: "Empty text"])))
@@ -462,10 +462,14 @@ final class Translator {
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-        req.httpBody = try? JSONSerialization.data(withJSONObject: [
+        var jsonPayload: [String: Any] = [
             "model": model,
             "input": trimmed
-        ])
+        ]
+        if let speed {
+            jsonPayload["speed"] = speed
+        }
+        req.httpBody = try? JSONSerialization.data(withJSONObject: jsonPayload)
         URLSession.shared.dataTask(with: req) { data, response, error in
             if let error { completion(.failure(error)); return }
             guard let http = response as? HTTPURLResponse, let data else {

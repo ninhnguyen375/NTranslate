@@ -91,6 +91,8 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     var targetLanguageOptions: [String] = []
     let swapLanguagesButton = NSButton(frame: .zero)
     let historyButton = NSButton(frame: .zero)
+    let reviewButton = NSButton(frame: .zero)
+    let reviewBadgeLabel = NSTextField(labelWithString: "")
     let updateButton = NSButton(frame: .zero)
     /// Hover-only indicator listing the recent translations sent as context with the next Translate.
     let contextButton = NSButton(frame: .zero)
@@ -127,6 +129,13 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
             self.historyWindowController.close()
             self.openTranslatePanelShowingSetupStatus()
             self.openHistoryRecord(record)
+        }
+        return controller
+    }()
+    lazy var reviewWindowController: ReviewWindowController = {
+        let controller = ReviewWindowController(store: historyStore, translator: translator, config: config)
+        controller.onReviewsCompleted = { [weak self] in
+            self?.updateReviewBadge()
         }
         return controller
     }()
