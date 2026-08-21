@@ -209,12 +209,43 @@ final class LiquidGlassWindow: NSWindow {
 }
 
 /// Floating selection toolbar background: whole bar (including padding between
-/// buttons) shows the pointing-hand cursor via AppKit's own cursor-rect system,
-/// so it never fights the text view's I-beam cursor rect on mouseMoved.
+/// buttons) shows the pointing-hand cursor. Uses push/pop + mouseMoved so
+/// the pointer hand wins even when the bar overlaps an NSTextView whose
+/// cursor-rect system would otherwise reset to I-beam.
 final class FloatingBarEffectView: NSVisualEffectView {
-    override func resetCursorRects() {
-        super.resetCursorRects()
-        addCursorRect(bounds, cursor: .pointingHand)
+    private var trackingArea: NSTrackingArea?
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let trackingArea {
+            removeTrackingArea(trackingArea)
+        }
+        let area = NSTrackingArea(
+            rect: bounds,
+            options: [.mouseEnteredAndExited, .mouseMoved, .activeAlways, .cursorUpdate],
+            owner: self,
+            userInfo: nil
+        )
+        addTrackingArea(area)
+        trackingArea = area
+    }
+
+    override func cursorUpdate(with event: NSEvent) {
+        NSCursor.pointingHand.set()
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        super.mouseEntered(with: event)
+        NSCursor.pointingHand.push()
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        super.mouseExited(with: event)
+        NSCursor.pop()
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        NSCursor.pointingHand.set()
     }
 }
 

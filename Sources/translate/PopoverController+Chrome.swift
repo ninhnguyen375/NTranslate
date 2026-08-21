@@ -337,6 +337,7 @@ extension PopoverController {
     /// Refreshes the small shortcut hint drawn inside Learn/Proofread/Ask — call after config
     /// (re)load since the global hotkeys are user-configurable in Settings.
     func updateShortcutLabels() {
+        applyShortcutLabel(translateButton, title: "Translate", shortcut: config.hotkey.displayString)
         applyShortcutLabel(learnButton, title: "Learn", shortcut: config.learnHotkey.displayString)
         applyShortcutLabel(proofreadButton, title: "Proofread", shortcut: config.proofreadHotkey.displayString)
         applyShortcutLabel(askButton, title: "Ask", shortcut: "⌘K")

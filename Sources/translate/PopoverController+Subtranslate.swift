@@ -484,7 +484,6 @@ extension PopoverController {
         updateSpeechButton(floatingSpeakButton, identity: floatingSpeechIdentity(isResult: isResultView), baseLabel: "phrase")
         selectionFloatingBar.isHidden = false
         chromeHost.addSubview(selectionFloatingBar, positioned: .above, relativeTo: nil)
-        panel.invalidateCursorRects(for: selectionFloatingBar)
     }
 
     func hideFloatingSelectionBar() {

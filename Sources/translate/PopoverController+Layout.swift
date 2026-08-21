@@ -204,7 +204,7 @@ extension PopoverController {
             height: btnH
         )
         askButton.frame = NSRect(
-            x: translateButton.frame.maxX + 5,
+            x: L.padding + contentWidth - askW,
             y: btnY,
             width: askW,
             height: btnH
