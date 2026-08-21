@@ -9,6 +9,38 @@ extension NSAttributedString {
     static func plainDisplay(_ text: String, font: NSFont, color: NSColor = .labelColor) -> NSAttributedString {
         NSAttributedString(string: text, attributes: [.font: font, .foregroundColor: color])
     }
+
+    /// Inline-markdown preview for model output: **bold**, *italic*, `code`, [links].
+    /// ponytail: Foundation's parser only, so headings/lists/fences stay literal. Swap in a real
+    /// block parser if users start asking for tables or code blocks.
+    static func markdownDisplay(_ text: String, font: NSFont, color: NSColor = .labelColor) -> NSAttributedString {
+        let options = AttributedString.MarkdownParsingOptions(
+            allowsExtendedAttributes: true,
+            interpretedSyntax: .inlineOnlyPreservingWhitespace,
+            failurePolicy: .returnPartiallyParsedIfPossible
+        )
+        guard let parsed = try? AttributedString(markdown: text, options: options) else {
+            return plainDisplay(text, font: font, color: color)
+        }
+        let result = NSMutableAttributedString(attributedString: NSAttributedString(parsed))
+        let full = NSRange(location: 0, length: result.length)
+        result.addAttribute(.foregroundColor, value: color, range: full)
+        // AttributedString reports emphasis as intents, not fonts; resolve them into real traits.
+        result.enumerateAttribute(.font, in: full) { value, range, _ in
+            let existing = value as? NSFont
+            let traits = existing.map { NSFontManager.shared.traits(of: $0) } ?? []
+            var descriptor = font.fontDescriptor
+            var symbolic: NSFontDescriptor.SymbolicTraits = []
+            if traits.contains(.boldFontMask) { symbolic.insert(.bold) }
+            if traits.contains(.italicFontMask) { symbolic.insert(.italic) }
+            if let existing, existing.fontName.lowercased().contains("mono") {
+                descriptor = NSFont.monospacedSystemFont(ofSize: font.pointSize, weight: .regular).fontDescriptor
+            }
+            if !symbolic.isEmpty { descriptor = descriptor.withSymbolicTraits(symbolic) }
+            result.addAttribute(.font, value: NSFont(descriptor: descriptor, size: font.pointSize) ?? font, range: range)
+        }
+        return result
+    }
 }
 
 struct AsyncGeneration {
@@ -214,11 +246,12 @@ enum Palette {
     static let languageTitle = ink(0.78, 0.88)
     static let menuItemTitle = ink(0.85, 0.92)
     /// Split-prism hairline border.
-    static let hairline = ink(0.06, 0.16)
-    /// Split-prism fill behind the panes.
+    static let hairline = ink(0.06, 0.22)
+    /// Split-prism fill behind the panes. Dark mode tints with white, not black: the pane sits on
+    /// top of NSGlassEffectView, and a black overlay kills the vibrancy that makes it read as glass.
     static let paneFill = dynamic(
         light: .white.withAlphaComponent(0.72),
-        dark: .black.withAlphaComponent(0.42)
+        dark: .white.withAlphaComponent(0.10)
     )
     /// Bright ends of the vertical divider gradient.
     static let dividerSheen = dynamic(

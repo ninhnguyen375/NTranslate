@@ -40,7 +40,7 @@ final class HotkeyFields {
 }
 
 @MainActor
-final class SettingsWindowController: NSWindowController, NSTableViewDataSource, NSTableViewDelegate, NSTextFieldDelegate {
+final class SettingsWindowController: NSWindowController, NSTableViewDataSource, NSTableViewDelegate, NSTextFieldDelegate, NSTextViewDelegate {
     typealias SaveHandler = (AppConfig, String) throws -> Void
 
     private var originalConfig: AppConfig
@@ -61,6 +61,13 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
     private let learnPromptView = NSTextView()
     private let sentenceLearnPromptView = NSTextView()
     private let grammarPromptView = NSTextView()
+    private let imagePromptView = NSTextView()
+    private let qaPromptView = NSTextView()
+
+    /// Each editable prompt paired with the default this build ships, so the Prompts tab can offer
+    /// "Sync with app prompt" when an update changes a default the user never customized.
+    private var promptSyncButtons: [ObjectIdentifier: NSButton] = [:]
+    private var promptDefaults: [ObjectIdentifier: String] = [:]
 
     private let languagesTable = NSTableView()
     private let targetLanguagesTable = NSTableView()
@@ -141,7 +148,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         speechModelsStack.alignment = .width
         speechModelsStack.spacing = 12
 
-        [systemPromptView, learnPromptView, sentenceLearnPromptView, grammarPromptView].forEach {
+        [systemPromptView, learnPromptView, sentenceLearnPromptView, grammarPromptView, imagePromptView, qaPromptView].forEach {
             $0.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
             $0.isRichText = false
             $0.isAutomaticQuoteSubstitutionEnabled = false
@@ -204,10 +211,12 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
 
     private func makePromptsView() -> NSView {
         let stack = NSStackView(views: [
-            promptSection("System Prompt", systemPromptView),
-            promptSection("Learn Word Prompt", learnPromptView),
-            promptSection("Learn Sentence Prompt", sentenceLearnPromptView),
-            promptSection("Grammar Prompt", grammarPromptView),
+            promptSection("System Prompt", systemPromptView, appDefault: AppConfig.default.systemPrompt),
+            promptSection("Learn Word Prompt", learnPromptView, appDefault: AppConfig.defaultLearnPrompt),
+            promptSection("Learn Sentence Prompt", sentenceLearnPromptView, appDefault: AppConfig.defaultSentenceLearnPrompt),
+            promptSection("Grammar Prompt", grammarPromptView, appDefault: AppConfig.defaultGrammarPrompt),
+            promptSection("Image Prompt", imagePromptView, appDefault: AppConfig.defaultImagePrompt),
+            promptSection("Q&A Prompt", qaPromptView, appDefault: AppConfig.defaultQAPrompt),
         ])
         stack.orientation = .vertical
         stack.alignment = .width
@@ -343,17 +352,72 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         return scroll
     }
 
-    private func promptSection(_ title: String, _ textView: NSTextView) -> NSView {
+    private func promptSection(_ title: String, _ textView: NSTextView, appDefault: String) -> NSView {
         let label = NSTextField(labelWithString: title)
         label.font = .systemFont(ofSize: 13, weight: .semibold)
+
+        let syncButton = NSButton(title: "Sync with app prompt", target: self, action: #selector(syncPromptWithApp(_:)))
+        syncButton.controlSize = .small
+        syncButton.font = .systemFont(ofSize: 11)
+        syncButton.bezelStyle = .rounded
+        syncButton.toolTip = "Replace this prompt with the one shipped in this version of NTranslate"
+        syncButton.isHidden = true
+        promptSyncButtons[ObjectIdentifier(textView)] = syncButton
+        promptDefaults[ObjectIdentifier(textView)] = appDefault
+        textView.delegate = self
+
+        let header = NSStackView(views: [label, NSView(), syncButton])
+        header.orientation = .horizontal
+        header.alignment = .centerY
+        header.spacing = 8
+
         let scroll = scrollView(for: textView)
         scroll.heightAnchor.constraint(equalToConstant: 150).isActive = true
-        let section = NSStackView(views: [label, scroll])
+        let section = NSStackView(views: [header, scroll])
         section.orientation = .vertical
         section.alignment = .width
         section.spacing = 6
+        header.widthAnchor.constraint(equalTo: section.widthAnchor).isActive = true
         scroll.widthAnchor.constraint(equalTo: section.widthAnchor).isActive = true
         return section
+    }
+
+    /// A prompt is out of sync when it differs from this build's default — that is either an update
+    /// that changed the default, or a customization the user made on purpose. Either way the button
+    /// only offers the swap; it never applies one behind their back.
+    static func promptNeedsSync(current: String, appDefault: String) -> Bool {
+        current.trimmingCharacters(in: .whitespacesAndNewlines)
+            != appDefault.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func refreshPromptSyncButtons() {
+        for (key, button) in promptSyncButtons {
+            guard let appDefault = promptDefaults[key],
+                  let textView = promptView(for: key)
+            else { continue }
+            button.isHidden = !Self.promptNeedsSync(current: textView.string, appDefault: appDefault)
+        }
+    }
+
+    private func promptView(for key: ObjectIdentifier) -> NSTextView? {
+        [systemPromptView, learnPromptView, sentenceLearnPromptView, grammarPromptView, imagePromptView, qaPromptView]
+            .first { ObjectIdentifier($0) == key }
+    }
+
+    @objc private func syncPromptWithApp(_ sender: NSButton) {
+        guard let key = promptSyncButtons.first(where: { $0.value === sender })?.key,
+              let appDefault = promptDefaults[key],
+              let textView = promptView(for: key)
+        else { return }
+        textView.string = appDefault
+        refreshPromptSyncButtons()
+    }
+
+    func textDidChange(_ notification: Notification) {
+        guard let textView = notification.object as? NSTextView,
+              promptSyncButtons[ObjectIdentifier(textView)] != nil
+        else { return }
+        refreshPromptSyncButtons()
     }
 
     private func languageGroup(title: String, table: NSTableView, buttons: NSStackView) -> NSView {
@@ -468,6 +532,9 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         learnPromptView.string = config.learnPrompt
         sentenceLearnPromptView.string = config.sentenceLearnPrompt
         grammarPromptView.string = config.grammarPrompt
+        imagePromptView.string = config.imagePrompt
+        qaPromptView.string = config.qaPrompt
+        refreshPromptSyncButtons()
         autoPrefetchSpeechCheckbox.state = config.autoPrefetchSpeech ? .on : .off
         speechModelFields.removeAll()
         rebuildSpeechModelRows()
@@ -531,6 +598,8 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         config.learnPrompt = learnPromptView.string
         config.sentenceLearnPrompt = sentenceLearnPromptView.string
         config.grammarPrompt = grammarPromptView.string
+        config.imagePrompt = imagePromptView.string
+        config.qaPrompt = qaPromptView.string
         config.autoPrefetchSpeech = autoPrefetchSpeechCheckbox.state == .on
         config.speechModels = speechModelFields.reduce(into: [:]) { result, entry in
             let value = entry.value.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)

@@ -57,7 +57,7 @@ extension PopoverController: NSTextFieldDelegate {
         section.scrollView.scrollerStyle = .overlay
         section.scrollView.documentView = section.textView
 
-        configureIconButton(section.copyButton, symbol: "doc.on.doc", action: #selector(copyQAResult), label: "Copy Q&A answer")
+        configureIconButton(section.copyButton, symbol: "doc.on.doc", action: #selector(copyQAResult), label: "Copy Q&A transcript")
         configureIconButton(section.closeButton, symbol: "xmark", action: #selector(closeQASection), label: "Close Q&A answer")
 
         section.headerBar.addSubview(section.headerLabel)
@@ -111,8 +111,9 @@ extension PopoverController: NSTextFieldDelegate {
 
     @objc func copyQAResult() {
         guard let section = qaSection, !section.answerText.isEmpty else { return }
+        let payload = section.turns.count > 1 ? section.transcriptText : section.answerText
         NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(section.answerText, forType: .string)
+        NSPasteboard.general.setString(payload, forType: .string)
         flashCopyButton(section.copyButton)
     }
 
@@ -148,8 +149,13 @@ extension PopoverController: NSTextFieldDelegate {
         let generation = qaGeneration
         section.generation = generation
 
-        section.setAnswer("Đang trả lời...", font: .systemFont(ofSize: ChromeLayout.bodyFontSize), color: Palette.loadingText)
+        // Prior turns go to the model before the new question, so follow-ups can refer back.
+        let history = section.completedTurns
+        section.appendQuestion(question, placeholder: "Đang trả lời...")
+        renderQASection(section)
+        sender.stringValue = ""
         reflowLayout()
+        scrollQAToBottom(section)
 
         let sourceLang = selectedSourceLanguage()
         let targetLang = selectedTargetLanguage()
@@ -159,26 +165,35 @@ extension PopoverController: NSTextFieldDelegate {
             sourceText: sourceText,
             translatedText: resultText,
             sourceLang: sourceLang,
-            targetLang: targetLang
+            targetLang: targetLang,
+            history: history
         ) { [weak self] result in
             Task { @MainActor in
                 guard let self, self.qaGeneration == generation, let currentSection = self.qaSection else { return }
                 switch result {
                 case let .success(answer):
-                    currentSection.setAnswer(
-                        answer,
-                        font: .systemFont(ofSize: ChromeLayout.bodyFontSize),
-                        color: Palette.bodyText
-                    )
+                    currentSection.completeLastTurn(with: answer)
                 case let .failure(error):
-                    currentSection.setAnswer(
-                        "Lỗi: \(error.localizedDescription)",
-                        font: .systemFont(ofSize: ChromeLayout.bodyFontSize),
-                        color: .systemRed
-                    )
+                    currentSection.completeLastTurn(with: "Lỗi: \(error.localizedDescription)")
                 }
+                self.renderQASection(currentSection)
                 self.reflowLayout()
+                self.scrollQAToBottom(currentSection)
             }
         }
+    }
+
+    func renderQASection(_ section: QAPaneSection) {
+        section.render(
+            font: .systemFont(ofSize: ChromeLayout.bodyFontSize),
+            questionColor: Palette.titleText,
+            answerColor: Palette.bodyText,
+            pendingColor: Palette.loadingText,
+            errorColor: .systemRed
+        )
+    }
+
+    func scrollQAToBottom(_ section: QAPaneSection) {
+        section.textView.scrollToEndOfDocument(nil)
     }
 }

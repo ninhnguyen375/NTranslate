@@ -9,6 +9,9 @@ extension PopoverController {
         if let section = subSection {
             updateSubSpeakButtons(section)
         }
+        if !selectionFloatingBar.isHidden {
+            updateSpeechButton(floatingSpeakButton, identity: floatingSpeechIdentity(), baseLabel: "phrase")
+        }
     }
 
     /// Same play/loading/pause/resume presentation as the main pane, for the subtranslate pane.

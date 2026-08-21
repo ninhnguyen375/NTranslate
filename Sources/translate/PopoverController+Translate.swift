@@ -128,7 +128,16 @@ extension PopoverController {
             reflowLayout()
         }
         if let image = pendingImage {
-            translator.translateImage(image, targetLang: selectedTargetLanguage()) { [weak self] result in
+            // The image's language is unknown until the model reads it, so a fixed target can end up
+            // equal to the source ("translate Vietnamese into Vietnamese") and the model just echoes
+            // the transcription back. Send the auto-detect target instead and let the prompt switch
+            // away when the two collide.
+            let targetLang = LanguageDetector.normalizeTarget(
+                selectedTargetLanguage(),
+                targetLanguages: config.targetLanguages,
+                fallback: config.resolvedNativeLang
+            )
+            translator.translateImage(image, targetLang: targetLang) { [weak self] result in
                 Task { @MainActor in self?.finishImageTranslation(result, generation: generation) }
             }
             return
@@ -183,13 +192,23 @@ extension PopoverController {
         }
     }
 
-    func finishImageTranslation(_ result: Result<String, Error>, generation: Int) {
+    func finishImageTranslation(_ result: Result<Translator.ImageTranslation, Error>, generation: Int) {
         defer { finishRequest(generation: generation) }
         guard generation == requestGeneration, pendingImage != nil else { return }
         invalidateCurrentRecord()
         switch result {
         case let .success(value):
-            setResultText(value)
+            // Once the model returns a transcription, drop image mode: the source pane now holds
+            // real text, so speak / subtranslate / Q&A / save all work as they do for text input.
+            if !value.sourceText.isEmpty {
+                inputTextView.string = value.sourceText
+                setPendingImage(nil)
+                applyImageLanguages(value)
+            }
+            setResultText(value.translation)
+            if !value.sourceText.isEmpty {
+                prefetchSpeech(sourceSpeechIdentity(), translationGeneration: nil)
+            }
             prefetchSpeech(resultSpeechIdentity(), translationGeneration: nil)
         case let .failure(error):
             setResultText("Error: \(error.localizedDescription)")
@@ -197,6 +216,21 @@ extension PopoverController {
         reflowLayout()
         textView.scrollToBeginningOfDocument(nil)
         updateBusyState()
+    }
+
+    /// Adopts the languages the model reported for an image, so the pane labels, speech models and
+    /// any follow-up translation match what was actually transcribed and produced.
+    func applyImageLanguages(_ value: Translator.ImageTranslation) {
+        let source = value.sourceLanguage.isEmpty
+            ? LanguageDetector.detectedLanguage(value.sourceText)
+            : value.sourceLanguage
+        selectLanguage(source, kind: .source)
+        resolvedSourceLanguage = source
+        if !value.targetLanguage.isEmpty, value.targetLanguage != source {
+            selectLanguage(value.targetLanguage, kind: .target)
+            UserDefaults.standard.set(value.targetLanguage, forKey: Self.lastTargetLangKey)
+        }
+        updatePaneLanguageLabels()
     }
 
     func finishTextTranslation(_ result: Result<TranslationResult, Error>, generation: Int, source: String, pair: (source: String, target: String)) {

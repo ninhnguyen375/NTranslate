@@ -1,8 +1,15 @@
 import AppKit
 
-/// Single-pane section for Q&A answers shown under the main/sub split pane.
+/// Multi-turn Q&A section shown under the main/sub split pane. Owns the transcript; every request
+/// is routed back to `PopoverController`.
 @MainActor
 final class QAPaneSection {
+    struct Turn: Equatable {
+        let question: String
+        var answer: String
+        var isPending: Bool
+    }
+
     let host = NSView(frame: .zero)
     let card = NSView(frame: .zero)
     let headerBar = NSView(frame: .zero)
@@ -12,12 +19,47 @@ final class QAPaneSection {
     let copyButton = NSButton(frame: .zero)
     let closeButton = NSButton(frame: .zero)
 
-    private(set) var answerText = ""
+    private(set) var turns: [Turn] = []
     var generation = 0
 
-    func setAnswer(_ text: String, font: NSFont, color: NSColor) {
-        answerText = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        textView.textStorage?.setAttributedString(.plainDisplay(text, font: font, color: color))
+    /// Latest answer, for the copy button and for "is there anything to copy" checks.
+    var answerText: String { turns.last(where: { !$0.isPending })?.answer ?? "" }
+
+    /// Whole transcript in plain text, for history/context and for copy-all.
+    var transcriptText: String {
+        turns.map { "Q: \($0.question)\nA: \($0.answer)" }.joined(separator: "\n\n")
+    }
+
+    /// Prior turns handed to the model so follow-ups ("còn câu kia thì sao?") resolve.
+    var completedTurns: [QATurn] {
+        turns.filter { !$0.isPending }.map { QATurn(question: $0.question, answer: $0.answer) }
+    }
+
+    func appendQuestion(_ question: String, placeholder: String) {
+        turns.append(Turn(question: question, answer: placeholder, isPending: true))
+    }
+
+    func completeLastTurn(with answer: String, failed: Bool = false) {
+        guard let index = turns.indices.last else { return }
+        turns[index].answer = answer.trimmingCharacters(in: .whitespacesAndNewlines)
+        turns[index].isPending = failed
+    }
+
+    func render(font: NSFont, questionColor: NSColor, answerColor: NSColor, pendingColor: NSColor, errorColor: NSColor) {
+        let body = NSMutableAttributedString()
+        let questionFont = NSFont.systemFont(ofSize: font.pointSize, weight: .semibold)
+        for (index, turn) in turns.enumerated() {
+            if index > 0 { body.append(.plainDisplay("\n\n", font: font, color: answerColor)) }
+            body.append(.plainDisplay("\(turn.question)\n", font: questionFont, color: questionColor))
+            if turn.isPending {
+                body.append(.plainDisplay(turn.answer, font: font, color: pendingColor))
+            } else if turn.answer.hasPrefix("Lỗi:") {
+                body.append(.plainDisplay(turn.answer, font: font, color: errorColor))
+            } else {
+                body.append(.markdownDisplay(turn.answer, font: font, color: answerColor))
+            }
+        }
+        textView.textStorage?.setAttributedString(body)
     }
 
     func removeFromSuperview() {

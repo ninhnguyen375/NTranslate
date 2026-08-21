@@ -415,6 +415,7 @@ extension PopoverController {
         let barY = rectInChrome.maxY + 6
 
         selectionFloatingBar.frame = NSRect(x: barX, y: barY, width: barWidth, height: barHeight)
+        updateSpeechButton(floatingSpeakButton, identity: floatingSpeechIdentity(), baseLabel: "phrase")
         selectionFloatingBar.isHidden = false
         chromeHost.addSubview(selectionFloatingBar, positioned: .above, relativeTo: nil)
     }
@@ -434,11 +435,15 @@ extension PopoverController {
         runSubRequest(text: text, mode: .learn)
     }
 
+    /// Speech identity for whatever phrase the floating bar is currently attached to.
+    func floatingSpeechIdentity() -> SpeechIdentity? {
+        guard let text = currentFloatingSelectedText, !text.isEmpty else { return nil }
+        let model = SpeechModelResolver.model(for: effectiveSourceLanguage(for: text), config: config)
+        return SpeechIdentity(kind: .source, text: text, model: model, recordID: nil)
+    }
+
     @objc func floatingSpeakClicked() {
-        guard let text = currentFloatingSelectedText else { return }
-        let lang = effectiveSourceLanguage(for: text)
-        let model = SpeechModelResolver.model(for: lang, config: config)
-        playSpeech(SpeechIdentity(kind: .source, text: text, model: model, recordID: nil))
+        playSpeech(floatingSpeechIdentity())
     }
 
     @objc func floatingCopyClicked() {

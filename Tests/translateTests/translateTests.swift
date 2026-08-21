@@ -1068,3 +1068,128 @@ struct TranslateTests {
         #expect(SpeechRatePolicy.resolved(0) == 1)
     }
 }
+
+@Test func imageTranslationParsesTranscriptionAndTranslation() throws {
+    let parsed = try Translator.imageTranslation(from: """
+    ```json
+    {"sourceLanguage":"English","sourceText":"Hello\\nworld","targetLanguage":"Vietnamese","translation":"Xin chào\\nthế giới"}
+    ```
+    """)
+    #expect(parsed.sourceLanguage == "English")
+    #expect(parsed.sourceText == "Hello\nworld")
+    #expect(parsed.targetLanguage == "Vietnamese")
+    #expect(parsed.translation == "Xin chào\nthế giới")
+}
+
+@Test func imageTranslationFallsBackToDetectedSourceLanguage() throws {
+    let parsed = try Translator.imageTranslation(from: #"{"sourceText":"Bố mẹ ở nhà","translation":"Parents at home"}"#)
+    #expect(parsed.sourceLanguage == "Vietnamese")
+    #expect(parsed.targetLanguage.isEmpty)
+}
+
+@Test func imageTranslationKeepsPlainTextAsTranslationWhenModelIgnoresContract() throws {
+    let parsed = try Translator.imageTranslation(from: "Xin chào")
+    #expect(parsed.sourceText.isEmpty)
+    #expect(parsed.translation == "Xin chào")
+}
+
+@Test func imageTranslationRejectsEmptyContent() {
+    #expect(throws: Translator.ResponseError.self) {
+        try Translator.imageTranslation(from: "   ")
+    }
+}
+
+@Test func imagePromptCarriesAnAlternateTargetSoSameLanguageImagesStillTranslate() {
+    let prompt = Translator.imageSystemPrompt(targetLang: "Vietnamese", alternateLang: "English", config: .default)
+    #expect(prompt.contains("already in Vietnamese"))
+    #expect(prompt.contains("use English"))
+    #expect(!prompt.contains("{{config."))
+    // The old prompt reused config.systemPrompt, whose "return only the replacement text" rule
+    // fought the JSON contract and made the model flip formats between runs.
+    #expect(!prompt.contains("replace the user's selected text"))
+}
+
+@Test func imagePromptComesFromConfigSoItIsEditableWithoutRebuilding() {
+    var config = AppConfig.default
+    config.imagePrompt = "Custom rule for {{config.targetLang}}, else {{config.alternateLang}}."
+    let prompt = Translator.imageSystemPrompt(targetLang: "Japanese", alternateLang: "English", config: config)
+    #expect(prompt == "Custom rule for Japanese, else English.")
+}
+
+@Test func configKeepsUserPromptsAndBackfillsTheNewOnes() throws {
+    // A config.json written by an older build has no imagePrompt/qaPrompt keys.
+    let legacy = try #require("""
+    {"apiBaseURL":"https://example.com/v1/chat/completions","model":"m","sourceLang":"Auto detect",
+     "targetLang":"Vietnamese","systemPrompt":"my own translate prompt",
+     "hotkey":{"keyCode":9,"modifiers":768}}
+    """.data(using: .utf8))
+    let config = try JSONDecoder().decode(AppConfig.self, from: legacy)
+    #expect(config.systemPrompt == "my own translate prompt")
+    #expect(config.imagePrompt == AppConfig.defaultImagePrompt)
+    #expect(config.qaPrompt == AppConfig.defaultQAPrompt)
+}
+
+@Test func qaHistoryBlockIsEmptyWithoutPriorTurns() {
+    #expect(Translator.qaHistoryBlock([]).isEmpty)
+}
+
+@Test func qaHistoryBlockCarriesEveryPriorTurn() {
+    let block = Translator.qaHistoryBlock([
+        QATurn(question: "Vì sao dùng thì quá khứ?", answer: "Vì hành động đã kết thúc."),
+        QATurn(question: "Còn cách nói khác?", answer: "Có thể dùng hiện tại hoàn thành."),
+    ])
+    #expect(block.contains("Q: Vì sao dùng thì quá khứ?"))
+    #expect(block.contains("A: Có thể dùng hiện tại hoàn thành."))
+}
+
+@MainActor
+@Test func qaSectionTracksPendingTurnAndTranscript() {
+    let section = QAPaneSection()
+    section.appendQuestion("Câu 1?", placeholder: "Đang trả lời...")
+    #expect(section.answerText.isEmpty)
+    #expect(section.completedTurns.isEmpty)
+    section.completeLastTurn(with: "Đáp 1")
+    section.appendQuestion("Câu 2?", placeholder: "Đang trả lời...")
+    section.completeLastTurn(with: "Đáp 2")
+    #expect(section.answerText == "Đáp 2")
+    #expect(section.completedTurns.count == 2)
+    #expect(section.transcriptText == "Q: Câu 1?\nA: Đáp 1\n\nQ: Câu 2?\nA: Đáp 2")
+}
+
+@MainActor
+@Test func markdownDisplayRendersBoldWithoutLiteralMarkers() {
+    let font = NSFont.systemFont(ofSize: 13)
+    let rendered = NSAttributedString.markdownDisplay("Đây là **đậm** thôi", font: font, color: .labelColor)
+    #expect(!rendered.string.contains("**"))
+    #expect(rendered.string == "Đây là đậm thôi")
+}
+
+@MainActor
+@Test func promptNeedsSyncOnlyWhenItDiffersFromTheShippedDefault() {
+    let shipped = AppConfig.defaultImagePrompt
+    #expect(!SettingsWindowController.promptNeedsSync(current: shipped, appDefault: shipped))
+    // Trailing whitespace is not a real difference; a JSON round-trip can add it.
+    #expect(!SettingsWindowController.promptNeedsSync(current: "\n" + shipped + "  ", appDefault: shipped))
+    #expect(SettingsWindowController.promptNeedsSync(current: "my own prompt", appDefault: shipped))
+    // The update case: an older config carries the previous default, this build ships a new one.
+    #expect(SettingsWindowController.promptNeedsSync(current: "old shipped prompt", appDefault: shipped))
+}
+
+@Test func systemPromptCarriesTheLearnBlockAndEveryPlaceholderTheRendererFills() {
+    let prompt = AppConfig.defaultSystemPrompt
+    // The renderer substitutes exactly these three; any other {{...}} would reach the model raw.
+    var rendered = prompt
+    for (key, value) in [("sourceLang", "English"), ("targetLang", "Vietnamese"), ("nativeLang", "Vietnamese")] {
+        rendered = rendered.replacingOccurrences(of: "{{config.\(key)}}", with: value)
+    }
+    #expect(!rendered.contains("{{"))
+    #expect(prompt.contains("{{config.nativeLang}}"))
+    #expect(rendered.contains("Từ khóa đáng học"))
+}
+
+@Test func learnPromptsAskForPinyinSoChineseSelectionsAreNotForcedIntoIPA() {
+    #expect(AppConfig.defaultLearnPrompt.contains("pinyin"))
+    #expect(AppConfig.defaultSentenceLearnPrompt.contains("pinyin"))
+    #expect(AppConfig.defaultLearnPrompt.contains("Tự kiểm tra"))
+    #expect(AppConfig.defaultSentenceLearnPrompt.contains("Dễ nhầm với"))
+}

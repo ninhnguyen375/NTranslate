@@ -40,7 +40,7 @@ final class SubtranslateSection {
 
     func setResult(_ text: String, font: NSFont, color: NSColor) {
         resultText = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        resultTextView.textStorage?.setAttributedString(.plainDisplay(text, font: font, color: color))
+        resultTextView.textStorage?.setAttributedString(.markdownDisplay(text, font: font, color: color))
     }
 
     func removeFromSuperview() {

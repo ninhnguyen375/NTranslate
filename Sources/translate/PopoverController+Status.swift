@@ -13,9 +13,12 @@ extension PopoverController {
         case .error:
             color = .systemRed
         }
-        textView.textStorage?.setAttributedString(
-            .plainDisplay(value, font: .systemFont(ofSize: ChromeLayout.bodyFontSize), color: color)
-        )
+        let font = NSFont.systemFont(ofSize: ChromeLayout.bodyFontSize)
+        // Placeholder/error strings are literal; only real model output gets markdown.
+        let display: NSAttributedString = resolved == .normal
+            ? .markdownDisplay(value, font: font, color: color)
+            : .plainDisplay(value, font: font, color: color)
+        textView.textStorage?.setAttributedString(display)
     }
 
     func setStatus(_ message: String, autoClearAfter: TimeInterval = 4) {

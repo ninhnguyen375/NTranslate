@@ -5,6 +5,12 @@ struct TranslationResult: Equatable, Sendable {
     let sourceLanguage: String
 }
 
+/// One earlier question/answer pair in a Q&A conversation.
+struct QATurn: Equatable, Sendable {
+    let question: String
+    let answer: String
+}
+
 /// One earlier translation handed to the model as reference context.
 struct ContextPair: Equatable, Sendable {
     let source: String
@@ -28,7 +34,7 @@ final class Translator {
         case translate(sourceLang: String, targetLang: String, context: [ContextPair], parentContext: String?)
         case learn(sourceLang: String, targetLang: String, parentContext: String?)
         case proofread(lang: String)
-        case ask(question: String, sourceText: String, translatedText: String, sourceLang: String, targetLang: String)
+        case ask(question: String, sourceText: String, translatedText: String, sourceLang: String, targetLang: String, history: [QATurn])
         case imageSearch
     }
 
@@ -41,6 +47,7 @@ final class Translator {
         config.systemPrompt
             .replacingOccurrences(of: "{{config.sourceLang}}", with: sourceLang)
             .replacingOccurrences(of: "{{config.targetLang}}", with: targetLang)
+            .replacingOccurrences(of: "{{config.nativeLang}}", with: config.resolvedNativeLang)
     }
 
     /// Proofread mode: grammar-check the text in its own language instead of translating it.
@@ -51,20 +58,24 @@ final class Translator {
     }
 
     private func renderQAPrompt(sourceText: String, translatedText: String, sourceLang: String, targetLang: String) -> String {
-        """
-        You are an expert language assistant analyzing a translation.
-        <source-text>
-        \(sourceText)
-        </source-text>
+        config.qaPrompt
+            .replacingOccurrences(of: "{{sourceText}}", with: sourceText)
+            .replacingOccurrences(of: "{{translatedText}}", with: translatedText)
+            .replacingOccurrences(of: "{{config.sourceLang}}", with: sourceLang)
+            .replacingOccurrences(of: "{{config.targetLang}}", with: targetLang)
+    }
 
-        <translation>
-        \(translatedText)
-        </translation>
+    /// Earlier Q&A turns, so a follow-up question can refer back to them.
+    static func qaHistoryBlock(_ history: [QATurn]) -> String {
+        guard !history.isEmpty else { return "" }
+        let lines = history.map { "Q: \($0.question)\nA: \($0.answer)" }.joined(separator: "\n\n")
+        return """
 
-        Source language: \(sourceLang)
-        Target language: \(targetLang)
+        <earlier-qa>
+        \(lines)
+        </earlier-qa>
 
-        Answer the user's question concisely, accurately, and directly in Vietnamese (or the language specified by the user). Focus directly on grammar, vocabulary, nuance, tone, or alternative phrasing as requested.
+        The block above is this same conversation's earlier questions and your answers. Use it to resolve references in the new question ("that word", "the second one", "why not?") and do not repeat what you already said.
         """
     }
 
@@ -153,13 +164,13 @@ final class Translator {
                 + Self.parentContextBlock(parentContext)
         case .imageSearch:
             systemPrompt = Self.imageSearchPrompt
-        case let .ask(_, sourceText, translatedText, sourceLang, targetLang):
+        case let .ask(_, sourceText, translatedText, sourceLang, targetLang, history):
             systemPrompt = renderQAPrompt(
                 sourceText: sourceText,
                 translatedText: translatedText,
                 sourceLang: sourceLang,
                 targetLang: targetLang
-            )
+            ) + Self.qaHistoryBlock(history)
         case let .learn(sourceLang, targetLang, parentContext):
             systemPrompt = Self.renderLearnPrompt(
                 for: text,
@@ -208,14 +219,75 @@ final class Translator {
         ])
     }
 
-    static func imageSystemPrompt(targetLang: String, config: AppConfig) -> String {
-        config.systemPrompt
-            .replacingOccurrences(of: "{{config.sourceLang}}", with: LanguageDetector.autoDetect)
+    /// Image mode has its own prompt (`config.imagePrompt`): `config.systemPrompt` ends with "return
+    /// only the replacement text", which contradicts the JSON contract and made the model flip
+    /// between the two formats.
+    static func imageSystemPrompt(targetLang: String, alternateLang: String, config: AppConfig) -> String {
+        config.imagePrompt
             .replacingOccurrences(of: "{{config.targetLang}}", with: targetLang)
+            .replacingOccurrences(of: "{{config.alternateLang}}", with: alternateLang)
+            .replacingOccurrences(of: "{{config.sourceLang}}", with: LanguageDetector.autoDetect)
+            .replacingOccurrences(of: "{{config.nativeLang}}", with: config.resolvedNativeLang)
+    }
+
+    static let imageResponseContract = """
+        Return exactly one JSON object with this shape, newlines inside the strings escaped as \\n:
+        {"sourceLanguage":"<language of the transcription>","sourceText":"<verbatim transcription>","targetLanguage":"<language you translated into>","translation":"<the translation>"}
+        """
+
+    /// Image mode returns the transcription alongside the translation, so the source pane can be
+    /// filled with real text and reuse the text-mode features (speak, subtranslate, Q&A, history).
+    struct ImageTranslation: Equatable, Sendable {
+        let sourceLanguage: String
+        let sourceText: String
+        let targetLanguage: String
+        let translation: String
+    }
+
+    private struct ImageTranslationPayload: Decodable {
+        let sourceLanguage: String?
+        let sourceText: String
+        let targetLanguage: String?
+        let translation: String
+    }
+
+    static func imageTranslation(from content: String, supportedLanguages: [String] = LanguageDetector.defaultLanguages) throws -> ImageTranslation {
+        let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { throw ResponseError.emptyContent }
+        var payloadText = trimmed
+        if payloadText.hasPrefix("```") {
+            guard payloadText.hasSuffix("```") else { throw ResponseError.invalidSchema }
+            payloadText.removeFirst(3)
+            payloadText.removeLast(3)
+            payloadText = payloadText.trimmingCharacters(in: .whitespacesAndNewlines)
+            if payloadText.lowercased().hasPrefix("json") {
+                payloadText.removeFirst(4)
+                payloadText = payloadText.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+        }
+        // Older/cheaper models ignore the JSON contract; keep their plain text as the translation.
+        guard payloadText.hasPrefix("{"),
+              let data = payloadText.data(using: .utf8),
+              let payload = try? JSONDecoder().decode(ImageTranslationPayload.self, from: data)
+        else { return ImageTranslation(sourceLanguage: "", sourceText: "", targetLanguage: "", translation: trimmed) }
+        let translation = payload.translation.trimmingCharacters(in: .whitespacesAndNewlines)
+        let sourceText = payload.sourceText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !translation.isEmpty else { throw ResponseError.emptyContent }
+        return ImageTranslation(
+            sourceLanguage: canonical(payload.sourceLanguage, fallbackFor: sourceText, supportedLanguages: supportedLanguages),
+            sourceText: sourceText,
+            targetLanguage: LanguageDetector.canonicalLanguage(payload.targetLanguage ?? "", supportedLanguages: supportedLanguages) ?? "",
+            translation: translation
+        )
+    }
+
+    private static func canonical(_ language: String?, fallbackFor text: String, supportedLanguages: [String]) -> String {
+        LanguageDetector.canonicalLanguage(language ?? "", supportedLanguages: supportedLanguages)
+            ?? (text.isEmpty ? "" : LanguageDetector.detectedLanguage(text))
     }
 
     static func imageRequestPayload(pngData: Data, targetLang: String, systemPrompt: String, model: String) throws -> Data {
-        let instruction = "Translate all readable text in this image into \(targetLang). Return only the translation."
+        let instruction = "Transcribe this image, then translate the transcription. Requested target language: \(targetLang).\n\n" + imageResponseContract
         return try requestPayload(model: model, systemPrompt: systemPrompt, userContent: [
             ["type": "text", "text": instruction],
             ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(pngData.base64EncodedString())"]]
@@ -320,6 +392,7 @@ final class Translator {
         translatedText: String,
         sourceLang: String,
         targetLang: String,
+        history: [QATurn] = [],
         completion: @escaping @Sendable (Result<String, Error>) -> Void
     ) {
         request(
@@ -329,7 +402,8 @@ final class Translator {
                 sourceText: sourceText,
                 translatedText: translatedText,
                 sourceLang: sourceLang,
-                targetLang: targetLang
+                targetLang: targetLang,
+                history: history
             ),
             completion: completion
         )
@@ -339,7 +413,7 @@ final class Translator {
         request(text, mode: .imageSearch, completion: completion)
     }
 
-    func translateImage(_ pngData: Data, targetLang: String, completion: @escaping @Sendable (Result<String, Error>) -> Void) {
+    func translateImage(_ pngData: Data, targetLang: String, completion: @escaping @Sendable (Result<ImageTranslation, Error>) -> Void) {
         guard let url = URL(string: config.apiBaseURL) else {
             completion(.failure(NSError(domain: "Config", code: 1, userInfo: [NSLocalizedDescriptionKey: "Invalid apiBaseURL"])))
             return
@@ -352,14 +426,26 @@ final class Translator {
             req.httpBody = try Self.imageRequestPayload(
                 pngData: pngData,
                 targetLang: targetLang,
-                systemPrompt: Self.imageSystemPrompt(targetLang: targetLang, config: config),
+                systemPrompt: Self.imageSystemPrompt(
+                    targetLang: targetLang,
+                    alternateLang: LanguageDetector.fallbackTarget(
+                        detected: targetLang,
+                        targetLanguages: config.targetLanguages,
+                        nativeLang: config.resolvedNativeLang
+                    ),
+                    config: config
+                ),
                 model: config.model
             )
         } catch {
             completion(.failure(error))
             return
         }
-        perform(req, completion: completion)
+        perform(req) { [config] result in
+            completion(result.flatMap { content in
+                Result { try Self.imageTranslation(from: content, supportedLanguages: config.languages) }
+            })
+        }
     }
 
     func speak(_ text: String, model: String, completion: @escaping @Sendable (Result<Data, Error>) -> Void) {
