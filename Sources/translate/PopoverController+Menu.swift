@@ -162,126 +162,6 @@ extension PopoverController {
         return "\(short) (\(build))"
     }
 
-    static func hotKeyModifiers(_ hotkey: AppConfig.Hotkey) -> UInt32 {
-        var flags: UInt32 = 0
-        if hotkey.option { flags |= UInt32(optionKey) }
-        if hotkey.command { flags |= UInt32(cmdKey) }
-        if hotkey.control { flags |= UInt32(controlKey) }
-        if hotkey.shift { flags |= UInt32(shiftKey) }
-        return flags
-    }
-
-    func installHotKeyEventHandler() {
-        guard hotKeyEventHandlerRef == nil else { return }
-        var eventSpec = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
-        InstallEventHandler(GetApplicationEventTarget(), { _, event, userData in
-            guard let event, let userData else { return noErr }
-            var hotKeyID = EventHotKeyID()
-            GetEventParameter(event, EventParamName(kEventParamDirectObject), EventParamType(typeEventHotKeyID), nil, MemoryLayout<EventHotKeyID>.size, nil, &hotKeyID)
-            let controller = Unmanaged<PopoverController>.fromOpaque(userData).takeUnretainedValue()
-            switch PopoverIntegrationPolicy.hotkeyIntent(id: hotKeyID.id) {
-            case .translate:
-                controller.perform(#selector(PopoverController.hotKeyPressed), on: .main, with: nil, waitUntilDone: false)
-            case .copyAndTranslate:
-                controller.perform(#selector(PopoverController.copyAndTranslateHotKeyPressed), on: .main, with: nil, waitUntilDone: false)
-            case .learn:
-                controller.perform(#selector(PopoverController.learnHotKeyPressed), on: .main, with: nil, waitUntilDone: false)
-            case .proofread:
-                controller.perform(#selector(PopoverController.proofreadHotKeyPressed), on: .main, with: nil, waitUntilDone: false)
-            case nil: break
-            }
-            return noErr
-        }, 1, &eventSpec, Unmanaged.passUnretained(self).toOpaque(), &hotKeyEventHandlerRef)
-    }
-
-    func registerHotKey() {
-        registeredHotKeys.forEach { UnregisterEventHotKey($0) }
-        registeredHotKeys.removeAll()
-        let signature = OSType(0x54524E53)
-        let (register, skipped) = PopoverIntegrationPolicy.registrableHotkeys([
-            (name: "Translate", hotkey: config.hotkey, id: 1),
-            (name: "Copy & Translate", hotkey: config.copyTranslateHotkey, id: 2),
-            (name: "Learn", hotkey: config.learnHotkey, id: 3),
-            (name: "Proofread", hotkey: config.proofreadHotkey, id: 4),
-        ])
-        var failed: [String] = []
-        for entry in register {
-            var ref: EventHotKeyRef?
-            let status = RegisterEventHotKey(
-                HotkeyKeyCode.code(for: entry.hotkey.key),
-                Self.hotKeyModifiers(entry.hotkey),
-                EventHotKeyID(signature: signature, id: entry.id),
-                GetApplicationEventTarget(), 0, &ref
-            )
-            if status == noErr, let ref {
-                registeredHotKeys.append(ref)
-            } else {
-                failed.append(entry.name)
-            }
-        }
-        var notes: [String] = []
-        if !failed.isEmpty { notes.append("Failed to register: \(failed.joined(separator: ", "))") }
-        if !skipped.isEmpty { notes.append("Duplicate hotkey ignored: \(skipped.joined(separator: ", "))") }
-        if !notes.isEmpty { setStatus(notes.joined(separator: " · ")) }
-    }
-
-    @objc func hotKeyPressed() {
-        translateAtCursor()
-    }
-
-    @objc func copyAndTranslateHotKeyPressed() {
-        translateAtCursor(forceSimulatedCopy: true)
-    }
-
-    @objc func learnHotKeyPressed() {
-        learnAtCursor()
-    }
-
-    @objc func proofreadHotKeyPressed() {
-        proofreadAtCursor()
-    }
-
-    func proofreadAtCursor() {
-        guard let resolved = readSelection(forceSimulatedCopy: false) else { return }
-        guard prepareInputFromSelection(resolved) else { return }
-        // Proofread works on text only; a pasted image would silently do nothing.
-        guard pendingImage == nil else {
-            setStatus("Proofread does not support images.")
-            presentPanel(activatesApp: true, restoresPreviousAppOnCloseValue: false)
-            return
-        }
-        setResultText(PopoverFeedback.proofreading)
-        reflowLayout()
-        presentPanel(activatesApp: true, restoresPreviousAppOnCloseValue: false)
-        runProofread()
-    }
-
-    func learnAtCursor() {
-        guard let resolved = readSelection(forceSimulatedCopy: false) else { return }
-        if case let .text(candidate) = resolved.input,
-           PopoverIntegrationPolicy.shouldSubtranslate(
-               candidateText: candidate,
-               originalSourceText: inputTextView.string,
-               panelVisible: panel.isVisible,
-               primaryResult: textView.string,
-               hasPendingImage: pendingImage != nil
-           ) {
-            runSubRequest(text: candidate.trimmingCharacters(in: .whitespacesAndNewlines), mode: .learn)
-            return
-        }
-        guard prepareInputFromSelection(resolved) else { return }
-        // Learn has no image path; a pasted image would silently do nothing.
-        guard pendingImage == nil else {
-            setStatus("Learn does not support images.")
-            presentPanel(activatesApp: true, restoresPreviousAppOnCloseValue: false)
-            return
-        }
-        setResultText(PopoverFeedback.learning)
-        reflowLayout()
-        presentPanel(activatesApp: true, restoresPreviousAppOnCloseValue: false)
-        runLearn()
-    }
-
     @objc func manualToggle() {
         guard NSApp.currentEvent?.type == .leftMouseUp else { return }
         if panel.isVisible {
@@ -464,6 +344,10 @@ extension PopoverController {
     }
 
     func performUpdateCheck(silent: Bool) {
+        if silent {
+            guard UpdateManager.shouldRunAutomaticCheck() else { return }
+            UpdateManager.recordAutomaticCheck()
+        }
         Task { [weak self] in
             guard let self else { return }
             do {
@@ -489,24 +373,53 @@ extension PopoverController {
     func showUpdateAlert(release: ReleaseInfo) {
         let alert = NSAlert()
         alert.messageText = "Update Available: \(release.tag)"
-        alert.informativeText = "A new version of NTranslate is available.\n\nRelease Notes:\n\(release.notes)"
+        alert.informativeText = "A new version of NTranslate is available."
         alert.alertStyle = .informational
+        alert.accessoryView = PopoverController.releaseNotesView(release.notes)
         alert.addButton(withTitle: "Update & Restart")
         alert.addButton(withTitle: "Later")
 
         if alert.runModal() == .alertFirstButtonReturn {
+            setStatus("Downloading update \(release.tag)...", autoClearAfter: 600)
             Task { [weak self] in
                 guard let self else { return }
                 do {
                     let dmgURL = try await UpdateManager.shared.downloadDMG(from: release.dmgURL)
+                    await MainActor.run { self.setStatus("Installing update...", autoClearAfter: 600) }
                     try UpdateManager.shared.installUpdateAndRestart(dmgURL: dmgURL)
                 } catch {
                     await MainActor.run {
+                        self.clearStatus()
                         self.showUpdateErrorAlert(error)
                     }
                 }
             }
         }
+    }
+
+    /// Release notes in a fixed-height scroller, rendered as markdown.
+    /// ponytail: inline-markdown only (same parser as the result pane); headings/lists stay literal.
+    static func releaseNotesView(_ notes: String) -> NSView {
+        let text = notes.trimmingCharacters(in: .whitespacesAndNewlines)
+        let textView = NSTextView(frame: NSRect(x: 0, y: 0, width: 380, height: 240))
+        textView.isEditable = false
+        textView.drawsBackground = false
+        textView.textContainerInset = NSSize(width: 8, height: 8)
+        textView.isVerticallyResizable = true
+        textView.textContainer?.widthTracksTextView = true
+        textView.textStorage?.setAttributedString(
+            .markdownDisplay(text.isEmpty ? "No release notes." : text,
+                             font: .systemFont(ofSize: 12),
+                             color: .labelColor)
+        )
+
+        let scroll = NSScrollView(frame: NSRect(x: 0, y: 0, width: 380, height: 240))
+        scroll.hasVerticalScroller = true
+        scroll.autohidesScrollers = true
+        scroll.borderType = .bezelBorder
+        scroll.drawsBackground = false
+        scroll.documentView = textView
+        return scroll
     }
 
     func showUpToDateAlert() {

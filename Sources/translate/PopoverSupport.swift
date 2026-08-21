@@ -337,6 +337,10 @@ final class VerticallyCenteredTextFieldCell: NSTextFieldCell {
 final class InputTextView: NSTextView {
     var onImagePasted: ((Data) -> Void)?
 
+    /// The popup activates the app asynchronously, so the first click after it appears would
+    /// otherwise be swallowed by window activation and never start a selection.
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
     override func paste(_ sender: Any?) {
         let pb = NSPasteboard.general
         if let data = pb.data(forType: .png) ?? pb.data(forType: .tiff) {

@@ -62,14 +62,35 @@ struct SelectionReader {
     static let maximumImageBytes = 10 * 1024 * 1024
     static let maximumDecodedImageBytes: UInt64 = 100 * 1024 * 1024
 
+    /// Wall-clock milliseconds since `start`, for the `[timing]` log lines.
+    static func ms(since start: DispatchTime) -> String {
+        String(format: "%.1fms", Double(DispatchTime.now().uptimeNanoseconds - start.uptimeNanoseconds) / 1_000_000)
+    }
+
     static func resolveTranslatableInputWithDiagnostics(simulateCopy: Bool = false, forceCopy: Bool = false) throws -> TranslatableInputResolution? {
+        let started = DispatchTime.now()
+        defer { NSLog("[NTranslate][timing] selection read total=\(ms(since: started))") }
         var accessibilityError: String?
         // `simulateCopy` means "skip the accessibility read entirely"; `forceCopy` is the
         // dedicated copy-and-translate hotkey.
         if !forceCopy, !simulateCopy, AXIsProcessTrusted() {
             do {
-                if let text = try accessibilityText() {
+                let axStart = DispatchTime.now()
+                let probe = try accessibilityText()
+                NSLog("[NTranslate][timing] accessibility read=\(ms(since: axStart)) probe=\(probe)")
+                switch probe {
+                case let .text(text):
                     return TranslatableInputResolution(input: .text(text), source: .selection, accessibilityError: nil)
+                case .empty:
+                    // The app does expose AXSelectedText and it is empty — nothing is selected, so
+                    // a simulated Command+C would copy nothing and we'd just burn the poll ceiling
+                    // waiting for a clipboard write that never comes. Fall straight through to the
+                    // existing clipboard content.
+                    return try translatableInput(from: .general).map {
+                        TranslatableInputResolution(input: $0, source: .clipboard, accessibilityError: nil)
+                    }
+                case .unsupported:
+                    break
                 }
             } catch {
                 accessibilityError = String(describing: error)
@@ -194,24 +215,46 @@ struct SelectionReader {
         return (trimmed?.isEmpty ?? true) ? nil : trimmed
     }
 
-    private static func accessibilityText() throws -> String? {
+    /// Distinguishes "nothing is selected" from "this app has no AXSelectedText at all". Both
+    /// used to read as nil, so an empty selection paid the full simulated-copy timeout.
+    enum AXSelection: CustomStringConvertible {
+        case text(String)
+        case empty
+        case unsupported
+
+        var description: String {
+            switch self {
+            case .text: return "text"
+            case .empty: return "empty"
+            case .unsupported: return "unsupported"
+            }
+        }
+    }
+
+    private static func accessibilityText() throws -> AXSelection {
         let system = AXUIElementCreateSystemWide()
-        if let focused = try focusedElement(from: system, attribute: kAXFocusedUIElementAttribute as CFString),
-           let text = selectedText(from: focused) {
-            return text
+        var sawAttribute = false
+        for attribute in [kAXFocusedUIElementAttribute, kAXFocusedApplicationAttribute] {
+            guard let focused = try focusedElement(from: system, attribute: attribute as CFString) else { continue }
+            switch selectedText(from: focused) {
+            case let .text(text): return .text(text)
+            case .empty: sawAttribute = true
+            case .unsupported: break
+            }
         }
-        if let focused = try focusedElement(from: system, attribute: kAXFocusedApplicationAttribute as CFString),
-           let text = selectedText(from: focused) {
-            return text
-        }
-        return nil
+        return sawAttribute ? .empty : .unsupported
     }
 
     private static func copyViaKeyboard() throws -> TranslatableInput? {
         try simulatedCopyInput(from: .general) { previousChangeCount in
             // The hotkey's Control+Option are still down when Carbon fires. Wait for release,
             // then use private state so only Command reaches the target app.
+            let waitStart = DispatchTime.now()
+            releaseHeldModifiers()
             waitForModifierRelease()
+            NSLog("[NTranslate][timing] modifier release wait=\(ms(since: waitStart))")
+            let copyStart = DispatchTime.now()
+            defer { NSLog("[NTranslate][timing] pasteboard poll=\(ms(since: copyStart))") }
             guard let source = CGEventSource(stateID: .privateState),
                   let keyDown = CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(kVK_ANSI_C), keyDown: true),
                   let keyUp = CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(kVK_ANSI_C), keyDown: false)
@@ -221,19 +264,47 @@ struct SelectionReader {
             keyDown.post(tap: .cghidEventTap)
             keyUp.post(tap: .cghidEventTap)
 
-            for _ in 0..<80 {
+            // A real copy lands well inside 300ms; the old 800ms ceiling was only ever paid in
+            // full when the copy produced nothing, which is exactly the case we now detect up
+            // front via the AXSelectedText probe.
+            for _ in 0..<100 {
                 if NSPasteboard.general.changeCount != previousChangeCount { return true }
-                Thread.sleep(forTimeInterval: 0.01)
+                Thread.sleep(forTimeInterval: 0.003)
             }
             return NSPasteboard.general.changeCount != previousChangeCount
         }
     }
 
+    /// Synthesises keyUp for every modifier still physically held, so the simulated Command+C
+    /// doesn't reach the target app as Control+Option+Command+C. Without this we'd have to wait
+    /// out the user's own key release (80-150ms of pure latency on every hotkey press).
+    ///
+    /// Command is deliberately left alone: the copy event carries `.maskCommand` itself, and
+    /// releasing it here would race the flag we're about to set.
+    private static func releaseHeldModifiers() {
+        let flags = CGEventSource.flagsState(.combinedSessionState)
+        let modifiers: [(CGEventFlags, [Int])] = [
+            (.maskControl, [kVK_Control, kVK_RightControl]),
+            (.maskAlternate, [kVK_Option, kVK_RightOption]),
+            (.maskShift, [kVK_Shift, kVK_RightShift]),
+        ]
+        guard let source = CGEventSource(stateID: .privateState) else { return }
+        for (flag, keys) in modifiers where flags.contains(flag) {
+            for key in keys {
+                guard let up = CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(key), keyDown: false) else { continue }
+                up.flags = []
+                up.post(tap: .cghidEventTap)
+            }
+        }
+    }
+
     private static func waitForModifierRelease() {
-        for _ in 0..<35 {
+        // Backstop for whatever `releaseHeldModifiers` couldn't clear (an app tracking its own
+        // modifier state, a stuck hardware key). 3ms steps, ~350ms ceiling.
+        for _ in 0..<117 {
             let flags = CGEventSource.flagsState(.combinedSessionState)
             if flags.intersection([.maskControl, .maskAlternate, .maskCommand, .maskShift]).isEmpty { return }
-            Thread.sleep(forTimeInterval: 0.01)
+            Thread.sleep(forTimeInterval: 0.003)
         }
     }
 
@@ -248,11 +319,11 @@ struct SelectionReader {
         return (value as! AXUIElement)
     }
 
-    private static func selectedText(from element: AXUIElement) -> String? {
+    private static func selectedText(from element: AXUIElement) -> AXSelection {
         var selectedTextRef: CFTypeRef?
         guard AXUIElementCopyAttributeValue(element, kAXSelectedTextAttribute as CFString, &selectedTextRef) == .success,
               let text = selectedTextRef as? String
-        else { return nil }
-        return normalizedText(text)
+        else { return .unsupported }
+        return normalizedText(text).map(AXSelection.text) ?? .empty
     }
 }

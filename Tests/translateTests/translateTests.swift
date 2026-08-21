@@ -1156,6 +1156,18 @@ struct TranslateTests {
     #expect(section.transcriptText == "Q: Câu 1?\nA: Đáp 1\n\nQ: Câu 2?\nA: Đáp 2")
 }
 
+@Test func automaticUpdateCheckRunsAtMostOncePerDay() {
+    let defaults = UserDefaults(suiteName: "UpdateManagerThrottleTests")!
+    defaults.removePersistentDomain(forName: "UpdateManagerThrottleTests")
+    let start = Date(timeIntervalSince1970: 1_700_000_000)
+
+    #expect(UpdateManager.shouldRunAutomaticCheck(now: start, defaults: defaults))
+    UpdateManager.recordAutomaticCheck(now: start, defaults: defaults)
+    #expect(!UpdateManager.shouldRunAutomaticCheck(now: start.addingTimeInterval(3600), defaults: defaults))
+    #expect(UpdateManager.shouldRunAutomaticCheck(now: start.addingTimeInterval(24 * 3600), defaults: defaults))
+    defaults.removePersistentDomain(forName: "UpdateManagerThrottleTests")
+}
+
 @MainActor
 @Test func markdownDisplayRendersBoldWithoutLiteralMarkers() {
     let font = NSFont.systemFont(ofSize: 13)
