@@ -206,6 +206,21 @@ final class LiquidGlassWindow: NSWindow {
         self.acceptsMouseMovedEvents = true
     }
 
+    override func sendEvent(_ event: NSEvent) {
+        super.sendEvent(event)
+        if event.type == .mouseMoved || event.type == .leftMouseDragged {
+            if let hit = contentView?.hitTest(event.locationInWindow) {
+                var current: NSView? = hit
+                while let view = current {
+                    if view is PointerButton || view is FloatingBarEffectView {
+                        NSCursor.pointingHand.set()
+                        break
+                    }
+                    current = view.superview
+                }
+            }
+        }
+    }
 }
 
 /// Floating selection toolbar background: whole bar (including padding between
