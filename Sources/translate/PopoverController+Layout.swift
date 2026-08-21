@@ -133,7 +133,7 @@ extension PopoverController {
             headerLabel: resultHeaderLabel,
             scrollView: textScrollView,
             textView: textView,
-            trailingIcons: [speakResultButton, copyButton, saveWordButton],
+            trailingIcons: [speakResultButton, retryButton, copyButton, saveWordButton],
             paneWidth: panes.right,
             bodyHeight: bodyHeight
         )

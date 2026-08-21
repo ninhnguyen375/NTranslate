@@ -201,7 +201,7 @@ struct AppConfig: Codable {
             ?? Self.defaultCopyTranslateHotkey
         learnHotkey = try container.decodeIfPresent(Hotkey.self, forKey: .learnHotkey) ?? Self.defaultLearnHotkey
         proofreadHotkey = try container.decodeIfPresent(Hotkey.self, forKey: .proofreadHotkey) ?? Self.defaultProofreadHotkey
-        ui = try container.decode(UI.self, forKey: .ui)
+        ui = try container.decodeIfPresent(UI.self, forKey: .ui) ?? Self.default.ui
         let legacy = try decoder.container(keyedBy: LegacySpeechKeys.self)
         // Pre-1.3 configs stored speech models per role; map them onto the per-language dictionary.
         let legacySource = try legacy.decodeIfPresent(String.self, forKey: .speechSourceModel)

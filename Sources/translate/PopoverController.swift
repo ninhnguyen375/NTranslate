@@ -108,6 +108,7 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     let statusLabel = NSTextField(labelWithString: "")
     let speakSourceButton = NSButton(frame: .zero)
     let speakResultButton = NSButton(frame: .zero)
+    let retryButton = NSButton(frame: .zero)
     var splitDividerGradient: CAGradientLayer?
     var translator: Translator?
     var registeredHotKeys: [EventHotKeyRef] = []
@@ -140,6 +141,7 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         return controller
     }()
     var currentRecordID: UUID?
+    var lastExecutionMode: TranslationMode = .translate
     var requestGeneration = 0
     var isRequestInFlight = false
     var keyMonitor: Any?

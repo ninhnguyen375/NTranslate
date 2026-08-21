@@ -134,6 +134,7 @@ extension PopoverController {
         proofreadButton.setAccessibilityLabel("Proofread")
         configureIconButton(speakSourceButton, symbol: "speaker.wave.2", action: #selector(speakInput), label: "Speak source")
         configureIconButton(speakResultButton, symbol: "speaker.wave.2", action: #selector(speakResult), label: "Speak translation")
+        configureIconButton(retryButton, symbol: "arrow.clockwise", action: #selector(retryRequest), label: "Retry / Fetch fresh")
         configureIconButton(copyButton, symbol: "doc.on.doc", action: #selector(copyResult), label: "Copy")
         configureIconButton(saveWordButton, symbol: "bookmark", action: #selector(toggleSaveWord), label: "Save Word")
 
@@ -151,6 +152,7 @@ extension PopoverController {
 
         resultHeaderBar.addSubview(resultHeaderLabel)
         resultHeaderBar.addSubview(speakResultButton)
+        resultHeaderBar.addSubview(retryButton)
         resultHeaderBar.addSubview(copyButton)
         resultHeaderBar.addSubview(saveWordButton)
         resultCard.addSubview(resultHeaderBar)

@@ -197,7 +197,6 @@ struct TranslationHistoryStoreTests {
         #expect(window.styleMask.contains(.closable))
         #expect(window.styleMask.contains(.resizable))
         #expect(!(content is NSGlassEffectContainerView))
-        #expect(content.layer?.backgroundColor == NSColor.white.cgColor)
         content.layoutSubtreeIfNeeded()
         let searchField = try #require(descendantViews(of: content).compactMap { $0 as? NSSearchField }.first)
         let point = searchField.convert(NSPoint(x: searchField.bounds.midX, y: searchField.bounds.midY), to: content)

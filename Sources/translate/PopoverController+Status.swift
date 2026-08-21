@@ -89,10 +89,14 @@ extension PopoverController {
         swapLanguagesButton.isEnabled = !isRequestInFlight && pendingImage == nil
         sourceLanguageButton.isEnabled = !isRequestInFlight && PopoverIntegrationPolicy.sourceControlsEnabled(hasPendingImage: pendingImage != nil)
         targetLanguageButton.isEnabled = !isRequestInFlight
+        retryButton.isEnabled = !isRequestInFlight && (!inputTextView.string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || pendingImage != nil)
         updateSpeakButtons()
         updateCopyButtonEnabled()
         updateSaveWordButton()
         updateContextButton()
+        if let sub = subSection {
+            updateSubButtons(sub)
+        }
     }
 
     /// Shows the context indicator only when the next Translate would actually carry reference pairs.

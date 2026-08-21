@@ -4,11 +4,16 @@ import Carbon.HIToolbox
 
 extension PopoverController {
     @objc func runLearn() {
+        runLearn(bypassCache: false)
+    }
+
+    func runLearn(bypassCache: Bool = false) {
         if let text = panelSelectionForSubtranslate() {
-            runSubRequest(text: text, mode: .learn)
+            runSubRequest(text: text, mode: .learn, bypassCache: bypassCache)
             return
         }
         guard pendingImage == nil, let translator else { return }
+        lastExecutionMode = .learn
         invalidateCurrentRecord()
         invalidateSpeech(stopPlayback: true)
         let text = inputTextView.string.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -18,7 +23,7 @@ extension PopoverController {
         let pair = resolvedLanguagePair(for: text)
         updateLanguageSelection(for: text)
         let generation = beginRequest()
-        if let record = historyStore.reusableRecord(
+        if !bypassCache, let record = historyStore.reusableRecord(
             mode: .learn,
             sourceText: text,
             sourceLanguage: pair.source,
@@ -72,11 +77,16 @@ extension PopoverController {
     /// Grammar-checks the source text in its own language. Replaces the old "pick the same source
     /// and target language" trick, so the language dropdowns stay free for real translation.
     @objc func runProofread() {
+        runProofread(bypassCache: false)
+    }
+
+    func runProofread(bypassCache: Bool = false) {
         if let text = panelSelectionForSubtranslate() {
-            runSubRequest(text: text, mode: .proofread)
+            runSubRequest(text: text, mode: .proofread, bypassCache: bypassCache)
             return
         }
         guard pendingImage == nil, let translator else { return }
+        lastExecutionMode = .proofread
         invalidateCurrentRecord()
         invalidateSpeech(stopPlayback: true)
         let text = inputTextView.string.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -84,7 +94,7 @@ extension PopoverController {
         guard text.count <= config.maxTranslateLength else { setResultText(PopoverFeedback.textTooLong); reflowLayout(); updateBusyState(); return }
         let lang = effectiveSourceLanguage(for: text)
         let generation = beginRequest()
-        if let record = historyStore.reusableRecord(
+        if !bypassCache, let record = historyStore.reusableRecord(
             mode: .proofread,
             sourceText: text,
             sourceLanguage: lang,
@@ -129,6 +139,22 @@ extension PopoverController {
                 self.textView.scrollToBeginningOfDocument(nil)
                 self.updateBusyState()
             }
+        }
+    }
+
+    @objc func retryRequest() {
+        if let text = panelSelectionForSubtranslate() {
+            runSubRequest(text: text, mode: subSection?.mode ?? lastExecutionMode, bypassCache: true)
+            return
+        }
+        invalidateSpeech(stopPlayback: true)
+        switch lastExecutionMode {
+        case .translate:
+            performTranslate(generation: nil, bypassCache: true)
+        case .learn:
+            runLearn(bypassCache: true)
+        case .proofread:
+            runProofread(bypassCache: true)
         }
     }
 

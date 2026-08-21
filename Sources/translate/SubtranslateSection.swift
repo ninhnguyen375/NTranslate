@@ -20,6 +20,7 @@ final class SubtranslateSection {
     let resultScrollView = NSScrollView(frame: .zero)
     let speakSourceButton = NSButton(frame: .zero)
     let speakResultButton = NSButton(frame: .zero)
+    let retryButton = NSButton(frame: .zero)
     let copyButton = NSButton(frame: .zero)
     let saveWordButton = NSButton(frame: .zero)
     let closeButton = NSButton(frame: .zero)
@@ -31,6 +32,7 @@ final class SubtranslateSection {
     var recordID: UUID?
     var sourceLanguage = ""
     var targetLanguage = ""
+    var mode: TranslationMode = .translate
     var generation = 0
 
     func setSource(_ text: String, font: NSFont, color: NSColor) {

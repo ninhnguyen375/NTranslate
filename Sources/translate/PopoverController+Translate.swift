@@ -18,6 +18,7 @@ extension PopoverController {
                 return
             }
             guard self.prepareInputFromSelection(resolved) else { return }
+            self.lastExecutionMode = .translate
             let generation = self.beginRequest()
             self.setResultText(PopoverFeedback.translating)
             self.reflowLayout()
@@ -125,6 +126,7 @@ extension PopoverController {
             runSubRequest(text: text, mode: .translate)
             return
         }
+        lastExecutionMode = .translate
         invalidateSpeech(stopPlayback: true)
         performTranslate(generation: nil)
     }
@@ -152,7 +154,7 @@ extension PopoverController {
         return nil
     }
 
-    func performTranslate(generation existingGeneration: Int?) {
+    func performTranslate(generation existingGeneration: Int?, bypassCache: Bool = false) {
         invalidateCurrentRecord()
         removeQASection()
         qaInputField.stringValue = ""
@@ -198,7 +200,7 @@ extension PopoverController {
         let sourceWasAutoDetect = selectedSourceLanguage() == LanguageDetector.autoDetect
         let pair = resolvedLanguagePair(for: text)
         updateLanguageSelection(for: text)
-        if let record = historyStore.reusableRecord(
+        if !bypassCache, let record = historyStore.reusableRecord(
             mode: .translate,
             sourceText: text,
             sourceLanguage: pair.source,

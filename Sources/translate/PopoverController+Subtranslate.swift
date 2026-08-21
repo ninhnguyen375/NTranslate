@@ -52,6 +52,7 @@ extension PopoverController {
 
         configureIconButton(section.speakSourceButton, symbol: "speaker.wave.2", action: #selector(speakSubSource), label: "Speak subtranslate source")
         configureIconButton(section.speakResultButton, symbol: "speaker.wave.2", action: #selector(speakSubResult), label: "Speak subtranslate translation")
+        configureIconButton(section.retryButton, symbol: "arrow.clockwise", action: #selector(retrySubRequest), label: "Retry / Fetch fresh subtranslate")
         configureIconButton(section.copyButton, symbol: "doc.on.doc", action: #selector(copySubResult), label: "Copy subtranslate")
         configureIconButton(section.saveWordButton, symbol: "bookmark", action: #selector(toggleSaveSubWord), label: "Save subtranslate")
         configureIconButton(section.closeButton, symbol: "xmark", action: #selector(closeSubtranslate), label: "Close subtranslate")
@@ -63,6 +64,7 @@ extension PopoverController {
 
         section.resultHeaderBar.addSubview(section.resultHeaderLabel)
         section.resultHeaderBar.addSubview(section.speakResultButton)
+        section.resultHeaderBar.addSubview(section.retryButton)
         section.resultHeaderBar.addSubview(section.copyButton)
         section.resultHeaderBar.addSubview(section.saveWordButton)
         section.resultHeaderBar.addSubview(section.closeButton)
@@ -112,7 +114,7 @@ extension PopoverController {
             headerLabel: section.resultHeaderLabel,
             scrollView: section.resultScrollView,
             textView: section.resultTextView,
-            trailingIcons: [section.speakResultButton, section.copyButton, section.saveWordButton, section.closeButton],
+            trailingIcons: [section.speakResultButton, section.retryButton, section.copyButton, section.saveWordButton, section.closeButton],
             paneWidth: panes.right,
             bodyHeight: bodyHeight
         )
@@ -144,6 +146,7 @@ extension PopoverController {
     func updateSubButtons(_ section: SubtranslateSection) {
         let copyable = PopoverFeedback.isCopyableResult(section.resultText)
         section.copyButton.isEnabled = copyable
+        section.retryButton.isEnabled = !isRequestInFlight && !section.sourceText.isEmpty
         updateSubSpeakButtons(section)
         section.saveWordButton.isHidden = !copyable
         let isSaved = section.recordID
@@ -157,7 +160,7 @@ extension PopoverController {
 
     /// Runs Translate or Learn for a freshly selected phrase into the secondary pane, leaving the
     /// main pane untouched.
-    func runSubRequest(text: String, mode: TranslationMode) {
+    func runSubRequest(text: String, mode: TranslationMode, bypassCache: Bool = false) {
         guard let translator else { return }
         guard text.count <= config.maxTranslateLength else {
             setStatus(PopoverFeedback.textTooLong)
@@ -168,6 +171,7 @@ extension PopoverController {
         subGeneration += 1
         let generation = subGeneration
         section.generation = generation
+        section.mode = mode
         section.recordID = nil
 
         let pair = LanguageDetector.resolvedPair(
@@ -196,7 +200,7 @@ extension PopoverController {
         setSubResultText(section, waitingText)
         reflowLayout()
 
-        if let record = historyStore.reusableRecord(
+        if !bypassCache, let record = historyStore.reusableRecord(
             mode: mode,
             sourceText: text,
             sourceLanguage: displaySource,
@@ -229,6 +233,11 @@ extension PopoverController {
                 handler(result.map(\.text))
             }
         }
+    }
+
+    @objc func retrySubRequest() {
+        guard let section = subSection, !section.sourceText.isEmpty else { return }
+        runSubRequest(text: section.sourceText, mode: section.mode, bypassCache: true)
     }
 
     func finishSubRequest(
@@ -325,6 +334,7 @@ extension PopoverController {
         setResultText(record.resultText)
 
         currentRecordID = record.id
+        lastExecutionMode = record.mode
         updateBusyState()
         updatePaneLanguageLabels()
 

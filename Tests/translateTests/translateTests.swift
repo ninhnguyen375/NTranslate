@@ -569,12 +569,11 @@ struct TranslateTests {
 
     @Test func translatorImagePayloadUsesOrderedTextAndImageParts() throws {
         var config = AppConfig.default
-        config.sourceLang = "English"
-        config.systemPrompt = "Translate from {{config.sourceLang}} to {{config.targetLang}}."
+        config.imagePrompt = "Translate from {{config.sourceLang}} to {{config.targetLang}}."
         let data = try Translator.imageRequestPayload(
             pngData: Data([0x00, 0xFF]),
             targetLang: "Vietnamese",
-            systemPrompt: Translator.imageSystemPrompt(targetLang: "Vietnamese", config: config),
+            systemPrompt: Translator.imageSystemPrompt(targetLang: "Vietnamese", alternateLang: "English", config: config),
             model: "model"
         )
         let json = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
@@ -584,7 +583,8 @@ struct TranslateTests {
         let content = try #require(messages[1]["content"] as? [[String: Any]])
         #expect(content.count == 2)
         #expect(content[0]["type"] as? String == "text")
-        #expect(content[0]["text"] as? String == "Translate all readable text in this image into Vietnamese. Return only the translation.")
+        let textInstruction = try #require(content[0]["text"] as? String)
+        #expect(textInstruction.contains("Requested target language: Vietnamese."))
         #expect(content[1]["type"] as? String == "image_url")
         let imageURL = try #require(content[1]["image_url"] as? [String: Any])
         #expect(imageURL["url"] as? String == "data:image/png;base64,AP8=")
@@ -1121,7 +1121,7 @@ struct TranslateTests {
     let legacy = try #require("""
     {"apiBaseURL":"https://example.com/v1/chat/completions","model":"m","sourceLang":"Auto detect",
      "targetLang":"Vietnamese","systemPrompt":"my own translate prompt",
-     "hotkey":{"keyCode":9,"modifiers":768}}
+     "hotkey":{"key":"D","option":true,"command":false,"control":false,"shift":false}}
     """.data(using: .utf8))
     let config = try JSONDecoder().decode(AppConfig.self, from: legacy)
     #expect(config.systemPrompt == "my own translate prompt")
