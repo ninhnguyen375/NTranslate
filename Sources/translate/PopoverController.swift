@@ -18,7 +18,8 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         static let padding: CGFloat = 14
         /// Bottom inset for footer controls — a bit more air from the popup edge.
         static let paddingBottom: CGFloat = 16
-        static let headerHeight: CGFloat = 22
+        /// Tall enough to hold the language selector row alongside title/icons.
+        static let headerHeight: CGFloat = 26
         static let statusHeight: CGFloat = 14
         /// Gap between title/header and the split body.
         static let headerGap: CGFloat = 12
@@ -65,10 +66,11 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         backing: .buffered,
         defer: false
     )
-    let textView = NSTextView(frame: .zero)
+    let textView = SelectableTextView(frame: .zero)
     let textScrollView = NSScrollView(frame: .zero)
     let inputTextView = InputTextView(frame: .zero)
     let inputScrollView = NSScrollView(frame: .zero)
+    let inputContextLabel = NSTextField(labelWithString: "")
     let imagePlaceholderLabel = NSTextField(labelWithString: "[Image from clipboard]")
     /// Official Liquid Glass container — merges nearby glass views.
     let glassContainer = NSGlassEffectContainerView(frame: .zero)
@@ -92,7 +94,16 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     let swapLanguagesButton = NSButton(frame: .zero)
     let historyButton = NSButton(frame: .zero)
     let reviewButton = NSButton(frame: .zero)
-    let reviewBadgeLabel = NSTextField(labelWithString: "")
+    let reviewBadgeLabel: NSTextField = {
+        let field = NSTextField(frame: .zero)
+        let cell = VerticallyCenteredTextFieldCell(textCell: "")
+        cell.horizontalInset = 0
+        field.cell = cell
+        field.isEditable = false
+        field.isSelectable = false
+        field.isBezeled = false
+        return field
+    }()
     let updateButton = NSButton(frame: .zero)
     /// Hover-only indicator listing the recent translations sent as context with the next Translate.
     let contextButton = NSButton(frame: .zero)
@@ -102,6 +113,7 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     let learnButton = NSButton(frame: .zero)
     let imagesButton = NSButton(frame: .zero)
     let proofreadButton = NSButton(frame: .zero)
+    let askButton = NSButton(frame: .zero)
     let copyButton = NSButton(frame: .zero)
     let saveWordButton = NSButton(frame: .zero)
     let titleLabel = NSTextField(labelWithString: "Translate")
@@ -165,12 +177,13 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     var qaSection: QAPaneSection?
     var qaGeneration = 0
     let qaInputField: NSTextField
-    let selectionFloatingBar = NSVisualEffectView(frame: .zero)
-    let floatingTranslateButton = NSButton(frame: .zero)
-    let floatingLearnButton = NSButton(frame: .zero)
-    let floatingSpeakButton = NSButton(frame: .zero)
-    let floatingCopyButton = NSButton(frame: .zero)
+    let selectionFloatingBar = FloatingBarEffectView(frame: .zero)
+    let floatingTranslateButton = PointerButton(frame: .zero)
+    let floatingLearnButton = PointerButton(frame: .zero)
+    let floatingSpeakButton = PointerButton(frame: .zero)
+    let floatingCopyButton = PointerButton(frame: .zero)
     var currentFloatingSelectedText: String?
+    var currentFloatingIsResult: Bool = false
 
     var speechRate: Float {
         get { SpeechRatePolicy.resolved(UserDefaults.standard.float(forKey: SpeechRatePolicy.defaultsKey)) }
@@ -219,6 +232,7 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
             setResultText("Error: Could not migrate API key to Keychain: \(error.localizedDescription)")
         }
         reloadConfig()
+        updateReviewBadge()
         performUpdateCheck(silent: true)
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self, self.panel.isVisible else { return event }
@@ -242,6 +256,10 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
             }
             if flags == [.command, .shift], event.keyCode == UInt16(kVK_ANSI_P) {
                 self.runProofread()
+                return nil
+            }
+            if flags == .command, event.keyCode == UInt16(kVK_ANSI_K) {
+                self.askButtonClicked()
                 return nil
             }
             return event

@@ -291,6 +291,7 @@ extension PopoverController {
         }
         translator = Translator(config: config, apiKey: trimmedAPIKey)
         configureLanguageControls()
+        updateShortcutLabels()
         assert(URL(string: config.apiBaseURL) != nil)
         assert(URL(string: config.apiSpeechURL) != nil)
         if let message = outcome.message {
@@ -358,6 +359,7 @@ extension PopoverController {
             userMovedWindow = false
             isPinned = false
             updatePinButton()
+            updateReviewBadge()
         }
         restoresPreviousAppOnClose = restoresPreviousAppOnCloseValue
         activatesAppOnShow = activatesApp

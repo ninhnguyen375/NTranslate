@@ -27,7 +27,7 @@ final class QAPaneSection {
 
     /// Whole transcript in plain text, for history/context and for copy-all.
     var transcriptText: String {
-        turns.map { "Q: \($0.question)\nA: \($0.answer)" }.joined(separator: "\n\n")
+        turns.map { "ME: \($0.question)\n\nAI: \($0.answer)" }.joined(separator: "\n\n")
     }
 
     /// Prior turns handed to the model so follow-ups ("còn câu kia thì sao?") resolve.
@@ -48,9 +48,12 @@ final class QAPaneSection {
     func render(font: NSFont, questionColor: NSColor, answerColor: NSColor, pendingColor: NSColor, errorColor: NSColor) {
         let body = NSMutableAttributedString()
         let questionFont = NSFont.systemFont(ofSize: font.pointSize, weight: .semibold)
+        let prefixFont = NSFont.systemFont(ofSize: font.pointSize, weight: .bold)
         for (index, turn) in turns.enumerated() {
             if index > 0 { body.append(.plainDisplay("\n\n", font: font, color: answerColor)) }
-            body.append(.plainDisplay("\(turn.question)\n", font: questionFont, color: questionColor))
+            body.append(.plainDisplay("ME: ", font: prefixFont, color: Palette.paneLabel))
+            body.append(.plainDisplay("\(turn.question)\n\n", font: questionFont, color: questionColor))
+            body.append(.plainDisplay("AI: ", font: prefixFont, color: Palette.paneLabel))
             if turn.isPending {
                 body.append(.plainDisplay(turn.answer, font: font, color: pendingColor))
             } else if turn.answer.hasPrefix("Error:") || turn.answer.hasPrefix("Lỗi:") {

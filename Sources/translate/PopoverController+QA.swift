@@ -98,6 +98,19 @@ extension PopoverController: NSTextFieldDelegate {
         )
     }
 
+    @objc func askButtonClicked() {
+        if qaInputField.isHidden {
+            qaInputField.isHidden = false
+            reflowLayout()
+            panel.makeFirstResponder(qaInputField)
+        } else if qaInputField.stringValue.isEmpty {
+            qaInputField.isHidden = true
+            reflowLayout()
+        } else {
+            panel.makeFirstResponder(qaInputField)
+        }
+    }
+
     func removeQASection() {
         qaGeneration += 1
         qaSection?.removeFromSuperview()

@@ -8,10 +8,6 @@ extension PopoverController {
     }
 
     func runLearn(bypassCache: Bool = false) {
-        if let text = panelSelectionForSubtranslate() {
-            runSubRequest(text: text, mode: .learn, bypassCache: bypassCache)
-            return
-        }
         guard pendingImage == nil, let translator else { return }
         lastExecutionMode = .learn
         invalidateCurrentRecord()
@@ -81,10 +77,6 @@ extension PopoverController {
     }
 
     func runProofread(bypassCache: Bool = false) {
-        if let text = panelSelectionForSubtranslate() {
-            runSubRequest(text: text, mode: .proofread, bypassCache: bypassCache)
-            return
-        }
         guard pendingImage == nil, let translator else { return }
         lastExecutionMode = .proofread
         invalidateCurrentRecord()
@@ -143,10 +135,6 @@ extension PopoverController {
     }
 
     @objc func retryRequest() {
-        if let text = panelSelectionForSubtranslate() {
-            runSubRequest(text: text, mode: subSection?.mode ?? lastExecutionMode, bypassCache: true)
-            return
-        }
         invalidateSpeech(stopPlayback: true)
         switch lastExecutionMode {
         case .translate:

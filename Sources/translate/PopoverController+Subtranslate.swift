@@ -330,7 +330,23 @@ extension PopoverController {
         styleLanguageButtonTitle(sourceLanguageButton, language: sourceLanguageSelection)
         styleLanguageButtonTitle(targetLanguageButton, language: targetLanguageSelection)
 
-        inputTextView.string = record.sourceText
+        let sourceText = record.sourceText
+        if let range = sourceText.range(of: " (context: ") {
+            let term = String(sourceText[..<range.lowerBound])
+            var context = String(sourceText[range.upperBound...])
+            if context.hasSuffix(")") {
+                context = String(context.dropLast())
+            }
+            inputTextView.string = term
+            inputContextLabel.stringValue = "Context: \(context)"
+            inputContextLabel.toolTip = context
+            inputContextLabel.isHidden = false
+        } else {
+            inputTextView.string = sourceText
+            inputContextLabel.stringValue = ""
+            inputContextLabel.toolTip = nil
+            inputContextLabel.isHidden = true
+        }
         setResultText(record.resultText)
 
         currentRecordID = record.id
@@ -396,22 +412,49 @@ extension PopoverController {
     }
 
     func updateFloatingSelectionBar() {
-        let range = inputTextView.selectedRange()
+        let firstResponder = panel.firstResponder as? NSTextView
+        let activeTextView: NSTextView
+        let activeScrollView: NSScrollView
+        let isResultView: Bool
+
+        if firstResponder === inputTextView, inputTextView.selectedRange().length > 0 {
+            activeTextView = inputTextView
+            activeScrollView = inputScrollView
+            isResultView = false
+        } else if firstResponder === textView, textView.selectedRange().length > 0 {
+            activeTextView = textView
+            activeScrollView = textScrollView
+            isResultView = true
+        } else if inputTextView.selectedRange().length > 0, textView.selectedRange().length == 0 {
+            activeTextView = inputTextView
+            activeScrollView = inputScrollView
+            isResultView = false
+        } else if textView.selectedRange().length > 0, inputTextView.selectedRange().length == 0 {
+            activeTextView = textView
+            activeScrollView = textScrollView
+            isResultView = true
+        } else {
+            hideFloatingSelectionBar()
+            return
+        }
+
+        let range = activeTextView.selectedRange()
         guard range.length > 0,
-              let bounds = Range(range, in: inputTextView.string)
+              let bounds = Range(range, in: activeTextView.string)
         else {
             hideFloatingSelectionBar()
             return
         }
-        let text = inputTextView.string[bounds].trimmingCharacters(in: .whitespacesAndNewlines)
+        let text = activeTextView.string[bounds].trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else {
             hideFloatingSelectionBar()
             return
         }
         currentFloatingSelectedText = text
+        currentFloatingIsResult = isResultView
 
-        guard let layoutManager = inputTextView.layoutManager,
-              let textContainer = inputTextView.textContainer
+        guard let layoutManager = activeTextView.layoutManager,
+              let textContainer = activeTextView.textContainer
         else {
             hideFloatingSelectionBar()
             return
@@ -419,27 +462,35 @@ extension PopoverController {
 
         let glyphRange = layoutManager.glyphRange(forCharacterRange: range, actualCharacterRange: nil)
         let rectInTextView = layoutManager.boundingRect(forGlyphRange: glyphRange, in: textContainer)
-        let rectInScroll = inputTextView.convert(rectInTextView, to: inputScrollView)
-        guard inputScrollView.bounds.intersects(rectInScroll) else {
+        let rectInScroll = activeTextView.convert(rectInTextView, to: activeScrollView)
+        guard activeScrollView.bounds.intersects(rectInScroll) else {
             hideFloatingSelectionBar()
             return
         }
 
-        let rectInChrome = inputTextView.convert(rectInTextView, to: chromeHost)
+        let rectInChrome = activeTextView.convert(rectInTextView, to: chromeHost)
         let barWidth: CGFloat = 118
         let barHeight: CGFloat = 28
         let barX = max(ChromeLayout.padding, min(rectInChrome.midX - barWidth / 2, chromeHost.bounds.width - ChromeLayout.padding - barWidth))
-        let barY = rectInChrome.maxY + 6
+        let barY: CGFloat
+        let gap: CGFloat = 12
+        if rectInChrome.minY - barHeight - gap >= ChromeLayout.paddingBottom {
+            barY = rectInChrome.minY - barHeight - gap
+        } else {
+            barY = min(chromeHost.bounds.height - barHeight - ChromeLayout.padding, rectInChrome.maxY + gap)
+        }
 
         selectionFloatingBar.frame = NSRect(x: barX, y: barY, width: barWidth, height: barHeight)
-        updateSpeechButton(floatingSpeakButton, identity: floatingSpeechIdentity(), baseLabel: "phrase")
+        updateSpeechButton(floatingSpeakButton, identity: floatingSpeechIdentity(isResult: isResultView), baseLabel: "phrase")
         selectionFloatingBar.isHidden = false
         chromeHost.addSubview(selectionFloatingBar, positioned: .above, relativeTo: nil)
+        panel.invalidateCursorRects(for: selectionFloatingBar)
     }
 
     func hideFloatingSelectionBar() {
         selectionFloatingBar.isHidden = true
         currentFloatingSelectedText = nil
+        currentFloatingIsResult = false
     }
 
     @objc func floatingTranslateClicked() {
@@ -454,9 +505,14 @@ extension PopoverController {
 
     /// Speech identity for whatever phrase the floating bar is currently attached to.
     func floatingSpeechIdentity() -> SpeechIdentity? {
+        floatingSpeechIdentity(isResult: currentFloatingIsResult)
+    }
+
+    func floatingSpeechIdentity(isResult: Bool) -> SpeechIdentity? {
         guard let text = currentFloatingSelectedText, !text.isEmpty else { return nil }
-        let model = SpeechModelResolver.model(for: effectiveSourceLanguage(for: text), config: config)
-        return SpeechIdentity(kind: .source, text: text, model: model, recordID: nil)
+        let lang = isResult ? selectedTargetLanguage() : effectiveSourceLanguage(for: text)
+        let model = SpeechModelResolver.model(for: lang, config: config)
+        return SpeechIdentity(kind: isResult ? .result : .source, text: text, model: model, recordID: nil)
     }
 
     @objc func floatingSpeakClicked() {

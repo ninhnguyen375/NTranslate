@@ -36,11 +36,12 @@ extension PopoverController {
 
         reviewBadgeLabel.font = .systemFont(ofSize: 8, weight: .bold)
         reviewBadgeLabel.textColor = .white
-        reviewBadgeLabel.backgroundColor = .systemRed
-        reviewBadgeLabel.drawsBackground = true
+        reviewBadgeLabel.backgroundColor = .clear
+        reviewBadgeLabel.drawsBackground = false
         reviewBadgeLabel.alignment = .center
         reviewBadgeLabel.wantsLayer = true
-        reviewBadgeLabel.layer?.cornerRadius = 6
+        reviewBadgeLabel.layer?.backgroundColor = NSColor.systemRed.cgColor
+        reviewBadgeLabel.layer?.cornerRadius = 6.5
         reviewBadgeLabel.layer?.masksToBounds = true
         reviewBadgeLabel.isHidden = true
 
@@ -69,6 +70,9 @@ extension PopoverController {
         inputTextView.isEditable = true
         inputTextView.isSelectable = true
         inputTextView.delegate = self
+        inputTextView.onResignFirstResponder = { [weak self] in
+            self?.hideFloatingSelectionBar()
+        }
         inputTextView.onImagePasted = { [weak self] imageData in
             self?.setPendingImage(imageData)
             self?.inputTextView.string = ""
@@ -94,6 +98,11 @@ extension PopoverController {
         inputScrollView.autohidesScrollers = true
         inputScrollView.scrollerStyle = .overlay
         inputScrollView.documentView = inputTextView
+        inputContextLabel.font = .systemFont(ofSize: 10, weight: .regular)
+        inputContextLabel.textColor = Palette.placeholderText
+        inputContextLabel.lineBreakMode = .byTruncatingTail
+        inputContextLabel.maximumNumberOfLines = 1
+        inputContextLabel.isHidden = true
         imagePlaceholderLabel.font = .systemFont(ofSize: ChromeLayout.bodyFontSize)
         imagePlaceholderLabel.textColor = Palette.placeholderText
         imagePlaceholderLabel.isHidden = true
@@ -101,6 +110,10 @@ extension PopoverController {
 
         textView.isEditable = false
         textView.isSelectable = true
+        textView.delegate = self
+        textView.onResignFirstResponder = { [weak self] in
+            self?.hideFloatingSelectionBar()
+        }
         textView.drawsBackground = false
         textView.font = .systemFont(ofSize: ChromeLayout.bodyFontSize)
         textView.textColor = Palette.bodyText
@@ -132,6 +145,10 @@ extension PopoverController {
         configurePrimaryButton(proofreadButton, title: "Proofread", symbol: "text.badge.checkmark", action: #selector(runProofread), accent: false)
         proofreadButton.toolTip = "Proofread"
         proofreadButton.setAccessibilityLabel("Proofread")
+        configurePrimaryButton(askButton, title: "Ask", symbol: "text.bubble", action: #selector(askButtonClicked), accent: false)
+        askButton.toolTip = "Ask a follow-up question (⌘K)"
+        askButton.setAccessibilityLabel("Ask")
+        updateShortcutLabels()
         configureIconButton(speakSourceButton, symbol: "speaker.wave.2", action: #selector(speakInput), label: "Speak source")
         configureIconButton(speakResultButton, symbol: "speaker.wave.2", action: #selector(speakResult), label: "Speak translation")
         configureIconButton(retryButton, symbol: "arrow.clockwise", action: #selector(retryRequest), label: "Retry / Fetch fresh")
@@ -147,6 +164,7 @@ extension PopoverController {
         sourceHeaderBar.addSubview(speechRatePopUp)
         sourceHeaderBar.addSubview(speakSourceButton)
         sourceCard.addSubview(sourceHeaderBar)
+        sourceCard.addSubview(inputContextLabel)
         sourceCard.addSubview(inputScrollView)
         sourceCard.addSubview(imagePlaceholderLabel)
 
@@ -179,9 +197,11 @@ extension PopoverController {
         chromeHost.addSubview(proofreadButton)
         chromeHost.addSubview(learnButton)
         chromeHost.addSubview(translateButton)
+        chromeHost.addSubview(askButton)
 
         configureQAInputBar()
         chromeHost.addSubview(qaInputField)
+        qaInputField.isHidden = true
 
         configureFloatingToolbar()
         chromeHost.addSubview(selectionFloatingBar)
@@ -312,6 +332,32 @@ extension PopoverController {
             button.bezelColor = nil
         }
         applyControlCornerRadius(button)
+    }
+
+    /// Refreshes the small shortcut hint drawn inside Learn/Proofread/Ask — call after config
+    /// (re)load since the global hotkeys are user-configurable in Settings.
+    func updateShortcutLabels() {
+        applyShortcutLabel(learnButton, title: "Learn", shortcut: config.learnHotkey.displayString)
+        applyShortcutLabel(proofreadButton, title: "Proofread", shortcut: config.proofreadHotkey.displayString)
+        applyShortcutLabel(askButton, title: "Ask", shortcut: "⌘K")
+    }
+
+    private func applyShortcutLabel(_ button: NSButton, title: String, shortcut: String) {
+        let text = NSMutableAttributedString(
+            string: title,
+            attributes: [
+                .font: NSFont.systemFont(ofSize: ChromeLayout.controlFontSize, weight: .regular),
+                .foregroundColor: NSColor.controlTextColor
+            ]
+        )
+        text.append(NSAttributedString(
+            string: "  " + shortcut,
+            attributes: [
+                .font: NSFont.systemFont(ofSize: ChromeLayout.controlFontSize - 2, weight: .regular),
+                .foregroundColor: Palette.mutedText
+            ]
+        ))
+        button.attributedTitle = text
     }
 
     func configureChromeIconButton(_ button: NSButton, symbol: String, action: Selector, label: String) {

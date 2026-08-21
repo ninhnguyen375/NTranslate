@@ -200,6 +200,22 @@ enum SpeechRatePolicy {
 final class LiquidGlassWindow: NSWindow {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { true }
+
+    override init(contentRect: NSRect, styleMask style: NSWindow.StyleMask, backing backingStoreType: NSWindow.BackingStoreType, defer flag: Bool) {
+        super.init(contentRect: contentRect, styleMask: style, backing: backingStoreType, defer: flag)
+        self.acceptsMouseMovedEvents = true
+    }
+
+}
+
+/// Floating selection toolbar background: whole bar (including padding between
+/// buttons) shows the pointing-hand cursor via AppKit's own cursor-rect system,
+/// so it never fights the text view's I-beam cursor rect on mouseMoved.
+final class FloatingBarEffectView: NSVisualEffectView {
+    override func resetCursorRects() {
+        super.resetCursorRects()
+        addCursorRect(bounds, cursor: .pointingHand)
+    }
 }
 
 /// Layer-backed colors are baked CGColors, so the popup has to repaint them when the system
@@ -311,14 +327,21 @@ enum LiquidGlassChrome {
 }
 
 final class VerticallyCenteredTextFieldCell: NSTextFieldCell {
+    var horizontalInset: CGFloat = 10
+
     override func drawingRect(forBounds rect: NSRect) -> NSRect {
         let newRect = super.drawingRect(forBounds: rect)
         let textSize = cellSize(forBounds: rect)
         let heightDelta = newRect.height - textSize.height
         if heightDelta > 0 {
-            return NSRect(x: newRect.origin.x + 10, y: newRect.origin.y + (heightDelta / 2).rounded(.down), width: max(0, newRect.width - 20), height: textSize.height)
+            return NSRect(
+                x: newRect.origin.x + horizontalInset,
+                y: newRect.origin.y + (heightDelta / 2).rounded(.down),
+                width: max(0, newRect.width - horizontalInset * 2),
+                height: textSize.height
+            )
         }
-        return newRect.insetBy(dx: 10, dy: 0)
+        return newRect.insetBy(dx: horizontalInset, dy: 0)
     }
 
     override func titleRect(forBounds rect: NSRect) -> NSRect {
@@ -334,7 +357,57 @@ final class VerticallyCenteredTextFieldCell: NSTextFieldCell {
     }
 }
 
-final class InputTextView: NSTextView {
+class SelectableTextView: NSTextView {
+    var onResignFirstResponder: (() -> Void)?
+
+    override func resignFirstResponder() -> Bool {
+        let resigned = super.resignFirstResponder()
+        if resigned {
+            onResignFirstResponder?()
+        }
+        return resigned
+    }
+}
+
+final class PointerButton: NSButton {
+    private var trackingArea: NSTrackingArea?
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let trackingArea = trackingArea {
+            removeTrackingArea(trackingArea)
+        }
+        let area = NSTrackingArea(
+            rect: bounds,
+            options: [.mouseEnteredAndExited, .activeAlways, .cursorUpdate],
+            owner: self,
+            userInfo: nil
+        )
+        addTrackingArea(area)
+        self.trackingArea = area
+    }
+
+    override func cursorUpdate(with event: NSEvent) {
+        NSCursor.pointingHand.set()
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        super.mouseEntered(with: event)
+        NSCursor.pointingHand.push()
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        super.mouseExited(with: event)
+        NSCursor.pop()
+    }
+
+    override func resetCursorRects() {
+        super.resetCursorRects()
+        addCursorRect(bounds, cursor: .pointingHand)
+    }
+}
+
+final class InputTextView: SelectableTextView {
     var onImagePasted: ((Data) -> Void)?
 
     /// The popup activates the app asynchronously, so the first click after it appears would

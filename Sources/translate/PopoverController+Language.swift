@@ -171,6 +171,11 @@ extension PopoverController {
 
     func textDidChange(_ notification: Notification) {
         guard notification.object as AnyObject? === inputTextView else { return }
+        if !inputContextLabel.isHidden {
+            inputContextLabel.stringValue = ""
+            inputContextLabel.toolTip = nil
+            inputContextLabel.isHidden = true
+        }
         hideFloatingSelectionBar()
         // Editing the main source invalidates whatever phrase the sub pane was explaining.
         removeSubSection()
@@ -183,7 +188,8 @@ extension PopoverController {
     }
 
     func textViewDidChangeSelection(_ notification: Notification) {
-        guard notification.object as AnyObject? === inputTextView else { return }
+        guard let obj = notification.object as AnyObject?,
+              obj === inputTextView || obj === textView else { return }
         updateFloatingSelectionBar()
     }
 

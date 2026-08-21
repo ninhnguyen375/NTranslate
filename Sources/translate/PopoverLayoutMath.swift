@@ -136,7 +136,7 @@ enum PopoverLayoutMath {
         bottomBarHeight: CGFloat
     ) -> CGFloat {
         let bottom = paddingBottom ?? padding
-        let qaAddition = qaInputHeight > 0 ? (qaInputHeight + 8) : 0
+        let qaAddition = qaInputHeight > 0 ? (qaInputHeight + 12) : 0
         return padding
             + headerHeight
             + statusHeight

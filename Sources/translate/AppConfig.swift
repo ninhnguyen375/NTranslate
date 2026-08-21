@@ -15,6 +15,16 @@ struct AppConfig: Codable {
                 && lhs.control == rhs.control
                 && lhs.shift == rhs.shift
         }
+
+        /// Compact modifier-symbol form for display in button labels, e.g. "⌥L".
+        var displayString: String {
+            var symbols = ""
+            if control { symbols += "⌃" }
+            if option { symbols += "⌥" }
+            if shift { symbols += "⇧" }
+            if command { symbols += "⌘" }
+            return symbols + key.uppercased()
+        }
     }
 
     struct UI: Codable {

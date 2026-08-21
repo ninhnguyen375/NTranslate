@@ -1,0 +1,1322 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NTranslate · Mổ xẻ popup &amp; 5 hướng thiết kế</title>
+<style>
+/* ─────────────────────────────────────────────────────────
+   Tài liệu = giấy kỹ thuật, accent ochre.
+   Mockup = macOS, accent xanh hệ thống. Hai bảng màu không trộn.
+   ───────────────────────────────────────────────────────── */
+:root{
+  --paper:#f6f3ec;--paper-2:#ece7db;--paper-3:#e2dccd;
+  --ink:#1b1a17;--ink-2:#57534a;--ink-3:#8a8478;
+  --rule:rgba(27,26,23,.15);--rule-soft:rgba(27,26,23,.07);
+  --accent:#a3601a;--accent-soft:rgba(163,96,26,.10);
+  --sev1:#9b3226;--sev2:#9a6a12;--sev3:#5b6b57;
+  --good:#2f6b3d;--desk:#2a2b31;
+  --serif:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;
+  --sans:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,sans-serif;
+  --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){:root{
+  --paper:#141419;--paper-2:#1d1d24;--paper-3:#26262f;
+  --ink:#e9e6df;--ink-2:#a9a49a;--ink-3:#77726a;
+  --rule:rgba(233,230,223,.17);--rule-soft:rgba(233,230,223,.08);
+  --accent:#d9a05a;--accent-soft:rgba(217,160,90,.13);
+  --sev1:#e08476;--sev2:#d9b25a;--sev3:#9fb39a;--good:#6fbc82;--desk:#0c0c10;
+}}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--paper);color:var(--ink);font:400 16px/1.62 var(--sans);-webkit-font-smoothing:antialiased}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}*{animation:none!important;transition:none!important}}
+.wrap{max-width:1240px;margin:0 auto;padding:0 30px}
+.prose{max-width:72ch}
+a{color:var(--accent)}
+
+/* Masthead */
+.mast{border-bottom:2px solid var(--ink);padding:54px 0 20px}
+.kicker{font:600 11px/1 var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--accent)}
+.mast h1{font:400 clamp(32px,4.6vw,54px)/1.05 var(--serif);margin:15px 0 10px;letter-spacing:-.015em}
+.dek{font-size:17.5px;color:var(--ink-2);max-width:66ch;margin:0 0 22px}
+.meta{display:flex;flex-wrap:wrap;border-top:1px solid var(--rule);padding-top:13px}
+.meta div{font:400 12px/1.5 var(--mono);color:var(--ink-3);padding-right:26px;margin-right:26px;border-right:1px solid var(--rule-soft)}
+.meta div:last-child{border-right:0;padding-right:0;margin-right:0}
+.meta b{display:block;color:var(--ink);font-weight:600}
+
+/* Sticky control */
+.control{position:sticky;top:0;z-index:70;background:color-mix(in srgb,var(--paper) 93%,transparent);
+  backdrop-filter:saturate(1.7) blur(16px);-webkit-backdrop-filter:saturate(1.7) blur(16px);border-bottom:1px solid var(--rule)}
+.control-in{display:flex;align-items:center;gap:16px;flex-wrap:wrap;padding:10px 30px;max-width:1240px;margin:0 auto}
+.ctl-lbl{font:600 10px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3);white-space:nowrap}
+.segs{display:flex;flex-wrap:wrap;gap:4px}
+.seg{font:500 12px/1 var(--sans);padding:7px 10px;border:1px solid var(--rule);background:transparent;color:var(--ink-2);border-radius:7px;cursor:pointer}
+.seg:hover{background:var(--paper-2);color:var(--ink)}
+.seg[aria-pressed="true"]{background:var(--ink);border-color:var(--ink);color:var(--paper)}
+.seg:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.spacer{flex:1}
+.tbtn{font:500 12px/1 var(--sans);padding:7px 11px;border:1px solid var(--rule);background:transparent;color:var(--ink-2);border-radius:7px;cursor:pointer}
+.tbtn:hover{background:var(--paper-2);color:var(--ink)}
+
+section{padding:60px 0;border-bottom:1px solid var(--rule-soft)}
+.sec-head{display:flex;gap:20px;align-items:baseline;margin-bottom:24px}
+.sec-num{font:600 12px/1 var(--mono);color:var(--accent);padding-top:6px;letter-spacing:.1em;flex:none}
+h2{font:400 clamp(24px,3vw,33px)/1.15 var(--serif);margin:0 0 8px;letter-spacing:-.01em}
+h3{font:600 15px/1.3 var(--sans);margin:28px 0 8px}
+h4{font:600 10.5px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3);margin:0 0 10px}
+p{margin:0 0 14px}
+strong{font-weight:640}
+code{font:500 12.5px/1 var(--mono);background:var(--paper-2);padding:2px 5px;border-radius:4px;color:var(--accent);word-break:break-word}
+
+/* Inventory */
+.inv{display:grid;grid-template-columns:repeat(auto-fill,minmax(268px,1fr));gap:0;border:1px solid var(--rule);border-radius:12px;overflow:hidden}
+.inv > div{padding:15px 17px;border-right:1px solid var(--rule-soft);border-bottom:1px solid var(--rule-soft)}
+.inv h5{font:600 13.5px/1.3 var(--sans);margin:0 0 3px}
+.inv .where{font:500 11px/1.5 var(--mono);color:var(--ink-3);margin-bottom:7px;word-break:break-all}
+.inv ul{margin:0;padding-left:16px;font-size:13.5px;line-height:1.55;color:var(--ink-2)}
+.inv li{margin-bottom:2px}
+
+/* Stage */
+.stage{background:var(--desk);border-radius:14px;overflow:auto;border:1px solid var(--rule);position:relative}
+.stage-in{min-width:900px;padding:32px 56px 38px;position:relative}
+.stage-bg{position:absolute;inset:0;padding:24px 32px;overflow:hidden;font:400 13px/1.75 var(--sans);color:rgba(255,255,255,.12);user-select:none;pointer-events:none}
+.stage-bg h5{font:600 19px/1.3 var(--sans);margin:0 0 9px;color:rgba(255,255,255,.15)}
+.stage-cap{position:relative;font:500 10.5px/1 var(--mono);letter-spacing:.12em;text-transform:uppercase;color:rgba(255,255,255,.4);padding-bottom:15px;display:flex;gap:14px;flex-wrap:wrap;align-items:center}
+.stage-cap .px{color:rgba(255,255,255,.74);background:rgba(255,255,255,.09);padding:4px 8px;border-radius:5px}
+
+/* Popup shell */
+.pw{position:relative;width:760px;border-radius:22px;background:rgba(247,247,249,.84);
+  backdrop-filter:blur(30px) saturate(1.8);-webkit-backdrop-filter:blur(30px) saturate(1.8);
+  border:.5px solid rgba(255,255,255,.55);box-shadow:0 30px 70px rgba(0,0,0,.45),0 2px 10px rgba(0,0,0,.3),inset 0 1px 0 rgba(255,255,255,.55);
+  color:#1c1c1e;font:400 14px/1.5 var(--sans)}
+.pw.dark{background:rgba(38,38,42,.82);border-color:rgba(255,255,255,.13);color:#eceaea;
+  box-shadow:0 30px 70px rgba(0,0,0,.6),0 2px 10px rgba(0,0,0,.4),inset 0 1px 0 rgba(255,255,255,.09)}
+.pw *{box-sizing:border-box}
+.pw .muted{color:rgba(0,0,0,.44)}.pw.dark .muted{color:rgba(255,255,255,.5)}
+.pw .lbl{font:700 9px/1 var(--sans);letter-spacing:.06em;color:rgba(0,0,0,.4)}
+.pw.dark .lbl{color:rgba(255,255,255,.46)}
+.pw .hair{background:rgba(0,0,0,.08)}.pw.dark .hair{background:rgba(255,255,255,.14)}
+.pw-head{display:flex;align-items:center;gap:10px;padding:13px 14px 0}
+.pw-title{font:700 13px/1 var(--sans);letter-spacing:-.01em}
+.pw-icons{display:flex;gap:6px;margin-left:auto}
+.ic{width:24px;height:24px;border-radius:12px;display:grid;place-items:center;background:rgba(0,0,0,.05);
+  border:.5px solid rgba(0,0,0,.06);font:500 11px/1 var(--sans);color:rgba(0,0,0,.55);position:relative;flex:none}
+.pw.dark .ic{background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.08);color:rgba(255,255,255,.7)}
+.ic.on{background:#0071e3;color:#fff;border-color:transparent}
+.ic.sm{width:18px;height:18px;border-radius:9px;background:transparent;border:0;font-size:11px;opacity:.62}
+.badge{position:absolute;top:-4px;right:-5px;min-width:14px;height:14px;border-radius:7px;background:#e0392b;color:#fff;font:700 8px/14px var(--sans);text-align:center;padding:0 3px}
+.pane{border-radius:16px;border:.5px solid rgba(0,0,0,.08);background:rgba(255,255,255,.62);overflow:hidden}
+.pw.dark .pane{background:rgba(255,255,255,.07);border-color:rgba(255,255,255,.1)}
+.pane-hd{display:flex;align-items:center;gap:7px;height:30px;padding:0 11px}
+.pane-body{padding:2px 12px 12px;font-size:14px;line-height:1.5;position:relative;overflow:hidden}
+.pane-body.clip::after{content:"";position:absolute;left:0;right:0;bottom:0;height:24px;background:linear-gradient(transparent,rgba(247,247,249,.96))}
+.pw.dark .pane-body.clip::after{background:linear-gradient(transparent,rgba(38,38,42,.96))}
+.mini{display:flex;gap:7px;margin-left:auto;color:rgba(0,0,0,.36);font-size:11.5px;align-items:center}
+.pw.dark .mini{color:rgba(255,255,255,.46)}
+.btn{height:32px;padding:0 14px;border-radius:16px;border:.5px solid rgba(0,0,0,.08);background:rgba(255,255,255,.74);
+  font:400 12px/1 var(--sans);color:#1c1c1e;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.pw.dark .btn{background:rgba(255,255,255,.11);border-color:rgba(255,255,255,.1);color:#eceaea}
+.btn.pri{background:#0071e3;color:#fff;border-color:transparent;font-weight:500}
+.btn.sm{height:26px;padding:0 10px;border-radius:13px;font-size:11px}
+.btn.off{opacity:.38}
+.kbd{font:500 10px/1 var(--mono);opacity:.6}
+.chip{display:inline-flex;align-items:center;gap:5px;height:20px;padding:0 8px;border-radius:10px;background:rgba(0,113,227,.13);color:#0071e3;font:600 9.5px/1 var(--sans);letter-spacing:.03em;white-space:nowrap}
+.pw.dark .chip{background:rgba(64,156,255,.2);color:#79baff}
+.chip.learn{background:rgba(140,82,255,.14);color:#7a3fd6}.pw.dark .chip.learn{background:rgba(160,110,255,.22);color:#c0a0ff}
+.chip.proof{background:rgba(30,140,90,.15);color:#1c7a52}.pw.dark .chip.proof{background:rgba(60,190,130,.2);color:#7cd9a8}
+.chip.img{background:rgba(200,120,20,.15);color:#a56a10}.pw.dark .chip.img{background:rgba(230,160,60,.2);color:#e2ac5e}
+.chip.gray{background:rgba(0,0,0,.07);color:rgba(0,0,0,.5)}.pw.dark .chip.gray{background:rgba(255,255,255,.1);color:rgba(255,255,255,.6)}
+.sel{background:rgba(0,113,227,.24);border-radius:3px;padding:1px 0;box-shadow:0 0 0 1px rgba(0,113,227,.15)}
+.pw.dark .sel{background:rgba(64,156,255,.3)}
+.fbar{position:absolute;height:28px;border-radius:14px;background:rgba(250,250,252,.95);border:.5px solid rgba(0,0,0,.1);
+  box-shadow:0 6px 20px rgba(0,0,0,.22);display:flex;align-items:center;gap:4px;padding:0 6px;z-index:9}
+.pw.dark .fbar{background:rgba(52,52,58,.96);border-color:rgba(255,255,255,.15)}
+.fbar .ic{width:22px;height:22px;border-radius:11px;background:transparent;border:0;font-size:11px}
+.dl{display:inline-block;width:5px;height:5px;border-radius:3px;background:currentColor;opacity:.32;animation:pl 1.1s infinite;margin-left:1px}
+.dl:nth-child(2){animation-delay:.15s}.dl:nth-child(3){animation-delay:.3s}
+@keyframes pl{0%,100%{opacity:.18}50%{opacity:.75}}
+.err{color:#c0392b}.pw.dark .err{color:#ff8a7a}
+.skel{height:9px;border-radius:5px;background:rgba(0,0,0,.09);margin:9px 0}
+.pw.dark .skel{background:rgba(255,255,255,.12)}
+.wave{display:inline-flex;gap:2px;align-items:flex-end;height:11px;margin-left:5px}
+.wave i{width:2px;background:#0071e3;border-radius:1px;animation:wv .9s infinite ease-in-out}
+.wave i:nth-child(1){height:5px}.wave i:nth-child(2){height:10px;animation-delay:.15s}
+.wave i:nth-child(3){height:7px;animation-delay:.3s}.wave i:nth-child(4){height:9px;animation-delay:.45s}
+@keyframes wv{0%,100%{transform:scaleY(.45)}50%{transform:scaleY(1)}}
+
+/* Findings */
+.fbar-filter{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:18px}
+.ff{font:500 11.5px/1 var(--sans);padding:6px 10px;border:1px solid var(--rule);background:transparent;color:var(--ink-2);border-radius:6px;cursor:pointer}
+.ff[aria-pressed="true"]{background:var(--ink);border-color:var(--ink);color:var(--paper)}
+.finds{display:grid;gap:0;border-top:1px solid var(--rule)}
+.find{display:grid;grid-template-columns:46px 1fr 210px;gap:16px;padding:13px 0;border-bottom:1px solid var(--rule-soft);align-items:start}
+@media(max-width:840px){.find{grid-template-columns:46px 1fr}.find .loc{grid-column:2;margin-top:-6px}}
+.find.hot{background:var(--accent-soft)}
+.sv{font:700 9.5px/1 var(--mono);letter-spacing:.06em;padding:5px 0;border-radius:5px;text-align:center;color:#fff}
+.sv.s1{background:var(--sev1)}.sv.s2{background:var(--sev2)}.sv.s3{background:var(--sev3)}
+.find b{display:block;font-weight:640;font-size:14.5px;margin-bottom:2px}
+.find span.d{color:var(--ink-2);font-size:13.5px;line-height:1.55;display:block}
+.find .loc{font:500 11px/1.55 var(--mono);color:var(--ink-3);word-break:break-word}
+.find .tag{display:inline-block;font:600 9px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--accent);background:var(--accent-soft);padding:4px 6px;border-radius:4px;margin-right:6px;vertical-align:2px}
+
+/* Pins */
+.pin{position:absolute;width:20px;height:20px;border-radius:10px;background:var(--accent);color:#fff;font:700 10px/20px var(--sans);
+  text-align:center;border:2px solid rgba(255,255,255,.88);box-shadow:0 2px 6px rgba(0,0,0,.35);cursor:pointer;padding:0;z-index:12}
+.pin:hover,.pin.hot{transform:scale(1.25)}
+.pin:focus-visible{outline:2px solid #fff;outline-offset:2px}
+
+/* Merge grid */
+.merge{display:grid;grid-template-columns:repeat(auto-fit,minmax(268px,1fr));gap:0;border:2px solid var(--accent);border-radius:12px;overflow:hidden;margin:0 0 22px}
+.merge > div{padding:16px 18px;border-right:1px solid var(--rule-soft)}
+.merge > div:last-child{border-right:0}
+.merge h6{font:600 9.5px/1 var(--mono);letter-spacing:.13em;text-transform:uppercase;color:var(--accent);margin:0 0 8px}
+.merge p{margin:0 0 8px;font-size:13.5px;line-height:1.55;color:var(--ink-2)}
+.merge p b{color:var(--ink);font-weight:640}
+.merge .kill{font:500 11.5px/1.55 var(--mono);color:var(--ink-3);margin:0;padding-top:8px;border-top:1px solid var(--rule-soft)}
+.tabx{padding:5px 10px;border-radius:8px;font:400 11.5px/1 var(--sans);display:inline-flex;gap:6px;align-items:center;white-space:nowrap;opacity:.58}
+.tabx.on{background:rgba(0,113,227,.13);color:#0071e3;font-weight:600;opacity:1}
+.pw.dark .tabx.on{background:rgba(64,156,255,.2);color:#79baff}
+.tabx .x{opacity:.5;font-size:10px}
+/* Options */
+.opt-head{display:flex;gap:15px;align-items:flex-start;flex-wrap:wrap;margin-bottom:18px}
+.opt-tag{font:700 13px/1 var(--mono);color:var(--paper);background:var(--ink);width:34px;height:34px;border-radius:17px;display:grid;place-items:center;flex:none}
+.opt-head h2{margin:0}
+.opt-head .sub{font:400 15px/1.5 var(--sans);color:var(--ink-2);margin:5px 0 0;max-width:66ch}
+.premise{border-left:3px solid var(--accent);padding:2px 0 2px 16px;margin:0 0 22px;font:400 17px/1.55 var(--serif);max-width:68ch}
+.subsys{display:grid;grid-template-columns:repeat(auto-fit,minmax(232px,1fr));gap:0;border:1px solid var(--rule);border-radius:11px;overflow:hidden;margin:24px 0}
+.subsys > div{padding:13px 15px;border-right:1px solid var(--rule-soft);border-bottom:1px solid var(--rule-soft)}
+.subsys h6{font:600 9.5px/1 var(--mono);letter-spacing:.13em;text-transform:uppercase;color:var(--accent);margin:0 0 6px}
+.subsys p{margin:0;font-size:13.5px;line-height:1.55;color:var(--ink-2)}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:26px;margin-top:22px}
+@media(max-width:860px){.cols{grid-template-columns:1fr}}
+.plus,.minus{list-style:none;margin:0;padding:0}
+.plus li,.minus li{padding:6px 0 6px 22px;position:relative;font-size:14.5px;line-height:1.5;border-bottom:1px solid var(--rule-soft)}
+.plus li::before{content:"+";position:absolute;left:0;top:6px;color:var(--good);font:600 14px/1.5 var(--mono)}
+.minus li::before{content:"−";position:absolute;left:0;top:6px;color:var(--sev1);font:600 14px/1.5 var(--mono)}
+
+/* Matrix */
+.mx-wrap{overflow-x:auto;border:1px solid var(--rule);border-radius:12px}
+table{border-collapse:collapse;width:100%;min-width:820px;font-size:14px}
+th,td{padding:10px 12px;text-align:left;border-bottom:1px solid var(--rule-soft)}
+thead th{font:600 10.5px/1.3 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);background:var(--paper-2);white-space:nowrap}
+tbody th{font-weight:600;font-size:13.5px}
+td{text-align:center;font:600 13px/1 var(--mono)}
+td[data-s="3"]{color:var(--good)}td[data-s="2"]{color:var(--sev2)}td[data-s="1"]{color:var(--sev1)}
+tfoot td,tfoot th{background:var(--paper-2);font-weight:700}
+
+/* Phases */
+.phases{border-top:1px solid var(--rule)}
+.phase{display:grid;grid-template-columns:112px 1fr;gap:22px;padding:20px 0;border-bottom:1px solid var(--rule-soft)}
+@media(max-width:700px){.phase{grid-template-columns:1fr;gap:8px}}
+.phase .when{font:600 11px/1.4 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--accent)}
+.phase h3{margin:0 0 6px}
+.phase ul{margin:8px 0 0;padding-left:18px;font-size:14.5px;color:var(--ink-2)}
+.phase li{margin-bottom:5px}
+.files{font:500 11.5px/1.7 var(--mono);color:var(--ink-3);margin-top:8px}
+footer{padding:38px 0 70px;color:var(--ink-3);font:400 13px/1.65 var(--sans)}
+</style>
+</head>
+<body>
+
+<header class="mast"><div class="wrap">
+  <div class="kicker">NTranslate · macOS v1.3.40 · Design review</div>
+  <h1>Mổ xẻ popup dịch, rồi 5 hướng dựng lại</h1>
+  <p class="dek">Popup này không chỉ là hai ô chữ. Nó gánh 4 chế độ chạy, 3 loại pane chồng nhau, một thanh nổi theo vùng bôi đen, hỏi đáp nhiều lượt, phát âm 5 chỗ, lịch sử, ôn tập, và ảnh dán. Tài liệu soi từng lớp đó, rồi so 5 hướng thiết kế trên đúng những tình huống người dùng gặp thật, trong đó có một ảnh chụp popup đang cao 810 px.</p>
+  <div class="meta">
+    <div><b>Nguồn</b>Sources/translate/PopoverController+*.swift · 8.6k dòng</div>
+    <div><b>Khung popup</b>760 px cố định · cao 220–780, hug content</div>
+    <div><b>Bề mặt tương tác</b>38 control · 6 vùng nổi</div>
+    <div><b>Phát hiện</b>35 vấn đề · 10 nghiêm trọng</div>
+  </div>
+</div></header>
+
+<div class="control"><div class="control-in">
+  <span class="ctl-lbl">Tình huống</span>
+  <div class="segs" id="sitBar" role="group" aria-label="Chọn tình huống"></div>
+  <span class="spacer"></span>
+  <button class="tbtn" id="themeBtn" aria-pressed="false">Mockup: Sáng</button>
+</div></div>
+
+<main class="wrap">
+
+<!-- ═══ 01 · Bản đồ chức năng ═══ -->
+<section id="inv">
+  <div class="sec-head"><span class="sec-num">01</span><div>
+    <h2>Bản đồ chức năng</h2>
+    <p class="prose" style="margin:0;color:var(--ink-2)">Mọi thứ popup đang gánh. Đây là cơ sở để đánh giá mỗi hướng thiết kế bên dưới: hướng nào bỏ rơi một ô trong bảng này là hướng đó chưa xong.</p>
+  </div></div>
+  <div class="inv">
+    <div><h5>Chrome đỉnh</h5><div class="where">+Chrome.swift:31–48</div>
+      <ul><li>Title + tooltip version</li><li>Context (ẩn/hiện theo ngữ cảnh)</li><li>Update · Review + badge đỏ · History</li><li>Pin (giữ popup khi click ngoài)</li><li>Close</li></ul></div>
+    <div><h5>Pane nguồn</h5><div class="where">+Chrome.swift:73–101</div>
+      <ul><li>Nhãn ngôn ngữ động (AUTO → mã đã dò)</li><li>Dropdown tốc độ đọc 0.5×–2×</li><li>Nút phát âm nguồn</li><li>Soạn thảo được · dán ảnh được</li><li>Placeholder ảnh dạng chữ</li></ul></div>
+    <div><h5>Pane kết quả</h5><div class="where">+Chrome.swift:103–124</div>
+      <ul><li>Phát âm · Retry (bỏ cache) · Copy · Save Word</li><li>Markdown inline (đậm/nghiêng/code/link)</li><li>Chọn được, không sửa được</li><li>Save Word ẩn/hiện theo kết quả</li></ul></div>
+    <div><h5>Hàng hành động</h5><div class="where">+Layout.swift:145–180</div>
+      <ul><li>Images · Proofread · Learn · Translate</li><li>Dropdown nguồn ⇄ đích</li><li>Cả 4 nút chuyển sang chế độ dịch-cụm khi có vùng bôi đen</li></ul></div>
+    <div><h5>Thanh nổi vùng chọn</h5><div class="where">+Subtranslate.swift:347–470</div>
+      <ul><li>118×28 px, 4 nút chỉ icon 22 px</li><li>Dịch cụm · Học cụm · Đọc · Chép</li><li>Bám theo vùng bôi đen, trên hoặc dưới</li><li>Chỉ sống trong 2 pane chính</li></ul></div>
+    <div><h5>Pane dịch phụ</h5><div class="where">+Subtranslate.swift:7–160</div>
+      <ul><li>Split đôi riêng, 6 nút icon trong header</li><li>Chạy Translate hoặc Learn hoặc Proofread</li><li>Ghi vào lịch sử như bản dịch riêng</li><li>Tối đa một pane tại một thời điểm</li></ul></div>
+    <div><h5>Pane hỏi đáp</h5><div class="where">+QA.swift:26–200</div>
+      <ul><li>Ô nhập luôn hiện ở đáy</li><li>Nhiều lượt, có nhớ ngữ cảnh lượt trước</li><li>Chép cả bản ghi hoặc chép câu cuối</li><li>Đóng cả pane, không xoá từng lượt</li></ul></div>
+    <div><h5>Phát âm</h5><div class="where">+Speech.swift</div>
+      <ul><li>4 trạng thái: phát · nạp · tạm dừng · tiếp</li><li>Nạp trước tự động sau mỗi lần dịch</li><li>Đệm theo bản ghi, lưu vào lịch sử</li><li>Có ở 5 chỗ khác nhau</li></ul></div>
+    <div><h5>Ngôn ngữ</h5><div class="where">+Language.swift</div>
+      <ul><li>Tự dò nguồn · nhớ đích lần cuối</li><li>Hoán đổi kèm hoán đổi luôn nội dung</li><li>Đổi chọn là chạy dịch lại ngay</li><li>Ảnh dán khoá dropdown nguồn</li></ul></div>
+    <div><h5>Bàn phím</h5><div class="where">PopoverController.swift:224–247</div>
+      <ul><li>⌘↵ dịch · ⌘⇧C chép</li><li>⌘⇧L học · ⌘⇧P soát lỗi</li><li>Esc đóng và trả focus về app cũ</li><li>Không phím nào hiện trên UI</li></ul></div>
+    <div><h5>Vòng đời panel</h5><div class="where">+Menu.swift:322–420</div>
+      <ul><li>Bung cạnh con trỏ, tránh đè lên nó</li><li>Click ra ngoài là đóng, trừ khi ghim</li><li>Kéo được, sau đó neo góc trên trái</li><li>Không kéo giãn được, rộng cố định</li></ul></div>
+    <div><h5>Trạng thái</h5><div class="where">+Status.swift</div>
+      <ul><li>Một dòng chữ 10 px, tự xoá sau 4 s</li><li>Gánh cả lỗi lẫn xác nhận</li><li>Hiện/ẩn làm popup nhảy 14 px</li><li>Nút bận khoá theo request đang chạy</li></ul></div>
+  </div>
+</section>
+
+<!-- ═══ 02 · Hiện trạng ═══ -->
+<section id="now">
+  <div class="sec-head"><span class="sec-num">02</span><div>
+    <h2>Hiện trạng, và 35 chỗ nó gãy</h2>
+    <p class="prose" style="margin:0;color:var(--ink-2)">Mockup dựng theo đúng số đo trong <code>ChromeLayout</code>. Tình huống <b>★ Ảnh thật</b> là ảnh chụp người dùng gửi, dựng lại từ chính nội dung trong đó. Rê chuột vào chấm cam để nối sang phát hiện tương ứng; số chấm đổi theo tình huống vì mỗi trạng thái phơi ra những lỗi khác nhau.</p>
+  </div></div>
+
+  <div class="stage"><div class="stage-in">
+    <div class="stage-bg" aria-hidden="true"><h5>Quarterly Engineering Report</h5>
+      <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur.</p>
+      <p>Sed ut perspiciatis unde omnis iste natus error sit voluptatem accusantium doloremque laudantium, totam rem aperiam, eaque ipsa quae ab illo inventore veritatis et quasi architecto beatae vitae dicta sunt explicabo.</p></div>
+    <div class="stage-cap"><span class="px" id="nowPx">—</span><span id="nowNote">—</span></div>
+    <div style="position:relative;display:inline-block" id="nowHost"></div>
+  </div></div>
+
+  <div style="margin-top:30px">
+    <div class="fbar-filter" id="ffBar" role="group" aria-label="Lọc phát hiện theo hệ con"></div>
+    <div class="finds" id="findList"></div>
+  </div>
+</section>
+
+<!-- ═══ Options ═══ -->
+<section id="optA">
+  <div class="opt-head"><span class="opt-tag">A</span><div>
+    <h2>Adaptive Split</h2>
+    <p class="sub">Giữ xương sống hai pane, nhưng tỉ lệ chạy theo nội dung, ngôn ngữ về đúng chỗ, và thanh nổi phủ hết mọi vùng chữ.</p>
+  </div></div>
+  <p class="premise">Cái sai không phải chia đôi, mà là chia đôi <em>cố định</em>. Cho tỉ lệ pane, cụm ngôn ngữ và hàng nút tự sắp lại theo việc đang làm, còn kiến trúc thì giữ nguyên.</p>
+  <div class="stage"><div class="stage-in">
+    <div class="stage-bg" aria-hidden="true"><h5>Quarterly Engineering Report</h5><p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris.</p></div>
+    <div class="stage-cap"><span class="px" data-px="A">—</span><span data-ratio="A">—</span></div>
+    <div data-mock="A"></div>
+  </div></div>
+  <div class="subsys">
+    <div><h6>Thanh nổi</h6><p>Mở rộng sang pane phụ và pane hỏi đáp. Thêm nút lưu từ. Chỉ hiện khi vùng chọn ≥ 2 ký tự và không trùng toàn bộ nguồn.</p></div>
+    <div><h6>Dịch phụ</h6><p>Vẫn là pane chồng, nhưng nhãn ghi rõ cụm gốc và có nút đưa lên pane chính. Sửa nguồn không xoá pane nữa, chỉ làm mờ kèm nút cập nhật.</p></div>
+    <div><h6>Hỏi đáp</h6><p>Ô nhập ẩn đến khi có kết quả chép được. Mỗi lượt là một khối riêng, có nút chép và chạy lại riêng.</p></div>
+    <div><h6>Ảnh &amp; đọc</h6><p>Ảnh dán hiện ảnh thu nhỏ thật. Tốc độ đọc dời vào menu của nút loa, không chiếm chỗ trên header.</p></div>
+  </div>
+  <div class="cols">
+    <div><h4>Được</h4><ul class="plus">
+      <li>Learn và Proofread hết cảnh pane trái trống trơn: tỉ lệ tự về 30/70.</li>
+      <li>Cụm <code>EN ⇄ VI</code> ngay trên hai pane nó điều khiển, hết cảnh liếc trên xuống dưới.</li>
+      <li>Hàng đáy giảm từ 4 nút ngang hàng xuống 1 nút chính + 1 nhóm gộp.</li>
+      <li>Proofread hiện diff cùng dòng, đúng cách người ta soát lỗi.</li>
+      <li>Rủi ro thấp nhất: đụng <code>layoutSplitPrism</code> và <code>PopoverLayoutMath</code>, không phá gì khác.</li>
+    </ul></div>
+    <div><h4>Mất</h4><ul class="minus">
+      <li>Vẫn phình dọc khi có cả pane phụ lẫn hỏi đáp.</li>
+      <li>Tỉ lệ tự đổi có thể giật khi kết quả về từng đoạn.</li>
+      <li>Ba chế độ phụ nằm trong nhóm gộp, ít nổi hơn nút riêng.</li>
+      <li>Không chạm tới vấn đề gốc: mỗi kết quả mới vẫn đẻ thêm một pane.</li>
+    </ul></div>
+  </div>
+</section>
+
+<section id="optB">
+  <div class="opt-head"><span class="opt-tag">B</span><div>
+    <h2>Thread</h2>
+    <p class="sub">Bỏ chia cột. Nguồn, kết quả, cụm dịch phụ, từng lượt hỏi đáp đều là khối xếp dọc trong một mạch đọc.</p>
+  </div></div>
+  <p class="premise">Pane phụ và hỏi đáp vốn đã là khối nối tiếp bị nhét vào khung chia cột. Cho chúng đúng hình dạng của mình, và một ô nhập duy nhất ở đáy làm cả hai việc.</p>
+  <div class="stage"><div class="stage-in">
+    <div class="stage-bg" aria-hidden="true"><h5>Quarterly Engineering Report</h5><p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.</p></div>
+    <div class="stage-cap"><span class="px" data-px="B">—</span><span data-ratio="B">—</span></div>
+    <div data-mock="B"></div>
+  </div></div>
+  <div class="subsys">
+    <div><h6>Thanh nổi</h6><p>Áp dụng cho mọi khối, vì mọi khối cùng một loại. Một đường code, không còn ngoại lệ nào.</p></div>
+    <div><h6>Dịch phụ</h6><p>Là khối con thụt vào, có vạch dọc nối lên khối cha. Nhiều cụm cùng tồn tại thay vì chỉ một.</p></div>
+    <div><h6>Hỏi đáp</h6><p>Đúng nguyên bản: từng lượt là một khối. Thao tác trên từng lượt là chuyện hiển nhiên chứ không phải bổ sung.</p></div>
+    <div><h6>Ảnh &amp; đọc</h6><p>Ảnh là khối, hiện đủ ảnh. Đọc là nút trên từng khối, không cần 5 chỗ khác nhau.</p></div>
+  </div>
+  <div class="cols">
+    <div><h4>Được</h4><ul class="plus">
+      <li>Chiều rộng đầy đủ: Learn 12 dòng đọc dễ hơn hẳn khi bị nhét nửa cột.</li>
+      <li>Pane phụ và hỏi đáp không còn là ngoại lệ, chúng vốn là khối trong mạch.</li>
+      <li>Một ô nhập thay cho 4 nút + ô hỏi đáp riêng.</li>
+      <li>Nhiều cụm dịch phụ cùng sống, không cái nào ghi đè cái nào.</li>
+      <li>Cuộn một vùng duy nhất, popup giữ được chiều cao cố định.</li>
+    </ul></div>
+    <div><h4>Mất</h4><ul class="minus">
+      <li>Mất so sánh song song, đối chiếu đoạn dài câu-theo-câu kém hẳn.</li>
+      <li>Proofread mất thế mạnh trước-sau cạnh nhau.</li>
+      <li>Nguồn bị đẩy lên trên, phải cuộn ngược mới sửa được.</li>
+      <li>Viết lại gần hết tầng layout, không tái dùng <code>splitPaneWidth</code>.</li>
+    </ul></div>
+  </div>
+</section>
+
+<section id="optC">
+  <div class="opt-head"><span class="opt-tag">C</span><div>
+    <h2>Mode Rail</h2>
+    <p class="sub">Một thanh dọc 44 px giữ 4 chế độ và các cửa sổ phụ. Chọn chế độ trước, vùng nội dung đổi hình theo.</p>
+  </div></div>
+  <p class="premise">Bốn chế độ không phải bốn nút bấm, chúng là bốn <em>trạng thái</em> của cùng một cửa sổ. Cho trạng thái một chỗ đứng cố định, rồi để bố cục phục vụ đúng chế độ đang bật.</p>
+  <div class="stage"><div class="stage-in">
+    <div class="stage-bg" aria-hidden="true"><h5>Quarterly Engineering Report</h5><p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.</p></div>
+    <div class="stage-cap"><span class="px" data-px="C">—</span><span data-ratio="C">—</span></div>
+    <div data-mock="C"></div>
+  </div></div>
+  <div class="subsys">
+    <div><h6>Thanh nổi</h6><p>Nút trên thanh nổi đổi theo chế độ đang bật, nên chỉ hiện thứ dùng được ngay lúc đó.</p></div>
+    <div><h6>Dịch phụ</h6><p>Vẫn là pane chồng. Rail không giải quyết được chuyện này, đây là điểm yếu thật của hướng C.</p></div>
+    <div><h6>Hỏi đáp</h6><p>Thành chế độ thứ năm trên rail, có toàn bộ chiều cao khi bật, biến mất hoàn toàn khi tắt.</p></div>
+    <div><h6>Ảnh &amp; đọc</h6><p>Images là chế độ thật với lưới ảnh trong popup, không còn là nút mở trình duyệt.</p></div>
+  </div>
+  <div class="cols">
+    <div><h4>Được</h4><ul class="plus">
+      <li>Chế độ hiện tại luôn thấy được, không phải đoán từ kết quả.</li>
+      <li>Mỗi chế độ được bố cục riêng: dịch chia cột, học một cột, ảnh lưới ô.</li>
+      <li>Hàng đáy chỉ còn hành động hợp lệ trong chế độ đó.</li>
+      <li>History, Review, Settings xuống nửa dưới rail, tách khỏi cụm đóng-ghim.</li>
+      <li>Thêm chế độ thứ sáu chỉ là thêm một icon.</li>
+    </ul></div>
+    <div><h4>Mất</h4><ul class="minus">
+      <li>Mất 44 px ngang vĩnh viễn cho popup vốn đã hẹp.</li>
+      <li>Trông giống app cửa sổ hơn là popup nổi, lệch cảm giác nhẹ.</li>
+      <li>Thêm một bước: chọn chế độ rồi mới chạy.</li>
+      <li>Bốn bố cục riêng là bốn đường code layout phải nuôi.</li>
+    </ul></div>
+  </div>
+</section>
+
+<section id="optD">
+  <div class="opt-head"><span class="opt-tag">D</span><div>
+    <h2>Command Capsule</h2>
+    <p class="sub">Mặc định chỉ hiện kết quả. Không title bar, không hàng nút. Mọi thứ khác gọi bằng bàn phím hoặc lộ ra khi rê chuột.</p>
+  </div></div>
+  <p class="premise">Phần lớn lần dùng là: bôi đen, bấm phím tắt, liếc, đóng. Thiết kế cho đúng ba giây đó, và giấu phần còn lại sau một dòng lệnh.</p>
+  <div class="stage"><div class="stage-in">
+    <div class="stage-bg" aria-hidden="true"><h5>Quarterly Engineering Report</h5><p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation.</p></div>
+    <div class="stage-cap"><span class="px" data-px="D">—</span><span data-ratio="D">—</span></div>
+    <div data-mock="D"></div>
+  </div></div>
+  <div class="subsys">
+    <div><h6>Thanh nổi</h6><p>Là bề mặt chính chứ không phải phụ trợ: bôi đen trong capsule cũng hiện đúng thanh đó, dùng chung một đường code.</p></div>
+    <div><h6>Dịch phụ</h6><p>Chồng thành một dòng thụt ngay dưới kết quả, không mở pane. Muốn xem đầy đủ thì ⌘E bung.</p></div>
+    <div><h6>Hỏi đáp</h6><p>Gõ thẳng vào dòng lệnh. Câu trả lời nối tiếp bên dưới, không cần pane riêng.</p></div>
+    <div><h6>Ảnh &amp; đọc</h6><p>Ảnh dán hiện thu nhỏ ngay đầu dòng. Đọc là một phím tắt, không phải một nút.</p></div>
+  </div>
+  <div class="cols">
+    <div><h4>Được</h4><ul class="plus">
+      <li>Nhẹ nhất, che ít nội dung gốc nhất, hợp nhất khi bung sát mép màn hình.</li>
+      <li>Thời gian tới kết quả ngắn nhất, không có chrome nào phải bỏ qua bằng mắt.</li>
+      <li>Dòng lệnh mở rộng vô hạn mà không thêm nút nào.</li>
+      <li>Phím tắt hiện ngay trong gợi ý, hết cảnh phím tắt vô hình.</li>
+      <li>⌘E bung sang bố cục đầy đủ khi cần làm việc sâu.</li>
+    </ul></div>
+    <div><h4>Mất</h4><ul class="minus">
+      <li>Người mới không biết có gì tồn tại, khám phá tính năng kém nhất.</li>
+      <li>Đọc kỹ, sửa nguồn, đối chiếu đều phải bung ra, tức thêm một bước.</li>
+      <li>Phụ thuộc mạnh vào bàn phím, dùng chuột thuần thấy trống trải.</li>
+      <li>Phải dựng thêm parser lệnh và bảng gợi ý, không tái dùng gì sẵn có.</li>
+    </ul></div>
+  </div>
+</section>
+
+<section id="optE">
+  <div class="opt-head"><span class="opt-tag">E</span><div>
+    <h2>Peek + Tabs</h2>
+    <p class="sub">Hai tầng: một dải nhỏ để liếc, bung ra thành bàn làm việc có tab. Mọi kết quả phụ thành tab, không thành pane chồng.</p>
+  </div></div>
+  <p class="premise">Popup phình dọc vì mỗi kết quả mới đòi một pane mới. Cho chúng dùng chung một khung và chuyển bằng tab, chiều cao đứng yên dù mở bao nhiêu kết quả.</p>
+  <div class="stage"><div class="stage-in">
+    <div class="stage-bg" aria-hidden="true"><h5>Quarterly Engineering Report</h5><p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam.</p></div>
+    <div class="stage-cap"><span class="px" data-px="E">—</span><span data-ratio="E">—</span></div>
+    <div data-mock="E"></div>
+  </div></div>
+  <div class="subsys">
+    <div><h6>Thanh nổi</h6><p>Có mặt ở cả hai tầng. Bôi đen trong dải Peek cũng dùng được, không cần bung ra trước.</p></div>
+    <div><h6>Dịch phụ</h6><p>Mỗi cụm là một tab riêng mang tên cụm đó. Nhiều cụm cùng sống, quay lại cụm cũ bằng một cú bấm.</p></div>
+    <div><h6>Hỏi đáp</h6><p>Một tab riêng có toàn bộ chiều cao, đủ chỗ cho chục lượt hỏi mà không ép pane khác.</p></div>
+    <div><h6>Ảnh &amp; đọc</h6><p>Ảnh dán thành tab kèm ảnh thu nhỏ. Đọc gắn theo tab đang bật, chỉ một nút tại một thời điểm.</p></div>
+  </div>
+  <div class="cols">
+    <div><h4>Được</h4><ul class="plus">
+      <li>Chiều cao gần như hằng số, vấn đề nghiêm trọng nhất bị xoá tận gốc.</li>
+      <li>Dịch phụ, học, hỏi đáp cùng một khung, chuyển bằng ⌘1…⌘4.</li>
+      <li>Tab giữ được nhiều cụm, không cái nào ghi đè cái nào.</li>
+      <li>Tầng Peek phục vụ ca liếc-rồi-đóng mà không cần chế độ riêng.</li>
+      <li>Tab hiện luôn lịch sử phiên: đã tra gì trong lần mở này.</li>
+    </ul></div>
+    <div><h4>Mất</h4><ul class="minus">
+      <li>Không xem bản dịch và bản học cùng lúc được, có lúc người ta muốn thế.</li>
+      <li>Thêm khái niệm tab vào một popup vốn nên đơn giản.</li>
+      <li>Hai tầng là hai bộ trạng thái, hai đường animation phải làm mượt.</li>
+      <li>Tab nhiều lên thì nhãn bị cắt, lại thành vấn đề khác.</li>
+    </ul></div>
+  </div>
+</section>
+
+<!-- ═══ X · Hướng ghép ═══ -->
+<section id="optX">
+  <div class="opt-head"><span class="opt-tag" style="background:var(--accent)">X</span><div>
+    <h2>Hợp nhất — cái được đề xuất</h2>
+    <p class="sub">Không phải hướng thứ sáu. Là ba mảnh lấy từ ba hướng trên, mỗi mảnh giết một vấn đề nặng, và chúng không giẫm chân nhau vì nằm ở ba tầng khác nhau của cùng một cửa sổ.</p>
+  </div></div>
+  <p class="premise">Ba vấn đề nặng nhất không cùng một tầng. Phình dọc là chuyện <em>bao nhiêu pane</em>, tỉ lệ lệch là chuyện <em>bên trong một pane</em>, còn tốc độ liếc là chuyện <em>trước khi mở pane nào</em>. Ba tầng, ba mảnh, ghép được.</p>
+
+  <div class="merge">
+    <div><h6>Tầng khung · lấy từ E</h6>
+      <p><b>Tab thay pane chồng.</b> Kết quả mới không đẻ pane mới, nó thành tab trong cùng một khung. Chiều cao thành hằng số.</p>
+      <p class="kill">Giết: #2 ba pane chồng · #30 popup 810 px · #14 cụm sau ghi đè cụm trước · #22 bản ghi hỏi đáp bị nhốt 120 px</p></div>
+    <div><h6>Tầng pane · lấy từ A</h6>
+      <p><b>Tỉ lệ thích ứng bên trong tab đang bật.</b> Learn về một cột, Proofread về diff cùng dòng, dịch thường giữ 50/50.</p>
+      <p class="kill">Giết: #1 chia đôi cứng · #31 Learn phụ chia đôi vô lý · #3 ngôn ngữ hai nơi · #4 bốn nút ngang hàng</p></div>
+    <div><h6>Tầng vào · lấy từ D</h6>
+      <p><b>Compact là tuỳ chọn, không phải mặc định.</b> Mở ra ở dải hẹp, ⌘E bung sang khung đầy đủ khi cần làm việc sâu.</p>
+      <p class="kill">Giết: #28 phím tắt vô hình · và phục vụ ca liếc-rồi-đóng mà không bắt ai đổi thói quen</p></div>
+  </div>
+
+  <p class="prose">Chúng không đụng nhau vì <b>tab quyết định có bao nhiêu khung</b>, <b>tỉ lệ quyết định hình dạng bên trong một khung</b>, <b>compact quyết định khung nào hiện lúc mở</b>. Sửa một tầng không phải viết lại tầng kia. Về code cũng vậy: tab nằm ở <code>PopoverLayoutMath</code> và vòng đời <code>subSection</code>/<code>qaSection</code>, tỉ lệ nằm ở <code>splitPaneWidth</code> và <code>layoutSubSection</code>, compact chỉ là một cờ trong <code>AppConfig.UI</code>. Ba vùng file gần như rời nhau.</p>
+
+  <div class="stage"><div class="stage-in">
+    <div class="stage-bg" aria-hidden="true"><h5>Quarterly Engineering Report</h5><p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris.</p></div>
+    <div class="stage-cap"><span class="px" data-px="X">—</span><span data-ratio="X">—</span><span id="xCut">—</span></div>
+    <div data-mock="X"></div>
+  </div></div>
+
+  <div class="subsys">
+    <div><h6>Thanh nổi</h6><p>Một đường code phủ mọi vùng chữ, kể cả trong tab cụm và tab hỏi đáp. Thêm nút lưu từ, và bỏ qua vùng chọn dưới 2 ký tự.</p></div>
+    <div><h6>Dịch phụ</h6><p>Mỗi cụm một tab mang tên cụm. Sửa nguồn làm mờ tab kèm nút cập nhật, không xoá im lặng. Có nút đưa lên tab chính.</p></div>
+    <div><h6>Hỏi đáp</h6><p>Một tab riêng, mỗi lượt là một khối có nút chép và chạy lại riêng. Dịch lại không xoá bản ghi, chỉ mở lượt mới.</p></div>
+    <div><h6>Ảnh · đọc · ngữ cảnh</h6><p>Ảnh dán hiện thu nhỏ thật. Tốc độ đọc vào menu nút loa. Dòng ngữ cảnh về lại tooltip. Nút đổi thành Search Images ↗.</p></div>
+  </div>
+
+  <div class="cols">
+    <div><h4>Được</h4><ul class="plus">
+      <li>Ca trong ảnh thật: từ ~810 px xuống ~340 px, mà không mất bất kỳ nội dung nào.</li>
+      <li>Khối Learn được nguyên chiều rộng một cột, hết 560 px trống.</li>
+      <li>Ba mảnh triển khai được độc lập, hỏng mảnh nào lùi mảnh đó, không kéo theo hai mảnh kia.</li>
+      <li>Không mảnh nào phá kiến trúc <code>Split Prism</code>: tab bọc bên ngoài, tỉ lệ sửa bên trong.</li>
+      <li>Người dùng cũ không phải học lại gì nếu bỏ qua compact.</li>
+    </ul></div>
+    <div><h4>Mất</h4><ul class="minus">
+      <li>Vẫn không xem bản dịch và bản Learn cùng lúc được, đó là cái giá của tab.</li>
+      <li>Ba tầng là ba bộ trạng thái, nhiều đường tổ hợp phải thử hơn một hướng đơn.</li>
+      <li>Compact thêm một chế độ nữa vào app vốn đã có bốn chế độ chạy.</li>
+      <li>Tab nhiều lên thì nhãn cụm bị cắt, phải có quy tắc gộp hoặc cuộn ngang.</li>
+    </ul></div>
+  </div>
+</section>
+
+<!-- ═══ Matrix ═══ -->
+<section id="matrix">
+  <div class="sec-head"><span class="sec-num">03</span><div>
+    <h2>Đối chiếu theo tình huống</h2>
+    <p class="prose" style="margin:0;color:var(--ink-2)">Thang 1–3: 3 là làm tốt việc đó, 1 là chật vật. Cột <b>Nay</b> là hiện trạng, để thấy hướng nào thật sự tiến bộ. Hàng đầu là đúng ảnh chụp người dùng gửi, cũng là hàng hiện trạng ăn điểm thấp nhất.</p>
+  </div></div>
+  <div class="mx-wrap"><table id="mx">
+    <thead><tr><th>Tình huống</th><th>Nay</th><th>A · Adaptive</th><th>B · Thread</th><th>C · Rail</th><th>D · Capsule</th><th>E · Peek+Tabs</th><th style="color:var(--accent)">X · Hợp nhất</th></tr></thead>
+    <tbody></tbody><tfoot><tr><th>Tổng</th></tr></tfoot>
+  </table></div>
+</section>
+
+<!-- ═══ Recommendation ═══ -->
+<section id="rec">
+  <div class="sec-head"><span class="sec-num">04</span><div>
+    <h2>Khuyến nghị &amp; lộ trình</h2>
+    <p class="prose" style="margin:0;color:var(--ink-2)">Không chọn nguyên một hướng. Ba vấn đề nặng nhất nằm ở ba hướng khác nhau và ghép được mà không đụng nhau, xem <a href="#optX">mục X</a>. Phần dưới là thứ tự triển khai.</p>
+  </div></div>
+  <p class="prose">Ảnh chụp thật đổi thứ tự ưu tiên so với đánh giá ban đầu. Popup 810 px không phải trường hợp biên, nó là kết quả của một chuỗi thao tác hoàn toàn bình thường: dịch một đoạn, tra một từ trong đó, hỏi một câu. <strong>Phình dọc mới là vấn đề số một, không phải tỉ lệ pane.</strong> Riêng khối Learn trong ảnh đã chiếm 600 px, trong đó pane trái để trống 560 px chỉ vì nó dùng lại đúng khung chia đôi của pane chính.</p>
+  <p class="prose"><strong>Lấy tab của E làm trục chính, ghép tỉ lệ thích ứng của A, giữ D làm tuỳ chọn.</strong> Bản dựng của cách ghép này nằm ở <a href="#optX">mục X phía trên</a>, bấm thử tab để thấy chiều cao đứng yên. Ban đầu tôi xếp A trước vì nó rẻ, nhưng A một mình không cứu được ca trong ảnh: nó chỉnh tỉ lệ trong từng pane chứ không ngăn pane thứ ba xuất hiện. Tab giết vụ phình dọc, giải luôn chuyện pane phụ chỉ giữ được một cụm, và cho khối Learn nguyên chiều cao thay vì 40% của một pane bị ép. A vẫn cần, nhưng là để sửa bên trong mỗi tab. D chỉ nên là tuỳ chọn Compact trong Settings, vì nó đổi khả năng khám phá lấy tốc độ.</p>
+  <p class="prose">Sáu thứ nên làm bất kể chọn hướng nào, vì chúng là lỗi chứ không phải lựa chọn thiết kế: pane Learn phụ đừng chia đôi khi nguồn chỉ có một từ, thanh nổi phải phủ pane phụ và pane hỏi đáp, sửa nguồn không được xoá pane phụ không báo, chạy dịch lại không được xoá sạch bản ghi hỏi đáp, dòng ngữ cảnh nên về lại dạng tooltip, và nút Images phải nói rõ nó mở trình duyệt.</p>
+
+  <div class="phases">
+    <div class="phase"><div class="when">Đợt 1 · rẻ</div><div>
+      <h3>Sửa lỗi, chưa đổi kiến trúc</h3>
+      <ul>
+        <li>Thanh nổi phủ cả <code>subSection</code> và <code>qaSection</code>: gom danh sách text view thành một mảng dùng chung với <code>panelSelectionForSubtranslate()</code>, hai chỗ đang lệch nhau.</li>
+        <li><code>textDidChange</code> đừng gọi thẳng <code>removeSubSection()</code>: làm mờ pane phụ kèm nút cập nhật thay vì xoá im lặng.</li>
+        <li><code>performTranslate</code> đừng gọi thẳng <code>removeQASection()</code>: hỏi trước, hoặc giữ bản ghi và mở lượt mới.</li>
+        <li>Đổi nhãn nút Images thành <b>Search Images</b> kèm icon mũi tên ra ngoài, vì nó mở trình duyệt chứ không hiện ảnh.</li>
+        <li>Vệt mờ gradient khi nội dung tràn, bỏ <code>autohidesScrollers</code> ở pane kết quả.</li>
+        <li>Ẩn <code>qaInputField</code> đến khi <code>isCopyableResult</code> đúng, hiện lại bằng nút Ask.</li>
+        <li>Ngưỡng tối thiểu cho thanh nổi: bỏ qua vùng chọn 1 ký tự.</li>
+        <li>Pane phụ chế độ Learn dùng một cột thay vì chia đôi khi nguồn ngắn hơn kết quả nhiều lần: một điều kiện trong <code>layoutSubSection</code>, không đụng kiến trúc.</li>
+        <li>Trả dòng ngữ cảnh về tooltip của <code>contextButton</code> thay vì hàng cố định bị cắt cụt.</li>
+        <li>Cho kết quả Learn đi qua <code>markdownDisplay</code> để nhãn mục in đậm, và đậm hơn nữa cho nền vùng bôi đen.</li>
+        <li>Gộp Context · Update · Review vào một nút tràn, chrome còn 3 icon.</li>
+        <li>Ghi phím tắt lên nút, và bỏ hẳn <code>pasteResultToPreviousApp()</code> đang không ai gọi, hoặc nối nó vào một phím.</li>
+      </ul>
+      <p class="files">+Subtranslate.swift · +QA.swift · +Translate.swift · +Language.swift · +Chrome.swift · +Actions.swift</p>
+    </div></div>
+
+    <div class="phase"><div class="when">Đợt 2 · E</div><div>
+      <h3>Tab thay pane chồng — cắt chiều cao từ 810 xuống ~340 px</h3>
+      <ul>
+        <li>Bỏ <code>multiStackedSectionHeights</code>. <code>subSection</code> và <code>qaSection</code> thành tab dùng chung một khung.</li>
+        <li><code>subSection</code> từ một optional thành mảng, mỗi cụm một tab mang tên cụm, hết cảnh cụm sau ghi đè cụm trước.</li>
+        <li>Thanh tab dưới header, chuyển bằng ⌘1…⌘4.</li>
+        <li><code>currentPopoverHeight</code> tính từ tab đang bật, không cộng dồn nữa.</li>
+        <li>Tab Learn dùng bố cục một cột, không chia đôi: đây là chỗ 560 px trống trong ảnh biến mất.</li>
+      </ul>
+      <p class="files">+Subtranslate.swift · +QA.swift · PopoverLayoutMath.swift · +Layout.swift</p>
+    </div></div>
+
+    <div class="phase"><div class="when">Đợt 3 · A</div><div>
+      <h3>Tỉ lệ pane thích ứng, ngôn ngữ lên đỉnh</h3>
+      <ul>
+        <li><code>splitPaneWidth</code> nhận thêm tỉ lệ, tính từ chênh lệch chiều cao đo được giữa nguồn và kết quả, kẹp trong 30/70 … 70/30.</li>
+        <li>Dời ba control ngôn ngữ lên hàng header, bỏ nhãn EN/VI trong pane header vì đã lặp.</li>
+        <li>Hàng đáy: một nút chính accent + nhóm gộp ba chế độ phụ.</li>
+        <li>Chip chế độ trên header pane kết quả, dùng lại <code>lastExecutionMode</code>.</li>
+        <li>Ảnh dán hiện thu nhỏ thật thay cho <code>imagePlaceholderLabel</code> dạng chữ.</li>
+        <li>Dời <code>speechRatePopUp</code> vào menu chuột phải của nút loa, trả lại chỗ trên header nguồn.</li>
+      </ul>
+      <p class="files">PopoverLayoutMath.swift · +Layout.swift · +Language.swift · +Chrome.swift</p>
+    </div></div>
+
+    <div class="phase"><div class="when">Đợt 4 · D</div><div>
+      <h3>Compact là tuỳ chọn, không phải mặc định</h3>
+      <ul>
+        <li>Thêm cờ trong <code>AppConfig.UI</code>, mở ra dạng capsule, ⌘E bung sang bố cục đầy đủ.</li>
+        <li>Dòng lệnh <code>&gt;learn</code> / <code>&gt;proofread</code> nối thẳng vào <code>runLearn</code>, <code>runProofread</code> sẵn có.</li>
+      </ul>
+      <p class="files">AppConfig.swift · PopoverController.swift</p>
+    </div></div>
+  </div>
+</section>
+
+</main>
+
+<footer class="wrap">Mockup dựng theo số đo thật trong <code>ChromeLayout</code>: rộng 760, padding 14/16, header 22, pane header 30, nút 32, ô hỏi đáp 28, thanh nổi 118×28. Số px là ước tính chiều cao popup cho tình huống đang chọn, theo cùng công thức <code>splitPrismHeight</code>.</footer>
+
+<script>
+(() => {
+"use strict";
+
+/* ═══ Nội dung mẫu ═══ */
+const P_SRC = "The system reduces round-trips by caching resolved selections, so a repeated lookup never pays the accessibility bridge cost twice. Incumbent tools re-read the frontmost window on every keystroke.";
+const P_RES = "Hệ thống giảm số lần gọi qua lại bằng cách lưu đệm vùng chọn đã phân giải, nên một lượt tra lặp lại không phải trả phí cầu nối trợ năng lần thứ hai. Các công cụ hiện có đọc lại cửa sổ trên cùng sau mỗi lần gõ phím.";
+const LEARN = [["typesetting","h"],["IPA: /ˈtaɪpsetɪŋ/","m"],["n. — sự sắp chữ, việc dàn trang trong ngành in","b"],
+  ["Đồng nghĩa: composition, layout · Trái nghĩa: handwriting","m"],
+  ["“Modern typesetting is done entirely in software.”","b"],["→ Việc sắp chữ hiện đại được làm hoàn toàn bằng phần mềm.","m"],
+  ["Nhớ nhanh: type (con chữ) + setting (đặt vào) — đặt từng con chữ vào khuôn.","b"]];
+
+const REAL_SRC = "If Elon and Scott were talking one afternoon about how Grok 4.6 was working inside Devon and Elon gives him a little shoulder nudge and says, Hey, listen, man, if you ever think about where you want to see Cognition in the future, does that constitute approaching them about a potential deal? That is genuinely how a lot of these offers start. I certainly think that Elon's appetite for acquisitions has not been sated just because the cursor deal is done.";
+const REAL_RES = "Nếu một chiều nọ Elon và Scott trò chuyện về cách Grok 4.6 hoạt động bên trong Devon và Elon huých vai Scott một cái rồi nói, Này, nghe này, nếu cậu từng nghĩ đến nơi cậu muốn thấy Cognition trong tương lai, liệu điều đó có cấu thành việc tiếp cận họ về một thỏa thuận tiềm năng không? Đó thực chất là cách rất nhiều lời đề nghị như vậy bắt đầu. Tôi chắc chắn rằng sự thèm muốn thâu tóm của Elon vẫn chưa được thỏa mãn chỉ vì thương vụ cursor đã hoàn tất.";
+const REAL_LEARN = [["Từ gốc: certainly","b"],["Phiên âm: /ˈsɜːrtnli/","b"],["Mức dùng: formal · rất phổ biến · CEFR B2","b"],
+  ["adv. chắc chắn, nhất định","b"],["","m"],
+  ["Từ đồng nghĩa: surely, definitely, certainly","b"],["Từ trái nghĩa: doubtfully, uncertainly","b"],["","m"],
+  ["Đi kèm thường gặp","b"],["- certainly think: chắc chắn nghĩ rằng","b"],["- certainly know: chắc chắn biết","b"],["","m"],
+  ["Dễ nhầm với","b"],["- surely: hơi nghiêng về việc hy vọng hoặc tìm kiếm sự đồng tình","b"]];
+
+const SITS = {
+  real:  {label:"★ Ảnh thật", mode:"translate", src:REAL_SRC, res:REAL_RES, sL:74, rL:78, ctx:10,
+          sub:{src:"certainly", res:REAL_LEARN, mode:"learn", tall:true},
+          qa:[{q:"hi", a:"Bản dịch tiếng Việt chính xác, tự nhiên. Ngữ pháp, từ vựng đúng ngữ cảnh. Không lỗi."}],
+          note:"Ảnh chụp người dùng gửi: đoạn văn + Learn cụm + hỏi đáp, popup cao ~810 px"},
+  word:  {label:"Từ đơn", mode:"translate", src:"typesetting", res:"sự sắp chữ; việc dàn trang (ngành in)", sL:6, rL:8,
+          note:"Ca dùng nhiều nhất: tra một từ rồi đóng"},
+  para:  {label:"Đoạn văn", mode:"translate", src:P_SRC, res:P_RES, sL:52, rL:60,
+          note:"Đoạn dài, cần đối chiếu"},
+  learn: {label:"Learn", mode:"learn", src:"typesetting", res:LEARN, sL:6, rL:76,
+          note:"Nguồn 1 từ, kết quả 7 dòng có cấu trúc"},
+  proof: {label:"Proofread", mode:"proofread", src:"i has went to the store yesterday and buyed two apple.", res:"I went to the store yesterday and bought two apples.", sL:16, rL:16,
+          note:"Cần thấy sai ở đâu, không chỉ thấy bản đúng"},
+  phrase:{label:"Bôi đen cụm", mode:"translate", src:P_SRC, res:P_RES, sL:52, rL:60, float:true,
+          note:"Thanh nổi bám theo vùng chọn trong pane kết quả"},
+  sub:   {label:"Dịch cụm", mode:"translate", src:P_SRC, res:P_RES, sL:52, rL:60,
+          sub:{src:"round-trips", res:"số lượt gọi đi–về giữa hai bên", mode:"translate"},
+          note:"Pane phụ chồng dưới pane chính"},
+  sub2:  {label:"Cụm thứ hai", mode:"translate", src:P_SRC, res:P_RES, sL:52, rL:60,
+          sub:{src:"accessibility bridge", res:"cầu nối trợ năng của hệ điều hành", mode:"translate", replaced:"round-trips"},
+          note:"Cụm mới ghi đè cụm cũ, không báo gì"},
+  qa:    {label:"Hỏi đáp 3 lượt", mode:"translate", src:P_SRC, res:P_RES, sL:52, rL:60,
+          qa:[{q:"“round-trip” dịch vậy sát chưa?", a:"Sát. Trong ngữ cảnh kỹ thuật, round-trip là một lượt gửi đi và nhận về trọn vẹn, nên “lượt gọi đi–về” đúng hơn “chuyến khứ hồi”."},
+              {q:"Còn “incumbent” thì sao?", a:"Ở đây là “các công cụ hiện có / đang chiếm lĩnh thị trường”, không phải nghĩa chính trị."},
+              {q:"Viết lại câu cuối gọn hơn được không?", a:"“Công cụ hiện có đọc lại cửa sổ trên cùng mỗi lần gõ phím.” — bỏ được ba chữ mà không mất nghĩa.", pending:true}],
+          note:"Bản ghi dài, pane sàn 120 px"},
+  image: {label:"Ảnh dán", mode:"translate", img:true, src:"[Image from clipboard]", res:"Thời hạn nộp hồ sơ: 31 tháng 3. Vui lòng mang theo giấy tờ tuỳ thân có ảnh.", sL:10, rL:22,
+          note:"Nguồn là ảnh, Learn và Proofread bị khoá"},
+  speak: {label:"Đang đọc", mode:"translate", src:"typesetting", res:"sự sắp chữ; việc dàn trang (ngành in)", sL:6, rL:8, speaking:true,
+          note:"Đang phát âm, không có thanh tiến trình"},
+  load:  {label:"Đang chạy", mode:"translate", src:P_SRC, res:null, state:"loading", sL:52, rL:40,
+          note:"Chờ mạng, nút bị khoá"},
+  err:   {label:"Thiếu API key", mode:"translate", src:"", res:"Error: API key is empty — open Settings… and enter your 9router API key.", state:"error", sL:2, rL:16,
+          note:"Lỗi cấu hình hiện trong pane kết quả"}
+};
+const ORDER = ["real","word","para","learn","proof","phrase","sub","sub2","qa","image","speak","load","err"];
+const MODE = {translate:{t:"Translate",c:""}, learn:{t:"Learn",c:"learn"}, proofread:{t:"Proofread",c:"proof"}};
+
+let cur = "real", dark = true, filter = "all";
+
+/* ═══ 29 phát hiện ═══ */
+const F = [
+ {n:1,  g:"layout", s:1, t:"Chia đôi cứng 50/50 bất kể nội dung",
+  d:"Learn cho kết quả dài gấp mười lần nguồn. Pane trái còn trống 85%, pane phải bị cắt chữ.",
+  l:"PopoverLayoutMath.splitPaneWidth · +Layout.swift:113"},
+ {n:2,  g:"layout", s:1, t:"Ba pane chồng làm popup ăn hết màn hình",
+  d:"Chính + phụ + hỏi đáp, mỗi pane sàn 120 px cộng khoảng cách. maxPopoverHeight cộng thêm 300 px cho mỗi pane rồi mới kẹp theo màn hình.",
+  l:"multiStackedSectionHeights · +Layout.swift:378"},
+ {n:3,  g:"layout", s:2, t:"Ngôn ngữ nằm ở hai nơi cách xa nhau",
+  d:"Nhãn EN/VI trên đỉnh pane, dropdown chọn ở đáy phải. Vừa lặp thông tin vừa tốn hai hàng.",
+  l:"updatePaneLanguageLabels · +Layout.swift:203"},
+ {n:4,  g:"layout", s:2, t:"Bốn nút hành động cùng cỡ, cùng hàng",
+  d:"Images · Proofread · Learn · Translate không phân cấp. Không nút nào cho biết kết quả đang hiển thị do nút nào tạo ra.",
+  l:"+Layout.swift:145–180"},
+ {n:5,  g:"layout", s:3, t:"Sáu icon chrome đồng hạng",
+  d:"Context, Update, Review, History, Pin, Close cùng 24 px dù tần suất dùng chênh nhau hàng chục lần.",
+  l:"+Layout.swift:52–100"},
+ {n:6,  g:"layout", s:2, t:"Tràn chữ không có dấu hiệu nào",
+  d:"Scroller kiểu overlay tự ẩn, không vệt mờ đáy. Người dùng tưởng đã đọc hết.",
+  l:"autohidesScrollers · +Chrome.swift:95"},
+ {n:7,  g:"layout", s:3, t:"Rộng cố định, không kéo giãn được",
+  d:"config.ui.width là hằng số, chỉ sửa được trong config.json. Không có tay nắm kéo giãn.",
+  l:"reflowLayout · +Layout.swift:6"},
+
+ {n:8,  g:"float", s:1, t:"Thanh nổi không có trong pane phụ và pane hỏi đáp",
+  d:"updateFloatingSelectionBar chỉ xét inputTextView và textView. Bôi đen trong kết quả dịch phụ hay câu trả lời không hiện thanh nào.",
+  l:"+Subtranslate.swift:398–410"},
+ {n:9,  g:"float", s:1, t:"Nút Translate và thanh nổi bất đồng bộ",
+  d:"panelSelectionForSubtranslate có quét pane phụ, thanh nổi thì không. Cùng một vùng bôi đen, nút thì chạy còn thanh thì im.",
+  l:"+Translate.swift:137 vs +Subtranslate.swift:398"},
+ {n:10, g:"float", s:2, t:"Hiện với cả vùng chọn một ký tự",
+  d:"Chỉ cần range.length > 0. Kéo chuột lỡ tay là thanh bật lên che chữ.",
+  l:"+Subtranslate.swift:427"},
+ {n:11, g:"float", s:2, t:"Bốn nút chỉ có icon, không nhãn",
+  d:"22 px, không chữ, phải rê chuột chờ tooltip mới biết cái nào Học cái nào Dịch.",
+  l:"configureFloatingButton · +Subtranslate.swift:379"},
+ {n:12, g:"float", s:3, t:"Thiếu nút lưu từ",
+  d:"Bốn nút có Dịch, Học, Đọc, Chép. Lưu từ chỉ có trong header pane, dù đây đúng là lúc muốn lưu nhất.",
+  l:"+Subtranslate.swift:359–362"},
+ {n:13, g:"float", s:2, t:"Đè lên chính chữ đang đọc",
+  d:"Đặt phía trên vùng chọn, hết chỗ thì xuống dưới. Cả hai đều nằm trong pane, che dòng kế bên.",
+  l:"+Subtranslate.swift:456–465"},
+
+ {n:14, g:"sub", s:1, t:"Chỉ giữ được một cụm, cụm mới ghi đè cụm cũ",
+  d:"subSection là một optional. Dịch cụm thứ hai là mất cụm thứ nhất, không hỏi, không hoàn tác.",
+  l:"var subSection · PopoverController.swift:158"},
+ {n:15, g:"sub", s:1, t:"Sửa một chữ trong nguồn là mất cả pane phụ",
+  d:"textDidChange gọi removeSubSection() vô điều kiện. Gõ một ký tự vào ô nguồn là kết quả tra cụm biến mất.",
+  l:"textDidChange · +Language.swift:172"},
+ {n:16, g:"sub", s:2, t:"Sáu nút icon nhồi trong header pane phụ",
+  d:"Đọc, chạy lại, chép, lưu, đóng, cộng nút đọc nguồn. Mỗi nút 18 px cách nhau 4 px trong một pane có thể chỉ rộng 360 px.",
+  l:"layoutSubSection · +Subtranslate.swift:110"},
+ {n:17, g:"sub", s:2, t:"Không có cách đưa kết quả phụ lên pane chính",
+  d:"Tra được một cụm rồi muốn tiếp tục làm việc với nó thì phải tự chép rồi dán ngược lên ô nguồn.",
+  l:"+Subtranslate.swift"},
+ {n:18, g:"sub", s:3, t:"Pane phụ không chọn được ngôn ngữ riêng",
+  d:"Kế thừa cặp ngôn ngữ của pane chính. Muốn tra cụm sang ngôn ngữ khác thì phải đổi cả pane chính.",
+  l:"runSubRequest · +Subtranslate.swift:180"},
+
+ {n:19, g:"qa", s:1, t:"Chạy dịch lại là xoá sạch bản ghi hỏi đáp",
+  d:"performTranslate gọi removeQASection() ngay đầu hàm. Ba lượt hỏi đáp mất trắng, không hỏi, không hoàn tác.",
+  l:"performTranslate · +Translate.swift:157"},
+ {n:20, g:"qa", s:2, t:"Ô nhập chiếm chỗ vĩnh viễn",
+  d:"28 px cộng 12 px khoảng cách luôn nằm đó, kể cả khi chưa có bản dịch nào để hỏi.",
+  l:"qaInputField · +Layout.swift:216"},
+ {n:21, g:"qa", s:2, t:"Cả bản ghi là một khối chữ, không tách lượt",
+  d:"Render thành một chuỗi ME/AI trong một NSTextView. Không chép riêng, chạy lại riêng, hay xoá riêng từng lượt được.",
+  l:"QAPaneSection.render · QAPaneSection.swift:48"},
+ {n:22, g:"qa", s:2, t:"Bản ghi dài bị nhốt trong 120 px",
+  d:"Pane hỏi đáp chia sàn chung với các pane khác. Ba lượt trở lên là phải cuộn trong một khung rất thấp.",
+  l:"splitMinStackedPaneHeight · PopoverController.swift:36"},
+ {n:23, g:"qa", s:3, t:"Không lưu vào lịch sử",
+  d:"Chỉ bản dịch được ghi lại. Câu hỏi và câu trả lời mất hẳn khi đóng popup.",
+  l:"+QA.swift:130–175"},
+
+ {n:24, g:"io", s:1, t:"Nút Images không hiện ảnh, nó mở trình duyệt",
+  d:"runImages tạo câu tìm kiếm rồi gọi NSWorkspace.open. Nhãn Images kèm icon máy ảnh gợi ý ảnh sẽ hiện trong popup.",
+  l:"runImages · +Translate.swift:322"},
+ {n:25, g:"io", s:2, t:"Ảnh dán chỉ hiện dòng chữ, không có thu nhỏ",
+  d:"imagePlaceholderLabel ghi “[Image from clipboard]”. Không xem lại được mình vừa dán ảnh nào.",
+  l:"imagePlaceholderLabel · +Chrome.swift:97"},
+ {n:26, g:"io", s:2, t:"Tốc độ đọc nằm trong header pane nguồn",
+  d:"Dropdown 0.5×–2× ảnh hưởng cả hai pane nhưng chỉ hiện ở một pane, và chiếm chỗ của hàng icon vốn đã chật.",
+  l:"speechRatePopUp · +Layout.swift:253"},
+ {n:27, g:"io", s:3, t:"Phát âm không có tiến trình, không tua, không dừng",
+  d:"Bốn trạng thái phát/nạp/tạm dừng/tiếp, nhưng không biết còn bao lâu và không nhảy tới đoạn nào được.",
+  l:"updateSpeechButton · +Speech.swift:23"},
+
+ {n:30, g:"layout", s:1, t:"Popup thật cao 810 px, chiếm gần trọn màn hình",
+  d:"Ảnh người dùng gửi: pane chính 440 px + pane Learn 600 px + hỏi đáp 230 px + chrome. Đây không phải trường hợp biên, chỉ là dịch một đoạn rồi tra một từ trong đó.",
+  l:"maxPopoverHeight · +Layout.swift:378"},
+ {n:31, g:"sub", s:1, t:"Learn cụm dùng chung khung chia đôi, nguồn 1 từ cạnh 14 dòng",
+  d:"Trong ảnh, pane trái của khối Learn chỉ có chữ “certainly” rồi trống 560 px, pane phải nhồi 14 dòng và vẫn bị cắt. makeSubSection dùng lại đúng khung chia đôi của pane chính.",
+  l:"makeSubSection · +Subtranslate.swift:7"},
+ {n:32, g:"layout", s:2, t:"Dòng ngữ cảnh chiếm nguyên một hàng rồi bị cắt cụt",
+  d:"“Context sent with Translate (10): · constitute → có phải là · …” tràn ngang, cắt giữa chừng bằng dấu ba chấm. Nội dung này vốn thiết kế cho tooltip, đang bị đẩy thành hàng cố định.",
+  l:"showContextTooltip · +Status.swift:123"},
+ {n:33, g:"sub", s:2, t:"Kết quả Learn không dùng markdown, chỉ là chữ thô xuống dòng",
+  d:"Ảnh cho thấy “Từ gốc:”, “Phiên âm:”, “Đi kèm thường gặp” đều cùng một cỡ chữ, phân cấp chỉ nhờ dòng trống. Nội dung có cấu trúc rõ ràng nhưng hiển thị thì không.",
+  l:"setSubResultText · +Subtranslate.swift:130"},
+ {n:34, g:"qa", s:2, t:"Câu trả lời lạc đề nhưng vẫn chiếm nguyên một pane",
+  d:"Trong ảnh, người dùng gõ “hi” và nhận về một câu nhận xét chất lượng bản dịch. Câu vô nghĩa đó vẫn ăn 230 px chiều cao ngang với nội dung thật.",
+  l:"qaInputSubmitted · +QA.swift:130"},
+ {n:35, g:"sys", s:3, t:"Vùng bôi đen mờ gần như không thấy",
+  d:"Chữ “certainly” đang được chọn trong ảnh nhưng nền chọn nhạt tới mức khó nhận ra, dù chính nó là thứ sinh ra cả khối Learn bên dưới.",
+  l:"SelectableTextView · PopoverSupport.swift:337"},
+ {n:28, g:"sys", s:2, t:"Phím tắt tồn tại nhưng vô hình",
+  d:"⌘↵, ⌘⇧L, ⌘⇧P, ⌘⇧C, Esc đều hoạt động, không cái nào hiện ở đâu trên giao diện.",
+  l:"keyMonitor · PopoverController.swift:224"},
+ {n:29, g:"sys", s:2, t:"Dòng trạng thái gánh cả lỗi lẫn xác nhận, rồi làm popup nhảy",
+  d:"“Copied” và “History failed” dùng chung một dòng 10 px mờ. Hiện rồi tự ẩn sau 4 giây, mỗi lần đều gọi reflowLayout nên popup nhảy 14 px hai lần.",
+  l:"setStatus · +Status.swift:24"}
+];
+const GROUPS = {all:"Tất cả", layout:"Bố cục", float:"Thanh nổi", sub:"Dịch phụ", qa:"Hỏi đáp", io:"Ảnh · Đọc · Ảnh tìm", sys:"Phím tắt · Trạng thái"};
+const SEV = {1:"NẶNG", 2:"VỪA", 3:"NHẸ"};
+
+/* ═══ Helpers ═══ */
+const esc = s => String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const IC = {pin:"⇧",close:"✕",more:"···",clock:"◷",cards:"▤",up:"↻",speak:"◍",copy:"⧉",save:"◫",retry:"↻",swap:"⇄",up2:"↑",gear:"⚙",quote:"❞"};
+const ic = (k,cls="") => `<span class="ic ${cls}" title="${k}">${IC[k]||k}</span>`;
+const icS = k => `<span class="ic sm" title="${k}">${IC[k]||k}</span>`;
+
+const learnHTML = (rows,max=99) => rows.slice(0,max).map(([t,k]) =>
+  k==="h" ? `<div style="font-weight:600;margin-bottom:2px">${esc(t)}</div>`
+  : k==="m" ? `<div class="muted" style="font-size:13px;margin-bottom:5px">${esc(t)}</div>`
+  : `<div style="margin-bottom:5px">${esc(t)}</div>`).join("");
+
+function resHTML(s,max=99){
+  if (s.state==="loading") return `<span class="muted">Translating<span class="dl"></span><span class="dl"></span><span class="dl"></span></span>
+    <div class="skel" style="width:92%"></div><div class="skel" style="width:78%"></div><div class="skel" style="width:58%"></div>`;
+  if (s.state==="error") return `<span class="err">${esc(s.res)}</span>`;
+  if (Array.isArray(s.res)) return learnHTML(s.res,max);
+  if (s.float) {
+    const t = esc(s.res);
+    const i = t.indexOf("lượt gọi qua lại");
+    return t.slice(0,58) + `<span class="sel">lưu đệm vùng chọn</span>` + t.slice(58+16);
+  }
+  return esc(s.res);
+}
+function srcHTML(s,thumb=false){
+  if (s.img) return thumb
+    ? `<div style="display:flex;gap:9px;align-items:center;padding:8px 0">
+        <div style="width:56px;height:40px;border-radius:6px;background:linear-gradient(135deg,#c9d3e0,#9fb0c6);display:grid;place-items:center;font-size:9px;color:#fff;font-weight:600">JPG</div>
+        <div><div style="font-size:12.5px">application-form.png</div><div class="muted" style="font-size:11px">1280 × 720 · 340 KB</div></div></div>`
+    : `<span class="muted">[Image from clipboard]</span>`;
+  if (!s.src) return `<span class="muted">Nhập hoặc dán văn bản…</span>`;
+  return esc(s.src);
+}
+const spk = s => s.speaking ? `<span class="wave"><i></i><i></i><i></i><i></i></span>` : "";
+
+/* ═══ Ước tính chiều cao ═══ */
+const LH = 21, PAD = 30;
+const cl = (v,a,b) => Math.min(b,Math.max(a,v));
+const bp = (n,w=1) => cl(Math.ceil(n/(w*6))*LH+22,60,400);
+const subH = s => !s.sub ? 0 : (s.sub.tall ? 260 : 106);
+const EST = {
+  now(s){ const b=cl(Math.max(bp(s.sL),bp(s.rL)),150,380);
+    return PAD+22+(s.ctx?16:0)+12+b+subH(s)+(s.qa?s.qa.length>1?160:150:0)+(s.qa?10:0)+40+16+32; },
+  A(s){ const b=cl(Math.max(bp(s.sL),bp(s.rL)),150,368);
+    return PAD+34+8+b+(s.sub?(s.sub.tall?190:92)+10:0)+(s.qa?s.qa.length*62:0)+14+32; },
+  B(s){ const a=cl(bp(s.sL,2),46,92), r=cl(bp(s.rL,2),60,296);
+    return PAD+30+a+8+28+r+(s.sub?(s.sub.tall?170:76):0)+(s.qa?s.qa.length*62:0)+12+38; },
+  C(s){ const b=cl(Math.max(bp(s.sL),bp(s.rL)),150,352);
+    return PAD+32+30+b+(s.sub?(s.sub.tall?190:88)+10:0)+14+30; },
+  D(s){ return 14+18+cl(bp(s.rL,2),44,182)+(s.sub?26:0)+(s.qa?46:0)+14; },
+  E(){ return 336; },
+  X(){ return 336; }
+};
+
+/* ═══ Mảnh dùng chung ═══ */
+const floatBar = (x,y) => `<div class="fbar" style="left:${x}px;top:${y}px">
+  ${ic("swap")}${ic("◈")}${ic("speak")}${ic("copy")}</div>`;
+
+const subRes = (sub,max=99) => Array.isArray(sub.res) ? learnHTML(sub.res,max) : esc(sub.res);
+
+/* Pane phụ kiểu hiện trạng: chia đôi cứng, nên nguồn 1 từ nằm cạnh 14 dòng kết quả. */
+const subPane = (s,opts={}) => {
+  const tall = s.sub.tall, h = tall ? (opts.squeeze?170:230) : 0;
+  return `<div style="padding:10px 14px 0"><div class="pane">
+  <div class="pane-hd">
+    <span class="chip gray">${opts.tag||"Phrase"}</span>
+    <span class="muted" style="font-size:11.5px">“${esc(s.sub.src)}”</span>
+    ${s.sub.mode==="learn"?`<span class="chip learn">Learn</span>`:""}
+    ${s.sub.replaced&&opts.warn ? `<span class="chip" style="background:rgba(224,57,43,.13);color:#c0392b">đã thay “${esc(s.sub.replaced)}”</span>` : ""}
+    <span class="mini">${icS("speak")}${icS("retry")}${icS("copy")}${icS("save")}${opts.promote?icS("up2"):""}${icS("close")}</span>
+  </div>
+  <div style="display:flex${tall?`;height:${h}px`:""}">
+    <div style="flex:${opts.adaptive&&tall?30:50};padding:0 12px 10px">${esc(s.sub.src)}</div>
+    <div class="hair" style="width:1px;margin:4px 0"></div>
+    <div style="flex:${opts.adaptive&&tall?70:50};padding:0 12px 10px;overflow:hidden;position:relative"
+      class="${tall?"pane-body clip":""}" >${subRes(s.sub, tall?(opts.squeeze?8:14):99)}</div>
+  </div></div></div>`;
+};
+
+const qaBlob = s => `<div style="padding:10px 14px 0"><div class="pane">
+  <div class="pane-hd"><span class="lbl">Q&amp;A</span><span class="mini">${icS("copy")}${icS("close")}</span></div>
+  <div class="pane-body clip" style="max-height:120px">${s.qa.map((t,i)=>`
+    <div style="margin-bottom:7px"><span class="lbl">ME:</span> <b style="font-weight:600">${esc(t.q)}</b><br>
+    <span class="lbl">AI:</span> ${t.pending?`<span class="muted">Answering<span class="dl"></span><span class="dl"></span><span class="dl"></span></span>`:esc(t.a)}</div>`).join("")}
+  </div></div></div>`;
+
+const qaBlocks = s => s.qa.map(t => `
+  <div style="margin-bottom:8px">
+    <div style="display:flex;gap:7px;align-items:baseline;margin-bottom:5px">
+      <span class="chip gray">Bạn</span><b style="font-weight:600;flex:1">${esc(t.q)}</b></div>
+    <div class="pane" style="padding:9px 12px;font-size:13.5px">
+      ${t.pending?`<span class="muted">Answering<span class="dl"></span><span class="dl"></span><span class="dl"></span></span>`:esc(t.a)}
+      ${t.pending?"":`<div style="display:flex;gap:7px;margin-top:6px;justify-content:flex-end">${icS("copy")}${icS("retry")}${icS("close")}</div>`}
+    </div></div>`).join("");
+
+/* ═══ Mockup hiện trạng ═══ */
+function mockNow(s){
+  const body = shell(s,`
+  <div class="pw-head"><span class="pw-title">NTranslate</span>
+    <div class="pw-icons">${ic("quote")}${ic("up")}<span class="ic">${IC.cards}<span class="badge">${s.ctx?3:7}</span></span>${ic("clock")}${ic("pin","on")}${ic("close")}</div></div>
+  ${s.ctx?`<div style="padding:3px 14px 0"><div class="muted" style="font:400 10px/14px var(--sans);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+    Context sent with Translate (${s.ctx}):&nbsp; · constitute → có phải là&nbsp; · constitute approaching → có phải là tiếp cận&nbsp; · that constitute approaching →…</div></div>`:""}
+  <div style="display:flex;padding:12px 14px 0;min-height:150px;position:relative">
+    <div class="pane" style="flex:1;border-radius:16px 0 0 16px;border-right:0">
+      <div class="pane-hd"><span class="lbl">EN</span><span class="mini"><span style="font:500 10px/1 var(--mono);opacity:.7">1.0x ▾</span>${icS("speak")}${spk(s)}</span></div>
+      <div class="pane-body${s.sL>50?" clip":""}">${srcHTML(s)}</div></div>
+    <div class="hair" style="width:1px;margin:14px 0"></div>
+    <div class="pane" style="flex:1;border-radius:0 16px 16px 0;border-left:0">
+      <div class="pane-hd"><span class="lbl">VI</span><span class="mini">${icS("speak")}${icS("retry")}${icS("copy")}${icS("save")}</span></div>
+      <div class="pane-body${(s.rL>60||Array.isArray(s.res))?" clip":""}" style="max-height:150px">${resHTML(s,6)}</div></div>
+    ${s.float?floatBar(430,72):""}
+  </div>
+  ${s.sub?subPane(s,{warn:true}):""}
+  ${s.qa?qaBlob(s):""}
+  <div style="padding:12px 14px 0"><div class="btn" style="width:100%;justify-content:flex-start;height:28px;border-radius:14px;font-size:12px" ><span class="muted">Ask follow-up questions about translation…</span></div></div>
+  <div style="display:flex;align-items:center;gap:5px;padding:14px">
+    <span class="btn${s.img||s.state==="loading"?" off":""}">Images</span>
+    <span class="btn${s.img||s.state==="loading"?" off":""}">Proofread</span>
+    <span class="btn${s.img||s.state==="loading"?" off":""}">Learn</span>
+    <span class="btn pri${s.state==="loading"?" off":""}">Translate</span>
+    <span class="spacer" style="flex:1"></span>
+    <span class="btn sm${s.img?" off":""}">Auto detect ▾</span>${ic("swap")}<span class="btn sm">Vietnamese ▾</span>
+  </div>`);
+  const base = [
+    [1,"left:365px;top:104px"],[3,"left:22px;top:68px"],
+    [4,"left:118px;bottom:20px"],[5,"right:26px;top:14px"],[6,"right:44px;top:184px"],
+    [24,"left:34px;bottom:20px"],[26,"left:196px;top:82px"],
+    [28,"right:120px;bottom:20px"]
+  ];
+  if (s.ctx) base.push([32,"left:200px;top:44px"],[30,"left:-11px;top:300px"],[35,"left:430px;top:150px"]);
+  else base.push([2,"left:-11px;bottom:118px"],[29,"left:26px;top:36px"]);
+  if (s.float) base.push([8,"left:436px;top:72px"]);
+  if (s.sub) base.push([14,"left:26px;bottom:150px"]);
+  if (s.sub && s.sub.tall) base.push([31,"left:180px;bottom:250px"],[33,"left:470px;bottom:250px"]);
+  if (s.qa) base.push([19,"right:236px;bottom:20px"],[34,"left:120px;bottom:120px"]);
+  base.push([20,"left:300px;bottom:58px"]);
+  const pins = base.map(([n,st])=>`<button class="pin" data-p="${n}" style="${st}" aria-label="Phát hiện ${n}">${n}</button>`).join("");
+  return body + pins;
+}
+
+/* ═══ A · Adaptive Split ═══ */
+function mockA(s){
+  const wide = s.rL > s.sL*3, L = wide?30:50, R = 100-L;
+  const single = s.mode==="proofread", m = MODE[s.mode];
+  const panes = single
+    ? `<div class="pane" style="flex:1"><div class="pane-hd"><span class="chip proof">Proofread</span>
+        <span class="muted" style="font-size:11px">3 sửa</span><span class="mini">${icS("speak")}${icS("copy")}${icS("save")}</span></div>
+       <div class="pane-body" style="padding-top:4px">
+         <span style="text-decoration:line-through;opacity:.45">i has went</span> <b>I went</b> to the store yesterday and
+         <span style="text-decoration:line-through;opacity:.45">buyed two apple</span> <b>bought two apples</b>.</div></div>`
+    : `<div class="pane" style="flex:${L}"><div class="pane-hd"><span class="lbl">SOURCE</span>
+        <span class="mini">${icS("speak")}${spk(s)}</span></div>
+       <div class="pane-body${s.sL>50?" clip":""}">${srcHTML(s,true)}</div></div>
+      <div class="pane" style="flex:${R}"><div class="pane-hd"><span class="chip ${m.c}">${m.t}</span>
+        <span class="mini">${icS("speak")}${icS("retry")}${icS("copy")}${icS("save")}</span></div>
+       <div class="pane-body${s.rL>58?" clip":""}">${resHTML(s,6)}</div></div>`;
+  return shell(s,`
+  <div class="pw-head"><span class="pw-title">NTranslate</span>
+    <div style="display:flex;align-items:center;gap:5px;margin-left:12px">
+      <span class="btn sm${s.img?" off":""}">Auto detect ▾</span>${ic("swap")}<span class="btn sm">Vietnamese ▾</span></div>
+    <div class="pw-icons">${ic("more")}${ic("pin","on")}${ic("close")}</div></div>
+  <div style="display:flex;gap:8px;padding:12px 14px 0;min-height:${wide?128:148}px;position:relative">${panes}
+    ${s.float?floatBar(418,70):""}</div>
+  ${s.sub?subPane(s,{tag:"Cụm",promote:true,adaptive:true,squeeze:true}):""}
+  ${s.qa?`<div style="padding:10px 14px 0">${qaBlocks(s)}</div>`:""}
+  <div style="display:flex;align-items:center;gap:8px;padding:12px 14px">
+    <span class="btn pri${s.state==="loading"?" off":""}">Translate <span class="kbd" style="opacity:.85">⌘↵</span></span>
+    <span style="display:flex;border-radius:16px;overflow:hidden;border:.5px solid rgba(0,0,0,.09)">
+      <span class="btn sm${s.img?" off":""}" style="border-radius:0;border:0;height:32px">Learn</span>
+      <span class="btn sm${s.img?" off":""}" style="border-radius:0;border:0;border-left:.5px solid rgba(0,0,0,.09);height:32px">Proofread</span>
+      <span class="btn sm" style="border-radius:0;border:0;border-left:.5px solid rgba(0,0,0,.09);height:32px">Search Images ↗</span></span>
+    <span style="flex:1"></span>
+    <span class="btn sm">Ask <span class="kbd">⌘K</span></span></div>`);
+}
+
+/* ═══ B · Thread ═══ */
+function mockB(s){
+  const m = MODE[s.mode], b = [];
+  b.push(`<div class="pane" style="margin-bottom:8px"><div class="pane-hd"><span class="lbl">SOURCE · EN</span>
+    <span class="mini">${icS("speak")}${spk(s)}${icS("copy")}</span></div>
+    <div class="pane-body" style="padding-top:0">${srcHTML(s,true)}</div></div>`);
+  b.push(`<div class="pane" style="margin-bottom:8px;position:relative"><div class="pane-hd"><span class="chip ${m.c}">${m.t}</span>
+    <span class="lbl">VI</span><span class="mini">${icS("speak")}${icS("retry")}${icS("copy")}${icS("save")}</span></div>
+    <div class="pane-body" style="padding-top:0">${resHTML(s)}</div>
+    ${s.float?floatBar(268,46):""}</div>`);
+  if (s.sub) b.push(`<div style="margin-bottom:8px;padding-left:14px;border-left:2px solid #0071e3">
+    <div class="pane"><div class="pane-hd"><span class="chip ${s.sub.mode==="learn"?"learn":""}">${s.sub.mode==="learn"?"Learn":"Cụm"}</span>
+      <span class="muted" style="font-size:11.5px">“${esc(s.sub.src)}”</span>
+      <span class="mini">${icS("speak")}${icS("save")}${icS("up2")}${icS("close")}</span></div>
+      <div class="pane-body${s.sub.tall?" clip":""}" style="padding-top:0${s.sub.tall?";max-height:150px":""}">${subRes(s.sub,9)}</div></div>
+    ${s.sub.replaced?`<div class="pane" style="margin-top:6px;opacity:.6"><div class="pane-hd"><span class="chip gray">Cụm</span>
+      <span class="muted" style="font-size:11.5px">“${esc(s.sub.replaced)}”</span><span class="mini">${icS("close")}</span></div>
+      <div class="pane-body" style="padding-top:0">số lượt gọi đi–về giữa hai bên</div></div>`:""}</div>`);
+  if (s.qa) b.push(qaBlocks(s));
+  return shell(s,`
+  <div class="pw-head" style="padding-bottom:10px">
+    <span class="btn sm${s.img?" off":""}">Auto detect ▾</span>${ic("swap")}<span class="btn sm">Vietnamese ▾</span>
+    <div class="pw-icons">${ic("more")}${ic("pin","on")}${ic("close")}</div></div>
+  <div style="padding:0 14px;max-height:334px;overflow:hidden">${b.join("")}</div>
+  <div style="display:flex;gap:8px;align-items:center;padding:10px 14px 14px">
+    <span class="btn sm" style="height:34px;border-radius:17px">${m.t} ▾</span>
+    <span class="btn" style="flex:1;justify-content:flex-start;height:34px"><span class="muted">Nhập văn bản mới, hoặc hỏi về bản dịch…</span></span>
+    <span class="btn pri sm" style="height:34px;width:34px;justify-content:center;padding:0">↵</span></div>`);
+}
+
+/* ═══ C · Mode Rail ═══ */
+function mockC(s){
+  const modes = [["Translate","⇄","translate"],["Learn","◈","learn"],["Proofread","✓","proofread"],["Images","▤","images"],["Q&A","?","qa"]];
+  const active = s.img && false ? "images" : (s.qa ? "qa" : s.mode);
+  const rail = modes.map(([t,g,k])=>{
+    const on = k===active;
+    return `<div title="${t}" style="width:30px;height:30px;margin:0 auto 6px;border-radius:9px;display:grid;place-items:center;font-size:13px;
+      background:${on?"#0071e3":"rgba(0,0,0,.05)"};color:${on?"#fff":"inherit"};opacity:${on?1:.5}">${g}</div>`;}).join("");
+  const one = s.mode==="learn";
+  const qaMode = !!s.qa;
+  const content = qaMode
+    ? `<div class="pane" style="flex:1"><div class="pane-hd"><span class="lbl">Q&amp;A · 3 lượt</span><span class="mini">${icS("copy")}${icS("close")}</span></div>
+        <div class="pane-body" style="max-height:170px;overflow:hidden">${s.qa.map(t=>`<div style="margin-bottom:8px">
+          <b style="font-weight:600">${esc(t.q)}</b><br><span style="font-size:13.5px">${t.pending?`<span class="muted">Answering<span class="dl"></span><span class="dl"></span></span>`:esc(t.a)}</span></div>`).join("")}</div></div>`
+    : one
+      ? `<div class="pane" style="flex:1"><div class="pane-hd"><span class="lbl">TYPESETTING · EN → VI</span>
+          <span class="mini">${icS("speak")}${icS("copy")}${icS("save")}</span></div>
+          <div class="pane-body">${resHTML(s)}</div></div>`
+      : `<div class="pane" style="flex:1"><div class="pane-hd"><span class="lbl">EN</span><span class="mini">${icS("speak")}${spk(s)}</span></div>
+          <div class="pane-body${s.sL>50?" clip":""}">${srcHTML(s,true)}</div></div>
+         <div class="pane" style="flex:1"><div class="pane-hd"><span class="lbl">VI</span>
+          <span class="mini">${icS("speak")}${icS("retry")}${icS("copy")}${icS("save")}</span></div>
+          <div class="pane-body${s.rL>58?" clip":""}">${resHTML(s,5)}</div></div>`;
+  return shell(s,`
+  <div style="display:flex;min-height:212px">
+    <div style="width:44px;padding:12px 0;border-right:.5px solid rgba(0,0,0,.07);text-align:center">
+      ${rail}<div class="hair" style="height:1px;margin:10px 8px"></div>
+      <div style="width:30px;height:30px;margin:0 auto 6px;border-radius:9px;display:grid;place-items:center;opacity:.45">${IC.clock}</div>
+      <div style="width:30px;height:30px;margin:0 auto 6px;border-radius:9px;display:grid;place-items:center;opacity:.45;position:relative">${IC.cards}<span class="badge">7</span></div>
+      <div style="width:30px;height:30px;margin:0 auto;border-radius:9px;display:grid;place-items:center;opacity:.45">${IC.gear}</div></div>
+    <div style="flex:1;min-width:0;display:flex;flex-direction:column">
+      <div class="pw-head" style="padding:11px 14px 0">
+        <span class="btn sm${s.img?" off":""}">Auto detect ▾</span>${ic("swap")}<span class="btn sm">Vietnamese ▾</span>
+        <div class="pw-icons">${ic("pin","on")}${ic("close")}</div></div>
+      <div style="display:flex;gap:8px;padding:11px 14px 0;flex:1;position:relative">${content}
+        ${s.float?floatBar(374,68):""}</div>
+      ${s.sub?subPane(s,{tag:"Cụm",squeeze:true}):""}
+      <div style="display:flex;align-items:center;gap:8px;padding:12px 14px">
+        <span class="btn pri${s.state==="loading"?" off":""}">${qaMode?"Ask":MODE[s.mode].t} <span class="kbd" style="opacity:.85">⌘↵</span></span>
+        <span style="flex:1"></span>
+        <span class="muted" style="font-size:11.5px">${one?"Lưu vào bộ ôn tập ⌘S":qaMode?"Enter gửi · ⇧Enter xuống dòng":"Bôi đen một cụm để tra riêng"}</span></div></div></div>`);
+}
+
+/* ═══ D · Command Capsule ═══ */
+function mockD(s){
+  const m = MODE[s.mode];
+  return shellW(s,`
+    <div style="padding:11px 14px 12px;position:relative">
+      <div style="display:flex;align-items:center;gap:7px;margin-bottom:5px">
+        <span class="chip ${m.c}" style="height:17px;padding:0 7px;font-size:9px">${m.t}</span>
+        <span class="muted" style="font-size:11.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1">${s.img?"▤ application-form.png":esc(String(s.src||"").slice(0,58))+(String(s.src||"").length>58?"…":"")}</span>
+        <span class="mini" style="margin:0">${icS("speak")}${spk(s)}${icS("copy")}${icS("save")}</span></div>
+      <div style="font-size:14.5px;line-height:1.5">${resHTML(s,5)}</div>
+      ${s.sub?`<div style="margin-top:7px;padding-left:11px;border-left:2px solid #0071e3;font-size:13px">
+        <span class="muted">“${esc(s.sub.src)}”</span> — ${Array.isArray(s.sub.res)?esc(s.sub.res[3][0])+" · ⌘E xem đủ":esc(s.sub.res)}</div>`:""}
+      ${s.qa?`<div style="margin-top:8px;padding-top:8px;border-top:.5px solid rgba(0,0,0,.07);font-size:13px">
+        <b style="font-weight:600">${esc(s.qa[s.qa.length-1].q)}</b><br>
+        <span class="muted">Answering<span class="dl"></span><span class="dl"></span><span class="dl"></span></span></div>`:""}
+      ${s.float?floatBar(230,44):""}
+    </div>
+    <div class="hair" style="height:.5px"></div>
+    <div style="display:flex;align-items:center;gap:8px;padding:8px 14px 9px">
+      <span class="muted" style="font-family:var(--mono);font-size:12px">&gt;</span>
+      <span class="muted" style="font-size:12.5px;flex:1">learn · proofread · images · hoặc gõ câu hỏi</span>
+      <span class="kbd">⌘E mở rộng</span><span class="kbd">esc</span></div>`,520);
+}
+
+/* ═══ E · Peek + Tabs ═══ */
+function mockE(s){
+  const tabs = [["Translation",true],["Learn",false]];
+  if (s.sub){ tabs.push([`“${s.sub.src}”`,false]); if (s.sub.replaced) tabs.push([`“${s.sub.replaced}”`,false]); }
+  if (s.qa) tabs.push(["Q&A · 3",false]);
+  const tabHTML = tabs.map(([t,on],i)=>`<span style="padding:5px 10px;border-radius:8px;font:${on?"600":"400"} 11.5px/1 var(--sans);
+    background:${on?"rgba(0,113,227,.13)":"transparent"};color:${on?"#0071e3":"inherit"};opacity:${on?1:.6};display:inline-flex;gap:6px;align-items:center;white-space:nowrap">
+    ${esc(t)}<span class="kbd">⌘${i+1}</span></span>`).join("");
+  const wide = s.rL > s.sL*3;
+  return `<div style="display:flex;flex-direction:column;gap:24px;align-items:flex-start">
+    <div style="position:relative">
+      <div style="position:absolute;top:-20px;left:2px;font:600 9.5px/1 var(--mono);letter-spacing:.12em;color:rgba(255,255,255,.5)">TẦNG 1 · PEEK</div>
+      ${shellW(s,`<div style="padding:11px 14px;position:relative">
+        <div style="display:flex;gap:8px;align-items:baseline">
+          <div style="flex:1;font-size:14.5px;line-height:1.45;max-height:44px;overflow:hidden">${resHTML(s,2)}</div>
+          <span class="mini" style="margin:0">${icS("speak")}${spk(s)}${icS("copy")}${icS("save")}</span></div>
+        <div style="display:flex;align-items:center;gap:8px;margin-top:7px">
+          <span class="muted" style="font-size:11px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${s.img?"▤ application-form.png":esc(String(s.src||"").slice(0,52))}</span>
+          <span class="kbd">⌥↓ mở rộng</span></div>
+        ${s.float?floatBar(168,42):""}</div>`,420)}</div>
+    <div style="position:relative">
+      <div style="position:absolute;top:-20px;left:2px;font:600 9.5px/1 var(--mono);letter-spacing:.12em;color:rgba(255,255,255,.5)">TẦNG 2 · WORKSPACE — cao cố định, kết quả mới thành tab</div>
+      ${shellW(s,`
+        <div class="pw-head">
+          <span class="btn sm${s.img?" off":""}">Auto detect ▾</span>${ic("swap")}<span class="btn sm">Vietnamese ▾</span>
+          <div class="pw-icons">${ic("more")}${ic("pin","on")}${ic("close")}</div></div>
+        <div style="display:flex;gap:3px;padding:10px 12px 0;flex-wrap:wrap">${tabHTML}</div>
+        <div style="display:flex;gap:8px;padding:9px 14px 0;height:180px;position:relative">
+          <div class="pane" style="flex:${wide?32:50}"><div class="pane-hd"><span class="lbl">SOURCE</span><span class="mini">${icS("speak")}${spk(s)}</span></div>
+            <div class="pane-body${s.sL>50?" clip":""}">${srcHTML(s,true)}</div></div>
+          <div class="pane" style="flex:${wide?68:50}"><div class="pane-hd"><span class="chip ${MODE[s.mode].c}">${MODE[s.mode].t}</span>
+            <span class="mini">${icS("speak")}${icS("retry")}${icS("copy")}${icS("save")}</span></div>
+            <div class="pane-body${s.rL>54?" clip":""}">${resHTML(s,6)}</div></div>
+          ${s.float?floatBar(408,66):""}</div>
+        <div style="display:flex;align-items:center;gap:7px;padding:12px 14px">
+          <span class="btn pri">Translate <span class="kbd" style="opacity:.85">⌘↵</span></span>
+          <span class="btn sm${s.img?" off":""}">Learn</span><span class="btn sm${s.img?" off":""}">Proofread</span>
+          <span class="btn sm">Search Images ↗</span><span style="flex:1"></span><span class="btn sm">Ask <span class="kbd">⌘K</span></span></div>`,760)}</div></div>`;
+}
+
+/* ═══ X · Hợp nhất — tab (E) + tỉ lệ thích ứng (A) + compact tuỳ chọn (D) ═══ */
+function xTabs(s){
+  const t = [{id:"main", label: MODE[s.mode].t, kb:1}];
+  if (s.sub){
+    t.push({id:"sub", label:`“${s.sub.src}”`, kb:t.length+1});
+    if (s.sub.replaced) t.push({id:"sub2", label:`“${s.sub.replaced}”`, kb:t.length+1});
+  }
+  if (s.qa) t.push({id:"qa", label:`Q&A · ${s.qa.length}`, kb:t.length+1});
+  return t;
+}
+/* Tab nào đáng bật sẵn: tab mới nhất, đúng như khi vừa tra xong. */
+function xDefaultTab(s){ const t = xTabs(s); return t[t.length-1].id; }
+
+/* Tầng pane, lấy từ A: hình dạng do nội dung tab quyết định, không phải hằng số. */
+function xBody(s, tab){
+  const H = 186;
+  if (tab === "qa"){
+    return `<div class="pane" style="height:${H}px"><div class="pane-hd"><span class="lbl">Q&amp;A</span>
+      <span class="muted" style="font-size:11px">mỗi lượt có nút riêng</span>
+      <span class="mini">${icS("copy")}${icS("close")}</span></div>
+      <div class="pane-body clip" style="height:${H-30}px">${qaBlocks(s)}</div></div>`;
+  }
+  if (tab === "sub2"){
+    return `<div class="pane" style="height:${H}px"><div class="pane-hd"><span class="chip gray">Cụm</span>
+      <span class="muted" style="font-size:11.5px">“${esc(s.sub.replaced)}”</span>
+      <span class="mini">${icS("speak")}${icS("save")}${icS("up2")}${icS("close")}</span></div>
+      <div class="pane-body">số lượt gọi đi–về giữa hai bên</div></div>`;
+  }
+  if (tab === "sub"){
+    // Learn: nguồn 1 từ, kết quả 14 dòng — một cột, đây là chỗ 560 px trống biến mất.
+    if (s.sub.tall) return `<div class="pane" style="height:${H}px"><div class="pane-hd">
+        <span class="chip learn">Learn</span><span class="lbl">${esc(s.sub.src).toUpperCase()} · EN → VI</span>
+        <span class="mini">${icS("speak")}${icS("retry")}${icS("copy")}${icS("save")}${icS("up2")}${icS("close")}</span></div>
+      <div class="pane-body clip" style="height:${H-30}px;column-count:2;column-gap:22px">${subRes(s.sub,14)}</div></div>`;
+    return `<div style="display:flex;gap:8px;height:${H}px">
+      <div class="pane" style="flex:34"><div class="pane-hd"><span class="chip gray">Cụm</span><span class="mini">${icS("speak")}</span></div>
+        <div class="pane-body">${esc(s.sub.src)}</div></div>
+      <div class="pane" style="flex:66"><div class="pane-hd"><span class="lbl">VI</span>
+        <span class="mini">${icS("speak")}${icS("retry")}${icS("copy")}${icS("save")}${icS("up2")}${icS("close")}</span></div>
+        <div class="pane-body">${subRes(s.sub)}</div></div></div>`;
+  }
+  if (s.mode === "proofread"){
+    return `<div class="pane" style="height:${H}px"><div class="pane-hd"><span class="chip proof">Proofread</span>
+      <span class="muted" style="font-size:11px">3 sửa</span>
+      <span class="mini">${icS("speak")}${icS("copy")}${icS("save")}</span></div>
+      <div class="pane-body" style="padding-top:4px">
+        <span style="text-decoration:line-through;opacity:.45">i has went</span> <b>I went</b> to the store yesterday and
+        <span style="text-decoration:line-through;opacity:.45">buyed two apple</span> <b>bought two apples</b>.</div></div>`;
+  }
+  const wide = s.rL > s.sL*3, L = wide?30:50, R = 100-L;
+  return `<div style="display:flex;gap:8px;height:${H}px;position:relative">
+    <div class="pane" style="flex:${L}"><div class="pane-hd"><span class="lbl">SOURCE</span>
+      <span class="mini">${icS("speak")}${spk(s)}</span></div>
+      <div class="pane-body${s.sL>46?" clip":""}">${srcHTML(s,true)}</div></div>
+    <div class="pane" style="flex:${R}"><div class="pane-hd"><span class="chip ${MODE[s.mode].c}">${MODE[s.mode].t}</span>
+      <span class="mini">${icS("speak")}${icS("retry")}${icS("copy")}${icS("save")}</span></div>
+      <div class="pane-body${s.rL>50?" clip":""}">${resHTML(s,6)}</div></div>
+    ${s.float?floatBar(408,66):""}</div>`;
+}
+
+function mockX(s, tab){
+  const tabs = xTabs(s);
+  const active = tab || xDefaultTab(s);
+  const tabHTML = tabs.map(t=>`<button class="tabx${t.id===active?" on":""}" data-xtab="${t.id}">
+    ${esc(t.label)}<span class="kbd">⌘${t.kb}</span>${t.id!=="main"?`<span class="x">✕</span>`:""}</button>`).join("");
+  return `<div style="display:flex;flex-direction:column;gap:26px;align-items:flex-start">
+    <div style="position:relative">
+      <div style="position:absolute;top:-20px;left:2px;font:600 9.5px/1 var(--mono);letter-spacing:.12em;color:rgba(255,255,255,.5)">TUỲ CHỌN · COMPACT (từ D) — tắt mặc định, ⌘E bung xuống khung dưới</div>
+      ${shellW(s,`<div style="padding:10px 14px 11px">
+        <div style="display:flex;align-items:center;gap:7px;margin-bottom:5px">
+          <span class="chip ${MODE[s.mode].c}" style="height:17px;padding:0 7px;font-size:9px">${MODE[s.mode].t}</span>
+          <span class="muted" style="font-size:11.5px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${s.img?"▤ application-form.png":esc(String(s.src||"").slice(0,56))}</span>
+          <span class="mini" style="margin:0">${icS("speak")}${spk(s)}${icS("copy")}${icS("save")}</span></div>
+        <div style="font-size:14px;line-height:1.45;max-height:44px;overflow:hidden">${resHTML(s,2)}</div>
+        <div style="display:flex;align-items:center;gap:8px;margin-top:7px">
+          <span class="muted" style="font-family:var(--mono);font-size:12px">&gt;</span>
+          <span class="muted" style="font-size:12px;flex:1">learn · proofread · hoặc gõ câu hỏi</span>
+          <span class="kbd">⌘E</span><span class="kbd">esc</span></div></div>`,470)}</div>
+
+    <div style="position:relative">
+      <div style="position:absolute;top:-20px;left:2px;font:600 9.5px/1 var(--mono);letter-spacing:.12em;color:rgba(255,255,255,.5)">KHUNG CHÍNH — tab (E) bọc ngoài, tỉ lệ thích ứng (A) bên trong · bấm thử tab, chiều cao không đổi</div>
+      ${shellW(s,`
+        <div class="pw-head">
+          <span class="pw-title">NTranslate</span>
+          <div style="display:flex;align-items:center;gap:5px;margin-left:12px">
+            <span class="btn sm${s.img?" off":""}">Auto detect ▾</span>${ic("swap")}<span class="btn sm">Vietnamese ▾</span></div>
+          <div class="pw-icons">${ic("more")}${ic("pin","on")}${ic("close")}</div></div>
+        <div style="display:flex;gap:3px;padding:10px 12px 0;flex-wrap:wrap" id="xTabBar">${tabHTML}</div>
+        <div style="padding:9px 14px 0">${xBody(s,active)}</div>
+        <div style="display:flex;align-items:center;gap:7px;padding:12px 14px">
+          <span class="btn pri${s.state==="loading"?" off":""}">Translate <span class="kbd" style="opacity:.85">⌘↵</span></span>
+          <span style="display:flex;border-radius:16px;overflow:hidden;border:.5px solid rgba(0,0,0,.09)">
+            <span class="btn sm${s.img?" off":""}" style="border-radius:0;border:0;height:32px">Learn</span>
+            <span class="btn sm${s.img?" off":""}" style="border-radius:0;border:0;border-left:.5px solid rgba(0,0,0,.09);height:32px">Proofread</span>
+            <span class="btn sm" style="border-radius:0;border:0;border-left:.5px solid rgba(0,0,0,.09);height:32px">Search Images ↗</span></span>
+          <span style="flex:1"></span>
+          <span class="btn sm">Ask <span class="kbd">⌘K</span></span></div>`,760)}</div></div>`;
+}
+
+/* ═══ Shells ═══ */
+const shellW = (s,inner,w) => `<div class="pw${dark?" dark":""}" style="width:${w}px">${inner}</div>`;
+const shell = (s,inner) => shellW(s,inner,760);
+
+/* ═══ Render ═══ */
+const MOCKS = {A:mockA,B:mockB,C:mockC,D:mockD,E:mockE};
+let xTab = null;
+const RATIO = {
+  A: s => s.rL>s.sL*3 ? "Pane 30 / 70" : s.mode==="proofread" ? "Một pane, diff cùng dòng" : "Pane 50 / 50",
+  B: s => "Một cột, khối xếp dọc" + (s.sub?" · cụm là khối con":"") + (s.qa?" · 3 khối hỏi đáp":""),
+  C: s => s.qa ? "Rail · chế độ Q&A toàn khung" : s.mode==="learn" ? "Rail 44 px · một cột" : "Rail 44 px · hai cột",
+  D: () => "Capsule 520 px · dòng lệnh",
+  E: () => "Peek 420 px + Workspace 760 px",
+  X: s => {
+    const n = xTabs(s).length;
+    return n > 1 ? `${n} tab · chỉ 1 khung hiển thị` : "1 tab · chưa có kết quả phụ";
+  }
+};
+
+function renderX(){
+  const s = SITS[cur];
+  const host = document.querySelector('[data-mock="X"]');
+  if (!host) return;
+  host.innerHTML = mockX(s, xTab);
+  const bar = host.querySelector("#xTabBar");
+  if (bar) bar.onclick = e => {
+    const b = e.target.closest("[data-xtab]"); if (!b) return;
+    xTab = b.dataset.xtab; renderX();
+  };
+  const cut = document.getElementById("xCut");
+  if (cut){
+    const before = Math.round(EST.now(s)), after = Math.round(EST.X(s));
+    cut.textContent = before > after + 20
+      ? `Hiện trạng ${before} px → ${after} px · giảm ${Math.round((1-after/before)*100)}%`
+      : `Hiện trạng ${before} px → ${after} px`;
+  }
+}
+
+function render(){
+  const s = SITS[cur];
+  xTab = null;
+  document.querySelectorAll("[data-mock]").forEach(h => {
+    const k = h.getAttribute("data-mock");
+    if (k === "X") return;
+    h.innerHTML = MOCKS[k](s);
+  });
+  renderX();
+  document.querySelectorAll("[data-px]").forEach(e => e.textContent = "≈ " + Math.round(EST[e.getAttribute("data-px")](s)) + " px");
+  document.querySelectorAll("[data-ratio]").forEach(e => e.textContent = RATIO[e.getAttribute("data-ratio")](s));
+  document.getElementById("nowHost").innerHTML = mockNow(s);
+  document.getElementById("nowPx").textContent = "≈ " + Math.round(EST.now(s)) + " px";
+  document.getElementById("nowNote").textContent = s.note;
+  wirePins();
+  document.querySelectorAll("#sitBar .seg").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.sit===cur)));
+  document.querySelectorAll("#mx tbody tr").forEach(tr => tr.style.background = tr.dataset.row===cur ? "var(--accent-soft)" : "");
+}
+
+/* ═══ Findings ═══ */
+function renderFinds(){
+  document.getElementById("findList").innerHTML = F.filter(f => filter==="all"||f.g===filter).map(f=>`
+    <div class="find" data-p="${f.n}">
+      <span class="sv s${f.s}">${SEV[f.s]}</span>
+      <div><b>${f.n}. ${esc(f.t)}</b><span class="d"><span class="tag">${GROUPS[f.g]}</span>${esc(f.d)}</span></div>
+      <div class="loc">${esc(f.l)}</div></div>`).join("");
+  wirePins();
+}
+function wirePins(){
+  const items = [...document.querySelectorAll(".find")];
+  document.querySelectorAll(".pin").forEach(pin=>{
+    const li = items.find(l=>l.dataset.p===pin.dataset.p);
+    const on = v => {pin.classList.toggle("hot",v); li&&li.classList.toggle("hot",v);};
+    pin.onmouseenter=()=>on(true); pin.onmouseleave=()=>on(false);
+    pin.onfocus=()=>on(true); pin.onblur=()=>on(false);
+    pin.onclick=()=>li&&li.scrollIntoView({block:"center"});
+  });
+  items.forEach(li=>{
+    const pin = document.querySelector(`.pin[data-p="${li.dataset.p}"]`);
+    li.onmouseenter=()=>{li.classList.add("hot"); pin&&pin.classList.add("hot");};
+    li.onmouseleave=()=>{li.classList.remove("hot"); pin&&pin.classList.remove("hot");};
+  });
+}
+
+/* ═══ Matrix ═══ */
+const SC = {
+  real:  {now:1,A:2,B:3,C:2,D:2,E:3,X:3},
+  word:  {now:2,A:3,B:2,C:2,D:3,E:3,X:3},
+  para:  {now:2,A:3,B:2,C:3,D:2,E:3,X:3},
+  learn: {now:1,A:3,B:3,C:3,D:2,E:3,X:3},
+  proof: {now:1,A:3,B:2,C:3,D:1,E:2,X:3},
+  phrase:{now:2,A:3,B:3,C:2,D:3,E:3,X:3},
+  sub:   {now:2,A:2,B:3,C:2,D:2,E:3,X:3},
+  sub2:  {now:1,A:2,B:3,C:1,D:2,E:3,X:3},
+  qa:    {now:1,A:2,B:3,C:3,D:2,E:3,X:3},
+  image: {now:1,A:2,B:3,C:3,D:2,E:2,X:2},
+  speak: {now:2,A:2,B:2,C:2,D:2,E:2,X:2},
+  load:  {now:2,A:2,B:3,C:2,D:3,E:3,X:3},
+  err:   {now:1,A:2,B:2,C:2,D:2,E:2,X:2}
+};
+function buildMatrix(){
+  document.querySelector("#mx tbody").innerHTML = ORDER.map(id=>{
+    const cells = ["now","A","B","C","D","E","X"].map(k=>`<td data-s="${SC[id][k]}">${SC[id][k]}</td>`).join("");
+    return `<tr data-row="${id}"><th>${SITS[id].label}<br><span style="font-weight:400;font-size:12px;color:var(--ink-3)">${SITS[id].note}</span></th>${cells}</tr>`;
+  }).join("");
+  const tf = document.querySelector("#mx tfoot tr");
+  ["now","A","B","C","D","E","X"].forEach(k=>{
+    const td = document.createElement("td");
+    td.textContent = ORDER.reduce((a,id)=>a+SC[id][k],0) + " / " + (ORDER.length*3);
+    tf.appendChild(td);
+  });
+}
+
+/* ═══ Controls ═══ */
+const sb = document.getElementById("sitBar");
+sb.innerHTML = ORDER.map(id=>`<button class="seg" data-sit="${id}" aria-pressed="false">${SITS[id].label}</button>`).join("");
+sb.onclick = e => {const b=e.target.closest(".seg"); if(!b) return; cur=b.dataset.sit; render();};
+
+const fb = document.getElementById("ffBar");
+fb.innerHTML = Object.entries(GROUPS).map(([k,v])=>
+  `<button class="ff" data-g="${k}" aria-pressed="${k==="all"}">${v}${k==="all"?` (${F.length})`:` (${F.filter(f=>f.g===k).length})`}</button>`).join("");
+fb.onclick = e => {
+  const b = e.target.closest(".ff"); if(!b) return;
+  filter = b.dataset.g;
+  fb.querySelectorAll(".ff").forEach(x=>x.setAttribute("aria-pressed",String(x.dataset.g===filter)));
+  renderFinds();
+};
+
+const tb = document.getElementById("themeBtn");
+tb.onclick = () => {dark=!dark; tb.textContent="Mockup: "+(dark?"Tối":"Sáng"); tb.setAttribute("aria-pressed",String(dark)); render();};
+
+buildMatrix(); renderFinds(); render();
+})();
+</script>
+</body>
+</html>

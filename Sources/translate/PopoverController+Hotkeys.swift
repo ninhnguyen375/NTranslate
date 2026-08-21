@@ -102,17 +102,6 @@ extension PopoverController {
     func learnAtCursor() {
         beginAtCursor(loading: PopoverFeedback.learning) { [weak self] resolved in
             guard let self else { return }
-            if case let .text(candidate) = resolved.input,
-               PopoverIntegrationPolicy.shouldSubtranslate(
-                   candidateText: candidate,
-                   originalSourceText: self.inputTextView.string,
-                   panelVisible: self.panel.isVisible,
-                   primaryResult: self.textView.string,
-                   hasPendingImage: self.pendingImage != nil
-               ) {
-                self.runSubRequest(text: candidate.trimmingCharacters(in: .whitespacesAndNewlines), mode: .learn)
-                return
-            }
             guard self.prepareInputFromSelection(resolved) else { return }
             // Learn has no image path; a pasted image would silently do nothing.
             guard self.pendingImage == nil else {

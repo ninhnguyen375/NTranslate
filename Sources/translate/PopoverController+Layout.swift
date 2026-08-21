@@ -8,6 +8,9 @@ extension PopoverController {
         let height = currentPopoverHeight()
         layoutSplitPrism(width: width, height: height)
         applyPanelFrame(size: NSSize(width: width, height: height))
+        if !selectionFloatingBar.isHidden {
+            updateFloatingSelectionBar()
+        }
     }
 
     func layoutSplitPrism(width: CGFloat, height: CGFloat) {
@@ -20,7 +23,7 @@ extension PopoverController {
         let statusY = headerY - statusH
         let bottomY = L.paddingBottom
         let qaH = L.qaInputHeight
-        let qaY = bottomY + L.bottomBarHeight + 8
+        let qaY = bottomY + L.bottomBarHeight + 12
         let splitY = qaY + qaH + L.footerGap
         // Pin body under the header so extra panel height grows the pane — never a dead gap.
         let splitTop = (statusH > 0 ? statusY : headerY) - L.headerGap
@@ -47,8 +50,9 @@ extension PopoverController {
         applySplitHostChrome()
 
         let chromeIcon = L.chromeIconSize
-        titleLabel.frame = NSRect(x: L.padding + 2, y: headerY, width: 160, height: L.headerHeight)
+        titleLabel.frame = NSRect(x: L.padding + 2, y: headerY, width: 90, height: L.headerHeight)
         statusLabel.frame = NSRect(x: L.padding, y: statusY, width: contentWidth - 50, height: statusH)
+        let headerIconGap: CGFloat = 8
         closeButton.frame = NSRect(
             x: width - L.padding - chromeIcon,
             y: headerY + (L.headerHeight - chromeIcon) / 2,
@@ -56,19 +60,19 @@ extension PopoverController {
             height: chromeIcon
         )
         pinButton.frame = NSRect(
-            x: closeButton.frame.minX - 6 - chromeIcon,
+            x: closeButton.frame.minX - headerIconGap - chromeIcon,
             y: closeButton.frame.minY,
             width: chromeIcon,
             height: chromeIcon
         )
         historyButton.frame = NSRect(
-            x: pinButton.frame.minX - 6 - chromeIcon,
+            x: pinButton.frame.minX - headerIconGap - chromeIcon,
             y: closeButton.frame.minY,
             width: chromeIcon,
             height: chromeIcon
         )
         reviewButton.frame = NSRect(
-            x: historyButton.frame.minX - 6 - chromeIcon,
+            x: historyButton.frame.minX - headerIconGap - chromeIcon,
             y: closeButton.frame.minY,
             width: chromeIcon,
             height: chromeIcon
@@ -81,17 +85,41 @@ extension PopoverController {
             height: badgeSize
         )
         updateButton.frame = NSRect(
-            x: reviewButton.frame.minX - 6 - chromeIcon,
+            x: reviewButton.frame.minX - headerIconGap - chromeIcon,
             y: closeButton.frame.minY,
             width: chromeIcon,
             height: chromeIcon
         )
         contextButton.frame = NSRect(
-            x: updateButton.frame.minX - 6 - chromeIcon,
+            x: updateButton.frame.minX - headerIconGap - chromeIcon,
             y: closeButton.frame.minY,
             width: chromeIcon,
             height: chromeIcon
         )
+
+        // Language selector shares the header row, between the title and the chrome icons.
+        let langH = L.languageControlHeight
+        let langY = headerY + (L.headerHeight - langH) / 2
+        let swapSize = L.swapWidth
+        let langX = titleLabel.frame.maxX + 12
+        sourceLanguageButton.frame = NSRect(x: langX, y: langY, width: L.languageWidth, height: langH)
+        swapLanguagesButton.frame = NSRect(
+            x: sourceLanguageButton.frame.maxX + 5,
+            y: langY,
+            width: swapSize,
+            height: langH
+        )
+        targetLanguageButton.frame = NSRect(
+            x: swapLanguagesButton.frame.maxX + 5,
+            y: langY,
+            width: L.languageWidth,
+            height: langH
+        )
+        applyControlCornerRadius(sourceLanguageButton, radius: L.languageCornerRadius)
+        applyControlCornerRadius(targetLanguageButton, radius: L.languageCornerRadius)
+        applyControlCornerRadius(swapLanguagesButton, radius: L.languageCornerRadius)
+        styleLanguageButtonTitle(sourceLanguageButton, language: sourceLanguageSelection)
+        styleLanguageButtonTitle(targetLanguageButton, language: targetLanguageSelection)
         applyControlCornerRadius(closeButton, radius: chromeIcon / 2)
         applyControlCornerRadius(pinButton, radius: chromeIcon / 2)
         applyControlCornerRadius(historyButton, radius: chromeIcon / 2)
@@ -138,17 +166,19 @@ extension PopoverController {
             bodyHeight: bodyHeight
         )
 
-        // Bottom bar: Images | Proofread | Learn | Translate | spacer | EN | swap | VI
+        // Bottom bar: Images | Proofread | Learn | Translate | Ask
         translateButton.sizeToFit()
         learnButton.sizeToFit()
         imagesButton.sizeToFit()
         proofreadButton.sizeToFit()
+        askButton.sizeToFit()
         let btnH = L.controlHeight
         let btnY = bottomY
         let translateW = max(92, translateButton.frame.width)
         let learnW = max(72, learnButton.frame.width)
         let imagesW = max(72, imagesButton.frame.width)
         let proofreadW = max(88, proofreadButton.frame.width)
+        let askW = max(72, askButton.frame.width)
         imagesButton.frame = NSRect(
             x: L.padding,
             y: btnY,
@@ -173,41 +203,17 @@ extension PopoverController {
             width: translateW,
             height: btnH
         )
+        askButton.frame = NSRect(
+            x: translateButton.frame.maxX + 5,
+            y: btnY,
+            width: askW,
+            height: btnH
+        )
         applyControlCornerRadius(translateButton)
         applyControlCornerRadius(learnButton)
         applyControlCornerRadius(imagesButton)
         applyControlCornerRadius(proofreadButton)
-
-        let langH = L.languageControlHeight
-        let langY = btnY + (btnH - langH) / 2
-        let swapSize = L.swapWidth
-        let trailingX = width - L.padding
-        let availableLangWidth = max(140, trailingX - (translateButton.frame.maxX + 12))
-        let dropdownWidth = min(L.languageWidth, max(75, (availableLangWidth - swapSize - 10) / 2))
-
-        targetLanguageButton.frame = NSRect(
-            x: trailingX - dropdownWidth,
-            y: langY,
-            width: dropdownWidth,
-            height: langH
-        )
-        swapLanguagesButton.frame = NSRect(
-            x: targetLanguageButton.frame.minX - 5 - swapSize,
-            y: langY,
-            width: swapSize,
-            height: langH
-        )
-        sourceLanguageButton.frame = NSRect(
-            x: swapLanguagesButton.frame.minX - 5 - dropdownWidth,
-            y: langY,
-            width: dropdownWidth,
-            height: langH
-        )
-        applyControlCornerRadius(sourceLanguageButton, radius: L.languageCornerRadius)
-        applyControlCornerRadius(targetLanguageButton, radius: L.languageCornerRadius)
-        applyControlCornerRadius(swapLanguagesButton, radius: L.languageCornerRadius)
-        styleLanguageButtonTitle(sourceLanguageButton, language: sourceLanguageSelection)
-        styleLanguageButtonTitle(targetLanguageButton, language: targetLanguageSelection)
+        applyControlCornerRadius(askButton)
 
         qaInputField.frame = NSRect(
             x: L.padding,
@@ -244,18 +250,27 @@ extension PopoverController {
         var iconX = paneWidth - 10 - icon
         for button in trailingIcons.reversed() {
             button.frame = NSRect(x: iconX, y: headerIconY, width: icon, height: icon)
-            iconX -= icon + 4
+            iconX -= icon + 6
         }
         if headerBar === sourceHeaderBar {
             speechRatePopUp.sizeToFit()
             speechRatePopUp.frame = NSRect(x: iconX - speechRatePopUp.frame.width, y: headerIconY + (icon - speechRatePopUp.frame.height) / 2, width: speechRatePopUp.frame.width, height: speechRatePopUp.frame.height)
         }
-        scrollView.frame = NSRect(x: 0, y: 0, width: paneWidth, height: bodyHeight)
-        scrollView.hasVerticalScroller = true
-        textView.minSize = NSSize(width: 0, height: bodyHeight)
-        if textView === inputTextView {
+        if textView === inputTextView && !inputContextLabel.isHidden {
+            let contextH: CGFloat = 16
+            let scrollH = max(0, bodyHeight - contextH)
+            inputContextLabel.frame = NSRect(x: 12, y: bodyHeight - contextH, width: max(0, paneWidth - 24), height: contextH)
+            scrollView.frame = NSRect(x: 0, y: 0, width: paneWidth, height: scrollH)
+            textView.minSize = NSSize(width: 0, height: scrollH)
             imagePlaceholderLabel.frame = NSRect(x: 12, y: 10, width: max(0, paneWidth - 24), height: 22)
+        } else {
+            scrollView.frame = NSRect(x: 0, y: 0, width: paneWidth, height: bodyHeight)
+            textView.minSize = NSSize(width: 0, height: bodyHeight)
+            if textView === inputTextView {
+                imagePlaceholderLabel.frame = NSRect(x: 12, y: 10, width: max(0, paneWidth - 24), height: 22)
+            }
         }
+        scrollView.hasVerticalScroller = true
     }
 
     /// Height the split body wants before the panel clamp — the sum of both sections plus the gap.

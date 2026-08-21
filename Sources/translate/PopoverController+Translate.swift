@@ -6,17 +6,6 @@ extension PopoverController {
     func translateAtCursor(forceSimulatedCopy: Bool = false) {
         beginAtCursor(loading: PopoverFeedback.translating, forceSimulatedCopy: forceSimulatedCopy) { [weak self] resolved in
             guard let self else { return }
-            if case let .text(candidate) = resolved.input,
-               PopoverIntegrationPolicy.shouldSubtranslate(
-                   candidateText: candidate,
-                   originalSourceText: self.inputTextView.string,
-                   panelVisible: self.panel.isVisible,
-                   primaryResult: self.textView.string,
-                   hasPendingImage: self.pendingImage != nil
-               ) {
-                self.runSubRequest(text: candidate.trimmingCharacters(in: .whitespacesAndNewlines), mode: .translate)
-                return
-            }
             guard self.prepareInputFromSelection(resolved) else { return }
             self.lastExecutionMode = .translate
             let generation = self.beginRequest()
@@ -102,6 +91,9 @@ extension PopoverController {
         }
         invalidateTranslationRequest()
         invalidateSpeech(stopPlayback: true)
+        inputContextLabel.stringValue = ""
+        inputContextLabel.toolTip = nil
+        inputContextLabel.isHidden = true
         switch resolved.input {
         case let .text(text):
             setPendingImage(nil)
@@ -122,42 +114,16 @@ extension PopoverController {
     }
 
     @objc func runTranslate() {
-        if let text = panelSelectionForSubtranslate() {
-            runSubRequest(text: text, mode: .translate)
-            return
-        }
         lastExecutionMode = .translate
         invalidateSpeech(stopPlayback: true)
         performTranslate(generation: nil)
-    }
-
-    /// Text highlighted inside the popup that the Translate/Learn buttons should send to the
-    /// subtranslate pane instead of re-running the whole input. Nil when nothing is selected or the
-    /// popup isn't in a state that supports a secondary pane — the buttons then behave normally.
-    func panelSelectionForSubtranslate() -> String? {
-        guard PopoverIntegrationPolicy.usesSubtranslate(
-            panelVisible: panel.isVisible,
-            primaryResult: textView.string,
-            hasPendingImage: pendingImage != nil
-        ) else { return nil }
-        let views = [inputTextView, textView] + (subSection.map { [$0.sourceTextView, $0.resultTextView] } ?? [])
-        for view in views {
-            let text = view.string
-            let range = view.selectedRange()
-            guard range.length > 0, let bounds = Range(range, in: text) else { continue }
-            let trimmed = text[bounds].trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !trimmed.isEmpty,
-                  trimmed != inputTextView.string.trimmingCharacters(in: .whitespacesAndNewlines)
-            else { continue }
-            return trimmed
-        }
-        return nil
     }
 
     func performTranslate(generation existingGeneration: Int?, bypassCache: Bool = false) {
         invalidateCurrentRecord()
         removeQASection()
         qaInputField.stringValue = ""
+        qaInputField.isHidden = true
         let generation = existingGeneration ?? beginRequest()
         guard let translator else {
             finishRequest(generation: generation)
