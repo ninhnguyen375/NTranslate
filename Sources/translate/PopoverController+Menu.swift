@@ -243,6 +243,8 @@ extension PopoverController {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        refreshTimer?.invalidate()
+        refreshTimer = nil
         if let hotKeyEventHandlerRef { RemoveEventHandler(hotKeyEventHandlerRef) }
         registeredHotKeys.forEach { UnregisterEventHotKey($0) }
         registeredHotKeys.removeAll()
@@ -281,15 +283,21 @@ extension PopoverController {
         }
         if let loadError = historyStore.loadError {
             setStatus(loadError, autoClearAfter: 12)
+        } else if let syncWarning = historyStore.syncWarning {
+            setStatus(syncWarning, autoClearAfter: 12)
         }
         reflowLayout()
         let trimmedAPIKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedAPIKey.isEmpty else {
+        if trimmedAPIKey.isEmpty {
             translator = nil
+        } else {
+            translator = Translator(config: config, apiKey: trimmedAPIKey)
+        }
+        reviewWindowController.updateDependencies(store: historyStore, translator: translator, config: config)
+        guard !trimmedAPIKey.isEmpty else {
             setResultText("Error: API key is empty — open Settings… and enter your 9router API key.")
             return outcome
         }
-        translator = Translator(config: config, apiKey: trimmedAPIKey)
         configureLanguageControls()
         updateShortcutLabels()
         assert(URL(string: config.apiBaseURL) != nil)

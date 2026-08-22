@@ -7,7 +7,7 @@ private final class FlippedDocumentView: NSView {
 
 @MainActor
 final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preconcurrency AVAudioPlayerDelegate {
-    private let store: TranslationHistoryStore
+    private var store: TranslationHistoryStore
     var translator: Translator?
     var config: AppConfig?
     private var recordsToReview: [TranslationRecord] = []
@@ -69,6 +69,12 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { nil }
+
+    func updateDependencies(store: TranslationHistoryStore, translator: Translator?, config: AppConfig) {
+        self.store = store
+        self.translator = translator
+        self.config = config
+    }
 
     func showReview() {
         isPracticeMode = false

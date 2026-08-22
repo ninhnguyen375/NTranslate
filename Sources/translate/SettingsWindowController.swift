@@ -268,9 +268,21 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
 
     private func makeAdvancedView() -> NSView {
         let choose = NSButton(title: "Choose…", target: self, action: #selector(chooseHistoryDirectory))
-        let historyRow = NSStackView(views: [historyDirectoryField, choose])
-        historyRow.orientation = .horizontal
-        historyRow.spacing = 8
+        let historyFields = NSStackView(views: [historyDirectoryField, choose])
+        historyFields.orientation = .horizontal
+        historyFields.spacing = 8
+
+        // The label column is a fixed 150pt, so the sync hint goes under the field instead.
+        let historyHint = NSTextField(labelWithString: "Point at a folder your Macs already share (iCloud Drive, Dropbox, Syncthing) to sync history across devices.")
+        historyHint.font = .systemFont(ofSize: 11)
+        historyHint.textColor = .secondaryLabelColor
+        historyHint.lineBreakMode = .byWordWrapping
+        historyHint.maximumNumberOfLines = 2
+        let historyRow = NSStackView(views: [historyFields, historyHint])
+        historyRow.orientation = .vertical
+        historyRow.alignment = .leading
+        historyRow.spacing = 4
+        historyHint.widthAnchor.constraint(equalTo: historyRow.widthAnchor).isActive = true
 
         let dimensions = NSStackView(views: [widthField, NSTextField(labelWithString: "×"), heightField])
         dimensions.orientation = .horizontal
@@ -282,7 +294,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
             speechModelsStack,
             labeledRow("Fallback Model", speechFallbackModelField),
             labeledRow("Speech", autoPrefetchSpeechCheckbox),
-            labeledRow("History Directory", historyRow),
+            labeledRow("History Folder", historyRow),
             labeledRow("Panel Width × Height", dimensions),
             labeledRow("Copy", autoCopyCheckbox),
             labeledRow("Paste", simulateCopyCheckbox),

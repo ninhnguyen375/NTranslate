@@ -184,6 +184,7 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     let floatingCopyButton = PointerButton(frame: .zero)
     var currentFloatingSelectedText: String?
     var currentFloatingIsResult: Bool = false
+    var refreshTimer: Timer?
 
     var speechRate: Float {
         get { SpeechRatePolicy.resolved(UserDefaults.standard.float(forKey: SpeechRatePolicy.defaultsKey)) }
@@ -234,6 +235,17 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         reloadConfig()
         updateReviewBadge()
         performUpdateCheck(silent: true)
+        refreshTimer = Timer.scheduledTimer(withTimeInterval: 900, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                guard let self else { return }
+                self.historyStore.refresh()
+                // Touching the lazy controller would build a window the user never opened.
+                if self.historyWindowController.window?.isVisible == true {
+                    self.historyWindowController.reloadHistory()
+                }
+                self.updateReviewBadge()
+            }
+        }
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self, self.panel.isVisible else { return event }
             if event.keyCode == UInt16(kVK_Escape) {
