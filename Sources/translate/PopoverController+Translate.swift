@@ -194,7 +194,7 @@ extension PopoverController {
             excludingText: text
         ).reversed().map { ContextPair(source: $0.sourceText, target: $0.resultText) }
         translator.translate(text, sourceLang: pair.source, targetLang: pair.target, context: context) { [weak self] result in
-            Task { @MainActor in self?.finishTextTranslation(result, generation: generation, source: text, pair: pair) }
+            Task { @MainActor in self?.finishTextTranslation(result, generation: generation, source: text, pair: pair, bypassCache: bypassCache) }
         }
     }
 
@@ -239,7 +239,7 @@ extension PopoverController {
         updatePaneLanguageLabels()
     }
 
-    func finishTextTranslation(_ result: Result<TranslationResult, Error>, generation: Int, source: String, pair: (source: String, target: String)) {
+    func finishTextTranslation(_ result: Result<TranslationResult, Error>, generation: Int, source: String, pair: (source: String, target: String), bypassCache: Bool = false) {
         defer { finishRequest(generation: generation) }
         guard generation == requestGeneration, pendingImage == nil else { return }
         switch result {
@@ -255,8 +255,8 @@ extension PopoverController {
             )
             setResultText(value.text)
             do {
-                let stored = try historyStore.appendIfAbsent(record)
-                if stored.id != record.id {
+                let stored = try (bypassCache ? historyStore.upsertRecord(record) : historyStore.appendIfAbsent(record))
+                if stored.id != record.id && !bypassCache {
                     pendingSourceSpeech.removeValue(forKey: generation)
                     applyReusableRecord(stored, mode: .translate, generation: generation)
                 } else {

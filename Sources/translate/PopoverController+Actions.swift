@@ -46,8 +46,8 @@ extension PopoverController {
                         isSaved: false
                     )
                     do {
-                        let stored = try self.historyStore.appendIfAbsent(record)
-                        if stored.id != record.id {
+                        let stored = try (bypassCache ? self.historyStore.upsertRecord(record) : self.historyStore.appendIfAbsent(record))
+                        if stored.id != record.id && !bypassCache {
                             self.applyReusableRecord(stored, mode: .learn, generation: generation)
                         } else {
                             self.currentRecordID = stored.id
@@ -112,8 +112,8 @@ extension PopoverController {
                         sourceLanguage: lang, targetLanguage: lang, isSaved: false
                     )
                     do {
-                        let stored = try self.historyStore.appendIfAbsent(record)
-                        if stored.id != record.id {
+                        let stored = try (bypassCache ? self.historyStore.upsertRecord(record) : self.historyStore.appendIfAbsent(record))
+                        if stored.id != record.id && !bypassCache {
                             self.applyReusableRecord(stored, mode: .proofread, generation: generation)
                         } else {
                             self.currentRecordID = stored.id

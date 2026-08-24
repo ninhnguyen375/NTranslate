@@ -279,6 +279,41 @@ final class TranslationHistoryStore {
         return record
     }
 
+    @discardableResult
+    func upsertRecord(_ record: TranslationRecord) throws -> TranslationRecord {
+        try validateForMutation(record)
+        if let existing = reusableRecord(
+            mode: record.mode,
+            sourceText: record.sourceText,
+            sourceLanguage: record.sourceLanguage,
+            targetLanguage: record.targetLanguage,
+            sourceIsAutoDetect: false
+        ) {
+            try update(recordID: existing.id) { rec in
+                rec = TranslationRecord(
+                    id: rec.id,
+                    timestamp: record.timestamp,
+                    updatedAt: Date(),
+                    deletedAt: rec.deletedAt,
+                    mode: rec.mode,
+                    sourceText: rec.sourceText,
+                    resultText: record.resultText,
+                    sourceLanguage: rec.sourceLanguage,
+                    targetLanguage: rec.targetLanguage,
+                    sourceAudioPath: rec.sourceAudioPath,
+                    resultAudioPath: rec.resultAudioPath,
+                    isSaved: rec.isSaved,
+                    dueDate: rec.dueDate,
+                    interval: rec.interval,
+                    ease: rec.ease
+                )
+            }
+            return records.first(where: { $0.id == existing.id }) ?? record
+        }
+        try append(record)
+        return record
+    }
+
     func setSaved(_ isSaved: Bool, recordID: UUID) throws {
         try update(recordID: recordID) { record in
             record.isSaved = isSaved
