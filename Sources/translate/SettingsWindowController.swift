@@ -39,6 +39,10 @@ final class HotkeyFields {
     }
 }
 
+private final class FlippedDocumentView: NSView {
+    override var isFlipped: Bool { true }
+}
+
 @MainActor
 final class SettingsWindowController: NSWindowController, NSTableViewDataSource, NSTableViewDelegate, NSTextFieldDelegate, NSTextViewDelegate {
     typealias SaveHandler = (AppConfig, String) throws -> Void
@@ -52,6 +56,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
     private let apiBaseURLField = NSTextField()
     private let apiSpeechURLField = NSTextField()
     private let modelField = NSTextField()
+    private let themePopup = NSPopUpButton()
     private let sourceLanguagePopup = NSPopUpButton()
     private let targetLanguagePopup = NSPopUpButton()
     private let nativeLanguagePopup = NSPopUpButton()
@@ -197,7 +202,10 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
     }
 
     private func makeGeneralView() -> NSView {
+        themePopup.removeAllItems()
+        AppTheme.allCases.forEach { themePopup.addItem(withTitle: $0.displayName) }
         return scrollableForm([
+            labeledRow("Theme", themePopup),
             labeledRow("API Key", apiKeyField),
             labeledRow("API Base URL", apiBaseURLField),
             labeledRow("Speech URL", apiSpeechURLField),
@@ -347,7 +355,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         control.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         let row = NSStackView(views: [title, control])
         row.orientation = .horizontal
-        row.alignment = .centerY
+        row.alignment = .top
         row.spacing = 12
         return row
     }
@@ -359,8 +367,20 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         stack.spacing = 12
         stack.edgeInsets = NSEdgeInsets(top: 20, left: 20, bottom: 20, right: 20)
         stack.translatesAutoresizingMaskIntoConstraints = false
-        let scroll = scrollView(for: stack)
-        stack.widthAnchor.constraint(equalTo: scroll.contentView.widthAnchor).isActive = true
+
+        let container = FlippedDocumentView()
+        container.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(stack)
+        NSLayoutConstraint.activate([
+            stack.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            stack.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            stack.topAnchor.constraint(equalTo: container.topAnchor),
+            stack.bottomAnchor.constraint(lessThanOrEqualTo: container.bottomAnchor),
+            container.heightAnchor.constraint(greaterThanOrEqualTo: stack.heightAnchor)
+        ])
+
+        let scroll = scrollView(for: container)
+        container.widthAnchor.constraint(equalTo: scroll.contentView.widthAnchor).isActive = true
         return scroll
     }
 
@@ -397,7 +417,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
     /// A prompt is out of sync when it differs from this build's default — that is either an update
     /// that changed the default, or a customization the user made on purpose. Either way the button
     /// only offers the swap; it never applies one behind their back.
-    static func promptNeedsSync(current: String, appDefault: String) -> Bool {
+    nonisolated static func promptNeedsSync(current: String, appDefault: String) -> Bool {
         current.trimmingCharacters(in: .whitespacesAndNewlines)
             != appDefault.trimmingCharacters(in: .whitespacesAndNewlines)
     }
@@ -438,6 +458,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         apiBaseURLField.stringValue = config.apiBaseURL
         apiSpeechURLField.stringValue = config.apiSpeechURL
         modelField.stringValue = config.model
+        themePopup.selectItem(withTitle: config.theme.displayName)
         maxTranslateLengthField.integerValue = config.maxTranslateLength
         systemPromptView.string = config.systemPrompt
         learnPromptView.string = config.learnPrompt
@@ -501,6 +522,8 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         config.apiBaseURL = apiBaseURLField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         config.apiSpeechURL = apiSpeechURLField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         config.model = modelField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        let selectedThemeTitle = themePopup.titleOfSelectedItem ?? AppTheme.system.displayName
+        config.theme = AppTheme.allCases.first(where: { $0.displayName == selectedThemeTitle }) ?? .system
         config.sourceLang = sourceLanguagePopup.titleOfSelectedItem ?? ""
         config.targetLang = targetLanguagePopup.titleOfSelectedItem ?? ""
         config.nativeLang = nativeLanguagePopup.titleOfSelectedItem ?? ""

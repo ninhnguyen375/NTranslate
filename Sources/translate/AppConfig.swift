@@ -65,6 +65,7 @@ struct AppConfig: Codable {
     var imagePrompt: String
     var qaPrompt: String
     var autoPrefetchSpeech: Bool
+    var theme: AppTheme
     /// Speech model per language name, e.g. ["English": "edge-tts/en-US-AvaMultilingualNeural"].
     var speechModels: [String: String]
     /// Used for languages that have no entry in `speechModels`.
@@ -114,7 +115,8 @@ struct AppConfig: Codable {
         grammarPrompt: defaultGrammarPrompt,
         imagePrompt: defaultImagePrompt,
         qaPrompt: defaultQAPrompt,
-        autoPrefetchSpeech: false,
+        autoPrefetchSpeech: true,
+        theme: .system,
         speechModels: [
             "English": "edge-tts/en-US-AvaMultilingualNeural",
             "Vietnamese": "edge-tts/vi-VN-HoaiMyNeural",
@@ -145,6 +147,7 @@ struct AppConfig: Codable {
         imagePrompt: String = defaultImagePrompt,
         qaPrompt: String = defaultQAPrompt,
         autoPrefetchSpeech: Bool,
+        theme: AppTheme = .system,
         speechModels: [String: String],
         speechFallbackModel: String,
         historyDirectory: String? = nil,
@@ -170,6 +173,7 @@ struct AppConfig: Codable {
         self.imagePrompt = imagePrompt
         self.qaPrompt = qaPrompt
         self.autoPrefetchSpeech = autoPrefetchSpeech
+        self.theme = theme
         self.speechModels = speechModels
         self.speechFallbackModel = speechFallbackModel
         self.historyDirectory = historyDirectory
@@ -204,7 +208,8 @@ struct AppConfig: Codable {
         grammarPrompt = try container.decodeIfPresent(String.self, forKey: .grammarPrompt) ?? Self.defaultGrammarPrompt
         imagePrompt = try container.decodeIfPresent(String.self, forKey: .imagePrompt) ?? Self.defaultImagePrompt
         qaPrompt = try container.decodeIfPresent(String.self, forKey: .qaPrompt) ?? Self.defaultQAPrompt
-        autoPrefetchSpeech = try container.decodeIfPresent(Bool.self, forKey: .autoPrefetchSpeech) ?? false
+        autoPrefetchSpeech = try container.decodeIfPresent(Bool.self, forKey: .autoPrefetchSpeech) ?? true
+        theme = try container.decodeIfPresent(AppTheme.self, forKey: .theme) ?? .system
         historyDirectory = try container.decodeIfPresent(String.self, forKey: .historyDirectory)
         hotkey = try container.decode(Hotkey.self, forKey: .hotkey)
         copyTranslateHotkey = try container.decodeIfPresent(Hotkey.self, forKey: .copyTranslateHotkey)

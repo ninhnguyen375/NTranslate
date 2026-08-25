@@ -92,7 +92,7 @@ extension PopoverController {
     }
 
     func prefetchSpeech(_ identity: SpeechIdentity?, translationGeneration: Int?) {
-        guard config.autoPrefetchSpeech, let identity, let translator else { return }
+        guard config.autoPrefetchSpeech, let identity, identity.text.count <= 50, let translator else { return }
         if let data = speechCache[identity] {
             acceptPrefetchedSpeech(data, identity: identity, translationGeneration: translationGeneration)
             return

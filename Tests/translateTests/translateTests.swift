@@ -148,7 +148,8 @@ struct TranslateTests {
 
     @Test func appConfigDefaultsIssueFields() {
         #expect(AppConfig.default.sentenceLearnPrompt == AppConfig.defaultSentenceLearnPrompt)
-        #expect(!AppConfig.default.autoPrefetchSpeech)
+        #expect(AppConfig.default.autoPrefetchSpeech)
+        #expect(AppConfig.default.theme == .system)
     }
 
     @Test func appConfigDecodeDefaultsIssueFieldsWhenMissing() throws {
@@ -156,25 +157,29 @@ struct TranslateTests {
         var object = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
         object.removeValue(forKey: "sentenceLearnPrompt")
         object.removeValue(forKey: "autoPrefetchSpeech")
+        object.removeValue(forKey: "theme")
         let decoded = try JSONDecoder().decode(
             AppConfig.self,
             from: JSONSerialization.data(withJSONObject: object)
         )
         #expect(decoded.sentenceLearnPrompt == AppConfig.defaultSentenceLearnPrompt)
-        #expect(!decoded.autoPrefetchSpeech)
+        #expect(decoded.autoPrefetchSpeech)
+        #expect(decoded.theme == .system)
     }
 
     @Test func appConfigDecodeKeepsExplicitIssueFields() throws {
         let data = try JSONEncoder().encode(AppConfig.default)
         var object = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
         object["sentenceLearnPrompt"] = "custom sentence prompt"
-        object["autoPrefetchSpeech"] = true
+        object["autoPrefetchSpeech"] = false
+        object["theme"] = "dark"
         let decoded = try JSONDecoder().decode(
             AppConfig.self,
             from: JSONSerialization.data(withJSONObject: object)
         )
         #expect(decoded.sentenceLearnPrompt == "custom sentence prompt")
-        #expect(decoded.autoPrefetchSpeech)
+        #expect(!decoded.autoPrefetchSpeech)
+        #expect(decoded.theme == .dark)
     }
 
     @Test func learnPromptRoutesByWhitespace() {

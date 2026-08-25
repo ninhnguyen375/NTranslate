@@ -100,6 +100,9 @@ final class HistoryWindowController: NSWindowController, NSWindowDelegate, NSTab
     }
 
     @objc private func filterChanged() {
+        if filterSegmentedControl.selectedSegment == 1 {
+            timeSegmentedControl.selectedSegment = 0
+        }
         reloadHistory()
     }
 

@@ -24,6 +24,8 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
     private let readMoreButton = NSButton()
     private let speakSourceButton = NSButton()
     private let speakSlowSourceButton = NSButton()
+    private let speakShortcutLabel = NSTextField(labelWithString: "(4)")
+    private let speakSlowShortcutLabel = NSTextField(labelWithString: "(5)")
     private let resultLabel = NSTextField(wrappingLabelWithString: "")
     private let revealButton = NSButton()
     private let againButton = NSButton()
@@ -44,6 +46,7 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
     private let reviewAllShuffledButton = NSButton()
     private let cardScrollView = NSScrollView()
     private let cardDocumentView = FlippedDocumentView()
+    private var keyEventMonitor: Any?
 
     var onReviewsCompleted: (() -> Void)?
 
@@ -59,7 +62,7 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
         )
         window.minSize = NSSize(width: 480, height: 360)
         window.isReleasedWhenClosed = false
-        window.title = "Review SRS (Spaced Repetition)"
+        window.title = "Spaced Repetition"
         window.setFrameAutosaveName("ReviewSRSWindow")
 
         super.init(window: window)
@@ -81,10 +84,89 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
         recordsToReview = store.dueReviews()
         currentIndex = 0
         isAnswerRevealed = false
+        installKeyEventMonitorIfNeeded()
         showWindow(nil)
         window?.center()
         window?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+        loadCurrentCard()
+    }
+
+    private func installKeyEventMonitorIfNeeded() {
+        guard keyEventMonitor == nil else { return }
+        keyEventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard let self, let window = self.window, window.isVisible, NSApp.keyWindow === window else {
+                return event
+            }
+            return self.handleKeyDown(event)
+        }
+    }
+
+    private func removeKeyEventMonitor() {
+        if let keyEventMonitor {
+            NSEvent.removeMonitor(keyEventMonitor)
+            self.keyEventMonitor = nil
+        }
+    }
+
+    private func handleKeyDown(_ event: NSEvent) -> NSEvent? {
+        let chars = event.charactersIgnoringModifiers ?? ""
+        if chars == " " {
+            handleSpaceKey()
+            return nil
+        }
+        if isAnswerRevealed {
+            if chars == "1" {
+                applyGrade(.again)
+                return nil
+            } else if chars == "2" {
+                applyGrade(.hard)
+                return nil
+            } else if chars == "3" {
+                applyGrade(.easy)
+                return nil
+            }
+        }
+        if chars == "4" {
+            speakCurrentSource()
+            return nil
+        } else if chars == "5" {
+            speakCurrentSourceSlow()
+            return nil
+        }
+        return event
+    }
+
+    private func handleSpaceKey() {
+        if !isAnswerRevealed {
+            revealAnswer()
+            return
+        }
+        let clipView = cardScrollView.contentView
+        let visibleRect = clipView.documentVisibleRect
+        let docHeight = cardDocumentView.bounds.height
+        if visibleRect.maxY < docHeight - 5 {
+            let scrollDistance = clipView.bounds.height * 0.75
+            let newY = min(docHeight - visibleRect.height, visibleRect.origin.y + scrollDistance)
+            clipView.scroll(to: NSPoint(x: 0, y: max(0, newY)))
+            cardScrollView.reflectScrolledClipView(clipView)
+        } else {
+            clipView.scroll(to: NSPoint(x: 0, y: 0))
+            cardScrollView.reflectScrolledClipView(clipView)
+        }
+    }
+
+    private func applyGrade(_ grade: SRSGrade) {
+        stopAudio()
+        guard currentIndex < recordsToReview.count else { return }
+        let record = recordsToReview[currentIndex]
+        do {
+            try store.updateSRS(recordID: record.id, grade: grade)
+        } catch {
+            NSLog("[NTranslate] Failed to update SRS: \(error.localizedDescription)")
+        }
+
+        currentIndex += 1
         loadCurrentCard()
     }
 
@@ -120,6 +202,8 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
         termLabel.textColor = .labelColor
         termLabel.alignment = .center
         termLabel.lineBreakMode = .byWordWrapping
+        termLabel.setContentHuggingPriority(.defaultHigh, for: .horizontal)
+        termLabel.setContentCompressionResistancePriority(.defaultHigh, for: .horizontal)
 
         contextLabel.font = .systemFont(ofSize: 13, weight: .regular)
         contextLabel.textColor = .secondaryLabelColor
@@ -134,31 +218,54 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
         readMoreButton.action = #selector(toggleContextExpansion)
         readMoreButton.isHidden = true
 
-        speakSourceButton.image = makeSymbolImage(name: "speaker.wave.2", description: "Speak source (1.0x)")
+        speakSourceButton.image = makeSymbolImage(name: "speaker.wave.2", description: "Speak source (4 / 1.0x)")
         speakSourceButton.isBordered = false
         speakSourceButton.target = self
         speakSourceButton.action = #selector(speakCurrentSource)
-        speakSourceButton.toolTip = "Speak source (1.0x)"
-        speakSourceButton.setAccessibilityLabel("Speak source (1.0x)")
+        speakSourceButton.toolTip = "Speak source (4 / 1.0x)"
+        speakSourceButton.setAccessibilityLabel("Speak source (4 / 1.0x)")
         speakSourceButton.imageScaling = .scaleProportionallyUpOrDown
         speakSourceButton.contentTintColor = .secondaryLabelColor
         speakSourceButton.translatesAutoresizingMaskIntoConstraints = false
         speakSourceButton.widthAnchor.constraint(equalToConstant: 20).isActive = true
         speakSourceButton.heightAnchor.constraint(equalToConstant: 20).isActive = true
 
-        speakSlowSourceButton.image = makeSymbolImage(name: "tortoise", description: "Speak source slowly (0.5x)")
+        speakSlowSourceButton.image = makeSymbolImage(name: "tortoise", description: "Speak source slowly (5 / 0.5x)")
         speakSlowSourceButton.isBordered = false
         speakSlowSourceButton.target = self
         speakSlowSourceButton.action = #selector(speakCurrentSourceSlow)
-        speakSlowSourceButton.toolTip = "Speak source slowly (0.5x)"
-        speakSlowSourceButton.setAccessibilityLabel("Speak source slowly (0.5x)")
+        speakSlowSourceButton.toolTip = "Speak source slowly (5 / 0.5x)"
+        speakSlowSourceButton.setAccessibilityLabel("Speak source slowly (5 / 0.5x)")
         speakSlowSourceButton.imageScaling = .scaleProportionallyUpOrDown
         speakSlowSourceButton.contentTintColor = .secondaryLabelColor
         speakSlowSourceButton.translatesAutoresizingMaskIntoConstraints = false
         speakSlowSourceButton.widthAnchor.constraint(equalToConstant: 20).isActive = true
         speakSlowSourceButton.heightAnchor.constraint(equalToConstant: 20).isActive = true
 
-        let termStack = NSStackView(views: [termLabel, speakSourceButton, speakSlowSourceButton])
+        speakShortcutLabel.font = .systemFont(ofSize: 10, weight: .bold)
+        speakShortcutLabel.textColor = .tertiaryLabelColor
+        speakShortcutLabel.alignment = .center
+
+        speakSlowShortcutLabel.font = .systemFont(ofSize: 10, weight: .bold)
+        speakSlowShortcutLabel.textColor = .tertiaryLabelColor
+        speakSlowShortcutLabel.alignment = .center
+
+        let speakGroup = NSStackView(views: [speakSourceButton, speakShortcutLabel])
+        speakGroup.orientation = .horizontal
+        speakGroup.spacing = 1
+        speakGroup.alignment = .centerY
+
+        let speakSlowGroup = NSStackView(views: [speakSlowSourceButton, speakSlowShortcutLabel])
+        speakSlowGroup.orientation = .horizontal
+        speakSlowGroup.spacing = 1
+        speakSlowGroup.alignment = .centerY
+
+        let audioButtonsStack = NSStackView(views: [speakGroup, speakSlowGroup])
+        audioButtonsStack.orientation = .horizontal
+        audioButtonsStack.spacing = 6
+        audioButtonsStack.alignment = .centerY
+
+        let termStack = NSStackView(views: [termLabel, audioButtonsStack])
         termStack.orientation = .horizontal
         termStack.spacing = 8
         termStack.alignment = .centerY
@@ -359,6 +466,8 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
         sourceContainer.isHidden = false
         speakSourceButton.isHidden = false
         speakSlowSourceButton.isHidden = false
+        speakShortcutLabel.isHidden = false
+        speakSlowShortcutLabel.isHidden = false
         resultLabel.stringValue = record.resultText
         resultLabel.isHidden = true
         revealButton.isHidden = false
@@ -390,6 +499,8 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
         sourceContainer.isHidden = false
         speakSourceButton.isHidden = true
         speakSlowSourceButton.isHidden = true
+        speakShortcutLabel.isHidden = true
+        speakSlowShortcutLabel.isHidden = true
         resultLabel.stringValue = ""
         resultLabel.isHidden = true
         revealButton.isHidden = true
@@ -498,12 +609,12 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
                 speakSourceButton.image = makeSymbolImage(name: "hourglass", description: "Loading speech")
                 speakSourceButton.toolTip = "Loading speech..."
             case .play:
-                speakSourceButton.image = makeSymbolImage(name: "speaker.wave.2", description: "Speak source (1.0x)")
-                speakSourceButton.toolTip = "Speak source (1.0x)"
+                speakSourceButton.image = makeSymbolImage(name: "speaker.wave.2", description: "Speak source (4 / 1.0x)")
+                speakSourceButton.toolTip = "Speak source (4 / 1.0x)"
             }
         } else {
-            speakSourceButton.image = makeSymbolImage(name: "speaker.wave.2", description: "Speak source (1.0x)")
-            speakSourceButton.toolTip = "Speak source (1.0x)"
+            speakSourceButton.image = makeSymbolImage(name: "speaker.wave.2", description: "Speak source (4 / 1.0x)")
+            speakSourceButton.toolTip = "Speak source (4 / 1.0x)"
         }
 
         // Slow speed button (0.5x)
@@ -519,12 +630,12 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
                 speakSlowSourceButton.image = makeSymbolImage(name: "hourglass", description: "Loading slow speech")
                 speakSlowSourceButton.toolTip = "Loading speech..."
             case .play:
-                speakSlowSourceButton.image = makeSymbolImage(name: "tortoise", description: "Speak source slowly (0.5x)")
-                speakSlowSourceButton.toolTip = "Speak source slowly (0.5x)"
+                speakSlowSourceButton.image = makeSymbolImage(name: "tortoise", description: "Speak source slowly (5 / 0.5x)")
+                speakSlowSourceButton.toolTip = "Speak source slowly (5 / 0.5x)"
             }
         } else {
-            speakSlowSourceButton.image = makeSymbolImage(name: "tortoise", description: "Speak source slowly (0.5x)")
-            speakSlowSourceButton.toolTip = "Speak source slowly (0.5x)"
+            speakSlowSourceButton.image = makeSymbolImage(name: "tortoise", description: "Speak source slowly (5 / 0.5x)")
+            speakSlowSourceButton.toolTip = "Speak source slowly (5 / 0.5x)"
         }
 
         speakSourceButton.isEnabled = true
@@ -633,17 +744,8 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
     }
 
     @objc private func gradeClicked(_ sender: NSButton) {
-        stopAudio()
-        guard let grade = SRSGrade(rawValue: sender.tag), currentIndex < recordsToReview.count else { return }
-        let record = recordsToReview[currentIndex]
-        do {
-            try store.updateSRS(recordID: record.id, grade: grade)
-        } catch {
-            NSLog("[NTranslate] Failed to update SRS: \(error.localizedDescription)")
-        }
-
-        currentIndex += 1
-        loadCurrentCard()
+        guard let grade = SRSGrade(rawValue: sender.tag) else { return }
+        applyGrade(grade)
     }
 
     private func playAudio(_ data: Data, speed: Float = 1.0) {
@@ -661,5 +763,6 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
 
     func windowWillClose(_ notification: Notification) {
         stopAudio()
+        removeKeyEventMonitor()
     }
 }

@@ -32,7 +32,7 @@ extension PopoverController {
         configureChromeIconButton(closeButton, symbol: "xmark", action: #selector(closePopover), label: "Close")
         configureChromeIconButton(pinButton, symbol: "pin", action: #selector(togglePin), label: "Pin")
         configureChromeIconButton(historyButton, symbol: "clock.arrow.circlepath", action: #selector(openTranslationHistory), label: "Translation History")
-        configureChromeIconButton(reviewButton, symbol: "rectangle.stack", action: #selector(openReviewWindow), label: "Review SRS")
+        configureChromeIconButton(reviewButton, symbol: "rectangle.stack", action: #selector(openReviewWindow), label: "Spaced Repetition")
 
         reviewBadgeLabel.font = .systemFont(ofSize: 8, weight: .bold)
         reviewBadgeLabel.textColor = .white

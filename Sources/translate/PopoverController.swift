@@ -278,5 +278,12 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         }
     }
 
-
+    func applyTheme() {
+        let appearance = config.theme.nsAppearance
+        NSApp.appearance = appearance
+        panel.appearance = appearance
+        settingsWindowController?.window?.appearance = appearance
+        historyWindowController.window?.appearance = appearance
+        reviewWindowController.window?.appearance = appearance
+    }
 }

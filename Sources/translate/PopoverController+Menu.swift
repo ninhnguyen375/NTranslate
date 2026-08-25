@@ -38,8 +38,8 @@ extension PopoverController {
         openPanelItem.image = NSImage(systemSymbolName: "translate", accessibilityDescription: "Open Translate Panel")
         statusMenu.addItem(openPanelItem)
 
-        let reviewItem = NSMenuItem(title: "Review SRS", action: #selector(openReviewWindow), keyEquivalent: "r")
-        reviewItem.image = NSImage(systemSymbolName: "rectangle.stack", accessibilityDescription: "Review SRS")
+        let reviewItem = NSMenuItem(title: "Spaced Repetition", action: #selector(openReviewWindow), keyEquivalent: "r")
+        reviewItem.image = NSImage(systemSymbolName: "rectangle.stack", accessibilityDescription: "Spaced Repetition")
         reviewItem.tag = Self.reviewMenuItemTag
         statusMenu.addItem(reviewItem)
 
@@ -51,6 +51,12 @@ extension PopoverController {
         statsItem.image = NSImage(systemSymbolName: "chart.line.uptrend.xyaxis", accessibilityDescription: "Learning Progress")
         statsItem.tag = Self.statsMenuItemTag
         statusMenu.addItem(statsItem)
+
+        let syncPromptsItem = NSMenuItem(title: "Sync All Prompts with App", action: #selector(syncAllPromptsMenu), keyEquivalent: "")
+        syncPromptsItem.image = NSImage(systemSymbolName: "arrow.triangle.2.circlepath.doc.on.clipboard", accessibilityDescription: "Sync All Prompts with App")
+        syncPromptsItem.tag = Self.syncPromptsMenuItemTag
+        syncPromptsItem.isHidden = true
+        statusMenu.addItem(syncPromptsItem)
 
         let updateItem = NSMenuItem(title: "Check for Updates...", action: #selector(checkForUpdatesClicked), keyEquivalent: "u")
         updateItem.image = NSImage(systemSymbolName: "arrow.triangle.2.circlepath", accessibilityDescription: "Check for Updates")
@@ -81,17 +87,21 @@ extension PopoverController {
     static let accessibilityMenuItemTag = 9001
     static let reviewMenuItemTag = 9002
     static let statsMenuItemTag = 9003
+    static let syncPromptsMenuItemTag = 9004
 
     func menuWillOpen(_ menu: NSMenu) {
         if let item = menu.item(withTag: Self.accessibilityMenuItemTag) {
             item.isHidden = AXIsProcessTrusted()
+        }
+        if let item = menu.item(withTag: Self.syncPromptsMenuItemTag) {
+            item.isHidden = !config.hasOutOfSyncPrompts
         }
         updateReviewBadge()
     }
 
     func updateReviewBadge() {
         let stats = historyStore.computeStats()
-        let reviewTitle = stats.dueCount > 0 ? "Review SRS (\(stats.dueCount) cards)" : "Review SRS"
+        let reviewTitle = stats.dueCount > 0 ? "Spaced Repetition (\(stats.dueCount) cards)" : "Spaced Repetition"
         reviewButton.toolTip = reviewTitle
         reviewButton.setAccessibilityLabel(reviewTitle)
         if stats.dueCount > 0 {
@@ -105,6 +115,17 @@ extension PopoverController {
         }
         if let statsItem = statusItem.menu?.item(withTag: Self.statsMenuItemTag) {
             statsItem.title = "Saved: \(stats.totalSaved) · Mastered: \(stats.totalMastered) · Streak: \(stats.dayStreak)d"
+        }
+    }
+
+    @objc func syncAllPromptsMenu() {
+        var updated = config
+        updated.syncAllPromptsWithDefaults()
+        do {
+            try saveSettings(config: updated, apiKey: apiKey)
+            setStatus("Synced all prompts with app defaults", autoClearAfter: 6)
+        } catch {
+            setStatus("Sync prompts failed: \(error.localizedDescription)", autoClearAfter: 10)
         }
     }
 
@@ -265,6 +286,7 @@ extension PopoverController {
         invalidateTranslationRequest()
         invalidateSpeech(stopPlayback: true)
         config = outcome.config
+        applyTheme()
         registerHotKey()
         do {
             apiKey = try APIKeyStore.shared.load() ?? ""

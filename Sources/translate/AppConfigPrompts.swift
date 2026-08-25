@@ -202,4 +202,22 @@ extension AppConfig {
     - Output plain text only. Do not use markdown formatting such as **, *, #, _, [], or code fences.
     - Source language hint: {{config.sourceLang}}. Target language hint: {{config.targetLang}}.
     """
+
+    var hasOutOfSyncPrompts: Bool {
+        SettingsWindowController.promptNeedsSync(current: systemPrompt, appDefault: Self.defaultSystemPrompt)
+            || SettingsWindowController.promptNeedsSync(current: learnPrompt, appDefault: Self.defaultLearnPrompt)
+            || SettingsWindowController.promptNeedsSync(current: sentenceLearnPrompt, appDefault: Self.defaultSentenceLearnPrompt)
+            || SettingsWindowController.promptNeedsSync(current: grammarPrompt, appDefault: Self.defaultGrammarPrompt)
+            || SettingsWindowController.promptNeedsSync(current: imagePrompt, appDefault: Self.defaultImagePrompt)
+            || SettingsWindowController.promptNeedsSync(current: qaPrompt, appDefault: Self.defaultQAPrompt)
+    }
+
+    mutating func syncAllPromptsWithDefaults() {
+        systemPrompt = Self.defaultSystemPrompt
+        learnPrompt = Self.defaultLearnPrompt
+        sentenceLearnPrompt = Self.defaultSentenceLearnPrompt
+        grammarPrompt = Self.defaultGrammarPrompt
+        imagePrompt = Self.defaultImagePrompt
+        qaPrompt = Self.defaultQAPrompt
+    }
 }
