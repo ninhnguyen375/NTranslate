@@ -39,10 +39,15 @@ enum PopoverLayoutMath {
         return min(max(minHeight, measured), maxHeight)
     }
 
-    /// Equal left/right pane widths for Split Prism; leftover pixel goes to the right pane.
-    static func splitPaneWidth(contentWidth: CGFloat, divider: CGFloat) -> (left: CGFloat, right: CGFloat) {
+    static let splitPaneMinRatio: CGFloat = 0.15
+    static let splitPaneMaxRatio: CGFloat = 0.85
+
+    /// Left/right pane widths for Split Prism. `ratio` is the left-pane share of usable width
+    /// (0.5 = equal split). Leftover pixel goes to the right pane.
+    static func splitPaneWidth(contentWidth: CGFloat, divider: CGFloat, ratio: CGFloat = 0.5) -> (left: CGFloat, right: CGFloat) {
         let usable = max(0, contentWidth - divider)
-        let left = floor(usable / 2)
+        let clamped = min(max(ratio, splitPaneMinRatio), splitPaneMaxRatio)
+        let left = floor(usable * clamped)
         return (left, usable - left)
     }
 
@@ -59,6 +64,9 @@ enum PopoverLayoutMath {
     }
 
     /// Splits `available` across multiple stacked sections (e.g. Primary, Subtranslate, QA).
+    /// Each section is sized to its own content need, independent of the others — leftover room
+    /// (when content needs less than `available`) goes to Primary. Only shrinks below what each
+    /// needs, proportionally down to `minPaneHeight`, when `available` can't fit them all.
     static func multiStackedSectionHeights(
         available: CGFloat,
         primaryNeeded: CGFloat,
@@ -77,31 +85,16 @@ enum PopoverLayoutMath {
 
         let totalGaps = CGFloat(activeCount - 1) * gap
         let usable = max(minPaneHeight * CGFloat(activeCount), available - totalGaps)
-        let fairShare = max(minPaneHeight, (usable / CGFloat(activeCount)).rounded(.down))
+        let neededSum = primaryNeeded + (subNeeded ?? 0) + (qaNeeded ?? 0)
 
-        var subHeight: CGFloat? = nil
-        var qaHeight: CGFloat? = nil
-
-        var remainingUsable = usable
-
-        if let subNeeded {
-            let cap = min(remainingUsable - minPaneHeight * CGFloat(activeCount - 1), max(fairShare, subNeeded))
-            let allocated = min(max(minPaneHeight, subNeeded), cap)
-            subHeight = allocated
-            remainingUsable -= allocated
-            activeCount -= 1
+        if usable >= neededSum {
+            let leftover = usable - neededSum
+            return (max(minPaneHeight, primaryNeeded + leftover), subNeeded, qaNeeded)
         }
 
-        if let qaNeeded {
-            let cap = min(remainingUsable - minPaneHeight * CGFloat(activeCount - 1), max(fairShare, qaNeeded))
-            let allocated = min(max(minPaneHeight, qaNeeded), cap)
-            qaHeight = allocated
-            remainingUsable -= allocated
-            activeCount -= 1
-        }
-
-        let primaryHeight = max(minPaneHeight, remainingUsable)
-        return (primaryHeight, subHeight, qaHeight)
+        let scale = usable / neededSum
+        func scaled(_ needed: CGFloat) -> CGFloat { max(minPaneHeight, (needed * scale).rounded(.down)) }
+        return (scaled(primaryNeeded), subNeeded.map(scaled), qaNeeded.map(scaled))
     }
 
     /// Splits `available` between the primary pane and an optional subtranslate pane, keeping each

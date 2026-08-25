@@ -81,7 +81,10 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
 
     func showReview() {
         isPracticeMode = false
-        recordsToReview = store.dueReviews()
+        recordsToReview = Self.sessionRecords(
+            due: store.dueReviews(),
+            dailyNewWordLimit: config?.learning.dailyNewWordLimit ?? 12
+        )
         currentIndex = 0
         isAnswerRevealed = false
         installKeyEventMonitorIfNeeded()
@@ -90,6 +93,18 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
         window?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         loadCurrentCard()
+    }
+
+    static func sessionRecords(due: [TranslationRecord], dailyNewWordLimit: Int) -> [TranslationRecord] {
+        let limit = max(1, dailyNewWordLimit)
+        func isNew(_ record: TranslationRecord) -> Bool {
+            record.dueDate == nil || record.interval == 0
+        }
+        let reviews = due.filter { !isNew($0) }.sorted {
+            ($0.dueDate ?? .distantPast) < ($1.dueDate ?? .distantPast)
+        }
+        let news = due.filter(isNew)
+        return reviews + Array(news.prefix(limit))
     }
 
     private func installKeyEventMonitorIfNeeded() {

@@ -33,7 +33,12 @@ struct AppConfig: Codable {
         var autoCopy: Bool
         var simulateCopy: Bool
 
-        init(width: Double, height: Double, autoCopy: Bool, simulateCopy: Bool = false) {
+        init(
+            width: Double,
+            height: Double,
+            autoCopy: Bool,
+            simulateCopy: Bool = false
+        ) {
             self.width = width
             self.height = height
             self.autoCopy = autoCopy
@@ -46,6 +51,19 @@ struct AppConfig: Codable {
             height = try container.decode(Double.self, forKey: .height)
             autoCopy = try container.decode(Bool.self, forKey: .autoCopy)
             simulateCopy = try container.decodeIfPresent(Bool.self, forKey: .simulateCopy) ?? false
+        }
+    }
+
+    struct LearningSettings: Codable {
+        var dailyNewWordLimit: Int
+
+        init(dailyNewWordLimit: Int = 12) {
+            self.dailyNewWordLimit = max(1, dailyNewWordLimit)
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            dailyNewWordLimit = max(1, try container.decodeIfPresent(Int.self, forKey: .dailyNewWordLimit) ?? 12)
         }
     }
 
@@ -76,6 +94,7 @@ struct AppConfig: Codable {
     var learnHotkey: Hotkey
     var proofreadHotkey: Hotkey
     var ui: UI
+    var learning: LearningSettings
 
     static let defaultCopyTranslateHotkey = Hotkey(key: "D", option: true, command: false, control: true, shift: false)
     static let defaultLearnHotkey = Hotkey(key: "L", option: true, command: false, control: false, shift: false)
@@ -127,7 +146,8 @@ struct AppConfig: Codable {
         copyTranslateHotkey: .init(key: "D", option: true, command: false, control: true, shift: false),
         learnHotkey: .init(key: "L", option: true, command: false, control: false, shift: false),
         proofreadHotkey: defaultProofreadHotkey,
-        ui: .init(width: 760, height: 320, autoCopy: false, simulateCopy: false)
+        ui: .init(width: 900, height: 320, autoCopy: false, simulateCopy: false),
+        learning: LearningSettings()
     )
 
     init(
@@ -155,7 +175,8 @@ struct AppConfig: Codable {
         copyTranslateHotkey: Hotkey = AppConfig.defaultCopyTranslateHotkey,
         learnHotkey: Hotkey = AppConfig.defaultLearnHotkey,
         proofreadHotkey: Hotkey = AppConfig.defaultProofreadHotkey,
-        ui: UI
+        ui: UI,
+        learning: LearningSettings = LearningSettings()
     ) {
         self.apiBaseURL = apiBaseURL
         self.apiSpeechURL = apiSpeechURL
@@ -182,6 +203,7 @@ struct AppConfig: Codable {
         self.learnHotkey = learnHotkey
         self.proofreadHotkey = proofreadHotkey
         self.ui = ui
+        self.learning = learning
     }
 
     private enum LegacySpeechKeys: String, CodingKey {
@@ -217,6 +239,7 @@ struct AppConfig: Codable {
         learnHotkey = try container.decodeIfPresent(Hotkey.self, forKey: .learnHotkey) ?? Self.defaultLearnHotkey
         proofreadHotkey = try container.decodeIfPresent(Hotkey.self, forKey: .proofreadHotkey) ?? Self.defaultProofreadHotkey
         ui = try container.decodeIfPresent(UI.self, forKey: .ui) ?? Self.default.ui
+        learning = try container.decodeIfPresent(LearningSettings.self, forKey: .learning) ?? LearningSettings()
         let legacy = try decoder.container(keyedBy: LegacySpeechKeys.self)
         // Pre-1.3 configs stored speech models per role; map them onto the per-language dictionary.
         let legacySource = try legacy.decodeIfPresent(String.self, forKey: .speechSourceModel)
@@ -448,6 +471,7 @@ struct AppConfig: Codable {
         if !targetLanguages.contains(targetLang) { issues.append("Target language must exist in Target Languages.") }
         if maxTranslateLength <= 0 { issues.append("Maximum translation length must be greater than zero.") }
         if ui.width <= 0 || ui.height <= 0 { issues.append("Panel width and height must be greater than zero.") }
+        if learning.dailyNewWordLimit < 1 { issues.append("Daily new words must be at least 1.") }
         let named: [(String, Hotkey)] = [
             ("Global hotkey", hotkey),
             ("Copy & Translate hotkey", copyTranslateHotkey),

@@ -16,14 +16,18 @@ extension PopoverController {
     func layoutSplitPrism(width: CGFloat, height: CGFloat) {
         let L = ChromeLayout.self
         let contentWidth = width - L.padding * 2
-        let panes = PopoverLayoutMath.splitPaneWidth(contentWidth: contentWidth, divider: L.dividerWidth)
+        let panes = PopoverLayoutMath.splitPaneWidth(
+            contentWidth: contentWidth,
+            divider: L.dividerWidth,
+            ratio: mainSplitRatio
+        )
         let statusH = statusLabel.isHidden ? 0 : L.statusHeight
 
         let headerY = height - L.padding - L.headerHeight
         let statusY = headerY - statusH
         let bottomY = L.paddingBottom
-        let qaH = L.qaInputHeight
-        let qaY = bottomY + L.bottomBarHeight + 12
+        let qaH = visibleQAInputHeight
+        let qaY = bottomY + L.bottomBarHeight + (qaH > 0 ? 12 : 0)
         let splitY = qaY + qaH + L.footerGap
         // Pin body under the header so extra panel height grows the pane — never a dead gap.
         let splitTop = (statusH > 0 ? statusY : headerY) - L.headerGap
@@ -33,7 +37,7 @@ extension PopoverController {
         let heights = PopoverLayoutMath.multiStackedSectionHeights(
             available: totalSplitHeight,
             primaryNeeded: measuredPrimaryPaneHeight(paneWidth: panes.left),
-            subNeeded: subSection.map { measuredSubPaneHeight($0, paneWidth: panes.left) },
+            subNeeded: subSection.map { measuredSubPaneHeight($0, paneWidth: subSectionPanes(contentWidth: contentWidth, mode: $0.mode).left) },
             qaNeeded: qaSection.map { measuredQAPaneHeight($0, paneWidth: contentWidth) },
             gap: L.sectionGap,
             minPaneHeight: stackedMinPaneHeight
@@ -135,7 +139,7 @@ extension PopoverController {
             currentY += qaH + L.sectionGap
         }
         if let sub = subSection, let subH = heights.sub {
-            layoutSubSection(sub, x: L.padding, y: currentY, width: contentWidth, height: subH, panes: panes)
+            layoutSubSection(sub, x: L.padding, y: currentY, width: contentWidth, height: subH, panes: subSectionPanes(contentWidth: contentWidth, mode: sub.mode))
             currentY += subH + L.sectionGap
         }
 
@@ -152,7 +156,7 @@ extension PopoverController {
             headerLabel: sourceHeaderLabel,
             scrollView: inputScrollView,
             textView: inputTextView,
-            trailingIcons: [speakSourceButton],
+            trailingIcons: [speakSourceButton, speakSourceSlowButton],
             paneWidth: panes.left,
             bodyHeight: bodyHeight
         )
@@ -161,7 +165,7 @@ extension PopoverController {
             headerLabel: resultHeaderLabel,
             scrollView: textScrollView,
             textView: textView,
-            trailingIcons: [speakResultButton, retryButton, copyButton, saveWordButton],
+            trailingIcons: [speakResultButton, speakResultSlowButton, retryButton, copyButton, saveWordButton],
             paneWidth: panes.right,
             bodyHeight: bodyHeight
         )
@@ -252,10 +256,6 @@ extension PopoverController {
             button.frame = NSRect(x: iconX, y: headerIconY, width: icon, height: icon)
             iconX -= icon + 6
         }
-        if headerBar === sourceHeaderBar {
-            speechRatePopUp.sizeToFit()
-            speechRatePopUp.frame = NSRect(x: iconX - speechRatePopUp.frame.width, y: headerIconY + (icon - speechRatePopUp.frame.height) / 2, width: speechRatePopUp.frame.width, height: speechRatePopUp.frame.height)
-        }
         if textView === inputTextView && !inputContextLabel.isHidden {
             let contextH: CGFloat = 16
             let scrollH = max(0, bodyHeight - contextH)
@@ -287,7 +287,7 @@ extension PopoverController {
     }
 
     func measuredPrimaryPaneHeight(paneWidth: CGFloat) -> CGFloat {
-        paneHeight(
+        return paneHeight(
             source: inputTextView.attributedString(),
             result: textView.attributedString(),
             paneWidth: paneWidth
@@ -295,7 +295,7 @@ extension PopoverController {
     }
 
     func measuredSubPaneHeight(_ section: SubtranslateSection, paneWidth: CGFloat) -> CGFloat {
-        paneHeight(
+        return paneHeight(
             source: section.sourceTextView.attributedString(),
             result: section.resultTextView.attributedString(),
             paneWidth: paneWidth
@@ -400,7 +400,7 @@ extension PopoverController {
         let width = CGFloat(config.ui.width)
         let L = ChromeLayout.self
         let contentWidth = width - L.padding * 2
-        let panes = PopoverLayoutMath.splitPaneWidth(contentWidth: contentWidth, divider: L.dividerWidth)
+        let panes = PopoverLayoutMath.splitPaneWidth(contentWidth: contentWidth, divider: L.dividerWidth, ratio: mainSplitRatio)
         let splitHeight = currentSplitPaneHeight(paneWidth: panes.left)
         let statusH = statusLabel.isHidden ? 0 : L.statusHeight
         return PopoverLayoutMath.splitPrismHeight(
@@ -410,7 +410,7 @@ extension PopoverController {
             statusHeight: statusH,
             headerGap: L.headerGap,
             splitPaneHeight: splitHeight,
-            qaInputHeight: L.qaInputHeight,
+            qaInputHeight: visibleQAInputHeight,
             footerGap: L.footerGap,
             bottomBarHeight: L.bottomBarHeight
         )
@@ -422,18 +422,55 @@ extension PopoverController {
         var stackedAllowance: CGFloat = 0
         if subSection != nil { stackedAllowance += ChromeLayout.splitMaxStackedPaneHeight + ChromeLayout.sectionGap }
         if qaSection != nil { stackedAllowance += ChromeLayout.splitMaxStackedPaneHeight + ChromeLayout.sectionGap }
-        let base = CGFloat(config.ui.height) + 300 + stackedAllowance
+        let base = min(CGFloat(config.ui.height) + 300 + stackedAllowance, 900)
         guard let screen = currentScreenFrame() else { return base }
         return min(base, screen.height - 40)
     }
 
+    /// Chrome + one min-height slot per visible stacked pane — floor so stacked panes never overlap.
+    func stackedLayoutFloorHeight() -> CGFloat {
+        let L = ChromeLayout.self
+        var paneCount: CGFloat = 1
+        if subSection != nil { paneCount += 1 }
+        if qaSection != nil { paneCount += 1 }
+        let stackedBody = stackedMinPaneHeight * paneCount + L.sectionGap * (paneCount - 1)
+        let statusH = statusLabel.isHidden ? 0 : L.statusHeight
+        return PopoverLayoutMath.splitPrismHeight(
+            padding: L.padding,
+            paddingBottom: L.paddingBottom,
+            headerHeight: L.headerHeight,
+            statusHeight: statusH,
+            headerGap: L.headerGap,
+            splitPaneHeight: stackedBody,
+            qaInputHeight: visibleQAInputHeight,
+            footerGap: L.footerGap,
+            bottomBarHeight: L.bottomBarHeight
+        )
+    }
+
     func currentPopoverHeight() -> CGFloat {
-        // Hug content — don't force config.ui.height as a floor (that left empty chrome).
-        min(max(preferredPopoverHeight(), 220), maxPopoverHeight())
+        let preferred = max(preferredPopoverHeight(), stackedLayoutFloorHeight())
+        return min(max(preferred, 220), maxPopoverHeight())
+    }
+
+    /// Left-pane share of the main split. Auto-set by translation mode — 1:1 normally, 1:2 for Learn.
+    var mainSplitRatio: CGFloat {
+        lastExecutionMode == .learn ? 1.0 / 3.0 : 0.5
     }
 
     func measuredTextHeight(_ text: NSAttributedString, width: CGFloat) -> CGFloat {
         PopoverLayoutMath.measuredTextHeight(text, width: width)
+    }
+
+    var visibleQAInputHeight: CGFloat {
+        qaInputField.isHidden ? 0 : ChromeLayout.qaInputHeight
+    }
+
+    /// Left-pane share of the subtranslate split. Auto-set by translation mode — 1:1 normally, 1:2 for Learn.
+    func subSectionPanes(contentWidth: CGFloat, mode: TranslationMode) -> (left: CGFloat, right: CGFloat) {
+        let L = ChromeLayout.self
+        let ratio: CGFloat = mode == .learn ? 1.0 / 3.0 : 0.5
+        return PopoverLayoutMath.splitPaneWidth(contentWidth: contentWidth, divider: L.dividerWidth, ratio: ratio)
     }
 
 }

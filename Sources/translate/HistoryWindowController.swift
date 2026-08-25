@@ -15,6 +15,49 @@ enum HistoryTimeRange: CaseIterable {
     }
 }
 
+private final class HistoryRowView: NSTableRowView {
+    override var selectionHighlightStyle: NSTableView.SelectionHighlightStyle {
+        get { .none }
+        set {}
+    }
+
+    override var interiorBackgroundStyle: NSView.BackgroundStyle { .normal }
+
+    override func drawSelection(in dirtyRect: NSRect) {}
+
+    override var isSelected: Bool {
+        didSet { applySelectionAppearance() }
+    }
+
+    override var isEmphasized: Bool {
+        didSet { applySelectionAppearance() }
+    }
+
+    override func viewDidMoveToSuperview() {
+        super.viewDidMoveToSuperview()
+        applySelectionAppearance()
+    }
+
+    override func didAddSubview(_ subview: NSView) {
+        super.didAddSubview(subview)
+        applySelectionAppearance()
+    }
+
+    private func applySelectionAppearance() {
+        let card = subviews.compactMap { $0 as? NSVisualEffectView }.first
+        card?.wantsLayer = true
+        if isSelected {
+            card?.layer?.borderWidth = 1.5
+            card?.layer?.borderColor = NSColor.controlAccentColor.withAlphaComponent(0.75).cgColor
+            card?.layer?.backgroundColor = NSColor.controlAccentColor.withAlphaComponent(0.08).cgColor
+        } else {
+            card?.layer?.borderWidth = 0
+            card?.layer?.borderColor = nil
+            card?.layer?.backgroundColor = nil
+        }
+    }
+}
+
 @MainActor
 final class HistoryWindowController: NSWindowController, NSWindowDelegate, NSTableViewDataSource, NSTableViewDelegate, NSSearchFieldDelegate, @preconcurrency AVAudioPlayerDelegate {
     private let store: TranslationHistoryStore
@@ -97,6 +140,10 @@ final class HistoryWindowController: NSWindowController, NSWindowDelegate, NSTab
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
         guard filteredRecords.indices.contains(row) else { return nil }
         return rowView(for: filteredRecords[row])
+    }
+
+    func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {
+        HistoryRowView()
     }
 
     @objc private func filterChanged() {
@@ -218,6 +265,7 @@ final class HistoryWindowController: NSWindowController, NSWindowDelegate, NSTab
         tableView.rowHeight = 88
         tableView.backgroundColor = .clear
         tableView.usesAlternatingRowBackgroundColors = false
+        tableView.selectionHighlightStyle = .none
         tableView.intercellSpacing = NSSize(width: 0, height: 8)
         tableView.dataSource = self
         tableView.delegate = self
@@ -282,8 +330,10 @@ final class HistoryWindowController: NSWindowController, NSWindowDelegate, NSTab
 
         let source = historyTextField(record.sourceText, accessibilityLabel: "Source text for \(context): \(record.sourceText)")
         source.font = .systemFont(ofSize: 14, weight: .regular)
+        source.textColor = .labelColor
         let result = historyTextField(record.resultText, accessibilityLabel: "Translation for \(context): \(record.resultText)")
         result.font = .systemFont(ofSize: 14, weight: .semibold)
+        result.textColor = .labelColor
 
         source.toolTip = record.sourceText
         result.toolTip = record.resultText
@@ -363,6 +413,7 @@ final class HistoryWindowController: NSWindowController, NSWindowDelegate, NSTab
         field.maximumNumberOfLines = 1
         field.lineBreakMode = .byTruncatingTail
         field.alignment = .left
+        field.textColor = .labelColor
         field.cell?.wraps = false
         field.cell?.truncatesLastVisibleLine = true
         field.setContentHuggingPriority(.defaultLow, for: .horizontal)

@@ -4,31 +4,44 @@ import AVFoundation
 
 extension PopoverController {
     func updateSpeakButtons() {
-        updateSpeechButton(speakSourceButton, identity: sourceSpeechIdentity(), baseLabel: "source")
-        updateSpeechButton(speakResultButton, identity: resultSpeechIdentity(), baseLabel: "translation")
+        updateSpeechButton(speakSourceButton, identity: sourceSpeechIdentity(), baseLabel: "source", speed: 1.0, idleSymbol: "speaker.wave.2")
+        updateSpeechButton(speakSourceSlowButton, identity: sourceSpeechIdentity(), baseLabel: "source slowly", speed: 0.5, idleSymbol: "tortoise")
+        updateSpeechButton(speakResultButton, identity: resultSpeechIdentity(), baseLabel: "translation", speed: 1.0, idleSymbol: "speaker.wave.2")
+        updateSpeechButton(speakResultSlowButton, identity: resultSpeechIdentity(), baseLabel: "translation slowly", speed: 0.5, idleSymbol: "tortoise")
         if let section = subSection {
             updateSubSpeakButtons(section)
         }
         if !selectionFloatingBar.isHidden {
-            updateSpeechButton(floatingSpeakButton, identity: floatingSpeechIdentity(), baseLabel: "phrase")
+            updateSpeechButton(floatingSpeakButton, identity: floatingSpeechIdentity(), baseLabel: "phrase", speed: 1.0, idleSymbol: "speaker.wave.2")
         }
     }
 
     /// Same play/loading/pause/resume presentation as the main pane, for the subtranslate pane.
     func updateSubSpeakButtons(_ section: SubtranslateSection) {
-        updateSpeechButton(section.speakSourceButton, identity: subSpeechIdentity(kind: .source), baseLabel: "subtranslate source")
-        updateSpeechButton(section.speakResultButton, identity: subSpeechIdentity(kind: .result), baseLabel: "subtranslate translation")
+        updateSpeechButton(section.speakSourceButton, identity: subSpeechIdentity(kind: .source), baseLabel: "subtranslate source", speed: 1.0, idleSymbol: "speaker.wave.2")
+        updateSpeechButton(section.speakSourceSlowButton, identity: subSpeechIdentity(kind: .source), baseLabel: "subtranslate source slowly", speed: 0.5, idleSymbol: "tortoise")
+        updateSpeechButton(section.speakResultButton, identity: subSpeechIdentity(kind: .result), baseLabel: "subtranslate translation", speed: 1.0, idleSymbol: "speaker.wave.2")
+        updateSpeechButton(section.speakResultSlowButton, identity: subSpeechIdentity(kind: .result), baseLabel: "subtranslate translation slowly", speed: 0.5, idleSymbol: "tortoise")
     }
 
-    func updateSpeechButton(_ button: NSButton, identity: SpeechIdentity?, baseLabel: String) {
-        let action = identity.map { identity in
-            prefetchingSpeech.contains(where: { speechMatches($0, identity) })
-                ? SpeechButtonAction.loading
-                : speechState.action(for: identity)
+    func updateSpeechButton(
+        _ button: NSButton,
+        identity: SpeechIdentity?,
+        baseLabel: String,
+        speed: Float = 1.0,
+        idleSymbol: String = "speaker.wave.2"
+    ) {
+        let isActiveSpeed = abs(activeSpeechRate - speed) < 0.01
+        let action = identity.map { identity -> SpeechButtonAction in
+            if prefetchingSpeech.contains(where: { speechMatches($0, identity) }) {
+                return isActiveSpeed ? .loading : .play
+            }
+            let state = speechState.action(for: identity)
+            return isActiveSpeed ? state : .play
         } ?? .play
         let presentation: (symbol: String, verb: String, enabled: Bool)
         switch action {
-        case .play: presentation = ("speaker.wave.2", "Play", identity != nil)
+        case .play: presentation = (idleSymbol, speed < 1 ? "Speak slowly" : "Play", identity != nil)
         case .loading: presentation = ("hourglass", "Loading", false)
         case .pause: presentation = ("pause.fill", "Pause", true)
         case .resume: presentation = ("play.fill", "Resume", true)
@@ -101,7 +114,7 @@ extension PopoverController {
         let generation = prefetchGeneration
         prefetchingSpeech.insert(identity)
         updateSpeakButtons()
-        translator.speak(identity.text, model: identity.model, speed: speechRate) { [weak self] result in
+        translator.speak(identity.text, model: identity.model, speed: 1.0) { [weak self] result in
             Task { @MainActor in
                 guard let self else { return }
                 self.prefetchingSpeech.remove(identity)
@@ -131,38 +144,47 @@ extension PopoverController {
         }
     }
 
-    func playSpeech(_ identity: SpeechIdentity?) {
+    func playSpeech(_ identity: SpeechIdentity?, speed: Float = 1.0) {
         guard let identity,
               !prefetchingSpeech.contains(where: { speechMatches($0, identity) })
         else { return }
-        switch speechState.action(for: identity) {
-        case .pause:
-            audioPlayer?.pause()
-            _ = speechState.pause(identity)
-            updateSpeakButtons()
-        case .resume:
-            guard audioPlayer?.play() == true else { resetSpeechPlayback(); return }
-            _ = speechState.resume(identity)
-            updateSpeakButtons()
-        case .loading: break
-        case .play:
-            stopCurrentSpeech()
-            if let data = speechCache[identity] { startPlayback(data, identity: identity) }
-            else { loadAndPlaySpeech(identity) }
+        let sameActive = abs(activeSpeechRate - speed) < 0.01
+        if sameActive {
+            switch speechState.action(for: identity) {
+            case .pause:
+                audioPlayer?.pause()
+                _ = speechState.pause(identity)
+                updateSpeakButtons()
+                return
+            case .resume:
+                guard audioPlayer?.play() == true else { resetSpeechPlayback(); return }
+                _ = speechState.resume(identity)
+                updateSpeakButtons()
+                return
+            case .loading:
+                return
+            case .play:
+                break
+            }
         }
+        stopCurrentSpeech()
+        activeSpeechRate = speed
+        if let data = speechCache[identity] { startPlayback(data, identity: identity, speed: speed) }
+        else { loadAndPlaySpeech(identity, speed: speed) }
     }
 
-    func loadAndPlaySpeech(_ identity: SpeechIdentity) {
+    func loadAndPlaySpeech(_ identity: SpeechIdentity, speed: Float = 1.0) {
         guard let translator else { return }
+        activeSpeechRate = speed
         let generation = speechState.beginLoading(identity)
         updateSpeakButtons()
-        translator.speak(identity.text, model: identity.model, speed: speechRate) { [weak self] result in
+        translator.speak(identity.text, model: identity.model, speed: 1.0) { [weak self] result in
             Task { @MainActor in
                 guard let self, self.speechState.accepts(generation: generation, identity: identity) else { return }
                 switch result {
                 case let .success(data):
                     guard SpeechAudioPolicy.isValid(data),
-                          self.startPlayback(data, identity: identity, loadingGeneration: generation)
+                          self.startPlayback(data, identity: identity, speed: speed, loadingGeneration: generation)
                     else {
                         _ = self.speechState.finishLoading(generation: generation, identity: identity)
                         self.setStatus("Speak failed: Invalid audio response")
@@ -181,15 +203,18 @@ extension PopoverController {
     }
 
     @discardableResult
-    func startPlayback(_ data: Data, identity: SpeechIdentity, loadingGeneration: Int? = nil) -> Bool {
+    func startPlayback(_ data: Data, identity: SpeechIdentity, speed: Float = 1.0, loadingGeneration: Int? = nil) -> Bool {
         do {
+            audioPlayer?.stop()
+            audioPlayer = nil
             let player = try AVAudioPlayer(data: data)
             player.delegate = self
             player.enableRate = true
-            player.rate = speechRate
+            player.rate = speed
             player.prepareToPlay()
             guard player.play() else { throw NSError(domain: "Speech", code: 2, userInfo: [NSLocalizedDescriptionKey: "Audio could not be played"]) }
             audioPlayer = player
+            activeSpeechRate = speed
             if let loadingGeneration {
                 guard speechState.markPlaying(generation: loadingGeneration, identity: identity) else { player.stop(); return false }
             } else {
@@ -256,12 +281,8 @@ extension PopoverController {
         if let error { setStatus("Speak failed: \(error.localizedDescription)") }
     }
 
-    @objc func speakInput() { playSpeech(sourceSpeechIdentity()) }
-    @objc func speakResult() { playSpeech(resultSpeechIdentity()) }
-
-    @objc func speechRateChanged(_ sender: NSMenuItem) {
-        guard let rate = sender.representedObject as? Float else { return }
-        speechRate = rate
-        audioPlayer?.rate = rate
-    }
+    @objc func speakInput() { playSpeech(sourceSpeechIdentity(), speed: 1.0) }
+    @objc func speakInputSlow() { playSpeech(sourceSpeechIdentity(), speed: 0.5) }
+    @objc func speakResult() { playSpeech(resultSpeechIdentity(), speed: 1.0) }
+    @objc func speakResultSlow() { playSpeech(resultSpeechIdentity(), speed: 0.5) }
 }

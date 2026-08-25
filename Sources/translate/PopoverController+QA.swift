@@ -37,7 +37,7 @@ extension PopoverController: NSTextFieldDelegate {
         section.textView.isEditable = false
         section.textView.isSelectable = true
         section.textView.drawsBackground = false
-        section.textView.font = .systemFont(ofSize: ChromeLayout.bodyFontSize)
+        section.textView.font = .systemFont(ofSize: ChromeLayout.qaFontSize)
         section.textView.textColor = Palette.bodyText
         section.textView.focusRingType = .none
         section.textView.textContainerInset = NSSize(width: 12, height: 10)
@@ -198,7 +198,7 @@ extension PopoverController: NSTextFieldDelegate {
 
     func renderQASection(_ section: QAPaneSection) {
         section.render(
-            font: .systemFont(ofSize: ChromeLayout.bodyFontSize),
+            font: .systemFont(ofSize: ChromeLayout.qaFontSize),
             questionColor: Palette.titleText,
             answerColor: Palette.bodyText,
             pendingColor: Palette.loadingText,

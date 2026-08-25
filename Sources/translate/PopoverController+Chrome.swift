@@ -150,7 +150,9 @@ extension PopoverController {
         askButton.setAccessibilityLabel("Ask")
         updateShortcutLabels()
         configureIconButton(speakSourceButton, symbol: "speaker.wave.2", action: #selector(speakInput), label: "Speak source")
+        configureIconButton(speakSourceSlowButton, symbol: "tortoise", action: #selector(speakInputSlow), label: "Speak source slowly")
         configureIconButton(speakResultButton, symbol: "speaker.wave.2", action: #selector(speakResult), label: "Speak translation")
+        configureIconButton(speakResultSlowButton, symbol: "tortoise", action: #selector(speakResultSlow), label: "Speak translation slowly")
         configureIconButton(retryButton, symbol: "arrow.clockwise", action: #selector(retryRequest), label: "Retry / Fetch fresh")
         configureIconButton(copyButton, symbol: "doc.on.doc", action: #selector(copyResult), label: "Copy")
         configureIconButton(saveWordButton, symbol: "bookmark", action: #selector(toggleSaveWord), label: "Save Word")
@@ -161,8 +163,8 @@ extension PopoverController {
         languageSelectionChanged()
 
         sourceHeaderBar.addSubview(sourceHeaderLabel)
-        sourceHeaderBar.addSubview(speechRatePopUp)
         sourceHeaderBar.addSubview(speakSourceButton)
+        sourceHeaderBar.addSubview(speakSourceSlowButton)
         sourceCard.addSubview(sourceHeaderBar)
         sourceCard.addSubview(inputContextLabel)
         sourceCard.addSubview(inputScrollView)
@@ -170,6 +172,7 @@ extension PopoverController {
 
         resultHeaderBar.addSubview(resultHeaderLabel)
         resultHeaderBar.addSubview(speakResultButton)
+        resultHeaderBar.addSubview(speakResultSlowButton)
         resultHeaderBar.addSubview(retryButton)
         resultHeaderBar.addSubview(copyButton)
         resultHeaderBar.addSubview(saveWordButton)

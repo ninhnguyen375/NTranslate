@@ -31,10 +31,10 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         static let splitMinStackedPaneHeight: CGFloat = 120
         /// Vertical gap between the main pane and the subtranslate pane.
         static let sectionGap: CGFloat = 10
-        static let splitMaxPaneHeight: CGFloat = 420
+        static let splitMaxPaneHeight: CGFloat = 720
         /// Per-section cap once a subtranslate pane exists — two panes at `splitMaxPaneHeight` each
         /// overflow the panel.
-        static let splitMaxStackedPaneHeight: CGFloat = 300
+        static let splitMaxStackedPaneHeight: CGFloat = 520
         static let dividerWidth: CGFloat = 1
         /// Shared height for Learn / Translate.
         static let controlHeight: CGFloat = 32
@@ -53,6 +53,8 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         static let controlCornerRadius: CGFloat = 16
         /// Source / translation body text.
         static let bodyFontSize: CGFloat = 14
+        /// Q&A transcript text — smaller than the main panes to fit more conversation.
+        static let qaFontSize: CGFloat = 12
         /// Learn / Translate labels.
         static let controlFontSize: CGFloat = 12
         /// Language select labels (compact).
@@ -119,7 +121,9 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     let titleLabel = NSTextField(labelWithString: "Translate")
     let statusLabel = NSTextField(labelWithString: "")
     let speakSourceButton = NSButton(frame: .zero)
+    let speakSourceSlowButton = NSButton(frame: .zero)
     let speakResultButton = NSButton(frame: .zero)
+    let speakResultSlowButton = NSButton(frame: .zero)
     let retryButton = NSButton(frame: .zero)
     var splitDividerGradient: CAGradientLayer?
     var translator: Translator?
@@ -130,6 +134,7 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     var settingsWindowController: SettingsWindowController?
     var audioPlayer: AVAudioPlayer?
     var speechState = SpeechPlaybackState()
+    var activeSpeechRate: Float = 1.0
     var speechCache: [SpeechIdentity: Data] = [:]
     var prefetchGeneration = 0
     var prefetchingSpeech: Set<SpeechIdentity> = []
@@ -186,27 +191,11 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     var currentFloatingIsResult: Bool = false
     var refreshTimer: Timer?
 
-    var speechRate: Float {
-        get { SpeechRatePolicy.resolved(UserDefaults.standard.float(forKey: SpeechRatePolicy.defaultsKey)) }
-        set { UserDefaults.standard.set(newValue, forKey: SpeechRatePolicy.defaultsKey) }
-    }
-    let speechRatePopUp = NSPopUpButton()
-
     override init() {
         let field = NSTextField(frame: .zero)
         field.cell = VerticallyCenteredTextFieldCell(textCell: "")
         self.qaInputField = field
         super.init()
-        speechRatePopUp.isBordered = false
-        speechRatePopUp.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
-        speechRatePopUp.setAccessibilityLabel("Speech rate")
-        for rate in SpeechRatePolicy.options {
-            let item = NSMenuItem(title: String(format: "%.1fx", rate), action: #selector(speechRateChanged(_:)), keyEquivalent: "")
-            item.target = self
-            item.representedObject = rate
-            speechRatePopUp.menu?.addItem(item)
-        }
-        speechRatePopUp.selectItem(withTitle: String(format: "%.1fx", speechRate))
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {

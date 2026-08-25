@@ -51,7 +51,9 @@ extension PopoverController {
         }
 
         configureIconButton(section.speakSourceButton, symbol: "speaker.wave.2", action: #selector(speakSubSource), label: "Speak subtranslate source")
+        configureIconButton(section.speakSourceSlowButton, symbol: "tortoise", action: #selector(speakSubSourceSlow), label: "Speak subtranslate source slowly")
         configureIconButton(section.speakResultButton, symbol: "speaker.wave.2", action: #selector(speakSubResult), label: "Speak subtranslate translation")
+        configureIconButton(section.speakResultSlowButton, symbol: "tortoise", action: #selector(speakSubResultSlow), label: "Speak subtranslate translation slowly")
         configureIconButton(section.retryButton, symbol: "arrow.clockwise", action: #selector(retrySubRequest), label: "Retry / Fetch fresh subtranslate")
         configureIconButton(section.copyButton, symbol: "doc.on.doc", action: #selector(copySubResult), label: "Copy subtranslate")
         configureIconButton(section.saveWordButton, symbol: "bookmark", action: #selector(toggleSaveSubWord), label: "Save subtranslate")
@@ -59,11 +61,13 @@ extension PopoverController {
 
         section.sourceHeaderBar.addSubview(section.sourceHeaderLabel)
         section.sourceHeaderBar.addSubview(section.speakSourceButton)
+        section.sourceHeaderBar.addSubview(section.speakSourceSlowButton)
         section.sourceCard.addSubview(section.sourceHeaderBar)
         section.sourceCard.addSubview(section.sourceScrollView)
 
         section.resultHeaderBar.addSubview(section.resultHeaderLabel)
         section.resultHeaderBar.addSubview(section.speakResultButton)
+        section.resultHeaderBar.addSubview(section.speakResultSlowButton)
         section.resultHeaderBar.addSubview(section.retryButton)
         section.resultHeaderBar.addSubview(section.copyButton)
         section.resultHeaderBar.addSubview(section.saveWordButton)
@@ -105,7 +109,7 @@ extension PopoverController {
             headerLabel: section.sourceHeaderLabel,
             scrollView: section.sourceScrollView,
             textView: section.sourceTextView,
-            trailingIcons: [section.speakSourceButton],
+            trailingIcons: [section.speakSourceButton, section.speakSourceSlowButton],
             paneWidth: panes.left,
             bodyHeight: bodyHeight
         )
@@ -114,7 +118,7 @@ extension PopoverController {
             headerLabel: section.resultHeaderLabel,
             scrollView: section.resultScrollView,
             textView: section.resultTextView,
-            trailingIcons: [section.speakResultButton, section.retryButton, section.copyButton, section.saveWordButton, section.closeButton],
+            trailingIcons: [section.speakResultButton, section.speakResultSlowButton, section.retryButton, section.copyButton, section.saveWordButton, section.closeButton],
             paneWidth: panes.right,
             bodyHeight: bodyHeight
         )
@@ -166,14 +170,7 @@ extension PopoverController {
             setStatus(PopoverFeedback.textTooLong)
             return
         }
-        let section = subSection ?? makeSubSection()
-        subSection = section
-        subGeneration += 1
-        let generation = subGeneration
-        section.generation = generation
-        section.mode = mode
-        section.recordID = nil
-
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         let pair = LanguageDetector.resolvedPair(
             selectedSource: selectedSourceLanguage(),
             selectedTarget: selectedTargetLanguage(),
@@ -186,6 +183,26 @@ extension PopoverController {
         let displaySource = pair.source == LanguageDetector.autoDetect
             ? LanguageDetector.detectedLanguage(text)
             : pair.source
+        if !bypassCache,
+           let existing = subSection,
+           existing.mode == mode,
+           existing.sourceText == trimmed {
+            if existing.generation == subGeneration {
+                return
+            }
+            if PopoverFeedback.isCopyableResult(existing.resultText),
+               existing.sourceLanguage == displaySource,
+               existing.targetLanguage == pair.target {
+                return
+            }
+        }
+        let section = subSection ?? makeSubSection()
+        subSection = section
+        subGeneration += 1
+        let generation = subGeneration
+        section.generation = generation
+        section.mode = mode
+        section.recordID = nil
         section.sourceLanguage = displaySource
         section.targetLanguage = pair.target
         section.sourceHeaderLabel.stringValue = paneLanguageCode(displaySource)
@@ -200,12 +217,11 @@ extension PopoverController {
         setSubResultText(section, waitingText)
         reflowLayout()
 
-        if !bypassCache, let record = historyStore.reusableRecord(
+        if !bypassCache, let record = reusableSubRecord(
             mode: mode,
-            sourceText: text,
+            text: text,
             sourceLanguage: displaySource,
-            targetLanguage: pair.target,
-            sourceIsAutoDetect: selectedSourceLanguage() == LanguageDetector.autoDetect
+            targetLanguage: pair.target
         ) {
             finishSubRequest(generation: generation, text: text, mode: mode, pair: (displaySource, pair.target), result: .success(record.resultText), existingRecord: record)
             return
@@ -233,6 +249,34 @@ extension PopoverController {
                 handler(result.map(\.text))
             }
         }
+    }
+
+    func reusableSubRecord(
+        mode: TranslationMode,
+        text: String,
+        sourceLanguage: String,
+        targetLanguage: String
+    ) -> TranslationRecord? {
+        let autoDetect = selectedSourceLanguage() == LanguageDetector.autoDetect
+        if let record = historyStore.reusableRecord(
+            mode: mode,
+            sourceText: text,
+            sourceLanguage: sourceLanguage,
+            targetLanguage: targetLanguage,
+            sourceIsAutoDetect: autoDetect
+        ) {
+            return record
+        }
+        guard mode == .learn else { return nil }
+        let parent = inputTextView.string.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !parent.isEmpty, parent != text else { return nil }
+        return historyStore.reusableRecord(
+            mode: mode,
+            sourceText: "\(text) (context: \(parent))",
+            sourceLanguage: sourceLanguage,
+            targetLanguage: targetLanguage,
+            sourceIsAutoDetect: autoDetect
+        )
     }
 
     @objc func retrySubRequest() {
@@ -294,8 +338,10 @@ extension PopoverController {
         )
     }
 
-    @objc func speakSubSource() { playSpeech(subSpeechIdentity(kind: .source)) }
-    @objc func speakSubResult() { playSpeech(subSpeechIdentity(kind: .result)) }
+    @objc func speakSubSource() { playSpeech(subSpeechIdentity(kind: .source), speed: 1.0) }
+    @objc func speakSubSourceSlow() { playSpeech(subSpeechIdentity(kind: .source), speed: 0.5) }
+    @objc func speakSubResult() { playSpeech(subSpeechIdentity(kind: .result), speed: 1.0) }
+    @objc func speakSubResultSlow() { playSpeech(subSpeechIdentity(kind: .result), speed: 0.5) }
 
     @objc func copySubResult() {
         guard let section = subSection, PopoverFeedback.isCopyableResult(section.resultText) else { return }
@@ -494,12 +540,12 @@ extension PopoverController {
 
     @objc func floatingTranslateClicked() {
         guard let text = currentFloatingSelectedText else { return }
-        runSubRequest(text: text, mode: .translate)
+        runSubRequest(text: text, mode: .translate, bypassCache: false)
     }
 
     @objc func floatingLearnClicked() {
         guard let text = currentFloatingSelectedText else { return }
-        runSubRequest(text: text, mode: .learn)
+        runSubRequest(text: text, mode: .learn, bypassCache: false)
     }
 
     /// Speech identity for whatever phrase the floating bar is currently attached to.
@@ -515,7 +561,7 @@ extension PopoverController {
     }
 
     @objc func floatingSpeakClicked() {
-        playSpeech(floatingSpeechIdentity())
+        playSpeech(floatingSpeechIdentity(), speed: 1.0)
     }
 
     @objc func floatingCopyClicked() {
