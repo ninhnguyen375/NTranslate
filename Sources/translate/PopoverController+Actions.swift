@@ -215,7 +215,8 @@ extension PopoverController {
         saveWordButton.isEnabled = canSave && historyStore.loadError == nil && !isRequestInFlight
         if !saveWordButton.isHidden {
             let label = isSaved ? "Remove Saved Word" : "Save Word"
-            saveWordButton.image = NSImage(systemSymbolName: isSaved ? "bookmark.fill" : "bookmark", accessibilityDescription: label)
+            saveWordButton.image = NSImage(systemSymbolName: isSaved ? "bookmark.fill" : "bookmark", accessibilityDescription: label)?
+                .withSymbolConfiguration(paneIconSymbolConfiguration)
             saveWordButton.toolTip = label
             saveWordButton.setAccessibilityLabel(label)
             saveWordButton.contentTintColor = isSaved ? .controlAccentColor : .secondaryLabelColor
@@ -261,7 +262,8 @@ extension PopoverController {
         copyFlashWorkItem?.cancel()
         copyButton.title = ""
         copyButton.attributedTitle = NSAttributedString(string: "")
-        copyButton.image = NSImage(systemSymbolName: "checkmark.circle", accessibilityDescription: "Copied")
+        copyButton.image = NSImage(systemSymbolName: "checkmark.circle", accessibilityDescription: "Copied")?
+            .withSymbolConfiguration(paneIconSymbolConfiguration)
         copyButton.imagePosition = .imageOnly
         copyButton.contentTintColor = .systemGreen
         let work = DispatchWorkItem { [weak self] in

@@ -10,6 +10,10 @@ extension PopoverController: NSTextFieldDelegate {
         qaInputField.backgroundColor = NSColor.clear
         qaInputField.isBordered = false
         qaInputField.isEditable = true
+        qaInputField.usesSingleLineMode = true
+        qaInputField.lineBreakMode = .byClipping
+        qaInputField.cell?.wraps = false
+        qaInputField.cell?.isScrollable = true
         qaInputField.isSelectable = true
         qaInputField.focusRingType = .default
         qaInputField.wantsLayer = true

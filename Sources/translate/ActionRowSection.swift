@@ -59,6 +59,8 @@ final class ActionRowSection {
     let learnButton = ActionChipButton(frame: .zero)
     let translateButton = ActionChipButton(frame: .zero)
     let askButton = ActionChipButton(frame: .zero)
+    /// Holds the chips that do not fit the row; hidden while everything fits.
+    let overflowButton = ActionChipButton(frame: .zero)
 
     /// Hairlines drawn between the plain text actions (Learn | Proofread | Images | Ask).
     let dividers: [NSView] = (0..<3).map { _ in
@@ -88,10 +90,12 @@ final class ActionRowSection {
     func addToSuperview(_ view: NSView) {
         for button in buttons { view.addSubview(button) }
         for divider in dividers { view.addSubview(divider) }
+        view.addSubview(overflowButton)
     }
 
     func removeFromSuperview() {
         for button in buttons { button.removeFromSuperview() }
         for divider in dividers { divider.removeFromSuperview() }
+        overflowButton.removeFromSuperview()
     }
 }

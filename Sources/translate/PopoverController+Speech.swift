@@ -48,7 +48,8 @@ extension PopoverController {
         }
         let label = "\(presentation.verb) \(baseLabel)"
         button.title = ""
-        button.image = NSImage(systemSymbolName: presentation.symbol, accessibilityDescription: label)
+        button.image = NSImage(systemSymbolName: presentation.symbol, accessibilityDescription: label)?
+            .withSymbolConfiguration(paneIconSymbolConfiguration)
         button.imagePosition = .imageOnly
         button.contentTintColor = Palette.iconTint
         button.toolTip = label

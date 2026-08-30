@@ -26,7 +26,8 @@ extension PopoverController {
         let headerY = height - L.padding - L.headerHeight
         let statusY = headerY
         let bottomY = L.paddingBottom
-        let qaH = visibleQAInputHeight
+        let mergeQA = mergesQAInput
+        let qaH = effectiveQAInputHeight
         let qaY = bottomY
         // Everything under the main split now stacks above the Q&A input: main action row, then the
         // subtranslate pane with its own action row, then the Q&A answer pane.
@@ -171,13 +172,27 @@ extension PopoverController {
             layoutSectionDivider(sub, x: L.padding, y: currentY, width: contentWidth)
             currentY += L.sectionDividerReserved
         }
-        layoutActionRow(mainActionRow, y: currentY, contentWidth: contentWidth)
+        let mainRowEnd = layoutActionRow(
+            mainActionRow,
+            y: currentY,
+            contentWidth: contentWidth,
+            reservedTrailing: mergeQA ? PopoverLayoutMath.actionButtonGap + mergedQAInputMinWidth : 0
+        )
+        if mergeQA {
+            let fieldX = mainRowEnd + PopoverLayoutMath.actionButtonGap
+            qaInputField.frame = NSRect(
+                x: fieldX,
+                y: currentY,
+                width: max(0, L.padding + contentWidth - fieldX),
+                height: L.bottomBarHeight
+            )
+        }
         currentY += L.bottomBarHeight + L.footerGap
 
         splitHost.frame = NSRect(x: L.padding, y: currentY, width: contentWidth, height: splitHeight)
 
         sourceCard.frame = NSRect(x: 0, y: 0, width: panes.left, height: splitHeight)
-        splitDivider.frame = NSRect(x: panes.left, y: 14, width: max(1, L.dividerWidth), height: max(0, splitHeight - 28))
+        splitDivider.frame = NSRect(x: panes.left, y: L.padding, width: max(1, L.dividerWidth), height: max(0, splitHeight - L.padding * 2))
         splitDividerGradient?.frame = splitDivider.bounds
         splitHost.addSubview(splitDivider, positioned: .above, relativeTo: nil)
         resultCard.frame = NSRect(x: panes.left + L.dividerWidth, y: 0, width: panes.right, height: splitHeight)
@@ -202,18 +217,20 @@ extension PopoverController {
         )
         layoutSetupActions(in: resultCard)
 
-        qaInputField.frame = NSRect(
-            x: L.padding,
-            y: qaY,
-            width: contentWidth,
-            height: qaH
-        )
+        if !mergeQA {
+            qaInputField.frame = NSRect(
+                x: L.padding,
+                y: qaY,
+                width: contentWidth,
+                height: qaH
+            )
+        }
         applyQAInputChrome()
     }
 
     func layoutSetupActions(in resultCard: NSView) {
         let buttons = [setupOpenSettingsButton, setupGrantAccessButton, inPaneRetryButton].filter { !$0.isHidden }
-        let barH: CGFloat = buttons.isEmpty ? 0 : 34
+        let barH: CGFloat = buttons.isEmpty ? 0 : ChromeLayout.controlHeight + 2
         if barH > 0 {
             let scroll = textScrollView.frame
             let newH = max(0, scroll.height - barH)
@@ -262,11 +279,24 @@ extension PopoverController {
     }
 
     /// Positions chips; each width comes from `ActionChip`, not the window.
-    func layoutActionRow(_ row: ActionRowSection, y: CGFloat, contentWidth: CGFloat) {
+    /// Positions chips and returns the x where the row ends — Compact drops the Q&A field there.
+    @discardableResult
+    func layoutActionRow(
+        _ row: ActionRowSection,
+        y: CGFloat,
+        contentWidth: CGFloat,
+        reservedTrailing: CGFloat = 0
+    ) -> CGFloat {
         let L = ChromeLayout.self
-        let rowWidth = max(0, contentWidth)
-        let btnH = PopoverLayoutMath.actionButtonHeight
+        let rowWidth = max(0, contentWidth - reservedTrailing)
+        // The chip owns its height through `lockedSize`; density changes have to reach it or the
+        // chips keep the old height and float inside the row slot.
+        let btnH = L.bottomBarHeight
         let gap = PopoverLayoutMath.actionButtonGap
+        let overflowWidth = actionChipWidth(forTitle: "•••")
+        for case let chip as ActionChipButton in row.buttons where chip.lockedSize.height != btnH {
+            chip.lockedSize.height = btnH
+        }
         let widths = Dictionary(uniqueKeysWithValues: row.buttons.map { ($0, actionButtonChipWidth($0)) })
         var hidden = Set<ObjectIdentifier>()
         func visibleWidths() -> [CGFloat] {
@@ -274,10 +304,12 @@ extension PopoverController {
                 hidden.contains(ObjectIdentifier(button)) ? nil : widths[button]
             }
         }
-        for target in row.overflowHideOrder {
+        func rowUsed(_ extra: CGFloat) -> CGFloat {
             let visible = visibleWidths()
-            let rowUsed = visible.reduce(CGFloat(0), +) + gap * CGFloat(max(0, visible.count - 1))
-            if rowUsed <= rowWidth { break }
+            return visible.reduce(CGFloat(0), +) + gap * CGFloat(max(0, visible.count - 1)) + extra
+        }
+        for target in row.overflowHideOrder {
+            if rowUsed(hidden.isEmpty ? 0 : overflowWidth + gap) <= rowWidth { break }
             hidden.insert(ObjectIdentifier(target))
         }
         var x = L.padding
@@ -294,6 +326,50 @@ extension PopoverController {
             x = button.frame.maxX + gap
         }
         layoutActionRowDividers(row, hidden: hidden, y: y, height: btnH, gap: gap)
+        let overflowed = row.buttons.filter { hidden.contains(ObjectIdentifier($0)) }
+        layoutActionRowOverflow(row, overflowed: overflowed, x: x, y: y, width: overflowWidth, height: btnH)
+        return overflowed.isEmpty ? max(L.padding, x - gap) : row.overflowButton.frame.maxX
+    }
+
+    /// Chips that did not fit stay reachable through an ellipsis menu instead of vanishing.
+    func layoutActionRowOverflow(
+        _ row: ActionRowSection,
+        overflowed: [NSButton],
+        x: CGFloat,
+        y: CGFloat,
+        width: CGFloat,
+        height: CGFloat
+    ) {
+        let button = row.overflowButton
+        guard !overflowed.isEmpty else {
+            button.isHidden = true
+            button.menu = nil
+            return
+        }
+        button.isHidden = false
+        button.chipSymbol = "ellipsis"
+        button.lockedSize = NSSize(width: width, height: height)
+        button.frame = NSRect(x: x, y: y, width: width, height: height)
+        button.target = self
+        button.action = #selector(actionRowOverflowClicked(_:))
+        button.toolTip = "More actions"
+        button.setAccessibilityLabel("More actions")
+        applyActionChipLabel(button, title: "", symbol: "ellipsis", accent: false)
+        applyActionChipChrome(button)
+        let menu = NSMenu()
+        for chip in overflowed {
+            let title = PopoverLayoutMath.visibleActionChipTitle(of: chip)
+            let item = NSMenuItem(title: title, action: chip.action, keyEquivalent: "")
+            item.target = chip.target
+            item.isEnabled = chip.isEnabled
+            menu.addItem(item)
+        }
+        button.menu = menu
+    }
+
+    @objc func actionRowOverflowClicked(_ sender: NSButton) {
+        guard let menu = sender.menu else { return }
+        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: sender.bounds.height + 4), in: sender)
     }
 
     /// One hairline in the middle of the gap between each pair of visible text buttons.
@@ -346,38 +422,121 @@ extension PopoverController {
         let L = ChromeLayout.self
         let icon = L.iconButtonSize
         let topInset = L.paneHeaderTopInset
-        headerBar.frame = NSRect(x: 0, y: bodyHeight, width: paneWidth, height: L.paneHeaderHeight)
-        headerLabel.sizeToFit()
-        let labelH = max(11, headerLabel.fittingSize.height)
-        // Shift content down slightly so the speak/copy row has a little top padding.
-        let labelY = max(0, ((L.paneHeaderHeight - labelH) / 2 - topInset).rounded(.towardZero))
-        headerLabel.frame = NSRect(
-            x: 12,
-            y: labelY,
-            width: max(28, min(headerLabel.fittingSize.width + 2, paneWidth - 52)),
-            height: labelH
-        )
-        let headerIconY = max(0, (L.paneHeaderHeight - icon) / 2 - topInset)
-        var iconX = paneWidth - 10 - icon
-        for button in trailingIcons.reversed() {
-            button.frame = NSRect(x: iconX, y: headerIconY, width: icon, height: icon)
-            iconX -= icon + 10
+        let sideInset = L.textSideInset / 2
+        if L.density.hidesPaneHeader {
+            layoutFloatingPaneIcons(
+                headerBar: headerBar,
+                headerLabel: headerLabel,
+                textView: textView,
+                trailingIcons: trailingIcons,
+                paneWidth: paneWidth,
+                bodyHeight: bodyHeight
+            )
+        } else {
+            textView.textContainer?.exclusionPaths = []
+            headerBar.isHidden = false
+            headerLabel.isHidden = false
+            headerBar.layer?.backgroundColor = NSColor.clear.cgColor
+            headerBar.layer?.borderWidth = 0
+            headerBar.layer?.cornerRadius = 0
+            headerBar.frame = NSRect(x: 0, y: bodyHeight, width: paneWidth, height: L.paneHeaderHeight)
+            headerLabel.sizeToFit()
+            let labelH = max(11, headerLabel.fittingSize.height)
+            // Shift content down slightly so the speak/copy row has a little top padding.
+            let labelY = max(0, ((L.paneHeaderHeight - labelH) / 2 - topInset).rounded(.towardZero))
+            headerLabel.frame = NSRect(
+                x: sideInset,
+                y: labelY,
+                width: max(28, min(headerLabel.fittingSize.width + 2, paneWidth - 52)),
+                height: labelH
+            )
+            let headerIconY = max(0, (L.paneHeaderHeight - icon) / 2 - topInset)
+            var iconX = paneWidth - 10 - icon
+            for button in trailingIcons.reversed() {
+                button.isHidden = false
+                button.frame = NSRect(x: iconX, y: headerIconY, width: icon, height: icon)
+                iconX -= icon + 10
+            }
         }
         if textView === inputTextView && !inputContextLabel.isHidden {
             let contextH: CGFloat = 16
             let scrollH = max(0, bodyHeight - contextH)
-            inputContextLabel.frame = NSRect(x: 12, y: bodyHeight - contextH, width: max(0, paneWidth - 24), height: contextH)
+            inputContextLabel.frame = NSRect(x: sideInset, y: bodyHeight - contextH, width: max(0, paneWidth - sideInset * 2), height: contextH)
             scrollView.frame = NSRect(x: 0, y: 0, width: paneWidth, height: scrollH)
             textView.minSize = NSSize(width: 0, height: scrollH)
-            imagePlaceholderLabel.frame = NSRect(x: 12, y: 10, width: max(0, paneWidth - 24), height: 22)
+            imagePlaceholderLabel.frame = NSRect(x: sideInset, y: 10, width: max(0, paneWidth - sideInset * 2), height: 22)
         } else {
             scrollView.frame = NSRect(x: 0, y: 0, width: paneWidth, height: bodyHeight)
             textView.minSize = NSSize(width: 0, height: bodyHeight)
             if textView === inputTextView {
-                imagePlaceholderLabel.frame = NSRect(x: 12, y: 10, width: max(0, paneWidth - 24), height: 22)
+                imagePlaceholderLabel.frame = NSRect(x: sideInset, y: 10, width: max(0, paneWidth - sideInset * 2), height: 22)
             }
         }
         scrollView.hasVerticalScroller = true
+    }
+
+    /// Compact drops the header strip, so the pane icons become a glass pill floating over the top
+    /// right of the body. Always visible — hover-only would hide the copy/speak affordance.
+    private func layoutFloatingPaneIcons(
+        headerBar: NSView,
+        headerLabel: NSTextField,
+        textView: NSTextView,
+        trailingIcons: [NSButton],
+        paneWidth: CGFloat,
+        bodyHeight: CGFloat
+    ) {
+        let L = ChromeLayout.self
+        let icon = L.iconButtonSize
+        let gap: CGFloat = 8
+        let inset: CGFloat = 5
+        headerLabel.isHidden = true
+        let visible = trailingIcons
+        let pillW = CGFloat(visible.count) * icon + CGFloat(max(0, visible.count - 1)) * gap + inset * 2
+        let pillH = icon + inset * 2
+        let pillX = max(0, paneWidth - inset - pillW)
+        let pillY = max(0, bodyHeight - inset - pillH)
+        headerBar.isHidden = visible.isEmpty
+        headerBar.wantsLayer = true
+        headerBar.layer?.backgroundColor = Palette.cg(Palette.opaquePaneFill, in: headerBar)
+        headerBar.layer?.borderWidth = 1
+        headerBar.layer?.borderColor = Palette.cg(Palette.hairline, in: headerBar)
+        headerBar.layer?.cornerRadius = pillH / 2
+        headerBar.frame = NSRect(x: pillX, y: pillY, width: pillW, height: pillH)
+        // The pane cards add the header strip before the scroll view, which is fine while the strip
+        // sits above the body. Floating over it, the scroll view swallows every click — so raise it.
+        if let card = headerBar.superview, card.subviews.last !== headerBar {
+            card.addSubview(headerBar, positioned: .above, relativeTo: nil)
+        }
+        var iconX = pillW - inset - icon
+        for button in visible.reversed() {
+            button.frame = NSRect(x: iconX, y: inset, width: icon, height: icon)
+            iconX -= icon + gap
+        }
+        applyPaneIconExclusion(textView: textView, pill: headerBar.frame, paneWidth: paneWidth, bodyHeight: bodyHeight)
+    }
+
+    /// Text flows around the floating pill instead of running under it. TextKit measures the
+    /// exclusion in container space, whose origin is the top left of the text — not the pane.
+    private func applyPaneIconExclusion(
+        textView: NSTextView,
+        pill: NSRect,
+        paneWidth: CGFloat,
+        bodyHeight: CGFloat
+    ) {
+        guard let container = textView.textContainer, !pill.isEmpty else {
+            textView.textContainer?.exclusionPaths = []
+            return
+        }
+        let padding: CGFloat = 6
+        let originX = textView.textContainerInset.width + container.lineFragmentPadding
+        let originY = textView.textContainerInset.height
+        let rect = NSRect(
+            x: max(0, pill.minX - originX - padding),
+            y: max(0, bodyHeight - pill.maxY - originY),
+            width: pill.width + padding,
+            height: pill.height + padding
+        )
+        container.exclusionPaths = [NSBezierPath(rect: rect)]
     }
 
     /// Height the split body wants before the panel clamp — the sum of both sections plus the gap.
@@ -413,18 +572,18 @@ extension PopoverController {
 
     func measuredQAPaneHeight(_ section: QAPaneSection, paneWidth: CGFloat) -> CGFloat {
         let L = ChromeLayout.self
-        let measureWidth = max(80, paneWidth - 24)
-        let measured = measuredTextHeight(section.textView.attributedString(), width: measureWidth) + 20
+        let measureWidth = max(80, paneWidth - L.textSideInset)
+        let measured = measuredTextHeight(section.textView.attributedString(), width: measureWidth) + L.textInset
         let needed = L.paneHeaderHeight + measured
         return min(max(stackedMinPaneHeight, needed), qaMaxSectionHeight)
     }
 
     func paneHeight(source: NSAttributedString, result: NSAttributedString, paneWidth: CGFloat) -> CGFloat {
         let L = ChromeLayout.self
-        let measureWidth = max(80, paneWidth - 24)
+        let measureWidth = max(80, paneWidth - L.textSideInset)
         return PopoverLayoutMath.splitPaneHeight(
-            sourceMeasured: measuredTextHeight(source, width: measureWidth) + 20,
-            resultMeasured: measuredTextHeight(result, width: measureWidth) + 20,
+            sourceMeasured: measuredTextHeight(source, width: measureWidth) + L.textInset,
+            resultMeasured: measuredTextHeight(result, width: measureWidth) + L.textInset,
             paneHeaderHeight: L.paneHeaderHeight,
             minPaneHeight: stackedMinPaneHeight,
             maxPaneHeight: maxSectionHeight
@@ -536,7 +695,7 @@ extension PopoverController {
             statusHeight: 0,
             headerGap: L.headerGap,
             splitPaneHeight: splitHeight,
-            qaInputHeight: visibleQAInputHeight,
+            qaInputHeight: effectiveQAInputHeight,
             footerGap: L.footerGap,
             bottomBarHeight: L.bottomBarHeight,
             hasSub: subSection != nil,
@@ -571,7 +730,7 @@ extension PopoverController {
             statusHeight: 0,
             headerGap: L.headerGap,
             splitPaneHeight: stackedBody,
-            qaInputHeight: visibleQAInputHeight,
+            qaInputHeight: effectiveQAInputHeight,
             footerGap: L.footerGap,
             bottomBarHeight: L.bottomBarHeight,
             hasSub: subSection != nil,
@@ -595,6 +754,26 @@ extension PopoverController {
 
     var visibleQAInputHeight: CGFloat {
         qaInputField.isHidden ? 0 : ChromeLayout.qaInputHeight
+    }
+
+    /// Width the merged Q&A field needs before it stops being worth sharing the action row.
+    var mergedQAInputMinWidth: CGFloat { 150 }
+
+    /// Compact puts the Q&A field on the action row — but only when the chips leave it real room.
+    var mergesQAInput: Bool {
+        guard ChromeLayout.density.mergesQAIntoActionRow, !qaInputField.isHidden else { return false }
+        let contentWidth = max(0, CGFloat(config.ui.width) - ChromeLayout.padding * 2)
+        let gap = PopoverLayoutMath.actionButtonGap
+        let core = mainActionRow.buttons.filter { !mainActionRow.overflowHideOrder.contains($0) }
+        let coreWidth = core.reduce(CGFloat(0)) { $0 + actionButtonChipWidth($1) }
+            + gap * CGFloat(max(0, core.count - 1))
+            + gap + actionChipWidth(forTitle: "•••")
+        return contentWidth - coreWidth - gap >= mergedQAInputMinWidth
+    }
+
+    /// Zero once the field shares the action row — the stack must not reserve a second row for it.
+    var effectiveQAInputHeight: CGFloat {
+        mergesQAInput ? 0 : visibleQAInputHeight
     }
 
     /// Left-pane share of the subtranslate split. Auto-set by translation mode — 1:1 normally, 1:2 for Learn.

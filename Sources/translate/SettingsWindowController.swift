@@ -88,6 +88,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
     private var speechModelFields: [String: NSTextField] = [:]
     private let speechFallbackModelField = NSTextField()
     private let historyDirectoryField = NSTextField()
+    private let densityPopup = NSPopUpButton()
     private let widthField = NSTextField()
     private let heightField = NSTextField()
     private let autoCopyCheckbox = NSButton(
@@ -300,9 +301,21 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         historyRow.spacing = 4
         historyHint.widthAnchor.constraint(equalTo: historyRow.widthAnchor).isActive = true
 
+        densityPopup.removeAllItems()
+        densityPopup.addItems(withTitles: ["Normal", "Compact"])
+
         let dimensions = NSStackView(views: [widthField, NSTextField(labelWithString: "×"), heightField])
         dimensions.orientation = .horizontal
         dimensions.spacing = 8
+        let densityHint = NSTextField(labelWithString: "Compact trims padding and pane headers to fit more text.")
+        densityHint.font = .systemFont(ofSize: 11)
+        densityHint.textColor = .secondaryLabelColor
+        let densityRow = NSStackView(views: [densityPopup, densityHint])
+        densityRow.orientation = .vertical
+        densityRow.alignment = .leading
+        densityRow.spacing = 4
+        densityPopup.widthAnchor.constraint(equalToConstant: 160).isActive = true
+
         widthField.widthAnchor.constraint(equalToConstant: 90).isActive = true
         heightField.widthAnchor.constraint(equalToConstant: 90).isActive = true
 
@@ -329,6 +342,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
             labeledRow("Fallback Model", speechFallbackModelField),
             labeledRow("History Folder", historyRow),
             labeledRow("Panel Width × Height", dimensions),
+            labeledRow("Density", densityRow),
             labeledRow("Global Hotkey", hotkeyFields.makeRow()),
             labeledRow("Copy & Translate Hotkey", copyTranslateHotkeyFields.makeRow()),
             labeledRow("Learn Hotkey", learnHotkeyFields.makeRow()),
@@ -504,6 +518,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         }
         speechFallbackModelField.stringValue = config.speechFallbackModel
         historyDirectoryField.stringValue = config.historyDirectory ?? ""
+        densityPopup.selectItem(at: config.ui.density == "compact" ? 1 : 0)
         widthField.doubleValue = config.ui.width
         heightField.doubleValue = config.ui.height
         autoCopyCheckbox.state = config.ui.autoCopy ? .on : .off
@@ -574,6 +589,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         config.speechFallbackModel = speechFallbackModelField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         let historyDirectory = historyDirectoryField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         config.historyDirectory = historyDirectory.isEmpty ? nil : historyDirectory
+        config.ui.density = densityPopup.indexOfSelectedItem == 1 ? "compact" : "normal"
         config.ui.width = widthField.doubleValue
         config.ui.height = heightField.doubleValue
         config.ui.autoCopy = autoCopyCheckbox.state == .on

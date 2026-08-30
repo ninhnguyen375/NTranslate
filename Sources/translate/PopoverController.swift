@@ -13,28 +13,48 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     }
 
     static let buildVersion: String = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "dev"
+    /// Panel density. Compact trims chrome so more translated text fits at the same panel height.
+    enum ChromeDensity: String {
+        case normal
+        case compact
+
+        /// Compact drops the Source/Result strip — the header already names both languages.
+        var hidesPaneHeader: Bool { self == .compact }
+        /// Compact puts the Q&A field on the action row instead of a row of its own.
+        var mergesQAIntoActionRow: Bool { self == .compact }
+    }
+
     /// Split Prism chrome — dual-pane + bottom bar inside Liquid Glass shell.
+    @MainActor
     enum ChromeLayout {
-        static let padding: CGFloat = 14
+        /// Set from `AppConfig.ui.density`; every measurement below reads it.
+        static var density: ChromeDensity = .normal
+
+        static var padding: CGFloat { density == .compact ? 10 : 14 }
         /// Bottom inset for footer controls — a bit more air from the popup edge.
-        static let paddingBottom: CGFloat = 16
+        static var paddingBottom: CGFloat { density == .compact ? 10 : 16 }
         /// Same height as the action chips so header and footer share one padding rhythm.
-        static let headerHeight: CGFloat = 32
+        static var headerHeight: CGFloat { density == .compact ? 28 : 32 }
         static let statusHeight: CGFloat = 14
         /// Gap between title/header and the split body.
-        static let headerGap: CGFloat = 12
+        static var headerGap: CGFloat { density == .compact ? 8 : 12 }
         /// Gap between split body and bottom controls.
-        static let footerGap: CGFloat = 16
-        static let paneHeaderHeight: CGFloat = 30
-        static let paneHeaderTopInset: CGFloat = 4
+        static var footerGap: CGFloat { density == .compact ? 10 : 16 }
+        /// Zero in compact — the pane icons float over the body instead of sitting in a strip.
+        static var paneHeaderHeight: CGFloat { density.hidesPaneHeader ? 0 : 30 }
+        static var paneHeaderTopInset: CGFloat { density == .compact ? 2 : 4 }
+        /// Vertical breathing room added around measured body text.
+        static var textInset: CGFloat { density == .compact ? 12 : 20 }
+        /// Horizontal inset the body text loses to pane padding.
+        static var textSideInset: CGFloat { density == .compact ? 20 : 24 }
         static let splitMinPaneHeight: CGFloat = 160
         static let splitMinStackedPaneHeight: CGFloat = 120
         /// Vertical gap between stacked panes that do not use a labeled divider (e.g. Q&A).
-        static let sectionGap: CGFloat = 10
+        static var sectionGap: CGFloat { density == .compact ? 6 : 10 }
         /// Labeled hairline between the main action row and the subtranslate pane.
-        static let sectionDividerHeight: CGFloat = 20
+        static var sectionDividerHeight: CGFloat { density == .compact ? 16 : 20 }
         /// Empty space above the hairline so it does not sit flush on the main action row.
-        static let sectionDividerTopMargin: CGFloat = 14
+        static var sectionDividerTopMargin: CGFloat { density == .compact ? 8 : 14 }
         static var sectionDividerReserved: CGFloat { sectionDividerTopMargin + sectionDividerHeight }
         static let splitMaxPaneHeight: CGFloat = 720
         /// Per-section cap once a subtranslate pane exists — two panes at `splitMaxPaneHeight` each
@@ -42,17 +62,17 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         static let splitMaxStackedPaneHeight: CGFloat = 520
         static let dividerWidth: CGFloat = 1
         /// Shared height for Learn / Translate.
-        static let controlHeight: CGFloat = 32
-        static let qaInputHeight: CGFloat = 28
-        static let bottomBarHeight: CGFloat = controlHeight
+        static var controlHeight: CGFloat { density == .compact ? 28 : 32 }
+        static var qaInputHeight: CGFloat { density == .compact ? 26 : 28 }
+        static var bottomBarHeight: CGFloat { controlHeight }
         /// Same height as chrome icon pills so the header row shares one padding rhythm.
-        static let languageControlHeight: CGFloat = 32
+        static var languageControlHeight: CGFloat { headerHeight }
         static let languageWidth: CGFloat = 132
         /// Language chips use a pill of `height / 2` after layout — never a CSS-style 999.
-        static let swapWidth: CGFloat = languageControlHeight
+        static var swapWidth: CGFloat { languageControlHeight }
         static let iconButtonSize: CGFloat = 18
         /// Circular glass chip — larger than the glyph so the pill has padding.
-        static let chromeIconSize: CGFloat = 32
+        static var chromeIconSize: CGFloat { headerHeight }
         static let glassCornerRadius: CGFloat = 22
         static let splitCornerRadius: CGFloat = 16
         /// Source / translation body text.
@@ -134,7 +154,9 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     var registeredHotKeys: [EventHotKeyRef] = []
     var hotKeyEventHandlerRef: EventHandlerRef?
     var ocrPollTimer: Timer?
-    var config = AppConfig.load()
+    var config = AppConfig.load() {
+        didSet { applyDensity() }
+    }
     var apiKey = ""
     var settingsWindowController: SettingsWindowController?
     var audioPlayer: AVAudioPlayer?
@@ -239,7 +261,13 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         super.init()
     }
 
+    /// Pushes the stored density into `ChromeLayout` — the only writer of that value.
+    func applyDensity() {
+        ChromeLayout.density = ChromeDensity(rawValue: config.ui.density) ?? .normal
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
+        applyDensity()
         if let icon = NSImage(systemSymbolName: "translate", accessibilityDescription: "NTranslate") {
             statusItem.button?.image = icon
         } else {

@@ -33,19 +33,23 @@ struct AppConfig: Codable {
         var autoCopy: Bool
         var simulateCopy: Bool
         var rememberPin: Bool
+        /// "normal" or "compact" — anything else falls back to normal.
+        var density: String
 
         init(
             width: Double,
             height: Double,
             autoCopy: Bool,
             simulateCopy: Bool = false,
-            rememberPin: Bool = false
+            rememberPin: Bool = false,
+            density: String = "compact"
         ) {
             self.width = width
             self.height = height
             self.autoCopy = autoCopy
             self.simulateCopy = simulateCopy
             self.rememberPin = rememberPin
+            self.density = density
         }
 
         init(from decoder: Decoder) throws {
@@ -56,6 +60,8 @@ struct AppConfig: Codable {
             autoCopy = try container.decodeIfPresent(Bool.self, forKey: .autoCopy) ?? defaults.autoCopy
             simulateCopy = try container.decodeIfPresent(Bool.self, forKey: .simulateCopy) ?? defaults.simulateCopy
             rememberPin = try container.decodeIfPresent(Bool.self, forKey: .rememberPin) ?? false
+            let storedDensity = try container.decodeIfPresent(String.self, forKey: .density) ?? "compact"
+            density = storedDensity == "compact" ? "compact" : "normal"
         }
     }
 
@@ -167,7 +173,7 @@ struct AppConfig: Codable {
         learnHotkey: .init(key: "L", option: true, command: false, control: false, shift: false),
         proofreadHotkey: defaultProofreadHotkey,
         ocrHotkey: defaultOCRHotkey,
-        ui: .init(width: 720, height: 320, autoCopy: false, simulateCopy: false, rememberPin: false),
+        ui: .init(width: 720, height: 320, autoCopy: false, simulateCopy: false, rememberPin: false, density: "compact"),
         learning: LearningSettings()
     )
 

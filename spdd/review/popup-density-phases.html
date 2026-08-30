@@ -1,0 +1,329 @@
+<!doctype html>
+<html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>NTranslate — Popup: 4 solution tiết kiệm không gian</title>
+<style>
+:root{
+  --bg:#f4f4f2;--fg:#1a1a18;--muted:#6b6b64;--line:#d9d9d3;
+  --panel:#fff;--panelEdge:#c9c9c2;--pane:#fafaf8;--chip:#eceae4;
+  --band:#e8dfd0;--bandLine:#c9b894;--accent:#8a5a2b;
+  --save:#2f6f4e;--saveBg:#e3f0e9;--warnBg:#f6ece0;--warn:#8a5a2b;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#14140f;--fg:#eceae4;--muted:#9a978d;--line:#33332c;
+  --panel:#232320;--panelEdge:#3d3d36;--pane:#1c1c19;--chip:#33332c;
+  --band:#3a3226;--bandLine:#6b5a3c;--accent:#d6a35c;
+  --save:#7fc9a1;--saveBg:#1e3329;--warnBg:#332a1e;--warn:#d6a35c;
+}}
+:root[data-theme="dark"]{
+  --bg:#14140f;--fg:#eceae4;--muted:#9a978d;--line:#33332c;
+  --panel:#232320;--panelEdge:#3d3d36;--pane:#1c1c19;--chip:#33332c;
+  --band:#3a3226;--bandLine:#6b5a3c;--accent:#d6a35c;
+  --save:#7fc9a1;--saveBg:#1e3329;--warnBg:#332a1e;--warn:#d6a35c;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);
+ font:14px/1.55 -apple-system,BlinkMacSystemFont,"SF Pro Text",Segoe UI,system-ui,sans-serif}
+.wrap{max-width:1240px;margin:0 auto;padding:38px 24px 80px}
+h1{font-size:26px;letter-spacing:-.02em;margin:0 0 6px}
+.sub{color:var(--muted);margin:0 0 26px;max-width:66ch}
+.bar{display:flex;gap:18px;align-items:center;flex-wrap:wrap;margin-bottom:8px;
+ padding:11px 14px;border:1px solid var(--line);border-radius:11px;background:var(--panel)}
+.bar .grp{display:flex;gap:8px;align-items:center}
+.bar .lbl{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+button.ph{font:inherit;font-size:13px;padding:5px 11px;border-radius:8px;cursor:pointer;
+ border:1px solid var(--line);background:transparent;color:var(--fg)}
+button.ph[aria-pressed="true"]{background:var(--fg);color:var(--panel);border-color:var(--fg)}
+.bar label{display:flex;gap:6px;align-items:center;font-size:13px;color:var(--muted);cursor:pointer}
+.readout{margin:0 0 24px;font-size:13px;color:var(--muted)}
+.tag{display:inline-block;background:var(--saveBg);color:var(--save);border-radius:5px;
+ padding:2px 7px;font:12px ui-monospace,Menlo,monospace}
+.tag.w{background:var(--warnBg);color:var(--warn)}
+.cols{display:flex;gap:34px;flex-wrap:wrap;align-items:flex-start}
+.col{flex:1 1 500px;min-width:400px}
+.col h2{font-size:12px;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);
+ margin:0 0 4px}
+.col .meta{font-size:13px;margin:0 0 12px;color:var(--fg)}
+
+.popup{background:var(--panel);border:1px solid var(--panelEdge);position:relative;
+ overflow:hidden;box-shadow:0 18px 40px rgba(0,0,0,.14)}
+.hdr{display:flex;align-items:center;gap:8px}
+.title{font-weight:600;letter-spacing:-.01em;white-space:nowrap;overflow:hidden}
+.lang,.swap,.ico{background:var(--chip);display:flex;align-items:center;justify-content:center;font-size:12px}
+.icons{margin-left:auto;display:flex;gap:8px}
+.split{display:flex;background:var(--pane);border:1px solid var(--panelEdge);overflow:hidden;position:relative}
+.pane{flex:1;min-width:0;display:flex;flex-direction:column;position:relative}
+.pane+.pane{border-left:1px solid var(--panelEdge)}
+.paneHdr{display:flex;align-items:center;font-size:11px;color:var(--muted);flex:none}
+.pico{margin-left:auto;display:flex;gap:8px}
+.pico i{width:18px;height:18px;border-radius:5px;background:var(--chip);display:block}
+.float{position:absolute;top:6px;right:8px;display:flex;gap:6px;padding:3px 5px;border-radius:8px;
+ background:var(--chip);opacity:.55}
+.float i{width:16px;height:16px;border-radius:4px;background:var(--fg);opacity:.35;display:block}
+.body{flex:1;overflow:hidden}
+.ln{height:19px;display:flex;align-items:center}
+.ln s{display:block;height:8px;border-radius:4px;background:currentColor;opacity:.20;text-decoration:none}
+.row{display:flex;gap:8px;align-items:center}
+.chip{background:var(--chip);display:flex;align-items:center;justify-content:center;
+ font-size:12px;padding:0 13px;white-space:nowrap;flex:none}
+.chip.more{padding:0 11px;font-weight:600}
+.qa{flex:1;min-width:60px;background:var(--pane);border:1px solid var(--panelEdge);
+ display:flex;align-items:center;padding:0 11px;font-size:12px;color:var(--muted)}
+.divlbl{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--muted)}
+.divlbl:before,.divlbl:after{content:"";height:1px;background:var(--panelEdge);flex:1}
+.qapane{position:relative;background:var(--pane);border:1px solid var(--panelEdge);overflow:hidden}
+
+.band{position:absolute;left:0;right:0;background:var(--band);
+ border-top:1px dashed var(--bandLine);border-bottom:1px dashed var(--bandLine);
+ display:flex;align-items:center;justify-content:flex-end;padding-right:7px;
+ font:10px/1 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--accent);
+ pointer-events:none;opacity:0}
+.showBands .band{opacity:.93}
+
+.phases{margin-top:38px;display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(270px,1fr))}
+.card{border:1px solid var(--line);border-radius:11px;padding:14px 16px;background:var(--panel)}
+.card h3{margin:0 0 4px;font-size:14px}
+.card .amt{font:12px ui-monospace,Menlo,monospace;color:var(--save)}
+.card p{margin:8px 0 0;font-size:13px;color:var(--muted)}
+table{border-collapse:collapse;width:100%;margin-top:30px;font-size:13px}
+th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--line)}
+th{font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);font-weight:600}
+td.n{font:12px ui-monospace,Menlo,monospace;text-align:right}
+tr.total td{font-weight:700;border-bottom:none}
+.scroller{overflow-x:auto}
+.note{color:var(--muted);font-size:13px;margin-top:22px;max-width:74ch}
+code{font:12px ui-monospace,Menlo,monospace;background:var(--chip);padding:1px 5px;border-radius:4px}
+</style></head>
+<body><div class="wrap" id="root">
+
+<h1>Popup translate: 4 solution tiết kiệm không gian</h1>
+<p class="sub">Trái là bản hiện tại, phải là bản sau khi áp các phase đã chọn. Cả hai vẽ tỉ lệ 1px = 1pt, cùng chiều cao panel, cùng nội dung. Bật subtranslate / Q&amp;A để thấy Phase C, thu hẹp panel để thấy Phase D.</p>
+
+<div class="bar">
+  <span class="lbl">Phase</span>
+  <div class="grp" id="phaseBtns">
+    <button class="ph" data-p="A">A · nén hằng số</button>
+    <button class="ph" data-p="B">B · bỏ pane header</button>
+    <button class="ph" data-p="C">C · gộp Q&amp;A row</button>
+    <button class="ph" data-p="D">D · overflow menu</button>
+  </div>
+</div>
+<div class="bar">
+  <span class="lbl">Kịch bản</span>
+  <label><input type="checkbox" id="sub"> Subtranslate</label>
+  <label><input type="checkbox" id="qa" checked> Q&amp;A</label>
+  <label><input type="checkbox" id="narrow"> Panel hẹp (420pt)</label>
+  <label style="margin-left:auto"><input type="checkbox" id="bands"> Lớp đo (pt)</label>
+  <label><input type="checkbox" id="dark"> Nền tối</label>
+</div>
+<p class="readout" id="readout"></p>
+
+<div class="cols">
+  <div class="col">
+    <h2>Trước — Normal</h2>
+    <p class="meta" id="metaA"></p>
+    <div class="popup" id="pA"></div>
+  </div>
+  <div class="col">
+    <h2>Sau — <span id="phaseName"></span></h2>
+    <p class="meta" id="metaB"></p>
+    <div class="popup" id="pB"></div>
+  </div>
+</div>
+
+<div class="phases" id="cards"></div>
+
+<div class="scroller">
+<table>
+<thead><tr><th>Dải chrome</th><th class="n">Trước</th><th class="n">Sau</th><th class="n">Δ</th><th>Do phase</th></tr></thead>
+<tbody id="tbl"></tbody>
+</table>
+</div>
+
+<p class="note">Phase D không lấy lại pt dọc nào; nó cứu chiều ngang. Ở panel 420pt bản hiện tại chip cuối bị đẩy tràn khỏi mép nội dung, Phase D gom chúng vào nút <code>…</code> nên hàng luôn vừa. Thứ tự khuyến nghị vẫn là ship A trước, đo, rồi mới cân nhắc B.</p>
+
+</div>
+<script>
+const LINE=19, H=520;
+const BASE={padding:14,padBottom:16,header:32,headerGap:12,paneHdr:30,inset:20,footerGap:16,
+  bar:32,sectionGap:10,divTop:14,divH:20,qaInput:28,qaGap:12,icon:32,radius:22,paneRadius:16,side:12};
+const COMPACT={padding:10,padBottom:10,header:28,headerGap:8,paneHdr:24,inset:12,footerGap:10,
+  bar:28,sectionGap:6,divTop:8,divH:16,qaInput:26,qaGap:8,icon:28,radius:18,paneRadius:14,side:10};
+const CHIPS=["Explain","Grammar","Vocabulary","Ask","Save","Copy"];
+
+let phases=new Set(["A"]);
+
+function cfg(on){
+  const c = Object.assign({}, on.has("A")?COMPACT:BASE);
+  c.floatIcons = on.has("B");
+  if(c.floatIcons) c.paneHdr = 0;
+  c.mergeQA = on.has("C");
+  c.overflow = on.has("D");
+  return c;
+}
+function chipW(t){return t.length*6.6+26}
+
+function build(c,{sub,qa,width}){
+  // chrome dọc, top -> bottom
+  const bands=[]; let y=0;
+  const add=(h,l)=>{ if(h>0){bands.push([y,h,l]);} y+=h; };
+  const mergedQA = qa && c.mergeQA;
+  const qaInputRow = (qa && !mergedQA) ? c.qaInput + c.qaGap : 0;
+
+  let fixed = c.padding + c.header + c.headerGap
+    + c.footerGap + c.bar + qaInputRow + c.padBottom
+    + c.paneHdr + c.inset;                       // main split chrome
+  if(sub) fixed += c.divTop + c.divH + c.paneHdr + c.inset + c.footerGap + c.bar;
+  if(qa)  fixed += c.sectionGap + 34;            // QA pane header/inset xấp xỉ
+  const free = H - fixed;
+  const mainBody = sub ? Math.floor(free*0.58) : (qa ? Math.floor(free*0.72) : free);
+  const subBody  = sub ? Math.floor(free*0.42) - (qa?Math.floor(free*0.28):0) : 0;
+  const qaBody   = qa ? free - mainBody - subBody : 0;
+  const nMain = Math.max(1,Math.floor(mainBody/LINE));
+  const nSub  = sub?Math.max(1,Math.floor(subBody/LINE)):0;
+
+  const cw = width - c.padding*2;
+  const half=c.icon/2, insetTop=Math.round(c.inset/2), insetBot=c.inset-insetTop;
+
+  const lines=n=>{let o="";for(let i=0;i<n;i++){o+=`<div class="ln"><s style="width:${55+((i*37)%42)}%"></s></div>`}return o};
+  const paneHdr=(label,icons)=> c.floatIcons
+    ? `<div class="float">${"<i></i>".repeat(icons)}</div>`
+    : `<div class="paneHdr" style="height:${c.paneHdr}px;padding:0 ${c.side}px">${label}<span class="pico">${"<i></i>".repeat(icons)}</span></div>`;
+  const pane=(label,icons,n)=>`<div class="pane">${paneHdr(label,icons)}
+     <div class="body" style="padding:${insetTop}px ${c.side}px ${insetBot}px">${lines(n)}</div></div>`;
+  const splitBlock=(h,l,r,n)=>`<div class="split" style="height:${h}px;border-radius:${c.paneRadius}px">
+     ${pane(l,2,n)}${pane(r,3,n)}</div>`;
+
+  // action row, có overflow nếu bật D
+  function actionRow(inlineQA){
+    let list=CHIPS.slice(), more=false;
+    const reserve = inlineQA ? 150 : 0;
+    let total=list.reduce((a,t)=>a+chipW(t),0)+ (list.length-1)*8 + reserve;
+    if(total>cw){
+      if(c.overflow){
+        while(list.length>1 && list.reduce((a,t)=>a+chipW(t),0)+(list.length)*8+34+reserve>cw) list.pop();
+        more=true;
+      }
+    }
+    const chips=list.map(t=>`<div class="chip" style="height:${c.bar}px;border-radius:${c.bar/2}px">${t}</div>`).join("")
+      + (more?`<div class="chip more" style="height:${c.bar}px;border-radius:${c.bar/2}px">…</div>`:"");
+    const clipped = !c.overflow && total>cw;
+    const qaBox = inlineQA?`<div class="qa" style="height:${c.bar}px;border-radius:${c.bar/2}px">Ask about this…</div>`:"";
+    return `<div class="row" style="height:${c.bar}px;${clipped?"overflow:visible":""}">${chips}${qaBox}</div>`;
+  }
+
+  const mainSplitH = c.paneHdr + c.inset + mainBody;
+  const subSplitH  = sub ? c.paneHdr + c.inset + subBody : 0;
+
+  add(c.padding,`padding ${c.padding}`);
+  add(c.header,`header ${c.header}`);
+  add(c.headerGap,`headerGap ${c.headerGap}`);
+  if(c.paneHdr) add(c.paneHdr,`paneHeader ${c.paneHdr}`); else bands.push([y,0,""]);
+  add(insetTop,`inset ${insetTop}`); y+=mainBody; add(insetBot,`inset ${insetBot}`);
+  add(c.footerGap,`footerGap ${c.footerGap}`);
+  add(c.bar, mergedQA?`actionRow + Q&A ${c.bar}`:`actionRow ${c.bar}`);
+  if(sub){
+    add(c.divTop,`divTop ${c.divTop}`); add(c.divH,`divider ${c.divH}`);
+    if(c.paneHdr) add(c.paneHdr,`paneHeader ${c.paneHdr}`);
+    add(insetTop,`inset`); y+=subBody; add(insetBot,`inset`);
+    add(c.footerGap,`footerGap ${c.footerGap}`); add(c.bar,`actionRow ${c.bar}`);
+  }
+  if(qa){ add(c.sectionGap,`sectionGap ${c.sectionGap}`); y+=qaBody+34; }
+  if(qa && !mergedQA){ add(c.qaGap,`qaGap ${c.qaGap}`); add(c.qaInput,`qaInput ${c.qaInput}`); }
+  add(c.padBottom,`paddingBottom ${c.padBottom}`);
+
+  const html=`
+  <div style="width:${width}px;height:${H}px;padding:${c.padding}px ${c.padding}px ${c.padBottom}px;border-radius:${c.radius}px">
+    <div class="hdr" style="height:${c.header}px">
+      <div class="title" style="font-size:${c.header<32?15:16}px;max-width:${width<500?70:118}px">NTranslate</div>
+      <div class="lang" style="width:${width<500?86:112}px;height:${c.icon}px;border-radius:${half}px">English</div>
+      <div class="swap" style="width:${c.icon}px;height:${c.icon}px;border-radius:${half}px">⇄</div>
+      <div class="lang" style="width:${width<500?86:112}px;height:${c.icon}px;border-radius:${half}px">Vietnamese</div>
+      <div class="icons">${`<div class="ico" style="width:${c.icon}px;height:${c.icon}px;border-radius:${half}px"></div>`.repeat(width<500?2:3)}</div>
+    </div>
+    <div style="height:${c.headerGap}px"></div>
+    ${splitBlock(mainSplitH,"Source","Result",nMain)}
+    <div style="height:${c.footerGap}px"></div>
+    ${actionRow(mergedQA)}
+    ${sub?`<div style="height:${c.divTop}px"></div>
+      <div class="divlbl" style="height:${c.divH}px">Subtranslate</div>
+      ${splitBlock(subSplitH,"Selection","Meaning",nSub)}
+      <div style="height:${c.footerGap}px"></div>${actionRow(false)}`:""}
+    ${qa?`<div style="height:${c.sectionGap}px"></div>
+      <div class="qapane" style="height:${qaBody+34}px;border-radius:${c.paneRadius}px">
+        ${paneHdr("Q&amp;A",1)}
+        <div class="body" style="padding:${insetTop}px ${c.side}px ${insetBot}px">${lines(Math.max(1,Math.floor(qaBody/LINE)))}</div>
+      </div>`:""}
+    ${(qa&&!mergedQA)?`<div style="height:${c.qaGap}px"></div>
+      <div class="qa" style="height:${c.qaInput}px;border-radius:${c.qaInput/2}px">Ask about this…</div>`:""}
+  </div>` + bands.map(([t,h,l])=>h>0?`<div class="band" style="top:${t}px;height:${h}px">${l}</div>`:"").join("");
+
+  return {html,fixed,nMain,nSub,width};
+}
+
+function render(){
+  const sub=document.getElementById("sub").checked;
+  const qa=document.getElementById("qa").checked;
+  const width=document.getElementById("narrow").checked?420:560;
+  const scen={sub,qa,width};
+  const a=build(cfg(new Set()),scen);
+  const b=build(cfg(phases),scen);
+  document.getElementById("pA").innerHTML=a.html;
+  document.getElementById("pB").innerHTML=b.html;
+  document.getElementById("pA").style.width=width+"px";
+  document.getElementById("pB").style.width=width+"px";
+  const order=["A","B","C","D"].filter(p=>phases.has(p));
+  document.getElementById("phaseName").textContent = order.length?("Phase "+order.join(" + ")):"không phase nào";
+  document.getElementById("metaA").innerHTML=`chrome ${a.fixed}pt · <b>${a.nMain} dòng</b> mỗi pane chính`;
+  const d=a.fixed-b.fixed;
+  document.getElementById("metaB").innerHTML=`chrome ${b.fixed}pt · <b>${b.nMain} dòng</b> mỗi pane chính`;
+  document.getElementById("readout").innerHTML =
+    d>0?`Thu hồi <span class="tag">${d}pt</span> dọc, thêm <span class="tag">${b.nMain-a.nMain} dòng</span> mỗi pane chính`
+       :`Không đổi ngân sách dọc ở kịch bản này <span class="tag w">0pt</span>`;
+
+  const rows=[["padding trên","padding"],["header","header"],["headerGap","headerGap"],
+    ["pane header (main)","paneHdr"],["text inset","inset"],["footerGap","footerGap"],
+    ["action row","bar"],["Q&A input + gap","qaInputRow"],["padding dưới","padBottom"]];
+  const ca=cfg(new Set()), cb=cfg(phases);
+  ca.qaInputRow = qa?ca.qaInput+ca.qaGap:0;
+  cb.qaInputRow = (qa&&!cb.mergeQA)?cb.qaInput+cb.qaGap:0;
+  const why=k=>{
+    if(k==="paneHdr"&&phases.has("B"))return "B";
+    if(k==="qaInputRow"&&phases.has("C"))return "C";
+    return phases.has("A")&&ca[k]!==cb[k]?"A":"";
+  };
+  let tb="",sa=0,sb=0;
+  for(const [n,k] of rows){
+    sa+=ca[k]; sb+=cb[k];
+    const dd=ca[k]-cb[k];
+    tb+=`<tr><td>${n}</td><td class="n">${ca[k]}</td><td class="n">${cb[k]}</td>
+      <td class="n">${dd||""}</td><td style="color:var(--muted)">${dd?why(k):""}</td></tr>`;
+  }
+  tb+=`<tr class="total"><td>Tổng</td><td class="n">${sa}</td><td class="n">${sb}</td>
+    <td class="n"><span class="tag">${sa-sb}</span></td><td></td></tr>`;
+  document.getElementById("tbl").innerHTML=tb;
+}
+
+const CARDS=[
+ ["A","Nén hằng số","−42pt","Đổi bộ giá trị trong ChromeLayout, thêm config density normal/compact. Không đụng cấu trúc view, mọi call site giữ nguyên. Rủi ro thấp nhất, lấy được phần lớn giá trị."],
+ ["B","Bỏ pane header","−24pt × số pane","Dải label Source/Result là dư vì header chính đã có tên ngôn ngữ. Icon speak/copy/save nổi ở góc trên phải pane. Đánh đổi: mất affordance khi chưa hover."],
+ ["C","Gộp Q&A vào action row","−34pt khi Q&A mở","Chips và ô nhập chia một hàng, chips co lại khi cần. Chỉ áp dụng khi contentWidth đủ chứa cả hai, ngược lại giữ hai hàng."],
+ ["D","Overflow menu","0pt dọc","Cứu chiều ngang: chip tràn gom vào nút … mở NSMenu. layoutActionRow đã tính chip width nên chỗ móc có sẵn."]
+];
+document.getElementById("cards").innerHTML=CARDS.map(([p,t,a,d])=>
+ `<div class="card"><h3>Phase ${p} — ${t}</h3><div class="amt">${a}</div><p>${d}</p></div>`).join("");
+
+document.querySelectorAll("#phaseBtns .ph").forEach(b=>{
+  b.onclick=()=>{const p=b.dataset.p; phases.has(p)?phases.delete(p):phases.add(p); sync();};
+});
+function sync(){
+  document.querySelectorAll("#phaseBtns .ph").forEach(b=>
+    b.setAttribute("aria-pressed", phases.has(b.dataset.p)?"true":"false"));
+  render();
+}
+["sub","qa","narrow"].forEach(id=>document.getElementById(id).onchange=render);
+document.getElementById("bands").onchange=e=>
+  document.getElementById("root").classList.toggle("showBands",e.target.checked);
+document.getElementById("dark").onchange=e=>
+  document.documentElement.setAttribute("data-theme",e.target.checked?"dark":"light");
+sync();
+</script></body></html>

@@ -407,14 +407,17 @@ final class VerticallyCenteredTextFieldCell: NSTextFieldCell {
 
     override func drawingRect(forBounds rect: NSRect) -> NSRect {
         let newRect = super.drawingRect(forBounds: rect)
-        let textSize = cellSize(forBounds: rect)
-        let heightDelta = newRect.height - textSize.height
+        // Centre on one line of the font, never on `cellSize`: a long string wraps, its measured
+        // height fills the cell, and the text would snap back to the top edge.
+        let lineHeight = (font ?? .systemFont(ofSize: NSFont.systemFontSize)).boundingRectForFont.height
+        let textHeight = min(cellSize(forBounds: rect).height, lineHeight.rounded(.up))
+        let heightDelta = newRect.height - textHeight
         if heightDelta > 0 {
             return NSRect(
                 x: newRect.origin.x + horizontalInset,
                 y: newRect.origin.y + (heightDelta / 2).rounded(.down),
                 width: max(0, newRect.width - horizontalInset * 2),
-                height: textSize.height
+                height: textHeight
             )
         }
         return newRect.insetBy(dx: horizontalInset, dy: 0)

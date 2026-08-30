@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>NTranslate — Popup density: trước / sau</title>
+<style>
+:root{
+  --bg:#f4f4f2; --fg:#1a1a18; --muted:#6b6b64; --line:#d8d8d2;
+  --panel:#ffffff; --panelEdge:#c9c9c2; --pane:#fafaf8;
+  --chip:#eceae4; --band:#e8dfd0; --bandLine:#c9b894; --accent:#8a5a2b;
+  --save:#2f6f4e; --saveBg:#e2f0e8;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#14140f; --fg:#eceae4; --muted:#9a978d; --line:#33332c;
+  --panel:#232320; --panelEdge:#3d3d36; --pane:#1c1c19;
+  --chip:#33332c; --band:#3a3226; --bandLine:#6b5a3c; --accent:#d6a35c;
+  --save:#7fc9a1; --saveBg:#1e3329;
+}}
+:root[data-theme="dark"]{
+  --bg:#14140f; --fg:#eceae4; --muted:#9a978d; --line:#33332c;
+  --panel:#232320; --panelEdge:#3d3d36; --pane:#1c1c19;
+  --chip:#33332c; --band:#3a3226; --bandLine:#6b5a3c; --accent:#d6a35c;
+  --save:#7fc9a1; --saveBg:#1e3329;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);
+  font:14px/1.55 -apple-system,BlinkMacSystemFont,"SF Pro Text",Segoe UI,system-ui,sans-serif}
+.wrap{max-width:1180px;margin:0 auto;padding:40px 24px 72px}
+h1{font-size:26px;letter-spacing:-.02em;margin:0 0 6px}
+.sub{color:var(--muted);margin:0 0 28px;max-width:62ch}
+.toolbar{display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-bottom:26px;
+  padding:10px 14px;border:1px solid var(--line);border-radius:10px;background:var(--panel)}
+.toolbar label{display:flex;gap:7px;align-items:center;font-size:13px;color:var(--muted);cursor:pointer}
+.cols{display:flex;gap:34px;flex-wrap:wrap;align-items:flex-start}
+.col{flex:1 1 520px;min-width:420px}
+.col h2{font-size:13px;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);
+  margin:0 0 10px;display:flex;justify-content:space-between;align-items:baseline}
+.col h2 b{font-size:13px;letter-spacing:0;text-transform:none;color:var(--fg)}
+
+/* 1px = 1pt */
+.popup{width:560px;max-width:100%;background:var(--panel);border:1px solid var(--panelEdge);
+  border-radius:22px;position:relative;overflow:hidden;box-shadow:0 18px 40px rgba(0,0,0,.14)}
+.pad{position:relative}
+.hdr{display:flex;align-items:center;gap:8px}
+.title{font-weight:600;letter-spacing:-.01em}
+.lang{background:var(--chip);border-radius:999px;display:flex;align-items:center;
+  justify-content:center;font-size:12px;color:var(--fg)}
+.swap{background:var(--chip);border-radius:999px;display:flex;align-items:center;justify-content:center;font-size:12px}
+.icons{margin-left:auto;display:flex;gap:8px}
+.ico{background:var(--chip);border-radius:999px;display:flex;align-items:center;justify-content:center;font-size:12px}
+.split{display:flex;background:var(--pane);border:1px solid var(--panelEdge);border-radius:16px;overflow:hidden}
+.pane{flex:1;min-width:0;display:flex;flex-direction:column}
+.pane+.pane{border-left:1px solid var(--panelEdge)}
+.paneHdr{display:flex;align-items:center;font-size:11px;color:var(--muted);flex:none}
+.paneHdr .pico{margin-left:auto;display:flex;gap:8px}
+.paneHdr .pico i{width:18px;height:18px;border-radius:5px;background:var(--chip);display:block}
+.body{flex:1;overflow:hidden}
+.ln{height:19px;display:flex;align-items:center}
+.ln s{display:block;height:8px;border-radius:4px;background:currentColor;opacity:.20;text-decoration:none}
+.row{display:flex;gap:8px}
+.chip{background:var(--chip);border-radius:999px;display:flex;align-items:center;
+  justify-content:center;font-size:12px;padding:0 14px;white-space:nowrap}
+
+/* measurement bands */
+.band{position:absolute;left:0;right:0;background:var(--band);
+  border-top:1px dashed var(--bandLine);border-bottom:1px dashed var(--bandLine);
+  display:flex;align-items:center;justify-content:flex-end;padding-right:8px;
+  font:11px/1 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--accent);
+  pointer-events:none;opacity:0}
+.showBands .band{opacity:.92}
+.showBands .popup>*{position:relative}
+.band.thin{font-size:10px}
+
+table{border-collapse:collapse;width:100%;margin-top:14px;font-size:13px}
+th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--line)}
+th{font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);font-weight:600}
+td.n{font:12px ui-monospace,SFMono-Regular,Menlo,monospace;text-align:right}
+tr.total td{font-weight:700;border-bottom:none}
+.tag{display:inline-block;background:var(--saveBg);color:var(--save);border-radius:5px;
+  padding:2px 7px;font:12px ui-monospace,Menlo,monospace}
+.scroller{overflow-x:auto}
+.note{color:var(--muted);font-size:13px;margin-top:26px;max-width:70ch}
+</style></head>
+<body><div class="wrap" id="root">
+
+<h1>Popup density: trước / sau</h1>
+<p class="sub">Hai panel vẽ đúng tỉ lệ 1px = 1pt, cùng chiều cao 470pt và cùng nội dung. Khác biệt duy nhất là bộ hằng số <code>ChromeLayout</code>. Bật lớp đo để thấy từng dải chrome và số pt nó chiếm.</p>
+
+<div class="toolbar">
+  <label><input type="checkbox" id="bands"> Hiện lớp đo (pt)</label>
+  <label><input type="checkbox" id="dark"> Nền tối</label>
+  <span style="margin-left:auto;color:var(--muted);font-size:13px">Chrome cố định: 172pt → 130pt · dôi ra <span class="tag">+42pt cho nội dung</span></span>
+</div>
+
+<div class="cols">
+  <div class="col">
+    <h2>Normal (hiện tại) <b>15 dòng text</b></h2>
+    <div class="popup" id="p_reg"></div>
+  </div>
+  <div class="col">
+    <h2>Compact (đề xuất) <b>17 dòng text</b></h2>
+    <div class="popup" id="p_cmp"></div>
+  </div>
+</div>
+
+<div class="scroller">
+<table>
+<thead><tr><th>Hằng số</th><th class="n">Normal</th><th class="n">Compact</th><th class="n">Tiết kiệm</th><th>Ghi chú</th></tr></thead>
+<tbody id="tbl"></tbody>
+</table>
+</div>
+
+<p class="note">Bảng chỉ tính ngân sách dọc của panel khi chỉ có pane chính. Khi mở subtranslate cộng thêm <code>sectionDividerReserved</code> 34→24 và một action row 32→28 kèm <code>footerGap</code> 16→10, tổng tiết kiệm lên khoảng 66pt. Chiều ngang cũng thoáng thêm 8pt do <code>padding</code> áp cả hai bên.</p>
+
+</div>
+<script>
+const LINE = 19;
+const D = {
+  normal:{padding:14,header:32,headerGap:12,paneHdr:30,textInset:20,footerGap:16,bar:32,padBottom:16,icon:32,radius:22,paneRadius:16,side:12},
+  compact:{padding:10,header:28,headerGap:8, paneHdr:24,textInset:12,footerGap:10,bar:28,padBottom:10,icon:28,radius:18,paneRadius:14,side:10}
+};
+const H = 470;
+const SRC = ["The quick brown fox jumps over","the lazy dog while the sun sets","behind the distant mountain range,","casting long amber shadows across","the quiet valley floor below.","","Nobody moved for a long moment.","A bird called once, then again,","and the wind picked up from the east.","Everything smelled of rain.","The road ahead curved sharply left","and disappeared into the treeline.","She checked the map one more time,","folded it, and started walking.","There was no turning back now.","The light was already going.","By morning it would all be different."];
+
+function band(top,h,label){
+  return `<div class="band" style="top:${top}px;height:${h}px">${label}</div>`;
+}
+function lines(n){
+  let o="";
+  for(let i=0;i<n;i++){
+    const w = 55 + ((i*37)%42);
+    o += `<div class="ln"><s style="width:${w}%"></s></div>`;
+  }
+  return o;
+}
+function build(mode){
+  const c = D[mode];
+  const bodyH = H - c.padding - c.header - c.headerGap - c.paneHdr - c.textInset - c.footerGap - c.bar - c.padBottom;
+  const nLines = Math.floor(bodyH / LINE);
+  const splitH = c.paneHdr + c.textInset + bodyH;
+
+  let bands = "";
+  let y = 0;
+  const add=(h,l)=>{ bands += band(y,h,l); y += h; };
+  add(c.padding, `padding ${c.padding}`);
+  add(c.header,  `header ${c.header}`);
+  add(c.headerGap, `headerGap ${c.headerGap}`);
+  add(c.paneHdr, `paneHeader ${c.paneHdr}`);
+  const insetTop = Math.round(c.textInset/2);
+  add(insetTop, `inset ${insetTop}`);
+  y += bodyH;
+  bands += band(y, c.textInset-insetTop, `inset ${c.textInset-insetTop}`);
+  y += c.textInset-insetTop;
+  add(c.footerGap, `footerGap ${c.footerGap}`);
+  add(c.bar, `actionRow ${c.bar}`);
+  add(c.padBottom, `paddingBottom ${c.padBottom}`);
+
+  const half = c.icon/2;
+  return `
+  <div style="height:${H}px;padding:${c.padding}px ${c.padding}px ${c.padBottom}px;border-radius:${c.radius}px">
+    <div class="hdr" style="height:${c.header}px">
+      <div class="title" style="font-size:${mode==='compact'?15:16}px">NTranslate</div>
+      <div class="lang" style="width:118px;height:${c.icon}px;border-radius:${half}px">English</div>
+      <div class="swap" style="width:${c.icon}px;height:${c.icon}px;border-radius:${half}px">⇄</div>
+      <div class="lang" style="width:118px;height:${c.icon}px;border-radius:${half}px">Vietnamese</div>
+      <div class="icons">
+        ${[0,1,2].map(()=>`<div class="ico" style="width:${c.icon}px;height:${c.icon}px;border-radius:${half}px"></div>`).join("")}
+      </div>
+    </div>
+    <div style="height:${c.headerGap}px"></div>
+    <div class="split" style="height:${splitH}px;border-radius:${c.paneRadius}px">
+      <div class="pane">
+        <div class="paneHdr" style="height:${c.paneHdr}px;padding:0 ${c.side}px">Source
+          <span class="pico"><i></i><i></i></span></div>
+        <div class="body" style="padding:${insetTop}px ${c.side}px ${c.textInset-insetTop}px">${lines(nLines)}</div>
+      </div>
+      <div class="pane">
+        <div class="paneHdr" style="height:${c.paneHdr}px;padding:0 ${c.side}px">Result
+          <span class="pico"><i></i><i></i><i></i></span></div>
+        <div class="body" style="padding:${insetTop}px ${c.side}px ${c.textInset-insetTop}px">${lines(nLines)}</div>
+      </div>
+    </div>
+    <div style="height:${c.footerGap}px"></div>
+    <div class="row" style="height:${c.bar}px">
+      ${["Explain","Grammar","Vocabulary","Ask","Save"].map(t=>
+        `<div class="chip" style="height:${c.bar}px;border-radius:${c.bar/2}px">${t}</div>`).join("")}
+    </div>
+  </div>${bands}`;
+}
+
+document.getElementById("p_reg").innerHTML = build("normal");
+document.getElementById("p_cmp").innerHTML = build("compact");
+
+const ROWS=[
+ ["padding (trên)","padding",14,10,"cũng áp hai bên, ngang thoáng thêm 8pt"],
+ ["header row","headerHeight",32,28,"kéo theo languageControlHeight, chromeIconSize"],
+ ["gap header → body","headerGap",12,8,""],
+ ["pane header","paneHeaderHeight",30,24,"label + icon speak/copy"],
+ ["text inset trong pane","textInset",20,12,"đang hard-code +20 trong paneHeight()"],
+ ["gap body → action row","footerGap",16,10,""],
+ ["action row","bottomBarHeight",32,28,"vẫn trên ngưỡng chạm 24pt"],
+ ["padding (dưới)","paddingBottom",16,10,""]
+];
+let tb="",sr=0,sc=0;
+for(const [name,k,r,c,note] of ROWS){
+  sr+=r; sc+=c;
+  tb += `<tr><td>${name} <span style="color:var(--muted);font-size:12px">${k}</span></td>
+   <td class="n">${r}</td><td class="n">${c}</td><td class="n">${r-c}</td><td style="color:var(--muted)">${note}</td></tr>`;
+}
+tb += `<tr class="total"><td>Tổng chrome cố định</td><td class="n">${sr}</td><td class="n">${sc}</td>
+  <td class="n"><span class="tag">${sr-sc}</span></td><td style="color:var(--muted)">≈ 2 dòng text thêm ở mỗi pane</td></tr>`;
+document.getElementById("tbl").innerHTML = tb;
+
+document.getElementById("bands").onchange = e =>
+  document.getElementById("root").classList.toggle("showBands", e.target.checked);
+document.getElementById("dark").onchange = e =>
+  document.documentElement.setAttribute("data-theme", e.target.checked ? "dark":"light");
+</script></body></html>

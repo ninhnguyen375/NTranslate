@@ -490,7 +490,7 @@ extension PopoverController {
     func applyActionChipSize(_ button: NSButton, title: String) {
         let size = NSSize(
             width: actionChipWidth(forTitle: title),
-            height: PopoverLayoutMath.actionButtonHeight
+            height: ChromeLayout.bottomBarHeight
         )
         if let chip = button as? ActionChipButton {
             chip.lockedSize = size
@@ -626,11 +626,20 @@ extension PopoverController {
         applyControlCornerRadius(button)
     }
 
+    /// Shared metrics for the speak / copy / save glyphs so they line up with each other.
+    var paneIconSymbolConfiguration: NSImage.SymbolConfiguration {
+        NSImage.SymbolConfiguration(pointSize: 12, weight: .medium)
+    }
+
     func configureIconButton(_ button: NSButton, symbol: String, action: Selector, label: String) {
         button.title = ""
         button.attributedTitle = NSAttributedString(string: "")
-        button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: label)
+        // One symbol configuration for every pane icon: unconfigured symbol images keep their own
+        // natural canvas, so speaker and tortoise ended up on different centres in the same row.
+        button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: label)?
+            .withSymbolConfiguration(paneIconSymbolConfiguration)
         button.imagePosition = .imageOnly
+        button.imageScaling = .scaleNone
         button.isBordered = false
         button.bezelStyle = .inline
         button.target = self
@@ -643,7 +652,8 @@ extension PopoverController {
     func resetCopyButtonAppearance() {
         copyButton.title = ""
         copyButton.attributedTitle = NSAttributedString(string: "")
-        copyButton.image = NSImage(systemSymbolName: "doc.on.doc", accessibilityDescription: "Copy")
+        copyButton.image = NSImage(systemSymbolName: "doc.on.doc", accessibilityDescription: "Copy")?
+            .withSymbolConfiguration(paneIconSymbolConfiguration)
         copyButton.imagePosition = .imageOnly
         copyButton.contentTintColor = Palette.iconTint
     }
