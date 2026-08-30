@@ -92,7 +92,7 @@ final class Translator: @unchecked Sendable {
     }
 
     static let dictionaryTermCharacterLimit = 40
-    static let requestTimeoutInterval: TimeInterval = 30
+    static let requestTimeoutInterval: TimeInterval = 120
 
     /// ASCII plus CJK sentence punctuation. A Chinese sentence has no spaces, so word-count
     /// alone would treat it as a single dictionary term.
