@@ -75,6 +75,12 @@ extension PopoverController {
         section.resultCard.addSubview(section.resultHeaderBar)
         section.resultCard.addSubview(section.resultScrollView)
 
+        for textView in [section.sourceTextView, section.resultTextView] {
+            textView.delegate = self
+        }
+        configureActionRow(section.actionRow, isSub: true)
+        section.actionRow.addToSuperview(chromeHost)
+
         section.splitHost.addSubview(section.sourceCard)
         section.splitHost.addSubview(section.splitDivider)
         section.splitHost.addSubview(section.resultCard)
@@ -131,6 +137,12 @@ extension PopoverController {
 
     func removeSubSection() {
         subGeneration += 1
+        subSection?.requestInFlight = false
+        if qaTargetsSub {
+            qaTargetsSub = false
+            qaInputField.placeholderString = "Ask follow-up questions about translation..."
+        }
+        if currentFloatingIsSub { hideFloatingSelectionBar() }
         subSection?.removeFromSuperview()
         subSection = nil
     }
@@ -150,7 +162,6 @@ extension PopoverController {
     func updateSubButtons(_ section: SubtranslateSection) {
         let copyable = PopoverFeedback.isCopyableResult(section.resultText)
         section.copyButton.isEnabled = copyable
-        section.retryButton.isEnabled = !isRequestInFlight && !section.sourceText.isEmpty
         updateSubSpeakButtons(section)
         section.saveWordButton.isHidden = !copyable
         let isSaved = section.recordID
@@ -160,12 +171,28 @@ extension PopoverController {
             accessibilityDescription: isSaved ? "Remove Saved Word" : "Save Word"
         )
         section.saveWordButton.contentTintColor = isSaved ? .controlAccentColor : Palette.iconTint
+
+        let canRun = !section.requestInFlight && !section.sourceText.isEmpty
+        section.retryButton.isEnabled = canRun
+        section.actionRow.applyEnabled(canRun: canRun, copyable: copyable, imagesEnabled: false)
     }
+
+    /// The sub row's Translate / Learn / Proofread re-run against the sub pane's own source and
+    /// overwrite the sub pane in place — they never spawn a third pane.
+    func runSubMode(_ mode: TranslationMode) {
+        guard let section = subSection, !section.sourceText.isEmpty, !section.requestInFlight else { return }
+        runSubRequest(text: section.sourceText, mode: mode, bypassCache: true)
+    }
+
+    @objc func runSubTranslate() { runSubMode(.translate) }
+    @objc func runSubLearn() { runSubMode(.learn) }
+    @objc func runSubProofread() { runSubMode(.proofread) }
 
     /// Runs Translate or Learn for a freshly selected phrase into the secondary pane, leaving the
     /// main pane untouched.
     func runSubRequest(text: String, mode: TranslationMode, bypassCache: Bool = false) {
         guard let translator else { return }
+        if let existing = subSection, existing.requestInFlight { return }
         guard text.count <= config.maxTranslateLength else {
             setStatus(PopoverFeedback.textTooLong)
             return
@@ -208,6 +235,7 @@ extension PopoverController {
         section.sourceHeaderLabel.stringValue = paneLanguageCode(displaySource)
         section.resultHeaderLabel.stringValue = paneLanguageCode(pair.target)
         section.setSource(text, font: .systemFont(ofSize: ChromeLayout.bodyFontSize), color: Palette.bodyText)
+        section.requestInFlight = true
         let waitingText: String
         switch mode {
         case .learn: waitingText = PopoverFeedback.learning
@@ -238,14 +266,14 @@ extension PopoverController {
         if mode == .proofread {
             translator.proofread(text, lang: displaySource, completion: handler)
         } else if mode == .learn {
-            translator.learn(text, sourceLang: pair.source, targetLang: pair.target, parentContext: inputTextView.string, completion: handler)
+            translator.learn(text, sourceLang: displaySource, targetLang: pair.target, parentContext: inputTextView.string, completion: handler)
         } else {
             let context = historyStore.recentContext(
                 sourceLanguage: displaySource,
                 targetLanguage: pair.target,
                 excludingText: text
             ).reversed().map { ContextPair(source: $0.sourceText, target: $0.resultText) }
-            translator.translate(text, sourceLang: pair.source, targetLang: pair.target, context: context, parentContext: inputTextView.string) { result in
+            translator.translate(text, sourceLang: displaySource, targetLang: pair.target, context: context, parentContext: inputTextView.string) { result in
                 handler(result.map(\.text))
             }
         }
@@ -280,7 +308,7 @@ extension PopoverController {
     }
 
     @objc func retrySubRequest() {
-        guard let section = subSection, !section.sourceText.isEmpty else { return }
+        guard let section = subSection, !section.sourceText.isEmpty, !section.requestInFlight else { return }
         runSubRequest(text: section.sourceText, mode: section.mode, bypassCache: true)
     }
 
@@ -293,6 +321,7 @@ extension PopoverController {
         existingRecord: TranslationRecord?
     ) {
         guard let section = subSection, section.generation == generation, generation == subGeneration else { return }
+        section.requestInFlight = false
         switch result {
         case let .success(value):
             setSubResultText(section, value)
@@ -321,6 +350,8 @@ extension PopoverController {
             setSubResultText(section, "Error: \(error.localizedDescription)")
         }
         updateSubButtons(section)
+        prefetchSpeech(subSpeechIdentity(kind: .source), translationGeneration: nil)
+        prefetchSpeech(subSpeechIdentity(kind: .result), translationGeneration: nil)
         reflowLayout()
         section.resultTextView.scrollToBeginningOfDocument(nil)
     }
@@ -418,13 +449,26 @@ extension PopoverController {
         selectionFloatingBar.layer?.borderColor = Palette.cg(Palette.hairline, in: selectionFloatingBar)
         selectionFloatingBar.isHidden = true
 
+        configureFloatingButton(floatingQuickButton, symbol: "bolt.horizontal.circle", action: #selector(floatingQuickTranslateClicked), label: "Quick Translate")
         configureFloatingButton(floatingTranslateButton, symbol: "arrow.right.circle", action: #selector(floatingTranslateClicked), label: "Subtranslate")
         configureFloatingButton(floatingLearnButton, symbol: "brain.head.profile", action: #selector(floatingLearnClicked), label: "Learn Phrase")
         configureFloatingButton(floatingSpeakButton, symbol: "speaker.wave.2", action: #selector(floatingSpeakClicked), label: "Speak Phrase")
         configureFloatingButton(floatingCopyButton, symbol: "doc.on.doc", action: #selector(floatingCopyClicked), label: "Copy Phrase")
 
-        let stack = NSStackView(views: [floatingTranslateButton, floatingLearnButton, floatingSpeakButton, floatingCopyButton])
-        stack.orientation = .horizontal
+        floatingResultLabel.font = .systemFont(ofSize: ChromeLayout.bodyFontSize - 1)
+        floatingResultLabel.textColor = Palette.bodyText
+        floatingResultLabel.lineBreakMode = .byWordWrapping
+        floatingResultLabel.maximumNumberOfLines = 0
+        floatingResultLabel.isSelectable = true
+        floatingResultLabel.isHidden = true
+
+        let buttonRow = NSStackView(views: [floatingQuickButton, floatingTranslateButton, floatingLearnButton, floatingSpeakButton, floatingCopyButton])
+        buttonRow.orientation = .horizontal
+        buttonRow.spacing = 4
+
+        let stack = NSStackView(views: [buttonRow, floatingResultLabel])
+        stack.orientation = .vertical
+        stack.alignment = .leading
         stack.spacing = 4
         stack.edgeInsets = NSEdgeInsets(top: 3, left: 6, bottom: 3, right: 6)
         stack.translatesAutoresizingMaskIntoConstraints = false
@@ -457,37 +501,36 @@ extension PopoverController {
         ])
     }
 
-    func updateFloatingSelectionBar() {
-        let firstResponder = panel.firstResponder as? NSTextView
-        let activeTextView: NSTextView
-        let activeScrollView: NSScrollView
-        let isResultView: Bool
+    /// Every pane the floating selection bar can attach to: main source/result plus, when the
+    /// subtranslate pane is open, its own source/result.
+    func floatingSelectionCandidates() -> [(textView: NSTextView, scrollView: NSScrollView, isResult: Bool, isSub: Bool)] {
+        var list: [(NSTextView, NSScrollView, Bool, Bool)] = [
+            (inputTextView, inputScrollView, false, false),
+            (textView, textScrollView, true, false),
+        ]
+        if let sub = subSection {
+            list.append((sub.sourceTextView, sub.sourceScrollView, false, true))
+            list.append((sub.resultTextView, sub.resultScrollView, true, true))
+        }
+        return list.map { (textView: $0.0, scrollView: $0.1, isResult: $0.2, isSub: $0.3) }
+    }
 
-        if firstResponder === inputTextView, inputTextView.selectedRange().length > 0 {
-            activeTextView = inputTextView
-            activeScrollView = inputScrollView
-            isResultView = false
-        } else if firstResponder === textView, textView.selectedRange().length > 0 {
-            activeTextView = textView
-            activeScrollView = textScrollView
-            isResultView = true
-        } else if inputTextView.selectedRange().length > 0, textView.selectedRange().length == 0 {
-            activeTextView = inputTextView
-            activeScrollView = inputScrollView
-            isResultView = false
-        } else if textView.selectedRange().length > 0, inputTextView.selectedRange().length == 0 {
-            activeTextView = textView
-            activeScrollView = textScrollView
-            isResultView = true
-        } else {
+    func updateFloatingSelectionBar() {
+        let candidates = floatingSelectionCandidates()
+        let firstResponder = panel.firstResponder as? NSTextView
+        let selected = candidates.filter { $0.textView.selectedRange().length > 0 }
+        // The focused pane wins; otherwise only an unambiguous single selection counts.
+        guard let active = selected.first(where: { $0.textView === firstResponder })
+            ?? (selected.count == 1 ? selected[0] : nil)
+        else {
             hideFloatingSelectionBar()
             return
         }
+        let activeTextView = active.textView
+        let activeScrollView = active.scrollView
 
         let range = activeTextView.selectedRange()
-        guard range.length > 0,
-              let bounds = Range(range, in: activeTextView.string)
-        else {
+        guard let bounds = Range(range, in: activeTextView.string) else {
             hideFloatingSelectionBar()
             return
         }
@@ -496,8 +539,10 @@ extension PopoverController {
             hideFloatingSelectionBar()
             return
         }
+        if text != floatingResultForText { applyFloatingResultLabel(nil) }
         currentFloatingSelectedText = text
-        currentFloatingIsResult = isResultView
+        currentFloatingIsResult = active.isResult
+        currentFloatingIsSub = active.isSub
 
         guard let layoutManager = activeTextView.layoutManager,
               let textContainer = activeTextView.textContainer
@@ -515,8 +560,13 @@ extension PopoverController {
         }
 
         let rectInChrome = activeTextView.convert(rectInTextView, to: chromeHost)
-        let barWidth: CGFloat = 118
-        let barHeight: CGFloat = 28
+        let availableWidth = max(0, chromeHost.bounds.width - ChromeLayout.padding * 2)
+        let preferredWidth = floatingResultLabel.isHidden ? 140 : min(300, max(160, availableWidth))
+        let barWidth = min(preferredWidth, availableWidth)
+        floatingResultLabel.preferredMaxLayoutWidth = max(0, barWidth - 12)
+        let barHeight: CGFloat = floatingResultLabel.isHidden
+            ? 28
+            : 32 + ceil(floatingResultLabel.intrinsicContentSize.height)
         let barX = max(ChromeLayout.padding, min(rectInChrome.midX - barWidth / 2, chromeHost.bounds.width - ChromeLayout.padding - barWidth))
         let barY: CGFloat
         let gap: CGFloat = 12
@@ -527,15 +577,98 @@ extension PopoverController {
         }
 
         selectionFloatingBar.frame = NSRect(x: barX, y: barY, width: barWidth, height: barHeight)
-        updateSpeechButton(floatingSpeakButton, identity: floatingSpeechIdentity(isResult: isResultView), baseLabel: "phrase")
+        updateSpeechButton(floatingSpeakButton, identity: floatingSpeechIdentity(), baseLabel: "phrase")
         selectionFloatingBar.isHidden = false
         chromeHost.addSubview(selectionFloatingBar, positioned: .above, relativeTo: nil)
     }
 
+    /// Translate a selected phrase for the floating bar. History cache is checked first, so a
+    /// repeated phrase costs no API call.
+    func runFloatingTranslate(_ text: String) {
+        guard let translator else { return }
+        guard text.count <= config.maxTranslateLength else {
+            setStatus(PopoverFeedback.textTooLong)
+            return
+        }
+        floatingRequestGeneration += 1
+        let generation = floatingRequestGeneration
+        let pair = LanguageDetector.resolvedPair(
+            selectedSource: selectedSourceLanguage(),
+            selectedTarget: selectedTargetLanguage(),
+            text: text,
+            recentTargets: recentTargets,
+            languages: config.languages,
+            targetLanguages: config.targetLanguages,
+            nativeLang: config.resolvedNativeLang
+        )
+        let displaySource = pair.source == LanguageDetector.autoDetect
+            ? LanguageDetector.detectedLanguage(text)
+            : pair.source
+        var target = pair.target
+        if target == displaySource {
+            let selected = selectedSourceLanguage()
+            target = selected != LanguageDetector.autoDetect && selected != displaySource
+                ? selected
+                : config.resolvedNativeLang
+        }
+        guard target != displaySource else {
+            setFloatingResult(nil)
+            setStatus("Already in \(paneLanguageCode(target))")
+            return
+        }
+        if let record = reusableSubRecord(mode: .translate, text: text, sourceLanguage: displaySource, targetLanguage: target),
+           PopoverFeedback.isCopyableResult(record.resultText) {
+            setFloatingResult(record.resultText)
+            return
+        }
+
+        setFloatingResult(PopoverFeedback.translating)
+        let context = historyStore.recentContext(
+            sourceLanguage: displaySource,
+            targetLanguage: target,
+            excludingText: text
+        ).reversed().map { ContextPair(source: $0.sourceText, target: $0.resultText) }
+        translator.translate(text, sourceLang: displaySource, targetLang: target, context: context, parentContext: inputTextView.string) { [weak self] result in
+            Task { @MainActor in
+                guard let self, self.floatingRequestGeneration == generation,
+                      self.currentFloatingSelectedText == text else { return }
+                switch result {
+                case .success(let value): self.setFloatingResult(value.text)
+                case .failure(let error): self.setFloatingResult("Error: \(error.localizedDescription)")
+                }
+            }
+        }
+    }
+
+    private func applyFloatingResultLabel(_ text: String?) {
+        let value = text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        floatingResultForText = value.isEmpty ? nil : currentFloatingSelectedText
+        guard value != floatingResultLabel.stringValue else { return }
+        floatingResultLabel.stringValue = value
+        floatingResultLabel.isHidden = value.isEmpty
+    }
+
+    /// Show or clear the inline result, then re-lay the bar around the current selection.
+    func setFloatingResult(_ text: String?) {
+        let previous = floatingResultLabel.stringValue
+        applyFloatingResultLabel(text)
+        if previous != floatingResultLabel.stringValue, !selectionFloatingBar.isHidden {
+            updateFloatingSelectionBar()
+        }
+    }
+
     func hideFloatingSelectionBar() {
+        floatingRequestGeneration += 1
+        applyFloatingResultLabel(nil)
         selectionFloatingBar.isHidden = true
         currentFloatingSelectedText = nil
         currentFloatingIsResult = false
+        currentFloatingIsSub = false
+    }
+
+    @objc func floatingQuickTranslateClicked() {
+        guard let text = currentFloatingSelectedText else { return }
+        runFloatingTranslate(text)
     }
 
     @objc func floatingTranslateClicked() {
@@ -548,14 +681,17 @@ extension PopoverController {
         runSubRequest(text: text, mode: .learn, bypassCache: false)
     }
 
-    /// Speech identity for whatever phrase the floating bar is currently attached to.
+    /// Speech identity for whatever phrase the floating bar is currently attached to. A phrase picked
+    /// inside the subtranslate pane takes that pane's languages, not the main selectors'.
     func floatingSpeechIdentity() -> SpeechIdentity? {
-        floatingSpeechIdentity(isResult: currentFloatingIsResult)
-    }
-
-    func floatingSpeechIdentity(isResult: Bool) -> SpeechIdentity? {
         guard let text = currentFloatingSelectedText, !text.isEmpty else { return nil }
-        let lang = isResult ? selectedTargetLanguage() : effectiveSourceLanguage(for: text)
+        let isResult = currentFloatingIsResult
+        let lang: String
+        if currentFloatingIsSub, let sub = subSection {
+            lang = isResult ? sub.targetLanguage : sub.sourceLanguage
+        } else {
+            lang = isResult ? selectedTargetLanguage() : effectiveSourceLanguage(for: text)
+        }
         let model = SpeechModelResolver.model(for: lang, config: config)
         return SpeechIdentity(kind: isResult ? .result : .source, text: text, model: model, recordID: nil)
     }

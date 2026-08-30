@@ -8,19 +8,26 @@ final class QAPaneSection {
         let question: String
         var answer: String
         var isPending: Bool
+        var failed: Bool = false
     }
 
     let host = NSView(frame: .zero)
     let card = NSView(frame: .zero)
     let headerBar = NSView(frame: .zero)
     let headerLabel = NSTextField(labelWithString: "Q&A")
-    let textView = NSTextView(frame: .zero)
+    let textView = SelectableTextView(frame: .zero)
     let scrollView = NSScrollView(frame: .zero)
     let copyButton = NSButton(frame: .zero)
     let closeButton = NSButton(frame: .zero)
 
     private(set) var turns: [Turn] = []
     var generation = 0
+    /// Which pane this conversation was started against; switching panes starts a fresh section.
+    var targetsSub = false
+
+    var headerTitle: String {
+        targetsSub ? "Q&A · Sub-translation" : "Q&A"
+    }
 
     /// Latest answer, for the copy button and for "is there anything to copy" checks.
     var answerText: String { turns.last(where: { !$0.isPending })?.answer ?? "" }
@@ -32,7 +39,7 @@ final class QAPaneSection {
 
     /// Prior turns handed to the model so follow-ups ("còn câu kia thì sao?") resolve.
     var completedTurns: [QATurn] {
-        turns.filter { !$0.isPending }.map { QATurn(question: $0.question, answer: $0.answer) }
+        turns.filter { !$0.isPending && !$0.failed }.map { QATurn(question: $0.question, answer: $0.answer) }
     }
 
     func appendQuestion(_ question: String, placeholder: String) {
@@ -42,7 +49,8 @@ final class QAPaneSection {
     func completeLastTurn(with answer: String, failed: Bool = false) {
         guard let index = turns.indices.last else { return }
         turns[index].answer = answer.trimmingCharacters(in: .whitespacesAndNewlines)
-        turns[index].isPending = failed
+        turns[index].isPending = false
+        turns[index].failed = failed
     }
 
     func render(font: NSFont, questionColor: NSColor, answerColor: NSColor, pendingColor: NSColor, errorColor: NSColor) {
@@ -56,7 +64,7 @@ final class QAPaneSection {
             body.append(.plainDisplay("AI: ", font: prefixFont, color: Palette.paneLabel))
             if turn.isPending {
                 body.append(.plainDisplay(turn.answer, font: font, color: pendingColor))
-            } else if turn.answer.hasPrefix("Error:") || turn.answer.hasPrefix("Lỗi:") {
+            } else if turn.failed || turn.answer.hasPrefix("Error:") || turn.answer.hasPrefix("Lỗi:") {
                 body.append(.plainDisplay(turn.answer, font: font, color: errorColor))
             } else {
                 body.append(.markdownDisplay(turn.answer, font: font, color: answerColor))

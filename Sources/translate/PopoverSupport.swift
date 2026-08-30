@@ -406,6 +406,11 @@ final class VerticallyCenteredTextFieldCell: NSTextFieldCell {
 class SelectableTextView: NSTextView {
     var onResignFirstResponder: (() -> Void)?
 
+    /// The popup activates the app asynchronously, so the first click after it appears would
+    /// otherwise be swallowed by window activation: the view becomes first responder with an empty
+    /// selection at index 0, which scrolls the pane back to the top mid-double-click.
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
     override func resignFirstResponder() -> Bool {
         let resigned = super.resignFirstResponder()
         if resigned {
@@ -455,10 +460,6 @@ final class PointerButton: NSButton {
 
 final class InputTextView: SelectableTextView {
     var onImagePasted: ((Data) -> Void)?
-
-    /// The popup activates the app asynchronously, so the first click after it appears would
-    /// otherwise be swallowed by window activation and never start a selection.
-    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
     override func paste(_ sender: Any?) {
         let pb = NSPasteboard.general

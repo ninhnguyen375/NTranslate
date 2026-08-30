@@ -26,6 +26,13 @@ extension PopoverController {
         let editItem = NSMenuItem()
         editItem.submenu = editMenu
         mainMenu.addItem(editItem)
+
+        let windowMenu = NSMenu(title: "Window")
+        windowMenu.addItem(withTitle: "Close", action: #selector(closePanelMenu), keyEquivalent: "w")
+        windowMenu.items.forEach { $0.target = self }
+        let windowItem = NSMenuItem()
+        windowItem.submenu = windowMenu
+        mainMenu.addItem(windowItem)
         NSApp.mainMenu = mainMenu
 
         let statusMenu = NSMenu()
@@ -403,6 +410,10 @@ extension PopoverController {
         focusInputTextView()
     }
 
+    @objc func closePanelMenu() {
+        closePopover()
+    }
+
     func closePanel() {
         guard panel.isVisible else { return }
         hideFloatingSelectionBar()
@@ -559,9 +570,28 @@ extension PopoverController {
     }
 
     func focusInputTextView() {
+        attemptFocusInputTextView(remainingRetries: 10)
+    }
+
+    private func attemptFocusInputTextView(remainingRetries: Int) {
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
             self.panel.makeKey()
+            // `presentPanel` runs twice per hotkey (once to show the panel, again once the selection
+            // read returns), so this can land in the middle of a click. NSTextView tracks the mouse
+            // in its own event loop — taking first responder away mid-track drops the double-click's
+            // word selection and parks the caret at offset 0.
+            if NSEvent.pressedMouseButtons != 0 {
+                guard remainingRetries > 0 else { return }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) { [weak self] in
+                    self?.attemptFocusInputTextView(remainingRetries: remainingRetries - 1)
+                }
+                return
+            }
+            if let focused = self.panel.firstResponder as? NSTextView,
+               focused === self.inputTextView || focused.selectedRange().length > 0 {
+                return
+            }
             self.panel.makeFirstResponder(self.inputTextView)
         }
     }

@@ -38,6 +38,9 @@ struct TranslationRecord: Codable, Equatable, Identifiable, Sendable {
     var dueDate: Date?
     var interval: Int // days
     var ease: Double
+    var repetitions: Int // consecutive successful reviews
+    var lapses: Int // number of times graded Again
+    var lastReviewedAt: Date?
 
     init(
         id: UUID,
@@ -54,7 +57,10 @@ struct TranslationRecord: Codable, Equatable, Identifiable, Sendable {
         isSaved: Bool,
         dueDate: Date? = nil,
         interval: Int = 0,
-        ease: Double = 2.5
+        ease: Double = 2.5,
+        repetitions: Int = 0,
+        lapses: Int = 0,
+        lastReviewedAt: Date? = nil
     ) {
         self.id = id
         self.timestamp = timestamp
@@ -71,12 +77,16 @@ struct TranslationRecord: Codable, Equatable, Identifiable, Sendable {
         self.dueDate = dueDate
         self.interval = interval
         self.ease = ease
+        self.repetitions = repetitions
+        self.lapses = lapses
+        self.lastReviewedAt = lastReviewedAt
     }
 
     private enum CodingKeys: String, CodingKey {
         case id, timestamp, updatedAt, deletedAt, mode, sourceText, resultText, sourceLanguage, targetLanguage
         case sourceAudioPath, resultAudioPath, isSaved
         case dueDate, interval, ease
+        case repetitions, lapses, lastReviewedAt
     }
 
     init(from decoder: Decoder) throws {
@@ -99,6 +109,9 @@ struct TranslationRecord: Codable, Equatable, Identifiable, Sendable {
         dueDate = try values.decodeIfPresent(Date.self, forKey: .dueDate)
         interval = try values.decodeIfPresent(Int.self, forKey: .interval) ?? 0
         ease = try values.decodeIfPresent(Double.self, forKey: .ease) ?? 2.5
+        repetitions = try values.decodeIfPresent(Int.self, forKey: .repetitions) ?? 0
+        lapses = try values.decodeIfPresent(Int.self, forKey: .lapses) ?? 0
+        lastReviewedAt = try values.decodeIfPresent(Date.self, forKey: .lastReviewedAt)
     }
 
     /// SM-2 simplified algorithm: 3 levels (again: 0, hard: 1, easy: 2)
@@ -111,9 +124,12 @@ struct TranslationRecord: Codable, Equatable, Identifiable, Sendable {
         case .again:
             nextInterval = 1
             nextEase = max(1.3, currentEase - 0.2)
+            repetitions = 0
+            lapses += 1
         case .hard:
             nextInterval = interval <= 1 ? 2 : Int(Double(interval) * 1.2)
             nextEase = max(1.3, currentEase - 0.15)
+            repetitions += 1
         case .easy:
             if interval == 0 {
                 nextInterval = 1
@@ -123,7 +139,10 @@ struct TranslationRecord: Codable, Equatable, Identifiable, Sendable {
                 nextInterval = max(interval + 1, Int(Double(interval) * currentEase))
             }
             nextEase = currentEase + 0.1
+            repetitions += 1
         }
+
+        self.lastReviewedAt = currentDate
 
         self.interval = nextInterval
         self.ease = nextEase
@@ -292,7 +311,7 @@ final class TranslationHistoryStore {
             try update(recordID: existing.id) { rec in
                 rec = TranslationRecord(
                     id: rec.id,
-                    timestamp: record.timestamp,
+                    timestamp: rec.timestamp,
                     updatedAt: Date(),
                     deletedAt: rec.deletedAt,
                     mode: rec.mode,
@@ -305,7 +324,10 @@ final class TranslationHistoryStore {
                     isSaved: rec.isSaved,
                     dueDate: rec.dueDate,
                     interval: rec.interval,
-                    ease: rec.ease
+                    ease: rec.ease,
+                    repetitions: rec.repetitions,
+                    lapses: rec.lapses,
+                    lastReviewedAt: rec.lastReviewedAt
                 )
             }
             return records.first(where: { $0.id == existing.id }) ?? record
@@ -609,11 +631,11 @@ final class TranslationHistoryStore {
                 autoreleasepool {
                     do {
                         let data = try Data(contentsOf: fileURL)
-                        let decoder = JSONDecoder()
-                        decoder.dateDecodingStrategy = .iso8601
-                        let decoded = try decoder.decode([TranslationRecord].self, from: data)
-                        try validate(decoded)
-                        fileRecords = decoded
+                        let decoded = try decodeMonthRecords(from: data)
+                        fileRecords = decoded.records
+                        if decoded.skipped > 0 {
+                            detectedWarning = "Skipped \(decoded.skipped) unreadable history record(s) in \(fileURL.lastPathComponent)."
+                        }
                     } catch {
                         detectedError = "Could not load history file \(fileURL.lastPathComponent): \(error.localizedDescription)"
                         unreadableFile = true
@@ -670,13 +692,13 @@ final class TranslationHistoryStore {
 
         do {
             let data = try Data(contentsOf: historyURL)
-            let decoder = JSONDecoder()
-            decoder.dateDecodingStrategy = .iso8601
-            let decoded = try decoder.decode([TranslationRecord].self, from: data)
-            try validate(decoded)
+            let decoded = try decodeMonthRecords(from: data)
+            if decoded.skipped > 0 {
+                migrationError = "Skipped \(decoded.skipped) unreadable record(s) during legacy history migration."
+            }
 
             var monthly: [String: [TranslationRecord]] = [:]
-            for record in decoded {
+            for record in decoded.records {
                 let key = monthKey(record.timestamp)
                 monthly[key, default: []].append(record)
             }
@@ -689,7 +711,7 @@ final class TranslationHistoryStore {
                 let monthFileURL = myDeviceDir.appendingPathComponent("\(key).json")
                 var existing: [TranslationRecord] = []
                 if fileManager.fileExists(atPath: monthFileURL.path), let existingData = try? Data(contentsOf: monthFileURL) {
-                    existing = (try? decoder.decode([TranslationRecord].self, from: existingData)) ?? []
+                    existing = (try? decodeMonthRecords(from: existingData))?.records ?? []
                 }
                 var map: [UUID: TranslationRecord] = [:]
                 for rec in existing { map[rec.id] = rec }
@@ -729,9 +751,7 @@ final class TranslationHistoryStore {
         var list: [TranslationRecord] = []
         if fileManager.fileExists(atPath: monthFileURL.path) {
             let data = try Data(contentsOf: monthFileURL)
-            let decoder = JSONDecoder()
-            decoder.dateDecodingStrategy = .iso8601
-            list = (try? decoder.decode([TranslationRecord].self, from: data)) ?? []
+            list = (try? decodeMonthRecords(from: data))?.records ?? []
         }
 
         list.removeAll { $0.id == record.id }
@@ -799,15 +819,42 @@ final class TranslationHistoryStore {
         }
     }
 
-    private func validate(_ decoded: [TranslationRecord]) throws {
-        guard Set(decoded.map(\.id)).count == decoded.count else { throw StoreError.invalidRecord }
-        for record in decoded {
-            guard Self.hasContent(record.sourceText), Self.hasContent(record.resultText),
-                  Self.hasContent(record.sourceLanguage), Self.hasContent(record.targetLanguage)
-            else { throw StoreError.invalidRecord }
-            if let path = record.sourceAudioPath { _ = try containedAudioURL(for: path) }
-            if let path = record.resultAudioPath { _ = try containedAudioURL(for: path) }
+    private struct MonthFileDecode {
+        let records: [TranslationRecord]
+        let skipped: Int
+    }
+
+    /// Decodes a month-file JSON array one record at a time so one bad item cannot drop the month.
+    private func decodeMonthRecords(from data: Data) throws -> MonthFileDecode {
+        let json = try JSONSerialization.jsonObject(with: data)
+        guard let items = json as? [Any] else { throw StoreError.invalidRecord }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        var records: [TranslationRecord] = []
+        var seen: Set<UUID> = []
+        var skipped = 0
+        for item in items {
+            guard JSONSerialization.isValidJSONObject(item),
+                  let itemData = try? JSONSerialization.data(withJSONObject: item),
+                  let record = try? decoder.decode(TranslationRecord.self, from: itemData),
+                  isValidLoadedRecord(record),
+                  seen.insert(record.id).inserted
+            else {
+                skipped += 1
+                continue
+            }
+            records.append(record)
         }
+        return MonthFileDecode(records: records, skipped: skipped)
+    }
+
+    private func isValidLoadedRecord(_ record: TranslationRecord) -> Bool {
+        guard Self.hasContent(record.sourceText), Self.hasContent(record.resultText),
+              Self.hasContent(record.sourceLanguage), Self.hasContent(record.targetLanguage)
+        else { return false }
+        if let path = record.sourceAudioPath, (try? containedAudioURL(for: path)) == nil { return false }
+        if let path = record.resultAudioPath, (try? containedAudioURL(for: path)) == nil { return false }
+        return true
     }
 
     private func update(recordID: UUID, mutation: (inout TranslationRecord) -> Void) throws {

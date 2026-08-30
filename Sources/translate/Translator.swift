@@ -79,10 +79,24 @@ final class Translator {
         """
     }
 
+    static let dictionaryTermCharacterLimit = 40
+    static let requestTimeoutInterval: TimeInterval = 30
+
+    /// ASCII plus CJK sentence punctuation. A Chinese sentence has no spaces, so word-count
+    /// alone would treat it as a single dictionary term.
+    private static let dictionaryTermPunctuation = CharacterSet(charactersIn: ".?!,;:。，、？！；：「」『』（）")
+
+    /// Dictionary-card routing: a short Latin word/compound, or a short CJK term without sentence punctuation.
+    static func isDictionaryTerm(_ text: String) -> Bool {
+        guard text.count <= dictionaryTermCharacterLimit else { return false }
+        guard !text.contains(where: { $0.isNewline }) else { return false }
+        guard text.unicodeScalars.allSatisfy({ !dictionaryTermPunctuation.contains($0) }) else { return false }
+        let words = text.split(whereSeparator: { $0.isWhitespace })
+        return words.count >= 1 && words.count <= 3
+    }
+
     static func renderLearnPrompt(for text: String, sourceLang: String, targetLang: String, config: AppConfig) -> String {
-        let template = text.split(whereSeparator: { $0.isWhitespace }).count == 1
-            ? config.learnPrompt
-            : config.sentenceLearnPrompt
+        let template = isDictionaryTerm(text) ? config.learnPrompt : config.sentenceLearnPrompt
         return template
             .replacingOccurrences(of: "{{config.sourceLang}}", with: sourceLang)
             .replacingOccurrences(of: "{{config.targetLang}}", with: targetLang)
@@ -150,6 +164,7 @@ final class Translator {
         }
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
+        req.timeoutInterval = Self.requestTimeoutInterval
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         let wrappedText = "<selected-text>\(text)</selected-text>"
@@ -420,6 +435,7 @@ final class Translator {
         }
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
+        req.timeoutInterval = Self.requestTimeoutInterval
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         do {
@@ -460,6 +476,7 @@ final class Translator {
         }
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
+        req.timeoutInterval = Self.requestTimeoutInterval
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         var jsonPayload: [String: Any] = [

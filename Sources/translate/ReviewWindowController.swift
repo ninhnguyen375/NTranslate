@@ -5,6 +5,13 @@ private final class FlippedDocumentView: NSView {
     override var isFlipped: Bool { true }
 }
 
+private enum ReviewLayout {
+    static let iconSize: CGFloat = 20
+    static let contextTruncateLimit = 100
+    static let compactHeight: CGFloat = 480
+    static let expandedHeight: CGFloat = 700
+}
+
 @MainActor
 final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preconcurrency AVAudioPlayerDelegate {
     private var store: TranslationHistoryStore
@@ -24,8 +31,10 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
     private let readMoreButton = NSButton()
     private let speakSourceButton = NSButton()
     private let speakSlowSourceButton = NSButton()
+    private let openTranslateButton = NSButton()
     private let speakShortcutLabel = NSTextField(labelWithString: "(4)")
     private let speakSlowShortcutLabel = NSTextField(labelWithString: "(5)")
+    private let openTranslateShortcutLabel = NSTextField(labelWithString: "(6)")
     private let resultLabel = NSTextField(wrappingLabelWithString: "")
     private let revealButton = NSButton()
     private let againButton = NSButton()
@@ -47,8 +56,10 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
     private let cardScrollView = NSScrollView()
     private let cardDocumentView = FlippedDocumentView()
     private var keyEventMonitor: Any?
+    private var didShowReview = false
 
     var onReviewsCompleted: (() -> Void)?
+    var onOpenTranslate: ((TranslationRecord) -> Void)?
 
     init(store: TranslationHistoryStore, translator: Translator? = nil, config: AppConfig? = nil) {
         self.store = store
@@ -83,28 +94,75 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
         isPracticeMode = false
         recordsToReview = Self.sessionRecords(
             due: store.dueReviews(),
-            dailyNewWordLimit: config?.learning.dailyNewWordLimit ?? 12
+            dailyReviewLimit: config?.learning.dailyReviewLimit ?? 12
         )
         currentIndex = 0
         isAnswerRevealed = false
         installKeyEventMonitorIfNeeded()
         showWindow(nil)
-        window?.center()
+        if !didShowReview {
+            didShowReview = true
+            // Autosave restores a saved frame before first show; only center the constructed default.
+            if let window, window.frame.origin == .zero {
+                window.center()
+            }
+        }
         window?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         loadCurrentCard()
     }
 
-    static func sessionRecords(due: [TranslationRecord], dailyNewWordLimit: Int) -> [TranslationRecord] {
-        let limit = max(1, dailyNewWordLimit)
+    /// Higher score = review sooner. Combines how overdue a card is (relative to its own
+    /// interval, so long-interval cards are not unfairly favoured) with how fragile the
+    /// memory looks: low ease, many lapses, few successful repetitions.
+    static func reviewPriorityScore(
+        _ record: TranslationRecord,
+        currentDate: Date,
+        calendar: Calendar
+    ) -> Double {
+        var daysOverdue = 0
+        if let due = record.dueDate {
+            let days = calendar.dateComponents(
+                [.day],
+                from: calendar.startOfDay(for: due),
+                to: calendar.startOfDay(for: currentDate)
+            ).day ?? 0
+            daysOverdue = max(0, days)
+        }
+        let overdueRatio = Double(daysOverdue) / Double(max(1, record.interval))
+        let easePenalty = max(0, 2.5 - record.ease)
+        let lapsePenalty = Double(record.lapses) * 0.3
+        let fragility = 1.0 / Double(max(1, record.repetitions + 1))
+        return overdueRatio * 2.0 + easePenalty + lapsePenalty + fragility
+    }
+
+    /// Reviews take SM-2 priority up to `dailyReviewLimit`; remaining slots are filled
+    /// with new cards so the session never exceeds `limit`.
+    static func sessionRecords(
+        due: [TranslationRecord],
+        dailyReviewLimit: Int,
+        currentDate: Date = Date(),
+        calendar: Calendar = .current
+    ) -> [TranslationRecord] {
+        let limit = max(1, dailyReviewLimit)
         func isNew(_ record: TranslationRecord) -> Bool {
             record.dueDate == nil || record.interval == 0
         }
-        let reviews = due.filter { !isNew($0) }.sorted {
-            ($0.dueDate ?? .distantPast) < ($1.dueDate ?? .distantPast)
-        }
         let news = due.filter(isNew)
-        return reviews + Array(news.prefix(limit))
+        // Score once per card: Calendar date math is costly, and a comparator would repeat it.
+        let rankedReviews = due.filter { !isNew($0) }
+            .map { (record: $0, score: reviewPriorityScore($0, currentDate: currentDate, calendar: calendar)) }
+            .sorted { lhs, rhs in
+                if lhs.score != rhs.score { return lhs.score > rhs.score }
+                let lhsDue = lhs.record.dueDate ?? .distantPast
+                let rhsDue = rhs.record.dueDate ?? .distantPast
+                if lhsDue != rhsDue { return lhsDue < rhsDue }
+                return (lhs.record.lastReviewedAt ?? .distantPast) < (rhs.record.lastReviewedAt ?? .distantPast)
+            }
+            .map(\.record)
+        let reviews = Array(rankedReviews.prefix(limit))
+        let remaining = max(0, limit - reviews.count)
+        return reviews + Array(news.prefix(remaining))
     }
 
     private func installKeyEventMonitorIfNeeded() {
@@ -126,6 +184,11 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
 
     private func handleKeyDown(_ event: NSEvent) -> NSEvent? {
         let chars = event.charactersIgnoringModifiers ?? ""
+        if event.keyCode == 53 { // Escape
+            stopAudio()
+            window?.performClose(nil)
+            return nil
+        }
         if chars == " " {
             handleSpaceKey()
             return nil
@@ -147,6 +210,9 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
             return nil
         } else if chars == "5" {
             speakCurrentSourceSlow()
+            return nil
+        } else if chars == "6" {
+            openTranslatePopup()
             return nil
         }
         return event
@@ -233,29 +299,24 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
         readMoreButton.action = #selector(toggleContextExpansion)
         readMoreButton.isHidden = true
 
-        speakSourceButton.image = makeSymbolImage(name: "speaker.wave.2", description: "Speak source (4 / 1.0x)")
-        speakSourceButton.isBordered = false
-        speakSourceButton.target = self
-        speakSourceButton.action = #selector(speakCurrentSource)
-        speakSourceButton.toolTip = "Speak source (4 / 1.0x)"
-        speakSourceButton.setAccessibilityLabel("Speak source (4 / 1.0x)")
-        speakSourceButton.imageScaling = .scaleProportionallyUpOrDown
-        speakSourceButton.contentTintColor = .secondaryLabelColor
-        speakSourceButton.translatesAutoresizingMaskIntoConstraints = false
-        speakSourceButton.widthAnchor.constraint(equalToConstant: 20).isActive = true
-        speakSourceButton.heightAnchor.constraint(equalToConstant: 20).isActive = true
-
-        speakSlowSourceButton.image = makeSymbolImage(name: "tortoise", description: "Speak source slowly (5 / 0.5x)")
-        speakSlowSourceButton.isBordered = false
-        speakSlowSourceButton.target = self
-        speakSlowSourceButton.action = #selector(speakCurrentSourceSlow)
-        speakSlowSourceButton.toolTip = "Speak source slowly (5 / 0.5x)"
-        speakSlowSourceButton.setAccessibilityLabel("Speak source slowly (5 / 0.5x)")
-        speakSlowSourceButton.imageScaling = .scaleProportionallyUpOrDown
-        speakSlowSourceButton.contentTintColor = .secondaryLabelColor
-        speakSlowSourceButton.translatesAutoresizingMaskIntoConstraints = false
-        speakSlowSourceButton.widthAnchor.constraint(equalToConstant: 20).isActive = true
-        speakSlowSourceButton.heightAnchor.constraint(equalToConstant: 20).isActive = true
+        makeIconButton(
+            speakSourceButton,
+            symbol: "speaker.wave.2",
+            label: "Speak source (4 / 1.0x)",
+            action: #selector(speakCurrentSource)
+        )
+        makeIconButton(
+            speakSlowSourceButton,
+            symbol: "tortoise",
+            label: "Speak source slowly (5 / 0.5x)",
+            action: #selector(speakCurrentSourceSlow)
+        )
+        makeIconButton(
+            openTranslateButton,
+            symbol: "character.bubble",
+            label: "Open this card in Translate (6)",
+            action: #selector(openTranslatePopup)
+        )
 
         speakShortcutLabel.font = .systemFont(ofSize: 10, weight: .bold)
         speakShortcutLabel.textColor = .tertiaryLabelColor
@@ -264,6 +325,10 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
         speakSlowShortcutLabel.font = .systemFont(ofSize: 10, weight: .bold)
         speakSlowShortcutLabel.textColor = .tertiaryLabelColor
         speakSlowShortcutLabel.alignment = .center
+
+        openTranslateShortcutLabel.font = .systemFont(ofSize: 10, weight: .bold)
+        openTranslateShortcutLabel.textColor = .tertiaryLabelColor
+        openTranslateShortcutLabel.alignment = .center
 
         let speakGroup = NSStackView(views: [speakSourceButton, speakShortcutLabel])
         speakGroup.orientation = .horizontal
@@ -275,7 +340,12 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
         speakSlowGroup.spacing = 1
         speakSlowGroup.alignment = .centerY
 
-        let audioButtonsStack = NSStackView(views: [speakGroup, speakSlowGroup])
+        let openTranslateGroup = NSStackView(views: [openTranslateButton, openTranslateShortcutLabel])
+        openTranslateGroup.orientation = .horizontal
+        openTranslateGroup.spacing = 1
+        openTranslateGroup.alignment = .centerY
+
+        let audioButtonsStack = NSStackView(views: [speakGroup, speakSlowGroup, openTranslateGroup])
         audioButtonsStack.orientation = .horizontal
         audioButtonsStack.spacing = 6
         audioButtonsStack.alignment = .centerY
@@ -390,6 +460,20 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
         ])
     }
 
+    private func makeIconButton(_ button: NSButton, symbol: String, label: String, action: Selector) {
+        button.image = makeSymbolImage(name: symbol, description: label)
+        button.isBordered = false
+        button.target = self
+        button.action = action
+        button.toolTip = label
+        button.setAccessibilityLabel(label)
+        button.imageScaling = .scaleProportionallyUpOrDown
+        button.contentTintColor = .secondaryLabelColor
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.widthAnchor.constraint(equalToConstant: ReviewLayout.iconSize).isActive = true
+        button.heightAnchor.constraint(equalToConstant: ReviewLayout.iconSize).isActive = true
+    }
+
     private func styleActionButton(_ button: NSButton, title: String, symbol: String, action: Selector, key: String? = nil) {
         button.title = "  " + title
         button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: title)
@@ -428,13 +512,13 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
         }
 
         contextLabel.isHidden = false
-        if context.count > 100 {
+        if context.count > ReviewLayout.contextTruncateLimit {
             readMoreButton.isHidden = false
             if isContextExpanded {
                 contextLabel.stringValue = "Context: \(context)"
                 readMoreButton.title = "Show less"
             } else {
-                let truncated = String(context.prefix(100)) + "..."
+                let truncated = String(context.prefix(ReviewLayout.contextTruncateLimit)) + "..."
                 contextLabel.stringValue = "Context: \(truncated)"
                 readMoreButton.title = "Read more"
             }
@@ -483,6 +567,8 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
         speakSlowSourceButton.isHidden = false
         speakShortcutLabel.isHidden = false
         speakSlowShortcutLabel.isHidden = false
+        openTranslateButton.isHidden = false
+        openTranslateShortcutLabel.isHidden = false
         resultLabel.stringValue = record.resultText
         resultLabel.isHidden = true
         revealButton.isHidden = false
@@ -516,6 +602,8 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
         speakSlowSourceButton.isHidden = true
         speakShortcutLabel.isHidden = true
         speakSlowShortcutLabel.isHidden = true
+        openTranslateButton.isHidden = true
+        openTranslateShortcutLabel.isHidden = true
         resultLabel.stringValue = ""
         resultLabel.isHidden = true
         revealButton.isHidden = true
@@ -565,7 +653,9 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
         guard !resultText.isEmpty else { return }
 
         // Expand height ~1.7x when translation result is long
-        let targetHeight: CGFloat = (resultText.count > 150 || resultText.contains("\n\n")) ? 700 : 480
+        let targetHeight: CGFloat = (resultText.count > 150 || resultText.contains("\n\n"))
+            ? ReviewLayout.expandedHeight
+            : ReviewLayout.compactHeight
         let currentFrame = window.frame
         if currentFrame.height < targetHeight {
             let heightDiff = targetHeight - currentFrame.height
@@ -659,6 +749,13 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
 
     @objc private func speakCurrentSource() {
         handleSpeechPlay(speed: 1.0)
+    }
+
+    /// Opens the current card in the translate panel without closing this review window.
+    @objc private func openTranslatePopup() {
+        stopAudio()
+        guard currentIndex < recordsToReview.count else { return }
+        onOpenTranslate?(recordsToReview[currentIndex])
     }
 
     @objc private func speakCurrentSourceSlow() {

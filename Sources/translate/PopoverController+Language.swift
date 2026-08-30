@@ -115,8 +115,8 @@ extension PopoverController {
         languageSelectionChanged()
     }
 
-    func resolvedLanguagePair(for text: String) -> (source: String, target: String) {
-        let pair = LanguageDetector.resolvedPair(
+    func previewLanguagePair(for text: String) -> (source: String, target: String) {
+        LanguageDetector.resolvedPair(
             selectedSource: selectedSourceLanguage(),
             selectedTarget: selectedTargetLanguage(),
             text: text,
@@ -124,6 +124,20 @@ extension PopoverController {
             languages: config.languages,
             targetLanguages: config.targetLanguages,
             nativeLang: config.resolvedNativeLang
+        )
+    }
+
+    /// Updates MRU `recentTargets`. UI must use `previewLanguagePair`.
+    func resolvedLanguagePair(for text: String, respectSelectedTarget: Bool = false) -> (source: String, target: String) {
+        let pair = LanguageDetector.resolvedPair(
+            selectedSource: selectedSourceLanguage(),
+            selectedTarget: selectedTargetLanguage(),
+            text: text,
+            recentTargets: recentTargets,
+            languages: config.languages,
+            targetLanguages: config.targetLanguages,
+            nativeLang: config.resolvedNativeLang,
+            respectSelectedTarget: respectSelectedTarget
         )
         recentTargets.removeAll { $0 == pair.target }
         recentTargets.insert(pair.target, at: 0)
@@ -188,8 +202,8 @@ extension PopoverController {
     }
 
     func textViewDidChangeSelection(_ notification: Notification) {
-        guard let obj = notification.object as AnyObject?,
-              obj === inputTextView || obj === textView else { return }
+        guard let obj = notification.object as? NSTextView,
+              floatingSelectionCandidates().contains(where: { $0.textView === obj }) else { return }
         updateFloatingSelectionBar()
     }
 
@@ -203,7 +217,7 @@ extension PopoverController {
             return
         }
         let text = inputTextView.string
-        let pair = resolvedLanguagePair(for: text)
+        let pair = resolvedLanguagePair(for: text, respectSelectedTarget: true)
         if selectedSourceLanguage() != pair.source {
             selectLanguage(pair.source, kind: .source)
         }

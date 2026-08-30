@@ -27,13 +27,24 @@ extension PopoverController {
         let statusY = headerY - statusH
         let bottomY = L.paddingBottom
         let qaH = visibleQAInputHeight
-        let qaY = bottomY + L.bottomBarHeight + (qaH > 0 ? 12 : 0)
-        let splitY = qaY + qaH + L.footerGap
+        let qaY = bottomY
+        // Everything under the main split now stacks above the Q&A input: main action row, then the
+        // subtranslate pane with its own action row, then the Q&A answer pane.
+        let qaAddition = qaH > 0 ? qaH + PopoverLayoutMath.qaInputGap : 0
+        let splitY = qaY + qaAddition
+        let rowsHeight = PopoverLayoutMath.stackedChromeOverhead(
+            hasSub: subSection != nil,
+            hasQA: qaH > 0,
+            bottomBarHeight: L.bottomBarHeight,
+            sectionGap: L.sectionGap,
+            footerGap: L.footerGap,
+            qaInputHeight: qaH
+        ) - qaAddition
         // Pin body under the header so extra panel height grows the pane — never a dead gap.
         let splitTop = (statusH > 0 ? statusY : headerY) - L.headerGap
         // The panel height is already the clamped truth; the split gets exactly what's left over.
         // Measuring again here and taking the larger value is what pushed panes past the chrome.
-        let totalSplitHeight = max(0, splitTop - splitY)
+        let totalSplitHeight = max(0, splitTop - splitY - rowsHeight)
         let heights = PopoverLayoutMath.multiStackedSectionHeights(
             available: totalSplitHeight,
             primaryNeeded: measuredPrimaryPaneHeight(paneWidth: panes.left),
@@ -131,17 +142,21 @@ extension PopoverController {
         applyControlCornerRadius(updateButton, radius: chromeIcon / 2)
         applyControlCornerRadius(contextButton, radius: chromeIcon / 2)
 
-        // Stacked order from top to bottom:
-        // Main split pane (highest y) -> Subtranslate (middle y) -> QA pane (lowest y, just above splitY)
+        // Stacked order from top to bottom: main split -> main action row -> subtranslate split ->
+        // subtranslate action row -> QA answer pane -> QA input (lowest y).
         var currentY = splitY
-        if let qa = qaSection, let qaH = heights.qa {
-            layoutQASection(qa, x: L.padding, y: currentY, width: contentWidth, height: qaH)
-            currentY += qaH + L.sectionGap
+        if let qa = qaSection, let qaPaneH = heights.qa {
+            layoutQASection(qa, x: L.padding, y: currentY, width: contentWidth, height: qaPaneH)
+            currentY += qaPaneH + L.sectionGap
         }
         if let sub = subSection, let subH = heights.sub {
+            layoutActionRow(sub.actionRow, y: currentY, contentWidth: contentWidth)
+            currentY += L.bottomBarHeight + L.sectionGap
             layoutSubSection(sub, x: L.padding, y: currentY, width: contentWidth, height: subH, panes: subSectionPanes(contentWidth: contentWidth, mode: sub.mode))
             currentY += subH + L.sectionGap
         }
+        layoutActionRow(mainActionRow, y: currentY, contentWidth: contentWidth)
+        currentY += L.bottomBarHeight + L.footerGap
 
         splitHost.frame = NSRect(x: L.padding, y: currentY, width: contentWidth, height: splitHeight)
 
@@ -170,60 +185,50 @@ extension PopoverController {
             bodyHeight: bodyHeight
         )
 
-        // Bottom bar: Images | Proofread | Learn | Translate | Ask
-        translateButton.sizeToFit()
-        learnButton.sizeToFit()
-        imagesButton.sizeToFit()
-        proofreadButton.sizeToFit()
-        askButton.sizeToFit()
-        let btnH = L.controlHeight
-        let btnY = bottomY
-        let translateW = max(92, translateButton.frame.width)
-        let learnW = max(72, learnButton.frame.width)
-        let imagesW = max(72, imagesButton.frame.width)
-        let proofreadW = max(88, proofreadButton.frame.width)
-        let askW = max(72, askButton.frame.width)
-        imagesButton.frame = NSRect(
-            x: L.padding,
-            y: btnY,
-            width: imagesW,
-            height: btnH
-        )
-        proofreadButton.frame = NSRect(
-            x: imagesButton.frame.maxX + 5,
-            y: btnY,
-            width: proofreadW,
-            height: btnH
-        )
-        learnButton.frame = NSRect(
-            x: proofreadButton.frame.maxX + 5,
-            y: btnY,
-            width: learnW,
-            height: btnH
-        )
-        translateButton.frame = NSRect(
-            x: learnButton.frame.maxX + 5,
-            y: btnY,
-            width: translateW,
-            height: btnH
-        )
-        askButton.frame = NSRect(
-            x: L.padding + contentWidth - askW,
-            y: btnY,
-            width: askW,
-            height: btnH
-        )
-        applyControlCornerRadius(translateButton)
-        applyControlCornerRadius(learnButton)
-        applyControlCornerRadius(imagesButton)
-        applyControlCornerRadius(proofreadButton)
-        applyControlCornerRadius(askButton)
-
         qaInputField.frame = NSRect(
             x: L.padding,
             y: qaY,
             width: contentWidth,
             height: qaH
+        )
+    }
+
+    /// Lays out one action row (Images | Proofread | Learn | Translate | Ask), Ask pinned right.
+    func layoutActionRow(_ row: ActionRowSection, y: CGFloat, contentWidth: CGFloat) {
+        let L = ChromeLayout.self
+        let rowWidth = max(0, contentWidth)
+        for button in row.buttons { button.sizeToFit() }
+        let btnH = L.controlHeight
+        let gap = PopoverLayoutMath.actionButtonGap
+        let askW = min(rowWidth, max(72, row.askButton.frame.width))
+        row.askButton.frame = NSRect(x: L.padding + rowWidth - askW, y: y, width: askW, height: btnH)
+        let leadingLimit = row.askButton.frame.minX - gap
+        var x = L.padding
+        for (button, minWidth) in row.leadingButtons {
+            let desired = max(minWidth, button.frame.width)
+            let maxAllowed = max(0, leadingLimit - x)
+            if maxAllowed <= 0 {
+                button.isHidden = true
+                button.frame = NSRect(x: x, y: y, width: 0, height: btnH)
+                continue
+            }
+            button.isHidden = false
+            let width = min(desired, maxAllowed)
+            button.frame = NSRect(x: x, y: y, width: width, height: btnH)
+            x = button.frame.maxX + gap
+        }
+        for button in row.buttons { applyControlCornerRadius(button) }
+    }
+
+    /// Height taken by the action row(s) — the subtranslate pane adds a second one.
+    var actionRowsHeight: CGFloat {
+        PopoverLayoutMath.stackedChromeOverhead(
+            hasSub: subSection != nil,
+            hasQA: false,
+            bottomBarHeight: ChromeLayout.bottomBarHeight,
+            sectionGap: ChromeLayout.sectionGap,
+            footerGap: 0,
+            qaInputHeight: 0
         )
     }
 
@@ -254,7 +259,7 @@ extension PopoverController {
         var iconX = paneWidth - 10 - icon
         for button in trailingIcons.reversed() {
             button.frame = NSRect(x: iconX, y: headerIconY, width: icon, height: icon)
-            iconX -= icon + 6
+            iconX -= icon + 10
         }
         if textView === inputTextView && !inputContextLabel.isHidden {
             let contextH: CGFloat = 16
@@ -278,7 +283,9 @@ extension PopoverController {
         let primary = measuredPrimaryPaneHeight(paneWidth: paneWidth)
         var total = primary
         if let sub = subSection {
-            total += ChromeLayout.sectionGap + measuredSubPaneHeight(sub, paneWidth: paneWidth)
+            let contentWidth = max(0, CGFloat(config.ui.width) - ChromeLayout.padding * 2)
+            let subPaneWidth = subSectionPanes(contentWidth: contentWidth, mode: sub.mode).left
+            total += ChromeLayout.sectionGap + measuredSubPaneHeight(sub, paneWidth: subPaneWidth)
         }
         if let qa = qaSection {
             total += ChromeLayout.sectionGap + measuredQAPaneHeight(qa, paneWidth: paneWidth * 2 + ChromeLayout.dividerWidth)
@@ -412,7 +419,9 @@ extension PopoverController {
             splitPaneHeight: splitHeight,
             qaInputHeight: visibleQAInputHeight,
             footerGap: L.footerGap,
-            bottomBarHeight: L.bottomBarHeight
+            bottomBarHeight: L.bottomBarHeight,
+            hasSub: subSection != nil,
+            sectionGap: L.sectionGap
         )
     }
 
@@ -444,7 +453,9 @@ extension PopoverController {
             splitPaneHeight: stackedBody,
             qaInputHeight: visibleQAInputHeight,
             footerGap: L.footerGap,
-            bottomBarHeight: L.bottomBarHeight
+            bottomBarHeight: L.bottomBarHeight,
+            hasSub: subSection != nil,
+            sectionGap: L.sectionGap
         )
     }
 

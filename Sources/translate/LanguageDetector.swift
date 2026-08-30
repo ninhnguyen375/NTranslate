@@ -52,6 +52,8 @@ enum LanguageDetector {
     /// `recentTargets` is ordered most-recently-used first. On auto detect, we pick the most
     /// recently used target language that differs from the detected source, falling back to
     /// the configured native/other default when nothing in the history qualifies.
+    /// When `respectSelectedTarget` is true and `selectedTarget` is a real language (not Auto
+    /// or empty), that target is kept even if it equals the detected source.
     static func resolvedPair(
         selectedSource: String,
         selectedTarget: String,
@@ -59,14 +61,19 @@ enum LanguageDetector {
         recentTargets: [String] = [],
         languages: [String] = defaultLanguages,
         targetLanguages: [String] = defaultTargetLanguages,
-        nativeLang: String = "Vietnamese"
+        nativeLang: String = "Vietnamese",
+        respectSelectedTarget: Bool = false
     ) -> (source: String, target: String) {
         let source = normalizeSource(selectedSource, languages: languages)
         var target = normalizeTarget(selectedTarget, targetLanguages: targetLanguages, fallback: nativeLang)
         if source == autoDetect {
-            let detected = detectedLanguage(text)
-            target = recentTargets.first(where: { $0 != detected && targetLanguages.contains($0) })
-                ?? fallbackTarget(detected: detected, targetLanguages: targetLanguages, nativeLang: nativeLang)
+            let explicit = selectedTarget.trimmingCharacters(in: .whitespacesAndNewlines)
+            let keepSelected = respectSelectedTarget && !explicit.isEmpty && explicit != autoDetect
+            if !keepSelected {
+                let detected = detectedLanguage(text)
+                target = recentTargets.first(where: { $0 != detected && targetLanguages.contains($0) })
+                    ?? fallbackTarget(detected: detected, targetLanguages: targetLanguages, nativeLang: nativeLang)
+            }
         }
         return (source, target)
     }

@@ -14,9 +14,9 @@ final class SubtranslateSection {
     let resultCard = NSView(frame: .zero)
     let resultHeaderBar = NSView(frame: .zero)
     let resultHeaderLabel = NSTextField(labelWithString: "VI")
-    let sourceTextView = NSTextView(frame: .zero)
+    let sourceTextView = SelectableTextView(frame: .zero)
     let sourceScrollView = NSScrollView(frame: .zero)
-    let resultTextView = NSTextView(frame: .zero)
+    let resultTextView = SelectableTextView(frame: .zero)
     let resultScrollView = NSScrollView(frame: .zero)
     let speakSourceButton = NSButton(frame: .zero)
     let speakSourceSlowButton = NSButton(frame: .zero)
@@ -26,6 +26,7 @@ final class SubtranslateSection {
     let copyButton = NSButton(frame: .zero)
     let saveWordButton = NSButton(frame: .zero)
     let closeButton = NSButton(frame: .zero)
+    let actionRow = ActionRowSection()
     var dividerGradient: CAGradientLayer?
 
     /// Trimmed text currently displayed on each side.
@@ -36,6 +37,7 @@ final class SubtranslateSection {
     var targetLanguage = ""
     var mode: TranslationMode = .translate
     var generation = 0
+    var requestInFlight = false
 
     func setSource(_ text: String, font: NSFont, color: NSColor) {
         sourceText = text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -49,5 +51,6 @@ final class SubtranslateSection {
 
     func removeFromSuperview() {
         splitHost.removeFromSuperview()
+        actionRow.removeFromSuperview()
     }
 }

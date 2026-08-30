@@ -47,23 +47,37 @@ struct AppConfig: Codable {
 
         init(from decoder: Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
-            width = try container.decode(Double.self, forKey: .width)
-            height = try container.decode(Double.self, forKey: .height)
-            autoCopy = try container.decode(Bool.self, forKey: .autoCopy)
-            simulateCopy = try container.decodeIfPresent(Bool.self, forKey: .simulateCopy) ?? false
+            let defaults = AppConfig.default.ui
+            width = try container.decodeIfPresent(Double.self, forKey: .width) ?? defaults.width
+            height = try container.decodeIfPresent(Double.self, forKey: .height) ?? defaults.height
+            autoCopy = try container.decodeIfPresent(Bool.self, forKey: .autoCopy) ?? defaults.autoCopy
+            simulateCopy = try container.decodeIfPresent(Bool.self, forKey: .simulateCopy) ?? defaults.simulateCopy
         }
     }
 
     struct LearningSettings: Codable {
-        var dailyNewWordLimit: Int
+        var dailyReviewLimit: Int
 
-        init(dailyNewWordLimit: Int = 12) {
-            self.dailyNewWordLimit = max(1, dailyNewWordLimit)
+        init(dailyReviewLimit: Int = 12) {
+            self.dailyReviewLimit = max(1, dailyReviewLimit)
+        }
+
+        private enum CodingKeys: String, CodingKey {
+            case dailyReviewLimit
+            case dailyNewWordLimit // legacy key kept so existing config.json values survive
         }
 
         init(from decoder: Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
-            dailyNewWordLimit = max(1, try container.decodeIfPresent(Int.self, forKey: .dailyNewWordLimit) ?? 12)
+            let stored = try container.decodeIfPresent(Int.self, forKey: .dailyReviewLimit)
+                ?? container.decodeIfPresent(Int.self, forKey: .dailyNewWordLimit)
+                ?? 12
+            dailyReviewLimit = max(1, stored)
+        }
+
+        func encode(to encoder: Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(dailyReviewLimit, forKey: .dailyReviewLimit)
         }
     }
 
@@ -146,7 +160,7 @@ struct AppConfig: Codable {
         copyTranslateHotkey: .init(key: "D", option: true, command: false, control: true, shift: false),
         learnHotkey: .init(key: "L", option: true, command: false, control: false, shift: false),
         proofreadHotkey: defaultProofreadHotkey,
-        ui: .init(width: 900, height: 320, autoCopy: false, simulateCopy: false),
+        ui: .init(width: 820, height: 320, autoCopy: false, simulateCopy: false),
         learning: LearningSettings()
     )
 
@@ -471,7 +485,7 @@ struct AppConfig: Codable {
         if !targetLanguages.contains(targetLang) { issues.append("Target language must exist in Target Languages.") }
         if maxTranslateLength <= 0 { issues.append("Maximum translation length must be greater than zero.") }
         if ui.width <= 0 || ui.height <= 0 { issues.append("Panel width and height must be greater than zero.") }
-        if learning.dailyNewWordLimit < 1 { issues.append("Daily new words must be at least 1.") }
+        if learning.dailyReviewLimit < 1 { issues.append("Daily reviews must be at least 1.") }
         let named: [(String, Hotkey)] = [
             ("Global hotkey", hotkey),
             ("Copy & Translate hotkey", copyTranslateHotkey),

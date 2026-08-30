@@ -10,3 +10,4 @@ config.json
 /dist/
 /.claude/worktrees/
 /.superpowers/
+/.cursor-runs/

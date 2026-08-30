@@ -189,8 +189,81 @@ struct TranslateTests {
 
         #expect(Translator.renderLearnPrompt(for: "can't", sourceLang: "English", targetLang: "Vietnamese", config: config) == "WORD English Vietnamese")
         #expect(Translator.renderLearnPrompt(for: "state-of-the-art", sourceLang: "English", targetLang: "Vietnamese", config: config) == "WORD English Vietnamese")
-        #expect(Translator.renderLearnPrompt(for: "hello world", sourceLang: "English", targetLang: "Vietnamese", config: config) == "SENTENCE English Vietnamese")
+        #expect(Translator.renderLearnPrompt(for: "suburban train", sourceLang: "English", targetLang: "Vietnamese", config: config) == "WORD English Vietnamese")
+        #expect(Translator.renderLearnPrompt(for: "Hello world, how are you?", sourceLang: "English", targetLang: "Vietnamese", config: config) == "SENTENCE English Vietnamese")
         #expect(Translator.renderLearnPrompt(for: "hello\nworld", sourceLang: "English", targetLang: "Vietnamese", config: config) == "SENTENCE English Vietnamese")
+        #expect(Translator.renderLearnPrompt(for: "这是一个句子。", sourceLang: "Chinese", targetLang: "Vietnamese", config: config) == "SENTENCE Chinese Vietnamese")
+        #expect(Translator.renderLearnPrompt(for: "你好", sourceLang: "Chinese", targetLang: "Vietnamese", config: config) == "WORD Chinese Vietnamese")
+    }
+
+    @Test func isDictionaryTermAcceptsLatinWordsAndShortCJKTerms() {
+        #expect(Translator.isDictionaryTerm("hello"))
+        #expect(Translator.isDictionaryTerm("suburban train"))
+        #expect(Translator.isDictionaryTerm("你好"))
+    }
+
+    @Test func isDictionaryTermRejectsSentencesAndLongCJK() {
+        #expect(!Translator.isDictionaryTerm("Hello world, how are you?"))
+        #expect(!Translator.isDictionaryTerm("这是一个句子。"))
+        #expect(!Translator.isDictionaryTerm(String(repeating: "汉", count: 41)))
+    }
+
+    @Test func appConfigUIDecodeFallsBackMissingKeysWithoutFailingConfig() throws {
+        let json = """
+        {"apiBaseURL":"http://localhost:1/v1/chat/completions","model":"m","sourceLang":"Auto detect","targetLang":"Vietnamese","systemPrompt":"keep-me","hotkey":{"key":"D","option":true,"command":false,"control":false,"shift":false},"ui":{"height":200}}
+        """
+        let outcome = AppConfig.decodeOutcome(data: Data(json.utf8))
+        guard case let .loaded(config) = outcome else {
+            Issue.record("Expected loaded outcome")
+            return
+        }
+        #expect(config.systemPrompt == "keep-me")
+        #expect(config.ui.width == AppConfig.default.ui.width)
+        #expect(config.ui.height == 200)
+        #expect(config.ui.autoCopy == AppConfig.default.ui.autoCopy)
+    }
+
+    @Test func learningSettingsDecodesLegacyDailyNewWordLimitAndEncodesNewKey() throws {
+        let decoded = try JSONDecoder().decode(
+            AppConfig.LearningSettings.self,
+            from: Data(#"{"dailyNewWordLimit":7}"#.utf8)
+        )
+        #expect(decoded.dailyReviewLimit == 7)
+
+        let object = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(decoded)) as? [String: Any])
+        #expect(object["dailyReviewLimit"] as? Int == 7)
+        #expect(object["dailyNewWordLimit"] == nil)
+    }
+
+    @Test func applySRSGradeAgainResetsRepetitionsAndIncrementsLapses() {
+        var record = TranslationRecord(
+            id: UUID(), timestamp: Date(), sourceText: "hello", resultText: "xin chào",
+            sourceLanguage: "English", targetLanguage: "Vietnamese", isSaved: true,
+            interval: 6, ease: 2.5, repetitions: 3, lapses: 0
+        )
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        record.applySRSGrade(.again, currentDate: now, calendar: calendar)
+        #expect(record.interval == 1)
+        #expect(record.repetitions == 0)
+        #expect(record.lapses == 1)
+        #expect(record.ease == 2.3)
+    }
+
+    @Test func applySRSGradeEasyAdvancesNewCardByOneDay() {
+        var record = TranslationRecord(
+            id: UUID(), timestamp: Date(), sourceText: "hello", resultText: "xin chào",
+            sourceLanguage: "English", targetLanguage: "Vietnamese", isSaved: true
+        )
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        record.applySRSGrade(.easy, currentDate: now, calendar: calendar)
+        #expect(record.interval == 1)
+        #expect(record.repetitions == 1)
+        #expect(record.ease == 2.6)
+        #expect(record.dueDate == calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: now)))
     }
 
     @Test func languageDetectorUsesConfiguredNativeLangFallback() {

@@ -111,11 +111,12 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     let contextButton = NSButton(frame: .zero)
     let pinButton = NSButton(frame: .zero)
     let closeButton = NSButton(frame: .zero)
-    let translateButton = NSButton(frame: .zero)
-    let learnButton = NSButton(frame: .zero)
-    let imagesButton = NSButton(frame: .zero)
-    let proofreadButton = NSButton(frame: .zero)
-    let askButton = NSButton(frame: .zero)
+    let mainActionRow = ActionRowSection()
+    var translateButton: NSButton { mainActionRow.translateButton }
+    var learnButton: NSButton { mainActionRow.learnButton }
+    var imagesButton: NSButton { mainActionRow.imagesButton }
+    var proofreadButton: NSButton { mainActionRow.proofreadButton }
+    var askButton: NSButton { mainActionRow.askButton }
     let copyButton = NSButton(frame: .zero)
     let saveWordButton = NSButton(frame: .zero)
     let titleLabel = NSTextField(labelWithString: "Translate")
@@ -155,6 +156,11 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         controller.onReviewsCompleted = { [weak self] in
             self?.updateReviewBadge()
         }
+        controller.onOpenTranslate = { [weak self] record in
+            guard let self else { return }
+            self.openTranslatePanelShowingSetupStatus()
+            self.openHistoryRecord(record)
+        }
         return controller
     }()
     var currentRecordID: UUID?
@@ -187,8 +193,19 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     let floatingLearnButton = PointerButton(frame: .zero)
     let floatingSpeakButton = PointerButton(frame: .zero)
     let floatingCopyButton = PointerButton(frame: .zero)
+    let floatingQuickButton = PointerButton(frame: .zero)
     var currentFloatingSelectedText: String?
     var currentFloatingIsResult: Bool = false
+    /// True while the floating selection bar is attached to a subtranslate pane rather than the main one.
+    var currentFloatingIsSub: Bool = false
+    /// Inline translation shown inside the floating selection bar.
+    let floatingResultLabel = NSTextField(labelWithString: "")
+    /// Phrase the inline floating result belongs to; a new selection clears the result.
+    var floatingResultForText: String?
+    /// Bumped on every floating request so stale responses are dropped.
+    var floatingRequestGeneration: Int = 0
+    /// Whether the Q&A input/answer currently applies to the subtranslate pane instead of the main one.
+    var qaTargetsSub: Bool = false
     var refreshTimer: Timer?
 
     override init() {

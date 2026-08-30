@@ -135,19 +135,7 @@ extension PopoverController {
         textScrollView.scrollerStyle = .overlay
         textScrollView.documentView = textView
 
-        configurePrimaryButton(translateButton, title: "Translate", symbol: "arrow.right.circle", action: #selector(runTranslate), accent: true)
-        configurePrimaryButton(learnButton, title: "Learn", symbol: "brain.head.profile", action: #selector(runLearn), accent: false)
-        learnButton.toolTip = "Learn"
-        learnButton.setAccessibilityLabel("Learn")
-        configurePrimaryButton(imagesButton, title: "Images", symbol: "photo", action: #selector(runImages), accent: false)
-        imagesButton.toolTip = "Search Images"
-        imagesButton.setAccessibilityLabel("Search Images")
-        configurePrimaryButton(proofreadButton, title: "Proofread", symbol: "text.badge.checkmark", action: #selector(runProofread), accent: false)
-        proofreadButton.toolTip = "Proofread"
-        proofreadButton.setAccessibilityLabel("Proofread")
-        configurePrimaryButton(askButton, title: "Ask", symbol: "text.bubble", action: #selector(askButtonClicked), accent: false)
-        askButton.toolTip = "Ask a follow-up question (⌘K)"
-        askButton.setAccessibilityLabel("Ask")
+        configureActionRow(mainActionRow, isSub: false)
         updateShortcutLabels()
         configureIconButton(speakSourceButton, symbol: "speaker.wave.2", action: #selector(speakInput), label: "Speak source")
         configureIconButton(speakSourceSlowButton, symbol: "tortoise", action: #selector(speakInputSlow), label: "Speak source slowly")
@@ -196,11 +184,7 @@ extension PopoverController {
         chromeHost.addSubview(sourceLanguageButton)
         chromeHost.addSubview(swapLanguagesButton)
         chromeHost.addSubview(targetLanguageButton)
-        chromeHost.addSubview(imagesButton)
-        chromeHost.addSubview(proofreadButton)
-        chromeHost.addSubview(learnButton)
-        chromeHost.addSubview(translateButton)
-        chromeHost.addSubview(askButton)
+        mainActionRow.addToSuperview(chromeHost)
 
         configureQAInputBar()
         chromeHost.addSubview(qaInputField)
@@ -313,18 +297,55 @@ extension PopoverController {
         resultHeaderLabel.stringValue = paneLanguageCode(targetTitle)
     }
 
+    /// Wires one action row. The subtranslate row runs the same five actions against the sub pane's
+    /// own content; Images has no sub-pane input, so it stays disabled there.
+    func configureActionRow(_ row: ActionRowSection, isSub: Bool) {
+        configurePrimaryButton(
+            row.translateButton, title: "Translate", symbol: "arrow.right.circle",
+            action: isSub ? #selector(runSubTranslate) : #selector(runTranslate), accent: true
+        )
+        configurePrimaryButton(
+            row.learnButton, title: "Learn", symbol: "brain.head.profile",
+            action: isSub ? #selector(runSubLearn) : #selector(runLearn), accent: false
+        )
+        row.learnButton.toolTip = "Learn"
+        row.learnButton.setAccessibilityLabel("Learn")
+        configurePrimaryButton(
+            row.imagesButton, title: "Images", symbol: "photo",
+            action: isSub ? nil : #selector(runImages), accent: false
+        )
+        row.imagesButton.toolTip = isSub ? "Search Images is available on the main pane only" : "Search Images"
+        row.imagesButton.setAccessibilityLabel("Search Images")
+        configurePrimaryButton(
+            row.proofreadButton, title: "Proofread", symbol: "text.badge.checkmark",
+            action: isSub ? #selector(runSubProofread) : #selector(runProofread), accent: false
+        )
+        row.proofreadButton.toolTip = "Proofread"
+        row.proofreadButton.setAccessibilityLabel("Proofread")
+        configurePrimaryButton(
+            row.askButton, title: "Ask", symbol: "text.bubble",
+            action: isSub ? #selector(askSubClicked) : #selector(askButtonClicked), accent: false
+        )
+        row.askButton.toolTip = isSub ? "Ask a follow-up question about the sub-translation" : "Ask a follow-up question (\u{2318}K)"
+        row.askButton.setAccessibilityLabel("Ask")
+        if isSub {
+            row.imagesButton.isEnabled = false
+        }
+        applyShortcutLabels(to: row)
+    }
+
     func configurePrimaryButton(
         _ button: NSButton,
         title: String,
         symbol: String,
-        action: Selector,
+        action: Selector?,
         accent: Bool
     ) {
         button.title = title
         button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: title.isEmpty ? nil : title)
         button.imagePosition = title.isEmpty ? .imageOnly : .imageLeading
         button.imageHugsTitle = true
-        button.target = self
+        button.target = action == nil ? nil : self
         button.action = action
         button.bezelStyle = .glass
         button.controlSize = .regular
@@ -340,10 +361,17 @@ extension PopoverController {
     /// Refreshes the small shortcut hint drawn inside Learn/Proofread/Ask — call after config
     /// (re)load since the global hotkeys are user-configurable in Settings.
     func updateShortcutLabels() {
-        applyShortcutLabel(translateButton, title: "Translate", shortcut: config.hotkey.displayString)
-        applyShortcutLabel(learnButton, title: "Learn", shortcut: config.learnHotkey.displayString)
-        applyShortcutLabel(proofreadButton, title: "Proofread", shortcut: config.proofreadHotkey.displayString)
-        applyShortcutLabel(askButton, title: "Ask", shortcut: "⌘K")
+        applyShortcutLabels(to: mainActionRow)
+        if let subRow = subSection?.actionRow {
+            applyShortcutLabels(to: subRow)
+        }
+    }
+
+    private func applyShortcutLabels(to row: ActionRowSection) {
+        applyShortcutLabel(row.translateButton, title: "Translate", shortcut: config.hotkey.displayString)
+        applyShortcutLabel(row.learnButton, title: "Learn", shortcut: config.learnHotkey.displayString)
+        applyShortcutLabel(row.proofreadButton, title: "Proofread", shortcut: config.proofreadHotkey.displayString)
+        applyShortcutLabel(row.askButton, title: "Ask", shortcut: "⌘K")
     }
 
     private func applyShortcutLabel(_ button: NSButton, title: String, shortcut: String) {

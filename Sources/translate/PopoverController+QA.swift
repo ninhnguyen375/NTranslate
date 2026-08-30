@@ -30,12 +30,17 @@ extension PopoverController: NSTextFieldDelegate {
         section.host.layer?.cornerCurve = .continuous
         section.host.layer?.masksToBounds = true
 
+        section.targetsSub = qaTargetsSub
         stylePane(section.card)
         stylePaneHeaderBar(section.headerBar)
-        configurePaneHeaderLabel(section.headerLabel, title: "Q&A")
+        configurePaneHeaderLabel(section.headerLabel, title: section.headerTitle)
 
         section.textView.isEditable = false
         section.textView.isSelectable = true
+        section.textView.delegate = self
+        section.textView.onResignFirstResponder = { [weak self] in
+            self?.hideFloatingSelectionBar()
+        }
         section.textView.drawsBackground = false
         section.textView.font = .systemFont(ofSize: ChromeLayout.qaFontSize)
         section.textView.textColor = Palette.bodyText
@@ -98,8 +103,18 @@ extension PopoverController: NSTextFieldDelegate {
         )
     }
 
-    @objc func askButtonClicked() {
-        if qaInputField.isHidden {
+    @objc func askButtonClicked() { presentQAInput(forSub: false) }
+    @objc func askSubClicked() { presentQAInput(forSub: true) }
+
+    /// One Q&A input serves both panes; `forSub` decides which pane's texts the question is asked about.
+    func presentQAInput(forSub: Bool) {
+        let switchedPane = qaTargetsSub != forSub
+        qaTargetsSub = forSub
+        updateQAPlaceholder()
+        if switchedPane, qaSection != nil {
+            removeQASection()
+        }
+        if qaInputField.isHidden || switchedPane {
             qaInputField.isHidden = false
             reflowLayout()
             panel.makeFirstResponder(qaInputField)
@@ -109,6 +124,24 @@ extension PopoverController: NSTextFieldDelegate {
         } else {
             panel.makeFirstResponder(qaInputField)
         }
+    }
+
+    func updateQAPlaceholder() {
+        qaInputField.placeholderString = qaTargetsSub
+            ? "Ask follow-up questions about the sub-translation..."
+            : "Ask follow-up questions about translation..."
+    }
+
+    func qaTargets() -> (source: String, result: String, sourceLang: String, targetLang: String)? {
+        if qaTargetsSub, let sub = subSection {
+            let result = sub.resultText
+            guard !result.isEmpty, PopoverFeedback.isCopyableResult(result) else { return nil }
+            return (sub.sourceText, result, sub.sourceLanguage, sub.targetLanguage)
+        }
+        let source = inputTextView.string.trimmingCharacters(in: .whitespacesAndNewlines)
+        let result = textView.string.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !result.isEmpty, PopoverFeedback.isCopyableResult(result) else { return nil }
+        return (source, result, selectedSourceLanguage(), selectedTargetLanguage())
     }
 
     func removeQASection() {
@@ -144,9 +177,7 @@ extension PopoverController: NSTextFieldDelegate {
         let question = sender.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !question.isEmpty else { return }
 
-        let sourceText = inputTextView.string.trimmingCharacters(in: .whitespacesAndNewlines)
-        let resultText = textView.string.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !resultText.isEmpty, PopoverFeedback.isCopyableResult(resultText) else {
+        guard let targets = qaTargets() else {
             setStatus("No translation available for Q&A")
             return
         }
@@ -156,6 +187,9 @@ extension PopoverController: NSTextFieldDelegate {
             return
         }
 
+        if let existing = qaSection, existing.targetsSub != qaTargetsSub {
+            removeQASection()
+        }
         let section = qaSection ?? makeQASection()
         qaSection = section
         qaGeneration += 1
@@ -170,15 +204,12 @@ extension PopoverController: NSTextFieldDelegate {
         reflowLayout()
         scrollQAToBottom(section)
 
-        let sourceLang = selectedSourceLanguage()
-        let targetLang = selectedTargetLanguage()
-
         translator.ask(
             question,
-            sourceText: sourceText,
-            translatedText: resultText,
-            sourceLang: sourceLang,
-            targetLang: targetLang,
+            sourceText: targets.source,
+            translatedText: targets.result,
+            sourceLang: targets.sourceLang,
+            targetLang: targets.targetLang,
             history: history
         ) { [weak self] result in
             Task { @MainActor in
@@ -187,7 +218,7 @@ extension PopoverController: NSTextFieldDelegate {
                 case let .success(answer):
                     currentSection.completeLastTurn(with: answer)
                 case let .failure(error):
-                    currentSection.completeLastTurn(with: "Error: \(error.localizedDescription)")
+                    currentSection.completeLastTurn(with: "Error: \(error.localizedDescription)", failed: true)
                 }
                 self.renderQASection(currentSection)
                 self.reflowLayout()

@@ -61,7 +61,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
     private let targetLanguagePopup = NSPopUpButton()
     private let nativeLanguagePopup = NSPopUpButton()
     private let maxTranslateLengthField = NSTextField()
-    private let dailyNewWordLimitField = NSTextField()
+    private let dailyReviewLimitField = NSTextField()
 
     private let systemPromptView = NSTextView()
     private let learnPromptView = NSTextView()
@@ -147,7 +147,8 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
     private func configureContent() {
         apiKeyField.placeholderString = "Stored in macOS Keychain"
         maxTranslateLengthField.formatter = integerFormatter(minimum: 1)
-        dailyNewWordLimitField.formatter = integerFormatter(minimum: 1)
+        dailyReviewLimitField.formatter = integerFormatter(minimum: 1)
+        dailyReviewLimitField.toolTip = "Maximum review cards per day. New words are not limited."
         widthField.formatter = integerFormatter(minimum: 1)
         heightField.formatter = integerFormatter(minimum: 1)
         [hotkeyFields, copyTranslateHotkeyFields, learnHotkeyFields, proofreadHotkeyFields].forEach { $0.configure() }
@@ -216,7 +217,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
             labeledRow("Target Language", targetLanguagePopup),
             labeledRow("Native Language", nativeLanguagePopup),
             labeledRow("Maximum Length", maxTranslateLengthField),
-            labeledRow("Daily New Words", dailyNewWordLimitField),
+            labeledRow("Daily Reviews", dailyReviewLimitField),
         ])
     }
 
@@ -463,7 +464,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         modelField.stringValue = config.model
         themePopup.selectItem(withTitle: config.theme.displayName)
         maxTranslateLengthField.integerValue = config.maxTranslateLength
-        dailyNewWordLimitField.integerValue = config.learning.dailyNewWordLimit
+        dailyReviewLimitField.integerValue = config.learning.dailyReviewLimit
         systemPromptView.string = config.systemPrompt
         learnPromptView.string = config.learnPrompt
         sentenceLearnPromptView.string = config.sentenceLearnPrompt
@@ -532,7 +533,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         config.targetLang = targetLanguagePopup.titleOfSelectedItem ?? ""
         config.nativeLang = nativeLanguagePopup.titleOfSelectedItem ?? ""
         config.maxTranslateLength = maxTranslateLengthField.integerValue
-        config.learning.dailyNewWordLimit = max(1, dailyNewWordLimitField.integerValue)
+        config.learning.dailyReviewLimit = max(1, dailyReviewLimitField.integerValue)
         config.systemPrompt = systemPromptView.string
         config.learnPrompt = learnPromptView.string
         config.sentenceLearnPrompt = sentenceLearnPromptView.string

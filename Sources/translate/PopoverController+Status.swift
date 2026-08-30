@@ -106,7 +106,7 @@ extension PopoverController {
             contextButton.isHidden = true
             return
         }
-        let pair = resolvedLanguagePair(for: text)
+        let pair = previewLanguagePair(for: text)
         let tooltip = PopoverFeedback.contextTooltip(
             historyStore.recentContext(
                 sourceLanguage: effectiveSourceLanguage(for: text),
