@@ -32,7 +32,11 @@ extension PopoverController {
         }
         setResultText(PopoverFeedback.learning)
         reflowLayout()
-        translator.learn(text, sourceLang: pair.source, targetLang: pair.target) { [weak self] result in
+        translator.learn(text, sourceLang: pair.source, targetLang: pair.target, onPartial: { [weak self] partial in
+            Task { @MainActor in
+                self?.appendStreamedResult(partial, generation: generation, scope: .main)
+            }
+        }) { [weak self] result in
             Task { @MainActor in
                 guard let self else { return }
                 defer { self.finishRequest(generation: generation) }
@@ -61,7 +65,14 @@ extension PopoverController {
                     }
                 case let .failure(error):
                     self.invalidateCurrentRecord()
-                    self.setResultText("Error: \(error.localizedDescription)")
+                    let message = PopoverFeedback.userFacingError(error)
+                    if message == PopoverFeedback.stopped {
+                        if self.lastStreamedMain.isEmpty {
+                            self.setResultText(PopoverFeedback.stopped, style: .loading)
+                        }
+                    } else {
+                        self.setResultText(message, style: .error)
+                    }
                 }
                 self.reflowLayout()
                 self.textView.scrollToBeginningOfDocument(nil)
@@ -99,7 +110,11 @@ extension PopoverController {
         }
         setResultText(PopoverFeedback.proofreading)
         reflowLayout()
-        translator.proofread(text, lang: lang) { [weak self] result in
+        translator.proofread(text, lang: lang, onPartial: { [weak self] partial in
+            Task { @MainActor in
+                self?.appendStreamedResult(partial, generation: generation, scope: .main)
+            }
+        }) { [weak self] result in
             Task { @MainActor in
                 guard let self else { return }
                 defer { self.finishRequest(generation: generation) }
@@ -125,7 +140,14 @@ extension PopoverController {
                     }
                 case let .failure(error):
                     self.invalidateCurrentRecord()
-                    self.setResultText("Error: \(error.localizedDescription)")
+                    let message = PopoverFeedback.userFacingError(error)
+                    if message == PopoverFeedback.stopped {
+                        if self.lastStreamedMain.isEmpty {
+                            self.setResultText(PopoverFeedback.stopped, style: .loading)
+                        }
+                    } else {
+                        self.setResultText(message, style: .error)
+                    }
                 }
                 self.reflowLayout()
                 self.textView.scrollToBeginningOfDocument(nil)
@@ -181,7 +203,7 @@ extension PopoverController {
 
     func updateSaveWordButton() {
         let reqInFlight = isRequestInFlight
-        let canSave = PopoverIntegrationPolicy.canSave(
+        let canSave = lastResultStyle == .normal && PopoverIntegrationPolicy.canSave(
             sourceText: inputTextView.string,
             resultText: textView.string,
             isRequestInFlight: reqInFlight
@@ -247,6 +269,7 @@ extension PopoverController {
         }
         copyFlashWorkItem = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 1, execute: work)
+        announceAccessibility("Copied")
     }
 
     func copyValue() -> String? {

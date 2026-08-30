@@ -18,8 +18,8 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         static let padding: CGFloat = 14
         /// Bottom inset for footer controls — a bit more air from the popup edge.
         static let paddingBottom: CGFloat = 16
-        /// Tall enough to hold the language selector row alongside title/icons.
-        static let headerHeight: CGFloat = 26
+        /// Same height as the action chips so header and footer share one padding rhythm.
+        static let headerHeight: CGFloat = 32
         static let statusHeight: CGFloat = 14
         /// Gap between title/header and the split body.
         static let headerGap: CGFloat = 12
@@ -29,8 +29,13 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         static let paneHeaderTopInset: CGFloat = 4
         static let splitMinPaneHeight: CGFloat = 160
         static let splitMinStackedPaneHeight: CGFloat = 120
-        /// Vertical gap between the main pane and the subtranslate pane.
+        /// Vertical gap between stacked panes that do not use a labeled divider (e.g. Q&A).
         static let sectionGap: CGFloat = 10
+        /// Labeled hairline between the main action row and the subtranslate pane.
+        static let sectionDividerHeight: CGFloat = 20
+        /// Empty space above the hairline so it does not sit flush on the main action row.
+        static let sectionDividerTopMargin: CGFloat = 14
+        static var sectionDividerReserved: CGFloat { sectionDividerTopMargin + sectionDividerHeight }
         static let splitMaxPaneHeight: CGFloat = 720
         /// Per-section cap once a subtranslate pane exists — two panes at `splitMaxPaneHeight` each
         /// overflow the panel.
@@ -40,25 +45,24 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         static let controlHeight: CGFloat = 32
         static let qaInputHeight: CGFloat = 28
         static let bottomBarHeight: CGFloat = controlHeight
-        /// Compact language selects (smaller than primary actions).
-        static let languageControlHeight: CGFloat = 26
-        static let languageWidth: CGFloat = 118
-        static let languageCornerRadius: CGFloat = 12
+        /// Same height as chrome icon pills so the header row shares one padding rhythm.
+        static let languageControlHeight: CGFloat = 32
+        static let languageWidth: CGFloat = 132
+        /// Language chips use a pill of `height / 2` after layout — never a CSS-style 999.
         static let swapWidth: CGFloat = languageControlHeight
         static let iconButtonSize: CGFloat = 18
-        static let chromeIconSize: CGFloat = 24
+        /// Circular glass chip — larger than the glyph so the pill has padding.
+        static let chromeIconSize: CGFloat = 32
         static let glassCornerRadius: CGFloat = 22
         static let splitCornerRadius: CGFloat = 16
-        /// Matches popup softness on compact controls (pill-ish at control height).
-        static let controlCornerRadius: CGFloat = 16
         /// Source / translation body text.
         static let bodyFontSize: CGFloat = 14
         /// Q&A transcript text — smaller than the main panes to fit more conversation.
         static let qaFontSize: CGFloat = 12
         /// Learn / Translate labels.
         static let controlFontSize: CGFloat = 12
-        /// Language select labels (compact).
-        static let languageFontSize: CGFloat = 10
+        static let languageFontSize: CGFloat = 12
+        static let titleFontSize: CGFloat = 16
     }
 
     let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
@@ -108,7 +112,6 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     }()
     let updateButton = NSButton(frame: .zero)
     /// Hover-only indicator listing the recent translations sent as context with the next Translate.
-    let contextButton = NSButton(frame: .zero)
     let pinButton = NSButton(frame: .zero)
     let closeButton = NSButton(frame: .zero)
     let mainActionRow = ActionRowSection()
@@ -130,6 +133,7 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     var translator: Translator?
     var registeredHotKeys: [EventHotKeyRef] = []
     var hotKeyEventHandlerRef: EventHandlerRef?
+    var ocrPollTimer: Timer?
     var config = AppConfig.load()
     var apiKey = ""
     var settingsWindowController: SettingsWindowController?
@@ -165,8 +169,28 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     }()
     var currentRecordID: UUID?
     var lastExecutionMode: TranslationMode = .translate
+    enum RequestScope {
+        case main
+        case sub
+    }
+
     var requestGeneration = 0
     var isRequestInFlight = false
+    var inFlightScope: RequestScope?
+    var lastStreamReflow = Date.distantPast
+    var lastStreamedHeightMain: CGFloat = 0
+    var lastStreamedHeightSub: CGFloat = 0
+    var lastStreamedHeightQA: CGFloat = 0
+    var lastStreamedMain = ""
+    var lastStreamedSub = ""
+    /// Last style passed to `setResultText`. Callers set this explicitly for errors; do not re-infer
+    /// from result text prefixes (a real translation can start with "The request…").
+    var lastResultStyle: PopoverFeedback.ResultStyle = .normal
+    var pendingRelease: ReleaseInfo?
+    var didShowSubtranslateHint = false
+    let setupOpenSettingsButton = NSButton(title: "Open Settings", target: nil, action: nil)
+    let setupGrantAccessButton = NSButton(title: "Grant Accessibility", target: nil, action: nil)
+    let inPaneRetryButton = NSButton(title: "Retry", target: nil, action: nil)
     var keyMonitor: Any?
     var globalMouseMonitor: Any?
     var localMouseMonitor: Any?
@@ -227,8 +251,13 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         requestAccessibilityPermissionIfNeeded()
         LiquidGlassChrome.configure(window: panel)
         panel.ignoresMouseEvents = false
+        // Dock on this machine owns a full-display window at layer 20. Anything at
+        // `.floating` (3) is occluded; `.statusBar` (25) sits above it. Do not mark
+        // the panel `.transient` — an accessory app is rarely "active", and transient
+        // windows hide on deactivate.
         panel.level = .statusBar
-        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient]
+        panel.hidesOnDeactivate = false
+        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         panel.delegate = self
         buildPopover()
         buildMenu()
@@ -236,7 +265,7 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         do {
             try AppConfig.migrateLegacyAPIKey()
         } catch {
-            setResultText("Error: Could not migrate API key to Keychain: \(error.localizedDescription)")
+            setResultText("Error: Could not migrate API key to Keychain: \(error.localizedDescription)", style: .error)
         }
         reloadConfig()
         updateReviewBadge()
@@ -278,6 +307,18 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
             }
             if flags == .command, event.keyCode == UInt16(kVK_ANSI_K) {
                 self.askButtonClicked()
+                return nil
+            }
+            if flags == .command, event.keyCode == UInt16(kVK_ANSI_L) {
+                self.runLearn()
+                return nil
+            }
+            if flags == .command, event.keyCode == UInt16(kVK_ANSI_P) {
+                self.runProofread()
+                return nil
+            }
+            if flags == .command, event.keyCode == UInt16(kVK_ANSI_I) {
+                self.runImages()
                 return nil
             }
             return event

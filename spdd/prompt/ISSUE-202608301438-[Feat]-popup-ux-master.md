@@ -23,9 +23,9 @@ Uncommitted trên `main` đã đổi architecture. Prompt này **bám tree đó*
 - `AppConfig.ui.width` default **820**. `LearningSettings.dailyReviewLimit` (decode legacy `dailyNewWordLimit`). Settings label "Daily Reviews".
 - `Translator.requestTimeoutInterval = 30`, `isDictionaryTerm` (Learn card vs sentence). `stream` vẫn `false`.
 - `SelectableTextView.acceptsFirstMouse`. `focusInputTextView` retry khi chuột đang xuống. Window menu Close (`⌘W`). Review `onOpenTranslate`.
-- Shortcut labels trên cả hai row: Translate / Learn / Proofread / Ask (`⌘K`). Tooltip Learn/Proofread/Images vẫn chỉ lặp tên nút.
+- `applyShortcutLabels` đang **vẽ shortcut lên title** (`Translate  ⌥D`, font nhỏ muted). Tooltip Learn/Proofread/Images vẫn chỉ lặp tên nút.
 
-Chưa có (vẫn là việc của các wave): streaming, Stop, status overlay, empty/setup có nút, focus ring, contrast/Reduce Transparency/VoiceOver, header overflow, pin persist, ISO `paneLanguageCode`, menubar due badge, Settings tách Advanced, Test connection.
+Chưa có (vẫn là việc của các wave): **gỡ shortcut khỏi title, đưa vào tooltip**; streaming, Stop, status overlay, empty/setup có nút, focus ring, contrast/Reduce Transparency/VoiceOver, header overflow, pin persist, ISO `paneLanguageCode`, menubar due badge, Settings tách Advanced, Test connection.
 
 ## Entities
 
@@ -155,7 +155,8 @@ Không tạo `ActionRowSection` mới. Không bọc `List`/`String` trừ `Strea
    - `NSAccessibility.post(.announcementRequested)` khi `setStatus`, lỗi, Copied, request xong.
 
 4. Layout (P3):
-   - Action row **đã xong** (Translate trái, Ask phải, overflow ẩn leading). Không đảo lại thành Images-trái / Translate-phải. Khoảng trống giữa cụm trái và Ask là chủ ý.
+   - Action row thứ tự **đã xong** (Translate trái, Ask phải, overflow ẩn leading). Không đảo Images-trái / Translate-phải.
+   - Title nút chỉ còn verb (`Translate`, `Learn`, `Proofread`, `Images`, `Ask`). Xóa `applyShortcutLabel` attributed suffix. Shortcut + một câu mô tả nằm ở `toolTip` và accessibility help. Cả main row và sub row. Stop (P0) cũng không in shortcut lên mặt nút.
    - Header vẫn hardcode: ẩn `updateButton` trừ khi có release. Title/language rút khi chật, không đè Close. Default width giờ 820 (dễ chật hơn 900).
    - `isPinned` persist `UISettings` (default false). `presentPanel` đang `isPinned = false` mỗi lần mở; sửa chỗ đó. Kéo panel vẫn auto-pin.
    - `paneLanguageCode`: bảng ISO 639-1, bỏ `prefix(2)`.
@@ -163,8 +164,7 @@ Không tạo `ActionRowSection` mới. Không bọc `List`/`String` trừ `Strea
 
 5. Discoverability (P4):
    - Empty state nội suy `config.hotkey.displayString`.
-   - Tooltip Learn / Proofread / Images mô tả kết quả; Images hint mở trình duyệt.
-   - Shortcut labels T/L/P/Ask đã có trên cả hai row. Chỉ bổ sung tooltip mô tả + Images (mở trình duyệt). Không gắn hotkey giả cho Images.
+   - Tooltip Learn / Proofread / Images / Ask / Translate: một câu kết quả + shortcut (nếu có). Images: mở trình duyệt, không bịa hotkey.
    - Subtranslate đã có floating bar + sub row. Hint một lần khi `usesSubtranslate` vừa true. Không xây lại floating.
    - Menubar icon: badge due cards; optional tint khi `isRequestInFlight`.
    - Menu "Learning Progress...": một dòng stats disabled + một dòng action. Ellipsis `…`.
@@ -275,8 +275,21 @@ Implement **theo thứ tự wave**. Mỗi wave một PR. Verify `swift build` (k
 
 ### Wave P3 — Layout / navigation
 
-#### Skip layoutActionRow
+#### Skip đảo layoutActionRow
 Đã có overflow hide. Không đảo thứ tự nút.
+
+#### Update applyShortcutLabels — title sạch, shortcut trong tooltip
+1. Responsibility: bớt chữ trên action row. `updateShortcutLabels` / `applyShortcutLabels(to:)` vẫn chạy khi reload config (hotkey đổi) nhưng **không** set `attributedTitle`.
+2. Title: `button.title = "Translate"` (và Learn / Proofread / Ask / Images). Bỏ append `"  " + shortcut` + font `controlFontSize - 2`.
+3. Tooltip (cả main và sub row), một dòng:
+   - Translate: `Translate the selection (\(hotkey))`
+   - Learn: `Explain the word or sentence (\(learnHotkey))`
+   - Proofread: `Check grammar in the source language (\(proofreadHotkey))`
+   - Ask: `Ask a follow-up question (⌘K)` — sub: `Ask a follow-up question about the sub-translation (⌘K)`
+   - Images: `Search images in the browser` (không shortcut)
+4. `setAccessibilityLabel` = title (`Translate`). `setAccessibilityHelp` hoặc label dài = cùng câu tooltip để VoiceOver đọc phím tắt.
+5. P0 Stop: title `Stop`, tooltip `Stop the current request`. Không ghép hotkey lên mặt nút.
+6. `layoutActionRow` `sizeToFit` sẽ hẹp hơn (hết suffix). Overflow hide vẫn đúng; đo lại minWidth nếu leading bị ẩn oan.
 
 #### Update header chrome
 1. `updateButton.isHidden` khi không có update pending.
@@ -287,6 +300,8 @@ Implement **theo thứ tự wave**. Mỗi wave một PR. Verify `swift build` (k
 2. `paneLanguageCode`: ISO 639-1 cho mọi language trong Settings. Unknown không `prefix(2)`.
 
 #### Acceptance P3
+- Năm nút action chỉ hiện icon + một từ. Hover mới thấy shortcut.
+- Đổi hotkey trong Settings rồi reload: tooltip đổi, title không mọc lại suffix.
 - Width 820: language không đè Close.
 - Quit/reopen: pin nhớ.
 - "Portuguese" → PT không PO.
@@ -294,8 +309,8 @@ Implement **theo thứ tự wave**. Mỗi wave một PR. Verify `swift build` (k
 ### Wave P4 — Tìm được tính năng
 
 #### Update copy + affordance
-1. Tooltip Learn / Proofread / Images / Ask: một câu kết quả + shortcut (shortcut T/L/P/Ask đã có trên title).
-2. Không thêm shortcut giả cho Images. Tooltip Images: mở trình duyệt.
+1. Tooltip đã viết ở P3 (mô tả + shortcut). P4 không thêm chữ lên mặt nút.
+2. Không thêm shortcut giả cho Images.
 3. Subtranslate hint một lần mỗi session khi `usesSubtranslate` vừa true. Không đụng floating Quick Translate.
 4. `statusItem.button` image/tooltip khi `dueCount > 0`; clear khi 0.
 5. `showLearningStats` / `updateReviewBadge`: stats line `isEnabled = false`; action riêng; `…` không `...`.

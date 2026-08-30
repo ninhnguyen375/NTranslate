@@ -46,6 +46,11 @@ final class QAPaneSection {
         turns.append(Turn(question: question, answer: placeholder, isPending: true))
     }
 
+    func updateLastAnswer(_ answer: String) {
+        guard let index = turns.indices.last, turns[index].isPending else { return }
+        turns[index].answer = answer
+    }
+
     func completeLastTurn(with answer: String, failed: Bool = false) {
         guard let index = turns.indices.last else { return }
         turns[index].answer = answer.trimmingCharacters(in: .whitespacesAndNewlines)

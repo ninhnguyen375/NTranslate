@@ -32,7 +32,7 @@ extension PopoverController {
 
     func configureLanguageButton(_ button: NSButton, kind: LanguageButtonKind) {
         button.bezelStyle = .glass
-        button.controlSize = .small
+        button.controlSize = .regular
         button.imagePosition = .imageTrailing
         button.imageHugsTitle = true
         button.target = self
@@ -45,7 +45,6 @@ extension PopoverController {
             systemSymbolName: "chevron.up.chevron.down",
             accessibilityDescription: nil
         )?.withSymbolConfiguration(chevron)
-        applyControlCornerRadius(button, radius: ChromeLayout.languageCornerRadius)
     }
 
     func styleLanguageButtonTitle(_ button: NSButton, language: String) {
@@ -174,12 +173,11 @@ extension PopoverController {
         )?.withSymbolConfiguration(swapSymbol)
         swapLanguagesButton.imagePosition = .imageOnly
         swapLanguagesButton.bezelStyle = .glass
-        swapLanguagesButton.controlSize = .small
+        swapLanguagesButton.controlSize = .regular
         swapLanguagesButton.target = self
         swapLanguagesButton.action = #selector(swapLanguages)
         swapLanguagesButton.toolTip = "Swap languages"
         swapLanguagesButton.contentTintColor = Palette.chromeIconTint
-        applyControlCornerRadius(swapLanguagesButton, radius: ChromeLayout.languageCornerRadius)
         updatePaneLanguageLabels()
     }
 

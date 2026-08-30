@@ -54,9 +54,13 @@ extension PopoverController {
         historyItem.image = NSImage(systemSymbolName: "clock.arrow.circlepath", accessibilityDescription: "Translation History")
         statusMenu.addItem(historyItem)
 
-        let statsItem = NSMenuItem(title: "Learning Progress...", action: #selector(showLearningStats), keyEquivalent: "")
+        let statsDisabled = NSMenuItem(title: "Saved: 0 · Mastered: 0 · Streak: 0d", action: nil, keyEquivalent: "")
+        statsDisabled.isEnabled = false
+        statsDisabled.tag = Self.statsMenuItemTag
+        statusMenu.addItem(statsDisabled)
+        let statsItem = NSMenuItem(title: "Learning Progress…", action: #selector(showLearningStats), keyEquivalent: "")
         statsItem.image = NSImage(systemSymbolName: "chart.line.uptrend.xyaxis", accessibilityDescription: "Learning Progress")
-        statsItem.tag = Self.statsMenuItemTag
+        statsItem.tag = Self.statsActionMenuItemTag
         statusMenu.addItem(statsItem)
 
         let syncPromptsItem = NSMenuItem(title: "Sync All Prompts with App", action: #selector(syncAllPromptsMenu), keyEquivalent: "")
@@ -94,6 +98,7 @@ extension PopoverController {
     static let accessibilityMenuItemTag = 9001
     static let reviewMenuItemTag = 9002
     static let statsMenuItemTag = 9003
+    static let statsActionMenuItemTag = 9005
     static let syncPromptsMenuItemTag = 9004
 
     func menuWillOpen(_ menu: NSMenu) {
@@ -114,8 +119,10 @@ extension PopoverController {
         if stats.dueCount > 0 {
             reviewBadgeLabel.stringValue = stats.dueCount > 99 ? "99+" : "\(stats.dueCount)"
             reviewBadgeLabel.isHidden = false
+            statusItem.button?.toolTip = "\(stats.dueCount) review cards due"
         } else {
             reviewBadgeLabel.isHidden = true
+            statusItem.button?.toolTip = "NTranslate"
         }
         if let reviewItem = statusItem.menu?.item(withTag: Self.reviewMenuItemTag) {
             reviewItem.title = reviewTitle
@@ -167,7 +174,7 @@ extension PopoverController {
         do {
             key = try APIKeyStore.shared.load() ?? ""
         } catch {
-            setResultText("Error: \(error.localizedDescription)")
+            setResultText("Error: \(error.localizedDescription)", style: .error)
             openTranslatePanelShowingSetupStatus(loadMessage: error.localizedDescription)
             return
         }
@@ -215,13 +222,17 @@ extension PopoverController {
 
     /// Opens the translate panel and shows config/permission errors immediately when present.
     func openTranslatePanelShowingSetupStatus(loadMessage: String? = nil) {
+        let pointer: NSPoint
+        if let button = statusItem.button, let buttonWindow = button.window {
+            let buttonFrameOnScreen = buttonWindow.convertToScreen(button.convert(button.bounds, to: nil))
+            pointer = NSPoint(x: buttonFrameOnScreen.midX, y: buttonFrameOnScreen.minY)
+        } else {
+            pointer = NSEvent.mouseLocation
+        }
         if !panel.isVisible {
-            if let button = statusItem.button, let buttonWindow = button.window {
-                let buttonFrameOnScreen = buttonWindow.convertToScreen(button.convert(button.bounds, to: nil))
-                showMousePoint = NSPoint(x: buttonFrameOnScreen.midX, y: buttonFrameOnScreen.minY)
-            } else {
-                showMousePoint = NSEvent.mouseLocation
-            }
+            showMousePoint = pointer
+        } else if !isPinned {
+            movePanelToPointer(pointer)
         }
 
         let issues = config.setupIssues(
@@ -233,16 +244,20 @@ extension PopoverController {
         if issues.isEmpty {
             let current = textView.string.trimmingCharacters(in: .whitespacesAndNewlines)
             if current.isEmpty
+                || lastResultStyle != .normal
                 || current.hasPrefix("Error:")
                 || current.hasPrefix("Config load error:")
                 || current.hasPrefix("Created ")
             {
-                setResultText(PopoverFeedback.emptySelectionGuidance)
+                setResultText(PopoverFeedback.emptySelectionGuidance(hotkey: config.hotkey.displayString), style: .loading)
             }
+            showSetupActions(kinds: [])
             clearStatus()
         } else {
-            setResultText(AppConfig.formatSetupIssues(issues))
-            setStatus("Fix the errors above, then open Settings…")
+            setResultText(AppConfig.formatSetupIssues(issues), style: .error)
+            let kinds = Set(issues.compactMap(\.action))
+            showSetupActions(kinds: kinds)
+            setStatus("Fix the issues above, then try again.")
         }
 
         reflowLayout()
@@ -262,12 +277,16 @@ extension PopoverController {
         if panel.isVisible {
             restoresPreviousAppOnClose = true
             closePanel()
-        } else if let button = statusItem.button, let buttonWindow = button.window {
+            return
+        }
+        if let button = statusItem.button, let buttonWindow = button.window {
             let buttonFrameOnScreen = buttonWindow.convertToScreen(button.convert(button.bounds, to: nil))
             showMousePoint = NSPoint(x: buttonFrameOnScreen.midX, y: buttonFrameOnScreen.minY)
-            reflowLayout()
-            presentPanel(activatesApp: true, restoresPreviousAppOnCloseValue: false)
+        } else {
+            showMousePoint = NSEvent.mouseLocation
         }
+        reflowLayout()
+        presentPanel(activatesApp: true, restoresPreviousAppOnCloseValue: false)
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -300,7 +319,7 @@ extension PopoverController {
         } catch {
             apiKey = ""
             translator = nil
-            setResultText("Error: \(error.localizedDescription)")
+            setResultText("Error: \(error.localizedDescription)", style: .error)
             return outcome
         }
         historyStore = TranslationHistoryStore(config: config)
@@ -324,7 +343,7 @@ extension PopoverController {
         }
         reviewWindowController.updateDependencies(store: historyStore, translator: translator, config: config)
         guard !trimmedAPIKey.isEmpty else {
-            setResultText("Error: API key is empty — open Settings… and enter your 9router API key.")
+            setResultText("Error: API key is empty — open Settings… and enter your 9router API key.", style: .error)
             return outcome
         }
         configureLanguageControls()
@@ -332,7 +351,7 @@ extension PopoverController {
         assert(URL(string: config.apiBaseURL) != nil)
         assert(URL(string: config.apiSpeechURL) != nil)
         if let message = outcome.message {
-            setResultText("Error: \(message)")
+            setResultText("Error: \(message)", style: .error)
         } else if outcome.didSeedConfig {
             setResultText("Created config at \(AppConfig.configPath)")
         } else if showSuccess {
@@ -394,7 +413,7 @@ extension PopoverController {
         let wasVisible = panel.isVisible
         if !wasVisible {
             userMovedWindow = false
-            isPinned = false
+            isPinned = config.ui.rememberPin
             updatePinButton()
             updateReviewBadge()
         }
@@ -406,6 +425,9 @@ extension PopoverController {
         }
         if !wasVisible {
             installOutsideClickMonitor()
+            DispatchQueue.main.async { [weak self] in
+                self?.reflowLayout()
+            }
         }
         focusInputTextView()
     }
@@ -417,9 +439,13 @@ extension PopoverController {
     func closePanel() {
         guard panel.isVisible else { return }
         hideFloatingSelectionBar()
-        removeSubSection()
+        translator?.cancelInFlight()
         requestGeneration += 1
         isRequestInFlight = false
+        subGeneration += 1
+        subSection?.requestInFlight = false
+        inFlightScope = nil
+        removeSubSection()
         invalidateCurrentRecord()
         invalidateSpeech(stopPlayback: true)
         clearStatus()
@@ -447,9 +473,22 @@ extension PopoverController {
     @objc func togglePin() {
         isPinned.toggle()
         updatePinButton()
+        persistRememberPin()
+    }
+
+    func persistRememberPin() {
+        guard config.ui.rememberPin != isPinned else { return }
+        var next = config
+        next.ui.rememberPin = isPinned
+        config = next
+        try? AppConfig.write(next)
     }
 
     @objc func checkForUpdatesClicked() {
+        if let pendingRelease {
+            showUpdateAlert(release: pendingRelease)
+            return
+        }
         performUpdateCheck(silent: false)
     }
 
@@ -463,6 +502,9 @@ extension PopoverController {
             do {
                 if let release = try await UpdateManager.shared.checkForUpdate() {
                     await MainActor.run {
+                        self.pendingRelease = release
+                        self.updateButton.isHidden = false
+                        self.reflowLayout()
                         self.showUpdateAlert(release: release)
                     }
                 } else if !silent {
@@ -603,13 +645,40 @@ extension PopoverController {
         updatePaneLanguageLabels()
     }
 
-    func showEmptySelectionPanel(message: String = PopoverFeedback.emptySelectionGuidance) {
-        if !panel.isVisible { showMousePoint = NSEvent.mouseLocation }
+    func showSetupActions(kinds: Set<SetupIssue.Action>) {
+        setupOpenSettingsButton.isHidden = !kinds.contains(.openSettings)
+        setupGrantAccessButton.isHidden = !kinds.contains(.grantAccessibility)
+        if !kinds.isEmpty {
+            inPaneRetryButton.isHidden = true
+        }
+    }
+
+    func maybeHintSubtranslate() {
+        guard !didShowSubtranslateHint else { return }
+        guard PopoverIntegrationPolicy.usesSubtranslate(
+            panelVisible: panel.isVisible,
+            primaryResult: textView.string,
+            hasPendingImage: pendingImage != nil
+        ) else { return }
+        didShowSubtranslateHint = true
+        setStatus("Select a word or phrase in the source to open a sub-translation.", autoClearAfter: 6)
+    }
+
+    func showEmptySelectionPanel(message: String? = nil) {
+        let text = message ?? PopoverFeedback.emptySelectionGuidance(hotkey: config.hotkey.displayString)
+        if !isPinned {
+            showMousePoint = NSEvent.mouseLocation
+            if panel.isVisible { movePanelToPointer(showMousePoint) }
+        }
         invalidateTranslationRequest()
         invalidateSpeech(stopPlayback: true)
         setPendingImage(nil)
         inputTextView.string = ""
-        setResultText(message)
+        let style = PopoverFeedback.resultStyle(for: text)
+        setResultText(text, style: style == .normal ? .loading : style)
+        if text == PopoverFeedback.accessibilityRequired {
+            showSetupActions(kinds: [.grantAccessibility])
+        }
         clearStatus()
         reflowLayout()
         updateBusyState()

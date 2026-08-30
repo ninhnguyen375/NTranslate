@@ -30,6 +30,8 @@ extension PopoverController {
                 controller.perform(#selector(PopoverController.learnHotKeyPressed), on: .main, with: nil, waitUntilDone: false)
             case .proofread:
                 controller.perform(#selector(PopoverController.proofreadHotKeyPressed), on: .main, with: nil, waitUntilDone: false)
+            case .ocr:
+                controller.perform(#selector(PopoverController.ocrHotKeyPressed), on: .main, with: nil, waitUntilDone: false)
             case nil: break
             }
             return noErr
@@ -45,6 +47,7 @@ extension PopoverController {
             (name: "Copy & Translate", hotkey: config.copyTranslateHotkey, id: 2),
             (name: "Learn", hotkey: config.learnHotkey, id: 3),
             (name: "Proofread", hotkey: config.proofreadHotkey, id: 4),
+            (name: "OCR Translate", hotkey: config.ocrHotkey, id: 5),
         ])
         var failed: [String] = []
         for entry in register {

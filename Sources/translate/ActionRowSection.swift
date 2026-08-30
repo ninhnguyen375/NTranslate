@@ -1,36 +1,97 @@
 import AppKit
 
-/// The five primary action buttons (Images | Proofread | Learn | Translate | Ask). Shared by the
+/// Action chip that keeps the size we assign. AppKit calls `sizeToFit` when the button
+/// first enters a window, which used to widen Translate over Learn until the next reflow.
+final class ActionChipButton: NSButton {
+    var lockedSize = NSSize.zero
+    /// SF Symbol name so title-only refreshes can rebuild the attributed icon+label.
+    var chipSymbol = ""
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        focusRingType = .none
+        refusesFirstResponder = true
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        focusRingType = .none
+        refusesFirstResponder = true
+    }
+
+    override func drawFocusRingMask() {}
+
+    override var intrinsicContentSize: NSSize {
+        lockedSize.width > 0 ? lockedSize : super.intrinsicContentSize
+    }
+
+    override func sizeToFit() {
+        if lockedSize.width > 0 {
+            super.setFrameSize(lockedSize)
+            return
+        }
+        super.sizeToFit()
+    }
+
+    override func setFrameSize(_ newSize: NSSize) {
+        if newSize.width > 0, lockedSize.width > 0 {
+            super.setFrameSize(lockedSize)
+            return
+        }
+        super.setFrameSize(newSize)
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if lockedSize.width > 0, !isHidden {
+            super.setFrameSize(lockedSize)
+        }
+    }
+}
+
+/// The five primary action buttons (Translate | Learn | Proofread | Images | Ask). Shared by the
 /// main pane and the subtranslate pane — each instance is wired to its own selectors by
 /// `PopoverController.configureActionRow`, and laid out by `layoutActionRow`.
 @MainActor
 final class ActionRowSection {
-    let imagesButton = NSButton(frame: .zero)
-    let proofreadButton = NSButton(frame: .zero)
-    let learnButton = NSButton(frame: .zero)
-    let translateButton = NSButton(frame: .zero)
-    let askButton = NSButton(frame: .zero)
+    let imagesButton = ActionChipButton(frame: .zero)
+    let proofreadButton = ActionChipButton(frame: .zero)
+    let learnButton = ActionChipButton(frame: .zero)
+    let translateButton = ActionChipButton(frame: .zero)
+    let askButton = ActionChipButton(frame: .zero)
 
-    /// Left-to-right order in the row; Ask is pinned to the trailing edge by the layout.
-    var buttons: [NSButton] { [imagesButton, proofreadButton, learnButton, translateButton, askButton] }
-
-    var leadingButtons: [(NSButton, CGFloat)] {
-        [(translateButton, 72), (learnButton, 88), (proofreadButton, 72), (imagesButton, 92)]
+    /// Hairlines drawn between the plain text actions (Learn | Proofread | Images | Ask).
+    let dividers: [NSView] = (0..<3).map { _ in
+        let view = NSView(frame: .zero)
+        view.wantsLayer = true
+        return view
     }
 
-    func applyEnabled(canRun: Bool, copyable: Bool, imagesEnabled: Bool) {
+    /// Plain text buttons — no bezel, separated by `dividers`.
+    var secondaryButtons: [NSButton] { [learnButton, proofreadButton, imagesButton, askButton] }
+
+    /// Left-to-right visual order. Each chip hugs its icon + title.
+    var buttons: [NSButton] { [translateButton, learnButton, proofreadButton, imagesButton, askButton] }
+
+    /// Drop these first when the row is too narrow (Images, then Proofread).
+    var overflowHideOrder: [NSButton] { [imagesButton, proofreadButton] }
+
+    func applyEnabled(canRun: Bool, copyable: Bool, imagesEnabled: Bool, textActionsEnabled: Bool? = nil) {
+        let textOK = textActionsEnabled ?? canRun
         translateButton.isEnabled = canRun
-        learnButton.isEnabled = canRun
-        proofreadButton.isEnabled = canRun
+        learnButton.isEnabled = textOK
+        proofreadButton.isEnabled = textOK
         askButton.isEnabled = copyable
         imagesButton.isEnabled = imagesEnabled
     }
 
     func addToSuperview(_ view: NSView) {
         for button in buttons { view.addSubview(button) }
+        for divider in dividers { view.addSubview(divider) }
     }
 
     func removeFromSuperview() {
         for button in buttons { button.removeFromSuperview() }
+        for divider in dividers { divider.removeFromSuperview() }
     }
 }

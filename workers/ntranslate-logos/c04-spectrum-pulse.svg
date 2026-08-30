@@ -1,0 +1,21 @@
+<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+  <g>
+    <circle cx="50" cy="38" r="3.4" fill="#0F766E"/>
+    <circle cx="60.4" cy="44" r="3.4" fill="#14B8A6"/>
+    <circle cx="60.4" cy="56" r="3.4" fill="#4F46E5"/>
+    <circle cx="50" cy="62" r="3.4" fill="#7C3AED"/>
+    <circle cx="39.6" cy="56" r="3.4" fill="#F97316"/>
+    <circle cx="39.6" cy="44" r="3.4" fill="#F59E0B"/>
+    <circle cx="50" cy="23" r="2.6" fill="#0F766E"/>
+    <circle cx="63.5" cy="26.6" r="2.6" fill="#14B8A6"/>
+    <circle cx="73.4" cy="36.5" r="2.6" fill="#4F46E5"/>
+    <circle cx="77" cy="50" r="2.6" fill="#7C3AED"/>
+    <circle cx="73.4" cy="63.5" r="2.6" fill="#EC4899"/>
+    <circle cx="63.5" cy="73.4" r="2.6" fill="#F97316"/>
+    <circle cx="50" cy="77" r="2.6" fill="#F59E0B"/>
+    <circle cx="36.5" cy="73.4" r="2.6" fill="#F97316"/>
+    <circle cx="26.6" cy="63.5" r="2.6" fill="#EC4899"/>
+    <circle cx="23" cy="50" r="2.6" fill="#7C3AED"/>
+    <circle cx="26.6" cy="36.5" r="2.6" fill="#14B8A6"/>
+  </g>
+</svg>

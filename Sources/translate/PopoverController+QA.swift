@@ -11,16 +11,22 @@ extension PopoverController: NSTextFieldDelegate {
         qaInputField.isBordered = false
         qaInputField.isEditable = true
         qaInputField.isSelectable = true
-        qaInputField.focusRingType = .none
+        qaInputField.focusRingType = .default
         qaInputField.wantsLayer = true
         qaInputField.layer?.cornerRadius = 14
         qaInputField.layer?.masksToBounds = true
         qaInputField.layer?.borderWidth = 1
-        qaInputField.layer?.borderColor = Palette.cg(Palette.hairline, in: qaInputField)
-        qaInputField.layer?.backgroundColor = Palette.cg(Palette.paneFill, in: qaInputField)
+        applyQAInputChrome()
         qaInputField.target = self
         qaInputField.action = #selector(qaInputSubmitted(_:))
         qaInputField.delegate = self
+    }
+
+    /// Layer colors are baked CGColors — the reflow re-runs this so the field follows
+    /// a light/dark switch instead of keeping the appearance it was built in.
+    func applyQAInputChrome() {
+        qaInputField.layer?.borderColor = Palette.cg(Palette.hairline, in: qaInputField)
+        qaInputField.layer?.backgroundColor = Palette.cg(Palette.paneFill, in: qaInputField)
     }
 
     func makeQASection() -> QAPaneSection {
@@ -44,7 +50,7 @@ extension PopoverController: NSTextFieldDelegate {
         section.textView.drawsBackground = false
         section.textView.font = .systemFont(ofSize: ChromeLayout.qaFontSize)
         section.textView.textColor = Palette.bodyText
-        section.textView.focusRingType = .none
+        section.textView.focusRingType = .default
         section.textView.textContainerInset = NSSize(width: 12, height: 10)
         section.textView.minSize = NSSize(width: 0, height: 40)
         section.textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
@@ -55,7 +61,7 @@ extension PopoverController: NSTextFieldDelegate {
 
         section.scrollView.borderType = .noBorder
         section.scrollView.drawsBackground = false
-        section.scrollView.focusRingType = .none
+        section.scrollView.focusRingType = .default
         section.scrollView.hasVerticalScroller = true
         section.scrollView.hasHorizontalScroller = false
         section.scrollView.autohidesScrollers = true
@@ -144,6 +150,17 @@ extension PopoverController: NSTextFieldDelegate {
         return (source, result, selectedSourceLanguage(), selectedTargetLanguage())
     }
 
+    /// Main pane source + translation, attached when Ask runs from the sub row.
+    func qaParentContext() -> String? {
+        guard qaTargetsSub else { return nil }
+        let source = inputTextView.string.trimmingCharacters(in: .whitespacesAndNewlines)
+        let result = textView.string.trimmingCharacters(in: .whitespacesAndNewlines)
+        var lines: [String] = []
+        if !source.isEmpty { lines.append("Source: \(source)") }
+        if !result.isEmpty { lines.append("Translation: \(result)") }
+        return lines.isEmpty ? nil : lines.joined(separator: "\n")
+    }
+
     func removeQASection() {
         qaGeneration += 1
         qaSection?.removeFromSuperview()
@@ -210,7 +227,17 @@ extension PopoverController: NSTextFieldDelegate {
             translatedText: targets.result,
             sourceLang: targets.sourceLang,
             targetLang: targets.targetLang,
-            history: history
+            history: history,
+            parentContext: qaParentContext(),
+            onPartial: { [weak self] partial in
+                Task { @MainActor in
+                    guard let self, self.qaGeneration == generation, let currentSection = self.qaSection else { return }
+                    currentSection.updateLastAnswer(partial)
+                    self.renderQASection(currentSection)
+                    self.throttleQAStreamReflow()
+                    self.scrollQAToBottom(currentSection)
+                }
+            }
         ) { [weak self] result in
             Task { @MainActor in
                 guard let self, self.qaGeneration == generation, let currentSection = self.qaSection else { return }
@@ -218,7 +245,12 @@ extension PopoverController: NSTextFieldDelegate {
                 case let .success(answer):
                     currentSection.completeLastTurn(with: answer)
                 case let .failure(error):
-                    currentSection.completeLastTurn(with: "Error: \(error.localizedDescription)", failed: true)
+                    let message = PopoverFeedback.userFacingError(error)
+                    if message == PopoverFeedback.stopped {
+                        currentSection.completeLastTurn(with: currentSection.turns.last?.answer ?? PopoverFeedback.stopped, failed: false)
+                    } else {
+                        currentSection.completeLastTurn(with: message, failed: true)
+                    }
                 }
                 self.renderQASection(currentSection)
                 self.reflowLayout()

@@ -11,3 +11,4 @@ config.json
 /.claude/worktrees/
 /.superpowers/
 /.cursor-runs/
+/.playwright-mcp/

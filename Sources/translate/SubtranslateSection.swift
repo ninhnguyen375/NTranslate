@@ -27,6 +27,10 @@ final class SubtranslateSection {
     let saveWordButton = NSButton(frame: .zero)
     let closeButton = NSButton(frame: .zero)
     let actionRow = ActionRowSection()
+    let sectionDivider = NSView(frame: .zero)
+    let sectionDividerLabel = NSTextField(labelWithString: "Subtranslate")
+    let sectionDividerLeft = NSView(frame: .zero)
+    let sectionDividerRight = NSView(frame: .zero)
     var dividerGradient: CAGradientLayer?
 
     /// Trimmed text currently displayed on each side.
@@ -44,13 +48,18 @@ final class SubtranslateSection {
         sourceTextView.textStorage?.setAttributedString(.plainDisplay(text, font: font, color: color))
     }
 
-    func setResult(_ text: String, font: NSFont, color: NSColor) {
+    func setResult(_ text: String, font: NSFont, color: NSColor, markdown: Bool = true) {
         resultText = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        resultTextView.textStorage?.setAttributedString(.markdownDisplay(text, font: font, color: color))
+        resultTextView.textStorage?.setAttributedString(
+            markdown
+                ? .markdownDisplay(text, font: font, color: color)
+                : .plainDisplay(text, font: font, color: color)
+        )
     }
 
     func removeFromSuperview() {
         splitHost.removeFromSuperview()
         actionRow.removeFromSuperview()
+        sectionDivider.removeFromSuperview()
     }
 }

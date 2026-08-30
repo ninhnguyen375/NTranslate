@@ -57,6 +57,7 @@ enum PopoverIntegrationPolicy {
         case copyAndTranslate
         case learn
         case proofread
+        case ocr
     }
 
     static func hotkeyIntent(id: UInt32) -> HotkeyIntent? {
@@ -65,6 +66,7 @@ enum PopoverIntegrationPolicy {
         case 2: .copyAndTranslate
         case 3: .learn
         case 4: .proofread
+        case 5: .ocr
         default: nil
         }
     }
@@ -294,10 +296,15 @@ enum Palette {
     /// Source / result body text.
     static let bodyText = ink(0.88, 0.92)
     /// Status line and image placeholder.
-    static let mutedText = ink(0.45, 0.55)
-    static let placeholderText = ink(0.55, 0.6)
+    static let mutedText = ink(0.62, 0.72)
+    static let placeholderText = ink(0.58, 0.7)
     /// Pane header language code.
-    static let paneLabel = ink(0.38, 0.5)
+    static let paneLabel = ink(0.58, 0.72)
+    /// Opaque pane fill when Reduce Transparency is on.
+    static let opaquePaneFill = dynamic(
+        light: NSColor(white: 0.97, alpha: 1),
+        dark: NSColor(white: 0.16, alpha: 1)
+    )
     /// Loading/secondary result text.
     static let loadingText = ink(0.4, 0.5)
     /// Inline icon buttons (speak/copy/bookmark).
@@ -307,13 +314,20 @@ enum Palette {
     static let languageTint = ink(0.75, 0.85)
     static let languageTitle = ink(0.78, 0.88)
     static let menuItemTitle = ink(0.85, 0.92)
+    /// Action chip icon + title. Darker than the chrome tint: the chip icons are thin
+    /// strokes and washed out at the lighter alpha.
+    static let actionChipLabel = ink(0.85, 0.95)
     /// Split-prism hairline border.
     static let hairline = ink(0.06, 0.22)
-    /// Split-prism fill behind the panes. Dark mode tints with white, not black: the pane sits on
-    /// top of NSGlassEffectView, and a black overlay kills the vibrancy that makes it read as glass.
+    /// Light frost on the popup chrome — less transparent than clear glass, still reads as glass.
+    static let chromeFill = dynamic(
+        light: .white.withAlphaComponent(0.28),
+        dark: .white.withAlphaComponent(0.12)
+    )
+    /// Text well sits on top of the chrome; more opaque so source/result stay readable.
     static let paneFill = dynamic(
-        light: .white.withAlphaComponent(0.72),
-        dark: .white.withAlphaComponent(0.10)
+        light: .white.withAlphaComponent(0.95),
+        dark: .black.withAlphaComponent(0.55)
     )
     /// Bright ends of the vertical divider gradient.
     static let dividerSheen = dynamic(
@@ -342,33 +356,49 @@ enum LiquidGlassChrome {
         // No forced appearance — the popup follows the system light/dark setting.
         window.appearance = nil
         window.isOpaque = false
+        // Clear so NSGlassEffectView can sample the desktop. Reduce Transparency
+        // paints an opaque fill on chromeHost instead (see applySplitHostChrome).
         window.backgroundColor = .clear
         window.hasShadow = true
         window.isMovableByWindowBackground = true
+    }
+
+    /// Clip every window-sized layer to the shell radius. A borderless window is still a
+    /// rectangle — without this the clear backing store shows as a sharp black box around
+    /// the rounded glass.
+    static func clipToShell(_ view: NSView) {
+        view.wantsLayer = true
+        view.layer?.cornerRadius = cornerRadius
+        view.layer?.cornerCurve = .continuous
+        view.layer?.masksToBounds = true
+        view.layer?.borderWidth = 0
+        view.layer?.borderColor = nil
+    }
+
+    static func applyWindowShape(_ window: NSWindow) {
+        if let content = window.contentView {
+            clipToShell(content)
+        }
+        window.invalidateShadow()
     }
 
     static func configure(container: NSGlassEffectContainerView, shell: NSGlassEffectView, host: NSView) {
         container.appearance = nil
         container.spacing = 0
         container.focusRingType = .none
+        clipToShell(container)
 
         shell.appearance = nil
         shell.cornerRadius = cornerRadius
         shell.style = .regular
         shell.focusRingType = .none
-        shell.wantsLayer = true
-        shell.layer?.cornerRadius = cornerRadius
-        shell.layer?.cornerCurve = .continuous
-        shell.layer?.masksToBounds = true
-        shell.layer?.borderWidth = 0
-        shell.layer?.borderColor = nil
+        clipToShell(shell)
         shell.contentView = host
 
         host.appearance = nil
         host.focusRingType = .none
-        host.wantsLayer = true
-        host.layer?.borderWidth = 0
-        host.layer?.borderColor = nil
+        clipToShell(host)
+        host.layer?.backgroundColor = NSColor.clear.cgColor
     }
 }
 

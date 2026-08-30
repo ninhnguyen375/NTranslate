@@ -436,9 +436,11 @@ struct TranslateTests {
 
     @Test func appConfigSetupIssuesReportsEmptyApiKeyAndAccessibility() {
         let issues = AppConfig.default.setupIssues(apiKey: "", accessibilityTrusted: false)
-        #expect(issues.contains(where: { $0.contains("API key is empty") }))
-        #expect(issues.contains(where: { $0.contains("Accessibility") }))
-        #expect(AppConfig.formatSetupIssues(issues).hasPrefix("Error:"))
+        #expect(issues.contains(where: { $0.message.contains("API key is empty") }))
+        #expect(issues.contains(where: { $0.message.contains("Accessibility") }))
+        let formatted = AppConfig.formatSetupIssues(issues)
+        #expect(formatted.contains("API key is empty"))
+        #expect(formatted.contains("Accessibility"))
     }
 
     @Test func appConfigSetupIssuesEmptyWhenReady() {
@@ -532,6 +534,70 @@ struct TranslateTests {
             bottomBarHeight: 32
         )
         #expect(height == 286)
+    }
+
+    @Test func fittedButtonWidthAddsHorizontalPadding() {
+        #expect(PopoverLayoutMath.fittedButtonWidth(intrinsic: 60, pad: 14) == 88)
+        #expect(PopoverLayoutMath.fittedButtonWidth(intrinsic: 0, pad: 14) == 28)
+        #expect(PopoverLayoutMath.fittedButtonWidth(intrinsic: 60) == 84)
+    }
+
+    @Test func actionChipWidthIsFixedPerVerb() {
+        #expect(PopoverLayoutMath.ActionChip.translate.width == 110)
+        #expect(PopoverLayoutMath.ActionChip.learn.width == 86)
+        #expect(PopoverLayoutMath.ActionChip.proofread.width == 116)
+        #expect(PopoverLayoutMath.ActionChip.images.width == 96)
+        #expect(PopoverLayoutMath.ActionChip.ask.width == 76)
+        #expect(PopoverLayoutMath.ActionChip.stop.width == 80)
+        #expect(PopoverLayoutMath.ActionChip.width(forTitle: "Learn") == 86)
+        #expect(PopoverLayoutMath.actionChipWidth(title: "Learn") == 86)
+        #expect(PopoverLayoutMath.ActionChip.width(forTitle: "\u{FFFC}Learn") == 86)
+    }
+
+    @Test func actionChipAttributedTitleCentersIconAndKeepsGap() {
+        let font = NSFont.systemFont(ofSize: 12, weight: .medium)
+        let icon = NSImage(size: NSSize(width: 14, height: 14))
+        let title = PopoverLayoutMath.actionChipAttributedTitle(
+            title: "Learn", icon: icon, font: font, color: .black
+        )
+        #expect(PopoverLayoutMath.visibleActionChipTitle(title.string) == "Learn")
+        #expect(PopoverLayoutMath.actionChipIconTitleYOffset(font: font, iconHeight: 14) == (font.capHeight - 14) / 2)
+        var foundGap = false
+        title.enumerateAttribute(.attachment, in: NSRange(location: 0, length: title.length)) { value, _, _ in
+            guard let attachment = value as? NSTextAttachment, attachment.image == nil else { return }
+            foundGap = attachment.bounds.width == PopoverLayoutMath.actionIconTitleGap
+        }
+        #expect(foundGap)
+    }
+
+    @Test func fittedRowWidthSumsChipsAndGaps() {
+        #expect(PopoverLayoutMath.fittedRowWidth(intrinsics: [50, 50], pad: 10, gap: 8) == 148)
+        #expect(PopoverLayoutMath.fittedRowWidth(intrinsics: [], pad: 10, gap: 8) == 0)
+    }
+
+    @Test func stackedChromeOverheadUsesEvenActionRowGaps() {
+        let single = PopoverLayoutMath.stackedChromeOverhead(
+            hasSub: false, hasQA: false, bottomBarHeight: 32, sectionGap: 10, footerGap: 16, qaInputHeight: 0
+        )
+        #expect(single == 48)
+
+        let stacked = PopoverLayoutMath.stackedChromeOverhead(
+            hasSub: true, hasQA: false, bottomBarHeight: 32, sectionGap: 10, footerGap: 16, qaInputHeight: 0
+        )
+        #expect(stacked == 96)
+    }
+
+    @Test func labeledHairlineDividerCentersCaption() {
+        let frames = PopoverLayoutMath.labeledHairlineDivider(width: 200, height: 20, labelWidth: 80, lineHeight: 1, labelGap: 8)
+        #expect(frames.left.width == 52)
+        #expect(frames.right.width == 52)
+        #expect(frames.label.origin.x == 60)
+        #expect(frames.label.width == 80)
+        #expect(frames.left.origin.y == 9)
+    }
+
+    @Test func sectionDividerReservedIncludesTopMargin() {
+        #expect(PopoverController.ChromeLayout.sectionDividerReserved == 34)
     }
 
     @Test func clickIsInsidePanelRecognizesInsideAndOutsidePoints() {
@@ -1218,6 +1284,18 @@ struct TranslateTests {
     ])
     #expect(block.contains("Q: Vì sao dùng thì quá khứ?"))
     #expect(block.contains("A: Có thể dùng hiện tại hoàn thành."))
+}
+
+@Test func qaParentContextBlockIsEmptyWithoutMainPane() {
+    #expect(Translator.qaParentContextBlock(nil).isEmpty)
+    #expect(Translator.qaParentContextBlock("   ").isEmpty)
+}
+
+@Test func qaParentContextBlockIncludesMainPaneText() {
+    let block = Translator.qaParentContextBlock("Source: student admitted\nTranslation: sinh viên trúng tuyển")
+    #expect(block.contains("<parent-translation>"))
+    #expect(block.contains("student admitted"))
+    #expect(block.contains("sinh viên trúng tuyển"))
 }
 
 @MainActor

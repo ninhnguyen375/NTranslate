@@ -35,8 +35,9 @@ extension PopoverController {
             return
         }
         previousApp = NSWorkspace.shared.frontmostApplication
+        let pointer = NSEvent.mouseLocation
         if !panel.isVisible {
-            showMousePoint = NSEvent.mouseLocation
+            showMousePoint = pointer
             invalidateTranslationRequest()
             invalidateSpeech(stopPlayback: true)
             setPendingImage(nil)
@@ -46,6 +47,9 @@ extension PopoverController {
             reflowLayout()
             updateBusyState()
             presentPanel(activatesApp: false, restoresPreviousAppOnCloseValue: false)
+        } else if !isPinned {
+            movePanelToPointer(pointer)
+            panel.makeKeyAndOrderFront(nil)
         }
 
         let hotkeyStart = DispatchTime.now()
@@ -83,7 +87,7 @@ extension PopoverController {
     /// Loads an already-read selection into the main input pane. Returns false when it handled the
     /// failure path (over-length text) and the caller should stop.
     func prepareInputFromSelection(_ resolved: TranslatableInputResolution) -> Bool {
-        if !panel.isVisible { showMousePoint = NSEvent.mouseLocation }
+        if !isPinned { showMousePoint = NSEvent.mouseLocation }
         if resolved.accessibilityError != nil {
             setStatus(PopoverFeedback.accessibilityFallbackNote(source: resolved.source))
         } else {
@@ -193,7 +197,17 @@ extension PopoverController {
             targetLanguage: pair.target,
             excludingText: text
         ).reversed().map { ContextPair(source: $0.sourceText, target: $0.resultText) }
-        translator.translate(text, sourceLang: pair.source, targetLang: pair.target, context: context) { [weak self] result in
+        translator.translate(
+            text,
+            sourceLang: pair.source,
+            targetLang: pair.target,
+            context: context,
+            onPartial: { [weak self] partial in
+                Task { @MainActor in
+                    self?.appendStreamedResult(partial, generation: generation, scope: .main)
+                }
+            }
+        ) { [weak self] result in
             Task { @MainActor in self?.finishTextTranslation(result, generation: generation, source: text, pair: pair, bypassCache: bypassCache) }
         }
     }
@@ -217,7 +231,8 @@ extension PopoverController {
             }
             prefetchSpeech(resultSpeechIdentity(), translationGeneration: nil)
         case let .failure(error):
-            setResultText("Error: \(error.localizedDescription)")
+            if PopoverFeedback.userFacingError(error) == PopoverFeedback.stopped { return }
+            setResultText(PopoverFeedback.userFacingError(error), style: .error)
         }
         reflowLayout()
         textView.scrollToBeginningOfDocument(nil)
@@ -271,6 +286,7 @@ extension PopoverController {
                         NSPasteboard.general.setString(value.text, forType: .string)
                         flashCopied()
                     }
+                    maybeHintSubtranslate()
                 }
             } catch {
                 currentRecordID = nil
@@ -278,7 +294,20 @@ extension PopoverController {
             }
         case let .failure(error):
             invalidateCurrentRecord()
-            setResultText("Error: \(error.localizedDescription)")
+            let message = PopoverFeedback.userFacingError(error)
+            if message == PopoverFeedback.stopped {
+                if lastStreamedMain.isEmpty {
+                    setResultText(PopoverFeedback.stopped, style: .loading)
+                } else {
+                    setResultText(lastStreamedMain, style: .loading)
+                }
+            } else if let raw = Optional(lastStreamedMain), !raw.isEmpty,
+                      (raw.hasPrefix("{") || raw.hasPrefix("```")),
+                      error is Translator.ResponseError {
+                setResultText(raw, style: .error)
+            } else {
+                setResultText(message, style: .error)
+            }
         }
         reflowLayout()
         textView.scrollToBeginningOfDocument(nil)
@@ -286,18 +315,23 @@ extension PopoverController {
     }
 
     @objc func runImages() {
+        runImageSearch(text: inputTextView.string)
+    }
+
+    @objc func runSubImages() {
+        runImageSearch(text: subSection?.sourceText ?? "")
+    }
+
+    func runImageSearch(text: String) {
         guard pendingImage == nil, let translator else { return }
-        let text = inputTextView.string.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return }
-        guard text.count <= config.maxTranslateLength else { setStatus(PopoverFeedback.textTooLong); return }
-        let generation = beginRequest()
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        guard trimmed.count <= config.maxTranslateLength else { setStatus(PopoverFeedback.textTooLong); return }
         setStatus("Generating search query...")
-        translator.imageSearchQuery(text) { [weak self] result in
+        translator.imageSearchQuery(trimmed) { [weak self] result in
             Task { @MainActor in
                 guard let self else { return }
-                defer { self.finishRequest(generation: generation) }
-                guard generation == self.requestGeneration else { return }
-                if let url = PopoverIntegrationPolicy.resolvedImageSearchURL(queryResult: result, fallbackText: text) {
+                if let url = PopoverIntegrationPolicy.resolvedImageSearchURL(queryResult: result, fallbackText: trimmed) {
                     NSWorkspace.shared.open(url)
                 }
                 switch result {

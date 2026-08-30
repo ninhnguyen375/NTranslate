@@ -17,24 +17,36 @@ struct ContextPair: Equatable, Sendable {
     let target: String
 }
 
-final class Translator {
+final class Translator: @unchecked Sendable {
     private struct TranslationResponsePayload: Decodable {
         let translation: String
         let sourceLanguage: String
     }
     let config: AppConfig
     let apiKey: String
+    private let lock = NSLock()
+    private(set) var inFlightTask: URLSessionTask?
+    private var streamSession: URLSession?
+    private var streamDelegate: StreamCollector?
 
     enum ResponseError: Error {
         case invalidSchema
         case emptyContent
     }
 
+    func cancelInFlight() {
+        lock.lock()
+        let task = inFlightTask
+        inFlightTask = nil
+        lock.unlock()
+        task?.cancel()
+    }
+
     private enum RequestMode {
         case translate(sourceLang: String, targetLang: String, context: [ContextPair], parentContext: String?)
         case learn(sourceLang: String, targetLang: String, parentContext: String?)
         case proofread(lang: String)
-        case ask(question: String, sourceText: String, translatedText: String, sourceLang: String, targetLang: String, history: [QATurn])
+        case ask(question: String, sourceText: String, translatedText: String, sourceLang: String, targetLang: String, history: [QATurn], parentContext: String?)
         case imageSearch
     }
 
@@ -157,9 +169,30 @@ final class Translator {
         """
     }
 
-    private func request(_ text: String, mode: RequestMode, completion: @escaping @Sendable (Result<String, Error>) -> Void) {
+    /// Surrounding main-pane translation when the question is about a sub-excerpt.
+    static func qaParentContextBlock(_ parentText: String?) -> String {
+        guard let parent = parentText?.trimmingCharacters(in: .whitespacesAndNewlines), !parent.isEmpty else { return "" }
+        return """
+
+
+        <parent-translation>
+        \(parent)
+        </parent-translation>
+
+        The question is about the excerpt in the source/translation fields below. Use <parent-translation> as the surrounding sentence or paragraph from the main pane.
+        """
+    }
+
+    private func request(
+        _ text: String,
+        mode: RequestMode,
+        stream: Bool = true,
+        replaceInFlight: Bool = true,
+        onPartial: (@Sendable (String) -> Void)? = nil,
+        completion: @escaping @Sendable (Result<String, Error>) -> Void
+    ) {
         guard let url = URL(string: config.apiBaseURL) else {
-            completion(.failure(NSError(domain: "Config", code: 1, userInfo: [NSLocalizedDescriptionKey: "Invalid apiBaseURL"])))
+            completion(.failure(NSError(domain: "Config", code: 1, userInfo: [NSLocalizedDescriptionKey: "Invalid API base URL"])))
             return
         }
         var req = URLRequest(url: url)
@@ -179,13 +212,13 @@ final class Translator {
                 + Self.parentContextBlock(parentContext)
         case .imageSearch:
             systemPrompt = Self.imageSearchPrompt
-        case let .ask(_, sourceText, translatedText, sourceLang, targetLang, history):
+        case let .ask(_, sourceText, translatedText, sourceLang, targetLang, history, parentContext):
             systemPrompt = renderQAPrompt(
                 sourceText: sourceText,
                 translatedText: translatedText,
                 sourceLang: sourceLang,
                 targetLang: targetLang
-            ) + Self.qaHistoryBlock(history)
+            ) + Self.qaParentContextBlock(parentContext) + Self.qaHistoryBlock(history)
         case let .learn(sourceLang, targetLang, parentContext):
             systemPrompt = Self.renderLearnPrompt(
                 for: text,
@@ -195,24 +228,102 @@ final class Translator {
             ) + Self.parentContextBlock(parentContext)
         }
         do {
-            req.httpBody = try Self.requestPayload(model: config.model, systemPrompt: systemPrompt, userContent: wrappedText)
+            req.httpBody = try Self.requestPayload(
+                model: config.model,
+                systemPrompt: systemPrompt,
+                userContent: wrappedText,
+                stream: stream
+            )
         } catch {
             completion(.failure(error))
             return
         }
-        perform(req, completion: completion)
+        perform(req, stream: stream, replaceInFlight: replaceInFlight, onPartial: onPartial, completion: completion)
     }
 
-    private func perform(_ req: URLRequest, completion: @escaping @Sendable (Result<String, Error>) -> Void) {
-        URLSession.shared.dataTask(with: req) { data, response, error in
-            if let error { completion(.failure(error)); return }
-            guard let http = response as? HTTPURLResponse, let data else {
+    private func perform(
+        _ req: URLRequest,
+        stream: Bool,
+        replaceInFlight: Bool = true,
+        onPartial: (@Sendable (String) -> Void)? = nil,
+        completion: @escaping @Sendable (Result<String, Error>) -> Void
+    ) {
+        if replaceInFlight { cancelInFlight() }
+        if stream {
+            performStream(req, onPartial: onPartial, completion: completion)
+        } else {
+            performData(req, replaceInFlight: replaceInFlight, completion: completion)
+        }
+    }
+
+    private func performData(
+        _ req: URLRequest,
+        replaceInFlight: Bool = true,
+        completion: @escaping @Sendable (Result<String, Error>) -> Void
+    ) {
+        final class TaskBox: @unchecked Sendable {
+            var task: URLSessionTask?
+        }
+        let box = TaskBox()
+        let task = URLSession.shared.dataTask(with: req) { [weak self] data, response, error in
+            if replaceInFlight, let current = box.task {
+                self?.clearTaskIfCurrent(current)
+            }
+            Self.finishHTTP(data: data, response: response, error: error, completion: completion)
+        }
+        box.task = task
+        if replaceInFlight {
+            lock.lock()
+            inFlightTask = task
+            lock.unlock()
+        }
+        task.resume()
+    }
+
+    /// OpenAI-compat SSE (`data:` lines). If the body is a one-shot JSON object, fall back to `responseContent`.
+    private func performStream(
+        _ req: URLRequest,
+        onPartial: (@Sendable (String) -> Void)?,
+        completion: @escaping @Sendable (Result<String, Error>) -> Void
+    ) {
+        let collector = StreamCollector()
+        let session = URLSession(configuration: .default, delegate: collector, delegateQueue: nil)
+        let task = session.dataTask(with: req)
+        lock.lock()
+        streamDelegate = collector
+        streamSession = session
+        inFlightTask = task
+        lock.unlock()
+        collector.onComplete = { [weak self] data, response, error in
+            session.finishTasksAndInvalidate()
+            self?.clearTaskIfCurrent(task)
+            if let self {
+                self.lock.lock()
+                if self.streamSession === session {
+                    self.streamSession = nil
+                    self.streamDelegate = nil
+                }
+                self.lock.unlock()
+            }
+            if let error {
+                completion(.failure(error))
+                return
+            }
+            guard let http = response as? HTTPURLResponse else {
                 completion(.failure(NSError(domain: "HTTP", code: 0)))
                 return
             }
             guard (200...299).contains(http.statusCode) else {
-                let body = String(data: data, encoding: .utf8) ?? ""
-                completion(.failure(NSError(domain: "HTTP", code: http.statusCode, userInfo: [NSLocalizedDescriptionKey: body])))
+                completion(.failure(Self.httpError(status: http.statusCode, body: data)))
+                return
+            }
+            if collector.sawSSE {
+                let trimmed = collector.accumulated.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !trimmed.isEmpty else {
+                    completion(.failure(ResponseError.emptyContent))
+                    return
+                }
+                completion(.success(trimmed))
                 return
             }
             do {
@@ -220,18 +331,74 @@ final class Translator {
             } catch {
                 completion(.failure(error))
             }
-        }.resume()
+        }
+        collector.onPartial = onPartial
+        task.resume()
     }
 
-    static func requestPayload(model: String, systemPrompt: String, userContent: Any) throws -> Data {
+    private func clearTaskIfCurrent(_ task: URLSessionTask) {
+        lock.lock()
+        if inFlightTask === task {
+            inFlightTask = nil
+        }
+        lock.unlock()
+    }
+
+    static func requestPayload(model: String, systemPrompt: String, userContent: Any, stream: Bool = true) throws -> Data {
         try JSONSerialization.data(withJSONObject: [
             "model": model,
-            "stream": false,
+            "stream": stream,
             "messages": [
                 ["role": "system", "content": systemPrompt],
                 ["role": "user", "content": userContent]
             ]
         ])
+    }
+
+    static func httpErrorDescription(status: Int) -> String {
+        switch status {
+        case 401: return "API key was rejected. Open Settings and check the key."
+        case 403: return "The API refused this request."
+        case 429: return "The API rate limit was reached. Try again in a moment."
+        case 500...599: return "The translation service is unavailable (HTTP \(status))."
+        default: return "The request failed (HTTP \(status))."
+        }
+    }
+
+    private static func httpError(status: Int, body: Data) -> NSError {
+        NSError(domain: "HTTP", code: status, userInfo: [NSLocalizedDescriptionKey: httpErrorDescription(status: status)])
+    }
+
+    private static func finishHTTP(
+        data: Data?,
+        response: URLResponse?,
+        error: Error?,
+        completion: @escaping @Sendable (Result<String, Error>) -> Void
+    ) {
+        if let error { completion(.failure(error)); return }
+        guard let http = response as? HTTPURLResponse, let data else {
+            completion(.failure(NSError(domain: "HTTP", code: 0)))
+            return
+        }
+        guard (200...299).contains(http.statusCode) else {
+            completion(.failure(httpError(status: http.statusCode, body: data)))
+            return
+        }
+        do {
+            completion(.success(try responseContent(from: data)))
+        } catch {
+            completion(.failure(error))
+        }
+    }
+
+    static func sseDeltaContent(from jsonLine: String) -> String? {
+        guard let data = jsonLine.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let choices = object["choices"] as? [[String: Any]],
+              let delta = choices.first?["delta"] as? [String: Any],
+              let content = delta["content"] as? String
+        else { return nil }
+        return content
     }
 
     /// Image mode has its own prompt (`config.imagePrompt`): `config.systemPrompt` ends with "return
@@ -306,7 +473,7 @@ final class Translator {
         return try requestPayload(model: model, systemPrompt: systemPrompt, userContent: [
             ["type": "text", "text": instruction],
             ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(pngData.base64EncodedString())"]]
-        ])
+        ], stream: false)
     }
 
     static func responseContent(from data: Data) throws -> String {
@@ -371,9 +538,18 @@ final class Translator {
         targetLang: String,
         context: [ContextPair] = [],
         parentContext: String? = nil,
+        stream: Bool = true,
+        replaceInFlight: Bool = true,
+        onPartial: (@Sendable (String) -> Void)? = nil,
         completion: @escaping @Sendable (Result<TranslationResult, Error>) -> Void
     ) {
-        request(text, mode: .translate(sourceLang: sourceLang, targetLang: targetLang, context: context, parentContext: parentContext)) { [config] result in
+        request(
+            text,
+            mode: .translate(sourceLang: sourceLang, targetLang: targetLang, context: context, parentContext: parentContext),
+            stream: stream,
+            replaceInFlight: replaceInFlight,
+            onPartial: onPartial
+        ) { [config] result in
             completion(result.flatMap { content in
                 Result {
                     try Self.translationResult(
@@ -392,13 +568,24 @@ final class Translator {
         sourceLang: String,
         targetLang: String,
         parentContext: String? = nil,
+        onPartial: (@Sendable (String) -> Void)? = nil,
         completion: @escaping @Sendable (Result<String, Error>) -> Void
     ) {
-        request(text, mode: .learn(sourceLang: sourceLang, targetLang: targetLang, parentContext: parentContext), completion: completion)
+        request(
+            text,
+            mode: .learn(sourceLang: sourceLang, targetLang: targetLang, parentContext: parentContext),
+            onPartial: onPartial,
+            completion: completion
+        )
     }
 
-    func proofread(_ text: String, lang: String, completion: @escaping @Sendable (Result<String, Error>) -> Void) {
-        request(text, mode: .proofread(lang: lang), completion: completion)
+    func proofread(
+        _ text: String,
+        lang: String,
+        onPartial: (@Sendable (String) -> Void)? = nil,
+        completion: @escaping @Sendable (Result<String, Error>) -> Void
+    ) {
+        request(text, mode: .proofread(lang: lang), onPartial: onPartial, completion: completion)
     }
 
     func ask(
@@ -408,6 +595,8 @@ final class Translator {
         sourceLang: String,
         targetLang: String,
         history: [QATurn] = [],
+        parentContext: String? = nil,
+        onPartial: (@Sendable (String) -> Void)? = nil,
         completion: @escaping @Sendable (Result<String, Error>) -> Void
     ) {
         request(
@@ -418,14 +607,22 @@ final class Translator {
                 translatedText: translatedText,
                 sourceLang: sourceLang,
                 targetLang: targetLang,
-                history: history
+                history: history,
+                parentContext: parentContext
             ),
+            onPartial: onPartial,
             completion: completion
         )
     }
 
     func imageSearchQuery(_ text: String, completion: @escaping @Sendable (Result<String, Error>) -> Void) {
-        request(text, mode: .imageSearch, completion: completion)
+        request(text, mode: .imageSearch, stream: false, replaceInFlight: false, completion: completion)
+    }
+
+    func testConnection(completion: @escaping @Sendable (Result<Void, Error>) -> Void) {
+        request("Reply with the single word OK.", mode: .imageSearch, stream: false) { result in
+            completion(result.map { _ in () })
+        }
     }
 
     func translateImage(_ pngData: Data, targetLang: String, completion: @escaping @Sendable (Result<ImageTranslation, Error>) -> Void) {
@@ -457,7 +654,7 @@ final class Translator {
             completion(.failure(error))
             return
         }
-        perform(req) { [config] result in
+        perform(req, stream: false) { [config] result in
             completion(result.flatMap { content in
                 Result { try Self.imageTranslation(from: content, supportedLanguages: config.languages) }
             })
@@ -494,11 +691,101 @@ final class Translator {
                 return
             }
             guard (200...299).contains(http.statusCode) else {
-                let body = String(data: data, encoding: .utf8) ?? ""
-                completion(.failure(NSError(domain: "HTTP", code: http.statusCode, userInfo: [NSLocalizedDescriptionKey: body])))
+                completion(.failure(Self.httpError(status: http.statusCode, body: data)))
                 return
             }
             completion(.success(data))
         }.resume()
+    }
+}
+
+/// Incremental SSE collector. Kept as a named type so the session delegate outlives the request.
+private final class StreamCollector: NSObject, URLSessionDataDelegate, @unchecked Sendable {
+    var onPartial: (@Sendable (String) -> Void)?
+    var onComplete: (@Sendable (Data, URLResponse?, Error?) -> Void)?
+    private(set) var accumulated = ""
+    private(set) var sawSSE = false
+    private var buffer = Data()
+    private var pendingBytes = Data()
+    private var lineRemainder = ""
+    private var response: URLResponse?
+    private let lock = NSLock()
+
+    func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive response: URLResponse, completionHandler: @escaping (URLSession.ResponseDisposition) -> Void) {
+        lock.lock()
+        self.response = response
+        lock.unlock()
+        completionHandler(.allow)
+    }
+
+    func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
+        lock.lock()
+        buffer.append(data)
+        pendingBytes.append(data)
+        let partial = consumePendingBytes(flushIncompleteLine: false)
+        let callback = onPartial
+        lock.unlock()
+        if let partial { callback?(partial) }
+    }
+
+    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+        lock.lock()
+        consumePendingBytes(flushIncompleteLine: true)
+        let complete = onComplete
+        let body = buffer
+        let captured = response ?? task.response
+        lock.unlock()
+        complete?(body, captured, error)
+    }
+
+    /// Decode a UTF-8 prefix, leaving an incomplete trailing sequence in `pendingBytes` so a
+    /// multi-byte character split across TCP chunks is not dropped.
+    /// Caller must hold `lock`. Returns the latest accumulated text when a new SSE delta arrived.
+    @discardableResult
+    private func consumePendingBytes(flushIncompleteLine: Bool) -> String? {
+        let decoded: String
+        if let whole = String(data: pendingBytes, encoding: .utf8) {
+            decoded = whole
+            pendingBytes = Data()
+        } else {
+            var prefix: String?
+            var remainder = Data()
+            for drop in 1...min(3, pendingBytes.count) {
+                let head = pendingBytes.dropLast(drop)
+                if let text = String(data: head, encoding: .utf8) {
+                    prefix = text
+                    remainder = Data(pendingBytes.suffix(drop))
+                    break
+                }
+            }
+            guard let text = prefix else { return nil }
+            decoded = text
+            pendingBytes = remainder
+        }
+        guard !decoded.isEmpty || flushIncompleteLine else { return nil }
+        lineRemainder += decoded
+        let lines = lineRemainder.split(separator: "\n", omittingEmptySubsequences: false)
+        let endsWithNewline = lineRemainder.hasSuffix("\n")
+        if flushIncompleteLine || endsWithNewline {
+            lineRemainder = ""
+        } else if let last = lines.last {
+            lineRemainder = String(last)
+        } else {
+            lineRemainder = ""
+        }
+        let complete = (flushIncompleteLine || endsWithNewline) ? lines : lines.dropLast()
+        var latest: String?
+        for raw in complete {
+            let line = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard line.hasPrefix("data:") else { continue }
+            sawSSE = true
+            let payload = line.dropFirst(5).trimmingCharacters(in: .whitespaces)
+            if payload == "[DONE]" { continue }
+            if let delta = Translator.sseDeltaContent(from: payload) {
+                accumulated += delta
+                latest = accumulated
+            }
+        }
+        return latest
     }
 }

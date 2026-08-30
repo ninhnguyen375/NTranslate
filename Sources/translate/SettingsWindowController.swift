@@ -104,6 +104,10 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
     private let copyTranslateHotkeyFields = HotkeyFields()
     private let learnHotkeyFields = HotkeyFields()
     private let proofreadHotkeyFields = HotkeyFields()
+    private let ocrHotkeyFields = HotkeyFields()
+    private let testConnectionButton = NSButton(title: "Test connection", target: nil, action: nil)
+    private let testConnectionStatus = NSTextField(labelWithString: "")
+    private let hotkeyConflictLabel = NSTextField(wrappingLabelWithString: "")
 
     init(config: AppConfig, apiKey: String, onSave: @escaping SaveHandler) {
         originalConfig = config
@@ -151,7 +155,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         dailyReviewLimitField.toolTip = "Maximum review cards per day. New words are not limited."
         widthField.formatter = integerFormatter(minimum: 1)
         heightField.formatter = integerFormatter(minimum: 1)
-        [hotkeyFields, copyTranslateHotkeyFields, learnHotkeyFields, proofreadHotkeyFields].forEach { $0.configure() }
+        [hotkeyFields, copyTranslateHotkeyFields, learnHotkeyFields, proofreadHotkeyFields, ocrHotkeyFields].forEach { $0.configure() }
         speechModelsStack.orientation = .vertical
         speechModelsStack.alignment = .width
         speechModelsStack.spacing = 12
@@ -210,25 +214,25 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         return scrollableForm([
             labeledRow("Theme", themePopup),
             labeledRow("API Key", apiKeyField),
-            labeledRow("API Base URL", apiBaseURLField),
-            labeledRow("Speech URL", apiSpeechURLField),
-            labeledRow("Model", modelField),
             labeledRow("Source Language", sourceLanguagePopup),
             labeledRow("Target Language", targetLanguagePopup),
             labeledRow("Native Language", nativeLanguagePopup),
             labeledRow("Maximum Length", maxTranslateLengthField),
             labeledRow("Daily Reviews", dailyReviewLimitField),
+            labeledRow("Copy", autoCopyCheckbox),
+            labeledRow("Paste", simulateCopyCheckbox),
+            labeledRow("Speech", autoPrefetchSpeechCheckbox),
         ])
     }
 
     private func makePromptsView() -> NSView {
         let stack = NSStackView(views: [
-            promptSection("System Prompt", systemPromptView, appDefault: AppConfig.default.systemPrompt),
-            promptSection("Learn Word Prompt", learnPromptView, appDefault: AppConfig.defaultLearnPrompt),
-            promptSection("Learn Sentence Prompt", sentenceLearnPromptView, appDefault: AppConfig.defaultSentenceLearnPrompt),
-            promptSection("Grammar Prompt", grammarPromptView, appDefault: AppConfig.defaultGrammarPrompt),
-            promptSection("Image Prompt", imagePromptView, appDefault: AppConfig.defaultImagePrompt),
-            promptSection("Q&A Prompt", qaPromptView, appDefault: AppConfig.defaultQAPrompt),
+            promptSection("System Prompt", systemPromptView, appDefault: AppConfig.default.systemPrompt, variables: "{{config.sourceLang}}, {{config.targetLang}}, {{config.nativeLang}}"),
+            promptSection("Learn Word Prompt", learnPromptView, appDefault: AppConfig.defaultLearnPrompt, variables: "{{config.sourceLang}}, {{config.targetLang}}"),
+            promptSection("Learn Sentence Prompt", sentenceLearnPromptView, appDefault: AppConfig.defaultSentenceLearnPrompt, variables: "{{config.sourceLang}}, {{config.targetLang}}"),
+            promptSection("Grammar Prompt", grammarPromptView, appDefault: AppConfig.defaultGrammarPrompt, variables: "{{lang}}, {{config.nativeLang}}"),
+            promptSection("Image Prompt", imagePromptView, appDefault: AppConfig.defaultImagePrompt, variables: "{{config.targetLang}}, {{config.alternateLang}}, {{config.sourceLang}}, {{config.nativeLang}}"),
+            promptSection("Q&A Prompt", qaPromptView, appDefault: AppConfig.defaultQAPrompt, variables: "{{sourceText}}, {{translatedText}}, {{config.sourceLang}}, {{config.targetLang}}"),
         ])
         stack.orientation = .vertical
         stack.alignment = .width
@@ -302,18 +306,35 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         widthField.widthAnchor.constraint(equalToConstant: 90).isActive = true
         heightField.widthAnchor.constraint(equalToConstant: 90).isActive = true
 
+        testConnectionButton.target = self
+        testConnectionButton.action = #selector(testConnectionClicked)
+        testConnectionStatus.font = .systemFont(ofSize: 11)
+        testConnectionStatus.textColor = .secondaryLabelColor
+        let testRow = NSStackView(views: [testConnectionButton, testConnectionStatus])
+        testRow.orientation = .horizontal
+        testRow.spacing = 8
+        testConnectionStatus.setContentHuggingPriority(.defaultLow, for: .horizontal)
+
+        hotkeyConflictLabel.font = .systemFont(ofSize: 11)
+        hotkeyConflictLabel.textColor = .systemOrange
+        hotkeyConflictLabel.isHidden = true
+        wireHotkeyConflictWatch()
+
         return scrollableForm([
+            labeledRow("API Base URL", apiBaseURLField),
+            labeledRow("Speech URL", apiSpeechURLField),
+            labeledRow("Model", modelField),
+            labeledRow("Connection", testRow),
             speechModelsStack,
             labeledRow("Fallback Model", speechFallbackModelField),
-            labeledRow("Speech", autoPrefetchSpeechCheckbox),
             labeledRow("History Folder", historyRow),
             labeledRow("Panel Width × Height", dimensions),
-            labeledRow("Copy", autoCopyCheckbox),
-            labeledRow("Paste", simulateCopyCheckbox),
             labeledRow("Global Hotkey", hotkeyFields.makeRow()),
             labeledRow("Copy & Translate Hotkey", copyTranslateHotkeyFields.makeRow()),
             labeledRow("Learn Hotkey", learnHotkeyFields.makeRow()),
             labeledRow("Proofread Hotkey", proofreadHotkeyFields.makeRow()),
+            labeledRow("OCR Translate Hotkey", ocrHotkeyFields.makeRow()),
+            labeledRow("Hotkey Conflicts", hotkeyConflictLabel),
         ])
     }
 
@@ -388,9 +409,12 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         return scroll
     }
 
-    private func promptSection(_ title: String, _ textView: NSTextView, appDefault: String) -> NSView {
+    private func promptSection(_ title: String, _ textView: NSTextView, appDefault: String, variables: String) -> NSView {
         let label = NSTextField(labelWithString: title)
         label.font = .systemFont(ofSize: 13, weight: .semibold)
+        let varsHint = NSTextField(labelWithString: "Variables: \(variables)")
+        varsHint.font = .systemFont(ofSize: 11)
+        varsHint.textColor = .secondaryLabelColor
 
         let syncButton = NSButton(title: "Sync with app prompt", target: self, action: #selector(syncPromptWithApp(_:)))
         syncButton.controlSize = .small
@@ -409,7 +433,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
 
         let scroll = scrollView(for: textView)
         scroll.heightAnchor.constraint(equalToConstant: 150).isActive = true
-        let section = NSStackView(views: [header, scroll])
+        let section = NSStackView(views: [header, varsHint, scroll])
         section.orientation = .vertical
         section.alignment = .width
         section.spacing = 6
@@ -488,6 +512,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         copyTranslateHotkeyFields.populate(config.copyTranslateHotkey)
         learnHotkeyFields.populate(config.learnHotkey)
         proofreadHotkeyFields.populate(config.proofreadHotkey)
+        ocrHotkeyFields.populate(config.ocrHotkey)
         languagesTable.reloadData()
         targetLanguagesTable.reloadData()
         reloadLanguagePopups(
@@ -495,6 +520,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
             target: config.targetLang,
             native: config.nativeLang
         )
+        refreshHotkeyConflicts()
     }
 
     func reloadLanguagePopups(
@@ -556,6 +582,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         config.copyTranslateHotkey = copyTranslateHotkeyFields.collect(fallbackKey: "D")
         config.learnHotkey = learnHotkeyFields.collect(fallbackKey: "L")
         config.proofreadHotkey = proofreadHotkeyFields.collect(fallbackKey: "P")
+        config.ocrHotkey = ocrHotkeyFields.collect(fallbackKey: "A")
 
         let issues = config.validationIssues()
         if !issues.isEmpty { throw SettingsError.validation(issues) }
@@ -563,6 +590,11 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
     }
 
     @objc private func saveClicked() {
+        refreshHotkeyConflicts()
+        if !hotkeyConflictLabel.isHidden {
+            present(SettingsError.validation([hotkeyConflictLabel.stringValue]))
+            return
+        }
         do {
             let config = try collectConfig()
             try onSave(config, apiKeyField.stringValue)
@@ -572,6 +604,64 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
             close()
         } catch {
             present(error)
+        }
+    }
+
+    private func wireHotkeyConflictWatch() {
+        for fields in [hotkeyFields, copyTranslateHotkeyFields, learnHotkeyFields, proofreadHotkeyFields, ocrHotkeyFields] {
+            fields.popup.target = self
+            fields.popup.action = #selector(hotkeyFieldsChanged)
+            for box in [fields.option, fields.command, fields.control, fields.shift] {
+                box.target = self
+                box.action = #selector(hotkeyFieldsChanged)
+            }
+        }
+        refreshHotkeyConflicts()
+    }
+
+    @objc private func hotkeyFieldsChanged() {
+        refreshHotkeyConflicts()
+    }
+
+    private func refreshHotkeyConflicts() {
+        let entries: [(name: String, hotkey: AppConfig.Hotkey, id: UInt32)] = [
+            ("Global hotkey", hotkeyFields.collect(fallbackKey: "D"), 1),
+            ("Copy & Translate hotkey", copyTranslateHotkeyFields.collect(fallbackKey: "D"), 2),
+            ("Learn hotkey", learnHotkeyFields.collect(fallbackKey: "L"), 3),
+            ("Proofread hotkey", proofreadHotkeyFields.collect(fallbackKey: "P"), 4),
+            ("OCR Translate hotkey", ocrHotkeyFields.collect(fallbackKey: "A"), 5),
+        ]
+        let skipped = PopoverIntegrationPolicy.registrableHotkeys(entries).skipped
+        if skipped.isEmpty {
+            hotkeyConflictLabel.stringValue = ""
+            hotkeyConflictLabel.isHidden = true
+        } else {
+            hotkeyConflictLabel.stringValue = "These hotkeys are duplicates and will not register: \(skipped.joined(separator: ", "))."
+            hotkeyConflictLabel.isHidden = false
+        }
+    }
+
+    @objc private func testConnectionClicked() {
+        testConnectionStatus.stringValue = "Testing…"
+        testConnectionStatus.textColor = .secondaryLabelColor
+        var snapshot = workingConfig
+        snapshot.apiBaseURL = apiBaseURLField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        snapshot.apiSpeechURL = apiSpeechURLField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        snapshot.model = modelField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        let key = apiKeyField.stringValue
+        let translator = Translator(config: snapshot, apiKey: key)
+        translator.testConnection { [weak self] result in
+            Task { @MainActor in
+                guard let self else { return }
+                switch result {
+                case .success:
+                    self.testConnectionStatus.stringValue = "Connection OK"
+                    self.testConnectionStatus.textColor = .systemGreen
+                case let .failure(error):
+                    self.testConnectionStatus.stringValue = PopoverFeedback.userFacingError(error)
+                    self.testConnectionStatus.textColor = .systemRed
+                }
+            }
         }
     }
 

@@ -10,6 +10,13 @@ enum PopoverFeedback {
     static let translating = "Translating..."
     static let learning = "Learning..."
     static let proofreading = "Proofreading..."
+    static let stopped = "Stopped"
+    static let setupNeedsAPIKey = "Add your API key in Settings to start translating."
+    static let setupNeedsAccessibility = "Grant Accessibility access so NTranslate can read the selected text."
+
+    static func emptySelectionGuidance(hotkey: String) -> String {
+        "No text selected. Select text and press \(hotkey), or type here then Translate."
+    }
 
     enum ResultStyle: Equatable {
         case normal
@@ -18,15 +25,18 @@ enum PopoverFeedback {
     }
 
     static func resultStyle(for text: String) -> ResultStyle {
-        if text == translating || text == learning || text == proofreading
+        if text == translating || text == learning || text == proofreading || text == stopped
             || text == emptySelectionGuidance || text == emptyInputHint
+            || text.hasPrefix("No text selected.")
         {
             return .loading
         }
         if text == textTooLong
+            || text == accessibilityRequired
+            || text == setupNeedsAPIKey
+            || text == setupNeedsAccessibility
             || text.hasPrefix("Error:")
             || text.hasPrefix("Config load error:")
-            || text.hasPrefix("Grant Accessibility")
         {
             return .error
         }
@@ -37,17 +47,51 @@ enum PopoverFeedback {
         resultGeneration != currentGeneration
     }
 
-    static func isCopyableResult(_ text: String) -> Bool {
+    static func isCopyableResult(_ text: String, isStreaming: Bool = false) -> Bool {
+        if isStreaming { return false }
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return false }
         switch trimmed {
-        case translating, learning, proofreading, emptySelectionGuidance, emptyInputHint, textTooLong:
+        case translating, learning, proofreading, stopped, emptySelectionGuidance, emptyInputHint, textTooLong,
+             setupNeedsAPIKey, setupNeedsAccessibility:
             return false
         default:
-            return !trimmed.hasPrefix("Error:")
-                && !trimmed.hasPrefix("Config load error:")
-                && !trimmed.hasPrefix("Grant Accessibility")
+            if trimmed.hasPrefix("No text selected.") { return false }
+            return resultStyle(for: trimmed) != .error
         }
+    }
+
+    static func userFacingError(_ error: Error) -> String {
+        if error is CancellationError { return stopped }
+        let ns = error as NSError
+        if ns.domain == NSURLErrorDomain {
+            switch ns.code {
+            case NSURLErrorCancelled:
+                return stopped
+            case NSURLErrorTimedOut:
+                return "The request timed out. Check your connection and try again."
+            case NSURLErrorNotConnectedToInternet, NSURLErrorNetworkConnectionLost:
+                return "Network error. Check your connection and try again."
+            default:
+                return "Network error. Check your connection and try again."
+            }
+        }
+        if ns.domain == "HTTP" {
+            return Translator.httpErrorDescription(status: ns.code)
+        }
+        if let response = error as? Translator.ResponseError {
+            switch response {
+            case .invalidSchema:
+                return "The translation could not be parsed. Try again."
+            case .emptyContent:
+                return "The translation service returned an empty reply."
+            }
+        }
+        let raw = ns.localizedDescription
+        if raw.count > 180 || raw.contains("Bearer ") || raw.contains("sk-") || raw.contains("api_key") {
+            return "The translation service returned an error. Try again."
+        }
+        return raw
     }
 
     /// Tooltip body for the context indicator: one `source → target` line per reference pair, each

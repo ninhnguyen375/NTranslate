@@ -1,4 +1,5 @@
 import Foundation
+import NaturalLanguage
 
 enum LanguageDetector {
     static let autoDetect = "Auto detect"
@@ -40,6 +41,25 @@ enum LanguageDetector {
         if looksVietnamese(text) { return "Vietnamese" }
         if looksChinese(text) { return "Chinese" }
         return "English"
+    }
+
+    /// Language of a short selected phrase, independent of the pane's own language. Script
+    /// heuristics settle Vietnamese/Chinese; for plain-latin text NLLanguageRecognizer breaks the
+    /// English/Vietnamese-without-diacritics tie. Returns nil when the text is too short or the
+    /// detected language is not in `candidates`, so callers can keep their pane language.
+    static func detectedPhraseLanguage(_ text: String, candidates: [String] = defaultLanguages) -> String? {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        if looksVietnamese(trimmed) { return "Vietnamese" }
+        if looksChinese(trimmed) { return "Chinese" }
+        // ponytail: single short token is noise for the recognizer; let the pane language win.
+        guard trimmed.count >= 4 else { return nil }
+        let recognizer = NLLanguageRecognizer()
+        recognizer.processString(trimmed)
+        guard let code = recognizer.dominantLanguage?.rawValue,
+              let display = Locale(identifier: "en_US").localizedString(forLanguageCode: code)
+        else { return nil }
+        return candidates.first { $0 != autoDetect && $0.caseInsensitiveCompare(display) == .orderedSame }
     }
 
     static func canonicalLanguage(_ candidate: String, supportedLanguages: [String]) -> String? {

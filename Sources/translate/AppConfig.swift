@@ -32,17 +32,20 @@ struct AppConfig: Codable {
         var height: Double
         var autoCopy: Bool
         var simulateCopy: Bool
+        var rememberPin: Bool
 
         init(
             width: Double,
             height: Double,
             autoCopy: Bool,
-            simulateCopy: Bool = false
+            simulateCopy: Bool = false,
+            rememberPin: Bool = false
         ) {
             self.width = width
             self.height = height
             self.autoCopy = autoCopy
             self.simulateCopy = simulateCopy
+            self.rememberPin = rememberPin
         }
 
         init(from decoder: Decoder) throws {
@@ -52,6 +55,7 @@ struct AppConfig: Codable {
             height = try container.decodeIfPresent(Double.self, forKey: .height) ?? defaults.height
             autoCopy = try container.decodeIfPresent(Bool.self, forKey: .autoCopy) ?? defaults.autoCopy
             simulateCopy = try container.decodeIfPresent(Bool.self, forKey: .simulateCopy) ?? defaults.simulateCopy
+            rememberPin = try container.decodeIfPresent(Bool.self, forKey: .rememberPin) ?? false
         }
     }
 
@@ -107,12 +111,14 @@ struct AppConfig: Codable {
     var copyTranslateHotkey: Hotkey
     var learnHotkey: Hotkey
     var proofreadHotkey: Hotkey
+    var ocrHotkey: Hotkey
     var ui: UI
     var learning: LearningSettings
 
     static let defaultCopyTranslateHotkey = Hotkey(key: "D", option: true, command: false, control: true, shift: false)
     static let defaultLearnHotkey = Hotkey(key: "L", option: true, command: false, control: false, shift: false)
     static let defaultProofreadHotkey = Hotkey(key: "P", option: true, command: false, control: false, shift: false)
+    static let defaultOCRHotkey = Hotkey(key: "A", option: true, command: false, control: true, shift: false)
 
     var historyDirectoryURL: URL {
         if let historyDirectory, !historyDirectory.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -160,7 +166,8 @@ struct AppConfig: Codable {
         copyTranslateHotkey: .init(key: "D", option: true, command: false, control: true, shift: false),
         learnHotkey: .init(key: "L", option: true, command: false, control: false, shift: false),
         proofreadHotkey: defaultProofreadHotkey,
-        ui: .init(width: 820, height: 320, autoCopy: false, simulateCopy: false),
+        ocrHotkey: defaultOCRHotkey,
+        ui: .init(width: 720, height: 320, autoCopy: false, simulateCopy: false, rememberPin: false),
         learning: LearningSettings()
     )
 
@@ -189,6 +196,7 @@ struct AppConfig: Codable {
         copyTranslateHotkey: Hotkey = AppConfig.defaultCopyTranslateHotkey,
         learnHotkey: Hotkey = AppConfig.defaultLearnHotkey,
         proofreadHotkey: Hotkey = AppConfig.defaultProofreadHotkey,
+        ocrHotkey: Hotkey = AppConfig.defaultOCRHotkey,
         ui: UI,
         learning: LearningSettings = LearningSettings()
     ) {
@@ -216,6 +224,7 @@ struct AppConfig: Codable {
         self.copyTranslateHotkey = copyTranslateHotkey
         self.learnHotkey = learnHotkey
         self.proofreadHotkey = proofreadHotkey
+        self.ocrHotkey = ocrHotkey
         self.ui = ui
         self.learning = learning
     }
@@ -252,6 +261,7 @@ struct AppConfig: Codable {
             ?? Self.defaultCopyTranslateHotkey
         learnHotkey = try container.decodeIfPresent(Hotkey.self, forKey: .learnHotkey) ?? Self.defaultLearnHotkey
         proofreadHotkey = try container.decodeIfPresent(Hotkey.self, forKey: .proofreadHotkey) ?? Self.defaultProofreadHotkey
+        ocrHotkey = try container.decodeIfPresent(Hotkey.self, forKey: .ocrHotkey) ?? Self.defaultOCRHotkey
         ui = try container.decodeIfPresent(UI.self, forKey: .ui) ?? Self.default.ui
         learning = try container.decodeIfPresent(LearningSettings.self, forKey: .learning) ?? LearningSettings()
         let legacy = try decoder.container(keyedBy: LegacySpeechKeys.self)
@@ -510,37 +520,67 @@ struct AppConfig: Codable {
     }
 
     /// User-facing setup problems that block translation (empty key, bad URLs, missing Accessibility).
-    func setupIssues(apiKey: String, loadMessage: String? = nil, accessibilityTrusted: Bool) -> [String] {
-        var issues: [String] = []
+    func setupIssues(apiKey: String, loadMessage: String? = nil, accessibilityTrusted: Bool) -> [SetupIssue] {
+        var issues: [SetupIssue] = []
         if let loadMessage {
             let trimmed = loadMessage.trimmingCharacters(in: .whitespacesAndNewlines)
             if !trimmed.isEmpty {
-                issues.append(trimmed)
+                issues.append(SetupIssue(kind: .load, message: trimmed, action: .openSettings))
             }
         }
         if apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            issues.append("API key is empty. Menu → Settings…, enter your 9router API key, then Save.")
+            issues.append(SetupIssue(
+                kind: .apiKey,
+                message: "API key is empty. Open Settings, enter your 9router API key, then Save.",
+                action: .openSettings
+            ))
         }
         if apiBaseURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || URL(string: apiBaseURL) == nil {
-            issues.append("apiBaseURL is invalid: \(apiBaseURL)")
+            issues.append(SetupIssue(
+                kind: .url,
+                message: "API base URL must be a valid http:// or https:// URL.",
+                action: .openSettings
+            ))
         }
         if apiSpeechURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || URL(string: apiSpeechURL) == nil {
-            issues.append("apiSpeechURL is invalid: \(apiSpeechURL)")
+            issues.append(SetupIssue(
+                kind: .url,
+                message: "Speech URL must be a valid http:// or https:// URL.",
+                action: .openSettings
+            ))
         }
         if model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            issues.append("model is empty.")
+            issues.append(SetupIssue(kind: .model, message: "Model cannot be empty.", action: .openSettings))
         }
         if !accessibilityTrusted {
-            issues.append("Accessibility permission is missing. Menu → Grant Accessibility Access (needed to read selected text).")
+            issues.append(SetupIssue(
+                kind: .accessibility,
+                message: "Accessibility permission is missing. Grant access so NTranslate can read selected text.",
+                action: .grantAccessibility
+            ))
         }
         return issues
     }
 
-    static func formatSetupIssues(_ issues: [String]) -> String {
-        issues.map { issue in
-            let trimmed = issue.trimmingCharacters(in: .whitespacesAndNewlines)
-            if trimmed.hasPrefix("Error:") { return trimmed }
-            return "Error: \(trimmed)"
-        }.joined(separator: "\n\n")
+    static func formatSetupIssues(_ issues: [SetupIssue]) -> String {
+        issues.map(\.message).joined(separator: "\n\n")
     }
+
+    static func formatSetupIssues(_ issues: [String]) -> String {
+        issues.joined(separator: "\n\n")
+    }
+}
+
+struct SetupIssue: Equatable {
+    enum Kind: Equatable, Hashable {
+        case apiKey, url, model, accessibility, load
+    }
+    enum Action: Equatable, Hashable {
+        case openSettings
+        case grantAccessibility
+    }
+
+    let kind: Kind
+    let message: String
+    let action: Action?
 }

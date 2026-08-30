@@ -14,15 +14,28 @@ extension PopoverController {
         LiquidGlassChrome.configure(container: glassContainer, shell: shellGlass, host: chromeHost)
         chromeHost.frame = shellGlass.bounds
         chromeHost.autoresizingMask = [.width, .height]
-        chromeHost.onAppearanceChange = { [weak self] in self?.reflowLayout() }
+        // AppKit pushes the new appearance down the tree one view at a time, so a repaint
+        // started from this callback still resolves subviews against the OLD appearance —
+        // that is what left part of the popup on the previous theme until a restart.
+        // One runloop hop later every subview reports the new appearance.
+        chromeHost.onAppearanceChange = { [weak self] in
+            DispatchQueue.main.async { self?.reflowLayout() }
+        }
 
+        let titleCell = VerticallyCenteredTextFieldCell(textCell: "NTranslate")
+        titleCell.horizontalInset = 0
+        titleLabel.cell = titleCell
+        titleLabel.isEditable = false
+        titleLabel.isSelectable = false
+        titleLabel.isBezeled = false
         titleLabel.stringValue = "NTranslate"
-        titleLabel.font = .systemFont(ofSize: 13, weight: .bold)
+        titleLabel.font = .systemFont(ofSize: ChromeLayout.titleFontSize, weight: .bold)
         titleLabel.textColor = Palette.titleText
         titleLabel.drawsBackground = false
+        titleLabel.alignment = .left
         titleLabel.toolTip = "NTranslate v\(Self.buildVersion)"
 
-        statusLabel.font = .systemFont(ofSize: 10)
+        statusLabel.font = .systemFont(ofSize: 11)
         statusLabel.textColor = Palette.mutedText
         statusLabel.lineBreakMode = .byTruncatingTail
         statusLabel.stringValue = ""
@@ -34,7 +47,7 @@ extension PopoverController {
         configureChromeIconButton(historyButton, symbol: "clock.arrow.circlepath", action: #selector(openTranslationHistory), label: "Translation History")
         configureChromeIconButton(reviewButton, symbol: "rectangle.stack", action: #selector(openReviewWindow), label: "Spaced Repetition")
 
-        reviewBadgeLabel.font = .systemFont(ofSize: 8, weight: .bold)
+        reviewBadgeLabel.font = .systemFont(ofSize: 10, weight: .bold)
         reviewBadgeLabel.textColor = .white
         reviewBadgeLabel.backgroundColor = .clear
         reviewBadgeLabel.drawsBackground = false
@@ -46,8 +59,7 @@ extension PopoverController {
         reviewBadgeLabel.isHidden = true
 
         configureChromeIconButton(updateButton, symbol: "arrow.triangle.2.circlepath", action: #selector(checkForUpdatesClicked), label: "Check for Updates")
-        configureChromeIconButton(contextButton, symbol: "text.quote", action: #selector(showContextTooltip), label: "Translation context")
-        contextButton.isHidden = true
+        updateButton.isHidden = true
         updatePinButton()
 
         configureLanguageControls()
@@ -81,7 +93,7 @@ extension PopoverController {
         inputTextView.drawsBackground = false
         inputTextView.textColor = Palette.bodyText
         inputTextView.insertionPointColor = .controlAccentColor
-        inputTextView.focusRingType = .none
+        inputTextView.focusRingType = .default
         inputTextView.textContainerInset = NSSize(width: 12, height: 10)
         inputTextView.minSize = NSSize(width: 0, height: 40)
         inputTextView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
@@ -92,13 +104,13 @@ extension PopoverController {
 
         inputScrollView.borderType = .noBorder
         inputScrollView.drawsBackground = false
-        inputScrollView.focusRingType = .none
+        inputScrollView.focusRingType = .default
         inputScrollView.hasVerticalScroller = true
         inputScrollView.hasHorizontalScroller = false
         inputScrollView.autohidesScrollers = true
         inputScrollView.scrollerStyle = .overlay
         inputScrollView.documentView = inputTextView
-        inputContextLabel.font = .systemFont(ofSize: 10, weight: .regular)
+        inputContextLabel.font = .systemFont(ofSize: 11, weight: .regular)
         inputContextLabel.textColor = Palette.placeholderText
         inputContextLabel.lineBreakMode = .byTruncatingTail
         inputContextLabel.maximumNumberOfLines = 1
@@ -117,7 +129,7 @@ extension PopoverController {
         textView.drawsBackground = false
         textView.font = .systemFont(ofSize: ChromeLayout.bodyFontSize)
         textView.textColor = Palette.bodyText
-        textView.focusRingType = .none
+        textView.focusRingType = .default
         textView.textContainerInset = NSSize(width: 12, height: 10)
         textView.minSize = NSSize(width: 0, height: 40)
         textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
@@ -128,7 +140,7 @@ extension PopoverController {
 
         textScrollView.borderType = .noBorder
         textScrollView.drawsBackground = false
-        textScrollView.focusRingType = .none
+        textScrollView.focusRingType = .default
         textScrollView.hasVerticalScroller = true
         textScrollView.hasHorizontalScroller = false
         textScrollView.autohidesScrollers = true
@@ -144,6 +156,12 @@ extension PopoverController {
         configureIconButton(retryButton, symbol: "arrow.clockwise", action: #selector(retryRequest), label: "Retry / Fetch fresh")
         configureIconButton(copyButton, symbol: "doc.on.doc", action: #selector(copyResult), label: "Copy")
         configureIconButton(saveWordButton, symbol: "bookmark", action: #selector(toggleSaveWord), label: "Save Word")
+        configureSetupActionButton(setupOpenSettingsButton, title: "Open Settings", action: #selector(openSettingsMenu))
+        configureSetupActionButton(setupGrantAccessButton, title: "Grant Accessibility", action: #selector(requestAccessibilityPermissionMenu))
+        configureSetupActionButton(inPaneRetryButton, title: "Retry", action: #selector(retryRequest))
+        setupOpenSettingsButton.isHidden = true
+        setupGrantAccessButton.isHidden = true
+        inPaneRetryButton.isHidden = true
 
         updateSpeakButtons()
         updateSaveWordButton()
@@ -166,14 +184,15 @@ extension PopoverController {
         resultHeaderBar.addSubview(saveWordButton)
         resultCard.addSubview(resultHeaderBar)
         resultCard.addSubview(textScrollView)
+        resultCard.addSubview(setupOpenSettingsButton)
+        resultCard.addSubview(setupGrantAccessButton)
+        resultCard.addSubview(inPaneRetryButton)
 
         splitHost.addSubview(sourceCard)
         splitHost.addSubview(splitDivider)
         splitHost.addSubview(resultCard)
 
         chromeHost.addSubview(titleLabel)
-        chromeHost.addSubview(statusLabel)
-        chromeHost.addSubview(contextButton)
         chromeHost.addSubview(updateButton)
         chromeHost.addSubview(reviewButton)
         chromeHost.addSubview(reviewBadgeLabel)
@@ -184,6 +203,8 @@ extension PopoverController {
         chromeHost.addSubview(sourceLanguageButton)
         chromeHost.addSubview(swapLanguagesButton)
         chromeHost.addSubview(targetLanguageButton)
+        // After the language controls so setStatus is not painted underneath them.
+        chromeHost.addSubview(statusLabel)
         mainActionRow.addToSuperview(chromeHost)
 
         configureQAInputBar()
@@ -195,12 +216,19 @@ extension PopoverController {
 
         let containerHost = NSView(frame: glassContainer.bounds)
         containerHost.autoresizingMask = [.width, .height]
+        LiquidGlassChrome.clipToShell(containerHost)
         containerHost.addSubview(shellGlass)
         glassContainer.contentView = containerHost
 
         layoutSplitPrism(width: width, height: height)
+        // Glass stays the window contentView so NSGlassEffectView can sample the
+        // desktop. chromeHost is embedded as the glass contentView (Apple's
+        // guaranteed z-order). Controls always live there — never reparent them
+        // out of the glass or the shell disappears.
+        LiquidGlassChrome.clipToShell(chromeHost)
         panel.contentView = glassContainer
-        panel.setFrame(NSRect(origin: panel.frame.origin, size: glassContainer.frame.size), display: false)
+        LiquidGlassChrome.applyWindowShape(panel)
+        panel.setFrame(NSRect(origin: panel.frame.origin, size: NSSize(width: width, height: height)), display: false)
     }
 
     func installSplitDividerGradient() {
@@ -233,18 +261,79 @@ extension PopoverController {
     }
 
     func applySplitHostChrome() {
+        let reduceTransparency = NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency
         splitHost.layer?.borderWidth = 1
         splitHost.layer?.borderColor = Palette.cg(Palette.hairline, in: splitHost)
-        splitHost.layer?.backgroundColor = Palette.cg(Palette.paneFill, in: splitHost)
+        let fill = reduceTransparency ? Palette.opaquePaneFill : Palette.paneFill
+        splitHost.layer?.backgroundColor = Palette.cg(fill, in: splitHost)
+        // Never hide shellGlass: chromeHost is its contentView.
+        // Window backing stays clear so the rectangular frame cannot paint a black
+        // box around the rounded clip. Opaque fill lives on chromeHost (already clipped).
+        panel.backgroundColor = .clear
+        if reduceTransparency {
+            chromeHost.layer?.backgroundColor = Palette.cg(Palette.opaquePaneFill, in: chromeHost)
+        } else {
+            chromeHost.layer?.backgroundColor = Palette.cg(Palette.chromeFill, in: chromeHost)
+        }
         splitDividerGradient?.colors = Self.dividerGradientColors(in: splitDivider)
     }
 
-    func applyControlCornerRadius(_ view: NSView, radius: CGFloat? = nil) {
-        let resolved = radius ?? ChromeLayout.controlCornerRadius
+    /// Capsule: radius is half the shorter side after the frame is set.
+    /// A CSS-style 999 on a zero/small frame clips the control to nothing.
+    func applyControlCornerRadius(_ view: NSView) {
+        let width = max(view.bounds.width, view.frame.width)
+        let height = max(view.bounds.height, view.frame.height)
+        guard width > 2, height > 2 else { return }
         view.wantsLayer = true
-        view.layer?.cornerRadius = resolved
+        view.layer?.cornerRadius = min(width, height) / 2
         view.layer?.cornerCurve = .continuous
         view.layer?.masksToBounds = true
+    }
+
+    func glassSymbol(_ name: String, accessibility: String?, accent: Bool) -> NSImage? {
+        let base = NSImage(systemSymbolName: name, accessibilityDescription: accessibility)
+        let tint: NSColor = accent ? .white : Palette.chromeIconTint
+        let config = NSImage.SymbolConfiguration(paletteColors: [tint])
+            .applying(NSImage.SymbolConfiguration(pointSize: 12, weight: .medium))
+        return base?.withSymbolConfiguration(config)
+    }
+
+    func applyActionChipLabel(_ button: NSButton, title: String, symbol: String, accent: Bool) {
+        if let chip = button as? ActionChipButton {
+            chip.chipSymbol = symbol
+        }
+        let font = NSFont.systemFont(ofSize: ChromeLayout.controlFontSize, weight: .medium)
+        let color: NSColor = accent ? .white : Palette.actionChipLabel
+        button.image = nil
+        button.imagePosition = .noImage
+        button.alignment = .center
+        // The icon is baked into a bitmap, so a dynamic tint has to be resolved against the
+        // button's own appearance — otherwise it keeps the light color after a switch to dark.
+        var icon: NSImage?
+        button.effectiveAppearance.performAsCurrentDrawingAppearance {
+            icon = PopoverLayoutMath.chipIconImage(
+                symbol: symbol,
+                tint: color,
+                pointSize: 12,
+                weight: .semibold
+            )
+        }
+        button.attributedTitle = PopoverLayoutMath.actionChipAttributedTitle(
+            title: title,
+            icon: icon,
+            font: font,
+            color: color
+        )
+        button.setAccessibilityLabel(title)
+        button.contentTintColor = color
+    }
+
+    func applyAccentButtonTitle(_ button: NSButton, title: String, symbol: String? = nil) {
+        let resolved = symbol
+            ?? (button as? ActionChipButton)?.chipSymbol
+            ?? "arrow.right.circle"
+        applyActionChipLabel(button, title: title, symbol: resolved, accent: true)
+        applyActionChipSize(button, title: title)
     }
 
     func stylePane(_ view: NSView) {
@@ -259,7 +348,7 @@ extension PopoverController {
 
     func configurePaneHeaderLabel(_ label: NSTextField, title: String) {
         label.stringValue = title
-        label.font = .systemFont(ofSize: 9, weight: .bold)
+        label.font = .systemFont(ofSize: 11, weight: .bold)
         label.textColor = Palette.paneLabel
         label.isBezeled = false
         label.drawsBackground = false
@@ -267,21 +356,70 @@ extension PopoverController {
     }
 
     func paneLanguageCode(_ language: String) -> String {
-        switch language {
-        case "Auto detect": return "AUTO"
-        case "English": return "EN"
-        case "Vietnamese": return "VI"
-        case "Chinese", "Chinese (Simplified)", "Chinese (Traditional)": return "ZH"
-        case "Japanese": return "JA"
-        case "Korean": return "KO"
-        case "French": return "FR"
-        case "German": return "DE"
-        case "Spanish": return "ES"
-        default:
-            let letters = language.uppercased().filter(\.isLetter)
-            return String(letters.prefix(2))
+        let trimmed = language.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed == LanguageDetector.autoDetect || trimmed.caseInsensitiveCompare("Auto detect") == .orderedSame {
+            return "AUTO"
         }
+        if let code = Self.iso6391Codes[trimmed] { return code }
+        let folded = Self.iso6391Codes.first { $0.key.caseInsensitiveCompare(trimmed) == .orderedSame }?.value
+        return folded ?? "??"
     }
+
+    /// ISO 639-1 pane badges. Unknown names stay "??" — never a blind prefix(2) ("Portuguese" is PT, not PO).
+    static let iso6391Codes: [String: String] = [
+        "English": "EN",
+        "Vietnamese": "VI",
+        "Chinese": "ZH",
+        "Chinese (Simplified)": "ZH",
+        "Chinese (Traditional)": "ZH",
+        "Japanese": "JA",
+        "Korean": "KO",
+        "French": "FR",
+        "German": "DE",
+        "Spanish": "ES",
+        "Portuguese": "PT",
+        "Portuguese (Brazil)": "PT",
+        "Italian": "IT",
+        "Russian": "RU",
+        "Arabic": "AR",
+        "Hindi": "HI",
+        "Thai": "TH",
+        "Indonesian": "ID",
+        "Malay": "MS",
+        "Dutch": "NL",
+        "Polish": "PL",
+        "Turkish": "TR",
+        "Swedish": "SV",
+        "Norwegian": "NO",
+        "Danish": "DA",
+        "Finnish": "FI",
+        "Greek": "EL",
+        "Hebrew": "HE",
+        "Czech": "CS",
+        "Romanian": "RO",
+        "Hungarian": "HU",
+        "Ukrainian": "UK",
+        "Bengali": "BN",
+        "Tamil": "TA",
+        "Telugu": "TE",
+        "Urdu": "UR",
+        "Persian": "FA",
+        "Tagalog": "TL",
+        "Filipino": "TL",
+        "Khmer": "KM",
+        "Lao": "LO",
+        "Burmese": "MY",
+        "Nepali": "NE",
+        "Sinhala": "SI",
+        "Slovak": "SK",
+        "Bulgarian": "BG",
+        "Croatian": "HR",
+        "Serbian": "SR",
+        "Catalan": "CA",
+        "Welsh": "CY",
+        "Irish": "GA",
+        "Swahili": "SW",
+    ]
 
     func updatePaneLanguageLabels() {
         let sourceTitle = selectedSourceLanguage()
@@ -297,8 +435,7 @@ extension PopoverController {
         resultHeaderLabel.stringValue = paneLanguageCode(targetTitle)
     }
 
-    /// Wires one action row. The subtranslate row runs the same five actions against the sub pane's
-    /// own content; Images has no sub-pane input, so it stays disabled there.
+    /// Wires one action row. The subtranslate row runs the same five actions against the sub pane.
     func configureActionRow(_ row: ActionRowSection, isSub: Bool) {
         configurePrimaryButton(
             row.translateButton, title: "Translate", symbol: "arrow.right.circle",
@@ -308,29 +445,22 @@ extension PopoverController {
             row.learnButton, title: "Learn", symbol: "brain.head.profile",
             action: isSub ? #selector(runSubLearn) : #selector(runLearn), accent: false
         )
-        row.learnButton.toolTip = "Learn"
         row.learnButton.setAccessibilityLabel("Learn")
         configurePrimaryButton(
             row.imagesButton, title: "Images", symbol: "photo",
-            action: isSub ? nil : #selector(runImages), accent: false
+            action: isSub ? #selector(runSubImages) : #selector(runImages), accent: false
         )
-        row.imagesButton.toolTip = isSub ? "Search Images is available on the main pane only" : "Search Images"
-        row.imagesButton.setAccessibilityLabel("Search Images")
+        row.imagesButton.setAccessibilityLabel("Images")
         configurePrimaryButton(
             row.proofreadButton, title: "Proofread", symbol: "text.badge.checkmark",
             action: isSub ? #selector(runSubProofread) : #selector(runProofread), accent: false
         )
-        row.proofreadButton.toolTip = "Proofread"
         row.proofreadButton.setAccessibilityLabel("Proofread")
         configurePrimaryButton(
             row.askButton, title: "Ask", symbol: "text.bubble",
             action: isSub ? #selector(askSubClicked) : #selector(askButtonClicked), accent: false
         )
-        row.askButton.toolTip = isSub ? "Ask a follow-up question about the sub-translation" : "Ask a follow-up question (\u{2318}K)"
         row.askButton.setAccessibilityLabel("Ask")
-        if isSub {
-            row.imagesButton.isEnabled = false
-        }
         applyShortcutLabels(to: row)
     }
 
@@ -341,25 +471,74 @@ extension PopoverController {
         action: Selector?,
         accent: Bool
     ) {
-        button.title = title
-        button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: title.isEmpty ? nil : title)
-        button.imagePosition = title.isEmpty ? .imageOnly : .imageLeading
-        button.imageHugsTitle = true
+        applyActionChipLabel(button, title: title, symbol: symbol, accent: accent)
         button.target = action == nil ? nil : self
         button.action = action
+        // Same system bezel as the chrome icon buttons above: it owns the capsule, the
+        // light/dark fill and the hover state, so the chips match the rest of the popup.
         button.bezelStyle = .glass
+        button.isBordered = true
+        button.focusRingType = .none
+        button.refusesFirstResponder = true
         button.controlSize = .regular
-        button.font = .systemFont(ofSize: ChromeLayout.controlFontSize, weight: .regular)
-        if accent {
-            button.bezelColor = .controlAccentColor
-        } else {
-            button.bezelColor = nil
-        }
-        applyControlCornerRadius(button)
+        button.font = .systemFont(ofSize: ChromeLayout.controlFontSize, weight: .medium)
+        button.lineBreakMode = .byClipping
+        applyActionChipSize(button, title: title)
     }
 
-    /// Refreshes the small shortcut hint drawn inside Learn/Proofread/Ask — call after config
-    /// (re)load since the global hotkeys are user-configurable in Settings.
+    /// Pins each action chip to its own fixed size — independent of the window and `fittingSize`.
+    func applyActionChipSize(_ button: NSButton, title: String) {
+        let size = NSSize(
+            width: actionChipWidth(forTitle: title),
+            height: PopoverLayoutMath.actionButtonHeight
+        )
+        if let chip = button as? ActionChipButton {
+            chip.lockedSize = size
+        }
+        button.setFrameSize(size)
+        applyActionChipChrome(button)
+    }
+
+    func isActionChipAccent(_ button: NSButton) -> Bool {
+        isActionChipAccentTitle(PopoverLayoutMath.visibleActionChipTitle(of: button))
+    }
+
+    func isActionChipAccentTitle(_ title: String) -> Bool {
+        title == "Translate" || title == "Stop"
+    }
+
+    /// Only the accent chip keeps a capsule; the rest are plain text, so they drop the bezel padding.
+    func actionChipWidth(forTitle title: String) -> CGFloat {
+        let base = PopoverLayoutMath.ActionChip.width(forTitle: title)
+        return isActionChipAccentTitle(title) ? base : base - 2 * PopoverLayoutMath.actionButtonPadX
+    }
+
+    /// The `.glass` bezel draws the chip fill and hover; the accent tint and the capsule
+    /// mask (the bezel squares off at this width) are ours.
+    func applyActionChipChrome(_ button: NSButton) {
+        let accent = isActionChipAccent(button)
+        button.isBordered = accent
+        button.bezelColor = accent ? .controlAccentColor : nil
+        button.layer?.backgroundColor = nil
+        button.layer?.borderWidth = 0
+        if accent {
+            applyControlCornerRadius(button)
+        } else {
+            button.layer?.cornerRadius = 0
+            button.layer?.masksToBounds = false
+        }
+        // Repaints the baked icon for the current appearance (reflow runs on light/dark switch).
+        if let chip = button as? ActionChipButton, !chip.chipSymbol.isEmpty {
+            applyActionChipLabel(
+                chip,
+                title: PopoverLayoutMath.visibleActionChipTitle(of: chip),
+                symbol: chip.chipSymbol,
+                accent: isActionChipAccent(chip)
+            )
+        }
+    }
+
+    /// Refreshes action-row tooltips after config reload. Titles stay a single verb.
     func updateShortcutLabels() {
         applyShortcutLabels(to: mainActionRow)
         if let subRow = subSection?.actionRow {
@@ -367,35 +546,63 @@ extension PopoverController {
         }
     }
 
-    private func applyShortcutLabels(to row: ActionRowSection) {
-        applyShortcutLabel(row.translateButton, title: "Translate", shortcut: config.hotkey.displayString)
-        applyShortcutLabel(row.learnButton, title: "Learn", shortcut: config.learnHotkey.displayString)
-        applyShortcutLabel(row.proofreadButton, title: "Proofread", shortcut: config.proofreadHotkey.displayString)
-        applyShortcutLabel(row.askButton, title: "Ask", shortcut: "⌘K")
+    func applyShortcutLabels(to row: ActionRowSection) {
+        let isSub = row === subSection?.actionRow
+        applyActionTooltip(
+            row.translateButton,
+            title: "Translate",
+            help: "Translate the selection (⌘↩ · \(config.hotkey.displayString))"
+        )
+        applyActionTooltip(
+            row.learnButton,
+            title: "Learn",
+            help: "Explain the word or sentence (⌘L · \(config.learnHotkey.displayString))"
+        )
+        applyActionTooltip(
+            row.proofreadButton,
+            title: "Proofread",
+            help: "Check grammar in the source language (⌘P · \(config.proofreadHotkey.displayString))"
+        )
+        applyActionTooltip(
+            row.askButton,
+            title: "Ask",
+            help: isSub
+                ? "Ask a follow-up question about the sub-translation, with the main pane as context (⌘K)"
+                : "Ask a follow-up question (⌘K)"
+        )
+        applyActionTooltip(
+            row.imagesButton,
+            title: "Images",
+            help: isSub
+                ? "Search images for the sub-translation (⌘I)"
+                : "Search images in the browser (⌘I)"
+        )
     }
 
-    private func applyShortcutLabel(_ button: NSButton, title: String, shortcut: String) {
-        let text = NSMutableAttributedString(
-            string: title,
-            attributes: [
-                .font: NSFont.systemFont(ofSize: ChromeLayout.controlFontSize, weight: .regular),
-                .foregroundColor: NSColor.controlTextColor
-            ]
-        )
-        text.append(NSAttributedString(
-            string: "  " + shortcut,
-            attributes: [
-                .font: NSFont.systemFont(ofSize: ChromeLayout.controlFontSize - 2, weight: .regular),
-                .foregroundColor: Palette.mutedText
-            ]
-        ))
-        button.attributedTitle = text
+    func applyActionTooltip(_ button: NSButton, title: String, help: String) {
+        if let chip = button as? ActionChipButton, !chip.chipSymbol.isEmpty {
+            applyActionChipLabel(
+                chip,
+                title: title,
+                symbol: chip.chipSymbol,
+                accent: title == "Translate" || title == "Stop"
+            )
+        } else if isActionChipAccent(button) {
+            applyAccentButtonTitle(button, title: title)
+        } else {
+            button.title = title
+        }
+        button.toolTip = help
+        button.setAccessibilityLabel(title)
+        button.setAccessibilityHelp(help)
     }
 
     func configureChromeIconButton(_ button: NSButton, symbol: String, action: Selector, label: String) {
         button.title = ""
         button.attributedTitle = NSAttributedString(string: "")
-        button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: label)
+        let symbolConfig = NSImage.SymbolConfiguration(pointSize: 12, weight: .medium)
+        button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: label)?
+            .withSymbolConfiguration(symbolConfig)
         button.imagePosition = .imageOnly
         button.isBordered = true
         button.bezelStyle = .glass
@@ -405,7 +612,18 @@ extension PopoverController {
         button.toolTip = label
         button.setAccessibilityLabel(label)
         button.contentTintColor = Palette.chromeIconTint
-        applyControlCornerRadius(button, radius: ChromeLayout.chromeIconSize / 2)
+    }
+
+    func configureSetupActionButton(_ button: NSButton, title: String, action: Selector) {
+        button.title = title
+        button.bezelStyle = .flexiblePush
+        button.controlSize = .regular
+        button.font = .systemFont(ofSize: ChromeLayout.controlFontSize, weight: .medium)
+        button.target = self
+        button.action = action
+        button.toolTip = title
+        button.setAccessibilityLabel(title)
+        applyControlCornerRadius(button)
     }
 
     func configureIconButton(_ button: NSButton, symbol: String, action: Selector, label: String) {

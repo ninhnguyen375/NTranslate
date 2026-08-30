@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NTranslate — Ink Marks</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600&family=JetBrains+Mono:wght@300;400&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            -webkit-font-smoothing: antialiased;
+            background:
+                radial-gradient(800px 480px at 12% 0%, rgba(45, 58, 58, 0.06), transparent 55%),
+                radial-gradient(720px 420px at 100% 10%, rgba(179, 57, 46, 0.07), transparent 50%),
+                #F3E6CF;
+            color: #2A2420;
+        }
+        .font-mono { font-family: 'JetBrains Mono', 'Courier New', monospace; }
+        .tracking-ultra-wide { letter-spacing: 0.2em; }
+        .logo-card {
+            background: rgba(253, 247, 236, 0.78);
+            border: 1px solid rgba(42, 36, 32, 0.06);
+            border-radius: 28px;
+            padding: 28px;
+            transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.6s ease;
+            box-shadow: 0 16px 36px rgba(42, 36, 32, 0.05);
+        }
+        .logo-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 26px 54px rgba(42, 36, 32, 0.08);
+        }
+        .logo-stage {
+            aspect-ratio: 1;
+            border-radius: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 22px;
+            overflow: hidden;
+            background:
+                radial-gradient(circle at 30% 24%, rgba(255,255,255,0.45), transparent 42%),
+                #EFE0C4;
+        }
+        .logo-stage canvas { width: 100%; height: 100%; display: block; }
+        .swatch {
+            width: 14px; height: 14px; border-radius: 99px;
+            box-shadow: inset 0 0 0 1px rgba(0,0,0,0.08);
+        }
+        .badge {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 10px;
+            letter-spacing: 0.14em;
+            text-transform: uppercase;
+            color: rgba(42, 36, 32, 0.4);
+        }
+    </style>
+</head>
+<body>
+    <div class="min-h-screen flex flex-col items-center py-16 px-6">
+        <div class="text-center mb-16 max-w-2xl">
+            <p class="font-mono text-xs uppercase tracking-ultra-wide mb-5" style="color:#9A3B32">Ink pass · brush N</p>
+            <h1 class="text-6xl md:text-7xl font-extralight tracking-wider mb-6">NTranslate</h1>
+            <p class="text-base font-light leading-relaxed" style="color:rgba(42,36,32,0.62)">
+                The same six ideas, rewritten as ink: pressure, taper, and wash.
+                The <strong>N</strong> is three brush strokes. Translation sits beside it as 朱砂 and 文.
+            </p>
+        </div>
+
+        <div class="max-w-6xl w-full grid grid-cols-1 md:grid-cols-2 gap-8 mb-20">
+            <article class="logo-card">
+                <div class="logo-stage"><canvas id="m1"></canvas></div>
+                <div class="flex items-center justify-between mb-3">
+                    <div class="flex gap-2"><span class="swatch" style="background:#1C1A17"></span><span class="swatch" style="background:#B3392E"></span></div>
+                    <span class="badge">01 · N Dual</span>
+                </div>
+                <h2 class="text-xl font-medium tracking-wider mb-1 uppercase">N Dual</h2>
+                <p class="text-sm font-light leading-relaxed" style="color:rgba(42,36,32,0.65)">浓墨 left, 朱砂 right, a pale wash on the diagonal. Two inks, one letter.</p>
+            </article>
+
+            <article class="logo-card">
+                <div class="logo-stage"><canvas id="m2"></canvas></div>
+                <div class="flex items-center justify-between mb-3">
+                    <div class="flex gap-2"><span class="swatch" style="background:#1C1A17"></span><span class="swatch" style="background:#3E5C57"></span><span class="swatch" style="background:#B3392E"></span></div>
+                    <span class="badge">02 · N Swap</span>
+                </div>
+                <h2 class="text-xl font-medium tracking-wider mb-1 uppercase">N Swap</h2>
+                <p class="text-sm font-light leading-relaxed" style="color:rgba(42,36,32,0.65)">A written N, circled by two brush arrows that turn like a translation cycle.</p>
+            </article>
+
+            <article class="logo-card">
+                <div class="logo-stage"><canvas id="m3"></canvas></div>
+                <div class="flex items-center justify-between mb-3">
+                    <div class="flex gap-2"><span class="swatch" style="background:#1C1A17"></span><span class="swatch" style="background:#B3392E"></span></div>
+                    <span class="badge">03 · N Scripts</span>
+                </div>
+                <h2 class="text-xl font-medium tracking-wider mb-1 uppercase">N Scripts</h2>
+                <p class="text-sm font-light leading-relaxed" style="color:rgba(42,36,32,0.65)">Brush N between a small A and a written 文. Source and target, ink to ink.</p>
+            </article>
+
+            <article class="logo-card">
+                <div class="logo-stage"><canvas id="m4"></canvas></div>
+                <div class="flex items-center justify-between mb-3">
+                    <div class="flex gap-2"><span class="swatch" style="background:#3E5C57"></span><span class="swatch" style="background:#B3392E"></span></div>
+                    <span class="badge">04 · N Pane</span>
+                </div>
+                <h2 class="text-xl font-medium tracking-wider mb-1 uppercase">N Pane</h2>
+                <p class="text-sm font-light leading-relaxed" style="color:rgba(42,36,32,0.65)">Two soft washes meet down the middle. The N is written once across both papers.</p>
+            </article>
+
+            <article class="logo-card">
+                <div class="logo-stage"><canvas id="m5"></canvas></div>
+                <div class="flex items-center justify-between mb-3">
+                    <div class="flex gap-2"><span class="swatch" style="background:#1C1A17"></span><span class="swatch" style="background:#3E5C57"></span><span class="swatch" style="background:#B3392E"></span></div>
+                    <span class="badge">05 · N Flow</span>
+                </div>
+                <h2 class="text-xl font-medium tracking-wider mb-1 uppercase">N Flow</h2>
+                <p class="text-sm font-light leading-relaxed" style="color:rgba(42,36,32,0.65)">Water-ripple lines enter in ink and leave in cinnabar, through the N.</p>
+            </article>
+
+            <article class="logo-card">
+                <div class="logo-stage"><canvas id="m6"></canvas></div>
+                <div class="flex items-center justify-between mb-3">
+                    <div class="flex gap-2"><span class="swatch" style="background:#B3392E"></span><span class="swatch" style="background:#F3E6CF"></span></div>
+                    <span class="badge">06 · N Seal</span>
+                </div>
+                <h2 class="text-xl font-medium tracking-wider mb-1 uppercase">N Seal</h2>
+                <p class="text-sm font-light leading-relaxed" style="color:rgba(42,36,32,0.65)">A 印章: cinnabar square, reserved N, two small swap ticks. The app as a chop.</p>
+            </article>
+        </div>
+
+        <p class="font-mono text-xs uppercase tracking-ultra-wide text-center" style="color:rgba(42,36,32,0.35)">Ink canvas · 2026</p>
+    </div>
+
+    <script>
+        const INK = 'rgba(28, 26, 23, 0.92)';
+        const INK_SOFT = 'rgba(28, 26, 23, 0.28)';
+        const CINNABAR = 'rgba(179, 57, 46, 0.92)';
+        const CINNABAR_SOFT = 'rgba(179, 57, 46, 0.26)';
+        const CELADON = 'rgba(62, 92, 87, 0.88)';
+        const CELADON_SOFT = 'rgba(62, 92, 87, 0.22)';
+        const PAPER = '#EFE0C4';
+
+        function prep(id) {
+            const canvas = document.getElementById(id);
+            const dpr = Math.min(window.devicePixelRatio || 1, 2);
+            const css = canvas.clientWidth || 640;
+            canvas.width = Math.round(css * dpr);
+            canvas.height = Math.round(css * dpr);
+            const ctx = canvas.getContext('2d');
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
+            ctx.scale(dpr, dpr);
+            ctx.translate(css / 2, css / 2);
+            ctx.scale(css / 100, css / 100);
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            paperGrain(ctx);
+            return ctx;
+        }
+
+        function paperGrain(ctx) {
+            ctx.save();
+            ctx.globalAlpha = 0.045;
+            for (let i = 0; i < 90; i++) {
+                const x = (Math.sin(i * 12.9898) * 43758.5453) % 1;
+                const y = (Math.sin(i * 78.233) * 93721.321) % 1;
+                ctx.fillStyle = i % 3 === 0 ? '#2A2420' : '#fff8ec';
+                ctx.beginPath();
+                ctx.arc(-48 + Math.abs(x) * 96, -48 + Math.abs(y) * 96, 0.35 + (i % 4) * 0.12, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            ctx.restore();
+        }
+
+        function cubic(a, b, c, d, t) {
+            const mt = 1 - t;
+            return mt * mt * mt * a + 3 * mt * mt * t * b + 3 * mt * t * t * c + t * t * t * d;
+        }
+
+        function sampleCubic(p0, p1, p2, p3, steps) {
+            const pts = [];
+            for (let i = 0; i <= steps; i++) {
+                const t = i / steps;
+                pts.push({
+                    x: cubic(p0[0], p1[0], p2[0], p3[0], t),
+                    y: cubic(p0[1], p1[1], p2[1], p3[1], t)
+                });
+            }
+            return pts;
+        }
+
+        function widthProfile(n, a, b, c) {
+            const widths = [];
+            for (let i = 0; i < n; i++) {
+                const t = i / (n - 1);
+                const ease = t < 0.5
+                    ? a + (b - a) * (t / 0.5)
+                    : b + (c - b) * ((t - 0.5) / 0.5);
+                const breath = 1 + Math.sin(t * Math.PI) * 0.08;
+                widths.push(ease * breath);
+            }
+            return widths;
+        }
+
+        function ribbon(ctx, pts, widths, color) {
+            const left = [];
+            const right = [];
+            for (let i = 0; i < pts.length; i++) {
+                const prev = pts[Math.max(0, i - 1)];
+                const next = pts[Math.min(pts.length - 1, i + 1)];
+                let dx = next.x - prev.x;
+                let dy = next.y - prev.y;
+                const len = Math.hypot(dx, dy) || 1;
+                dx /= len;
+                dy /= len;
+                const w = widths[i] / 2;
+                left.push({ x: pts[i].x - dy * w, y: pts[i].y + dx * w });
+                right.push({ x: pts[i].x + dy * w, y: pts[i].y - dx * w });
+            }
+            ctx.beginPath();
+            ctx.moveTo(left[0].x, left[0].y);
+            for (let i = 1; i < left.length; i++) ctx.lineTo(left[i].x, left[i].y);
+            for (let i = right.length - 1; i >= 0; i--) ctx.lineTo(right[i].x, right[i].y);
+            ctx.closePath();
+            ctx.fillStyle = color;
+            ctx.fill();
+        }
+
+        function brush(ctx, p0, p1, p2, p3, profile, color, wash) {
+            const pts = sampleCubic(p0, p1, p2, p3, 36);
+            const widths = widthProfile(pts.length, profile[0], profile[1], profile[2]);
+            if (wash) {
+                const halo = widths.map((w) => w * 2.1);
+                ctx.save();
+                ctx.globalAlpha = 0.16;
+                ribbon(ctx, pts, halo, wash);
+                ctx.restore();
+            }
+            ribbon(ctx, pts, widths, color);
+        }
+
+        function inkN(ctx, opt = {}) {
+            const s = opt.scale || 1;
+            const ox = opt.x || 0;
+            const oy = opt.y || 0;
+            const left = opt.left || INK;
+            const right = opt.right || INK;
+            const bar = opt.bar || INK;
+            const washL = opt.washL || INK_SOFT;
+            const washR = opt.washR || INK_SOFT;
+            const washB = opt.washB || INK_SOFT;
+
+            ctx.save();
+            ctx.translate(ox, oy);
+            ctx.scale(s, s);
+            ctx.rotate(opt.tilt || -0.035);
+
+            brush(ctx,
+                [-16, -27], [-15.2, -8], [-17.4, 8], [-15.6, 27],
+                [3.1, 7.4, 2.4], left, washL);
+
+            brush(ctx,
+                [-12.2, -22], [-2, -4], [3, 8], [13.4, 23],
+                [2.2, 6.2, 3.4], bar, washB);
+
+            brush(ctx,
+                [15.4, -26], [17.2, -6], [14.8, 10], [16.6, 27],
+                [2.8, 7.1, 2.6], right, washR);
+
+            ctx.restore();
+        }
+
+        function brushArrow(ctx, p0, p1, p2, p3, color, headAtEnd) {
+            brush(ctx, p0, p1, p2, p3, [1.4, 2.6, 1.2], color, color);
+            const tip = headAtEnd ? p3 : p0;
+            const prev = headAtEnd ? p2 : p1;
+            const ang = Math.atan2(tip[1] - prev[1], tip[0] - prev[0]) + (headAtEnd ? 0 : Math.PI);
+            ctx.save();
+            ctx.translate(tip[0], tip[1]);
+            ctx.rotate(ang);
+            ctx.fillStyle = color;
+            ctx.beginPath();
+            ctx.moveTo(3.6, 0);
+            ctx.quadraticCurveTo(0.4, 2.1, -2.8, 2.6);
+            ctx.quadraticCurveTo(-0.2, 0, -2.8, -2.6);
+            ctx.quadraticCurveTo(0.4, -2.1, 3.6, 0);
+            ctx.fill();
+            ctx.restore();
+        }
+
+        function glyphA(ctx, x, y, color) {
+            ctx.save();
+            ctx.translate(x, y);
+            ctx.rotate(-0.06);
+            brush(ctx, [-4.2, 8], [-2.6, 1], [-1.2, -4], [0.2, -9], [1.3, 2.4, 1.1], color, color);
+            brush(ctx, [4.6, 8], [3.2, 1], [1.6, -4], [0.4, -9], [1.2, 2.3, 1.1], color, color);
+            brush(ctx, [-2.6, 2.2], [-0.8, 1.6], [1.2, 1.8], [3.1, 2.6], [1.1, 1.8, 1.0], color, color);
+            ctx.restore();
+        }
+
+        function glyphWen(ctx, x, y, color) {
+            ctx.save();
+            ctx.translate(x, y);
+            ctx.rotate(0.04);
+            brush(ctx, [-0.2, -10], [0.4, -7], [0.1, -3], [0.3, 1], [1.4, 2.2, 1.2], color, color);
+            brush(ctx, [-6.4, -4.2], [-2.2, -5.4], [2.6, -5], [6.6, -3.6], [1.2, 2.0, 1.1], color, color);
+            brush(ctx, [-5.8, 1.4], [-3.4, 5.2], [-1.6, 8.2], [0.2, 10], [1.3, 2.4, 1.5], color, color);
+            brush(ctx, [5.6, 1.2], [3.6, 5], [2.0, 8], [0.4, 10], [1.2, 2.3, 1.4], color, color);
+            ctx.restore();
+        }
+
+        function markDual(ctx) {
+            inkN(ctx, {
+                left: INK,
+                bar: CELADON,
+                right: CINNABAR,
+                washL: INK_SOFT,
+                washB: CELADON_SOFT,
+                washR: CINNABAR_SOFT,
+                scale: 1.15
+            });
+        }
+
+        function markSwap(ctx) {
+            inkN(ctx, { scale: 0.86, tilt: -0.02 });
+            brushArrow(ctx,
+                [8, -32], [24, -26], [34, -8], [32, 6],
+                CELADON, true);
+            brushArrow(ctx,
+                [-8, 32], [-24, 26], [-34, 8], [-32, -6],
+                CINNABAR, true);
+        }
+
+        function markScripts(ctx) {
+            glyphA(ctx, -30, 1, CELADON);
+            inkN(ctx, { scale: 0.92 });
+            glyphWen(ctx, 30, 1, CINNABAR);
+            brush(ctx, [-23, -7], [-20, -8], [-18, -6], [-16, -5], [0.8, 1.3, 0.7], CELADON, CELADON_SOFT);
+            brush(ctx, [16, 6], [18, 7], [21, 7], [23, 6], [0.8, 1.3, 0.7], CINNABAR, CINNABAR_SOFT);
+        }
+
+        function markPane(ctx) {
+            ctx.save();
+            ctx.beginPath();
+            ctx.ellipse(-18, 0, 28, 34, -0.08, 0, Math.PI * 2);
+            ctx.fillStyle = CELADON_SOFT;
+            ctx.fill();
+            ctx.beginPath();
+            ctx.ellipse(18, 1, 28, 34, 0.08, 0, Math.PI * 2);
+            ctx.fillStyle = CINNABAR_SOFT;
+            ctx.fill();
+            ctx.restore();
+            inkN(ctx, {
+                left: CELADON,
+                bar: INK,
+                right: CINNABAR,
+                washL: CELADON_SOFT,
+                washB: INK_SOFT,
+                washR: CINNABAR_SOFT,
+                scale: 1.05
+            });
+        }
+
+        function markFlow(ctx) {
+            inkN(ctx, { scale: 0.88, left: INK, bar: INK, right: INK });
+            const waves = [
+                [-40, -14, -28, -16, -20, -13],
+                [-40, -2, -29, -5, -20, -1],
+                [-39, 10, -28, 7, -20, 11],
+                [20, -13, 29, -16, 40, -12],
+                [20, -1, 30, -4, 40, 1],
+                [20, 11, 28, 8, 39, 12]
+            ];
+            waves.forEach((w, i) => {
+                const color = i < 3 ? CELADON : CINNABAR;
+                const wash = i < 3 ? CELADON_SOFT : CINNABAR_SOFT;
+                brush(ctx,
+                    [w[0], w[1]], [w[0] + 4, w[1] - 3], [w[2], w[3]], [w[4], w[5]],
+                    [1.1, 2.2, 1.0], color, wash);
+            });
+        }
+
+        function markSeal(ctx) {
+            ctx.save();
+            ctx.rotate(0.03);
+            ctx.beginPath();
+            roundedSoft(ctx, -30, -30, 60, 60, 7);
+            ctx.fillStyle = 'rgba(179, 57, 46, 0.9)';
+            ctx.fill();
+            ctx.beginPath();
+            roundedSoft(ctx, -26.5, -26.5, 53, 53, 5);
+            ctx.strokeStyle = 'rgba(243, 230, 207, 0.55)';
+            ctx.lineWidth = 1.1;
+            ctx.stroke();
+            ctx.restore();
+
+            ctx.save();
+            ctx.globalCompositeOperation = 'destination-out';
+            inkN(ctx, {
+                scale: 0.78,
+                left: PAPER,
+                bar: PAPER,
+                right: PAPER,
+                washL: null,
+                washB: null,
+                washR: null,
+                tilt: -0.02
+            });
+            ctx.restore();
+
+            ctx.save();
+            ctx.rotate(0.03);
+            ctx.strokeStyle = 'rgba(243, 230, 207, 0.85)';
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.moveTo(16, -23);
+            ctx.quadraticCurveTo(21, -20, 23, -15);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(-16, 23);
+            ctx.quadraticCurveTo(-21, 20, -23, 15);
+            ctx.stroke();
+            ctx.restore();
+        }
+
+        function roundedSoft(ctx, x, y, w, h, r) {
+            ctx.moveTo(x + r, y);
+            ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+            ctx.lineTo(x + w, y + h - r);
+            ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+            ctx.lineTo(x + r, y + h);
+            ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+            ctx.lineTo(x, y + r);
+            ctx.quadraticCurveTo(x, y, x + r, y);
+        }
+
+        const marks = [
+            ['m1', markDual],
+            ['m2', markSwap],
+            ['m3', markScripts],
+            ['m4', markPane],
+            ['m5', markFlow],
+            ['m6', markSeal]
+        ];
+
+        function render() {
+            marks.forEach(([id, draw]) => {
+                const ctx = prep(id);
+                draw(ctx);
+            });
+        }
+
+        render();
+        window.addEventListener('resize', render);
+    </script>
+</body>
+</html>

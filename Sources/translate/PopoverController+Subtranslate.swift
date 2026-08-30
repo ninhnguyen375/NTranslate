@@ -80,6 +80,8 @@ extension PopoverController {
         }
         configureActionRow(section.actionRow, isSub: true)
         section.actionRow.addToSuperview(chromeHost)
+        configureSectionDivider(section)
+        chromeHost.addSubview(section.sectionDivider)
 
         section.splitHost.addSubview(section.sourceCard)
         section.splitHost.addSubview(section.splitDivider)
@@ -130,6 +132,40 @@ extension PopoverController {
         )
     }
 
+    func configureSectionDivider(_ section: SubtranslateSection) {
+        section.sectionDividerLabel.stringValue = "Subtranslate"
+        section.sectionDividerLabel.font = .systemFont(ofSize: 11, weight: .medium)
+        section.sectionDividerLabel.textColor = Palette.mutedText
+        section.sectionDividerLabel.alignment = .center
+        section.sectionDividerLabel.isBezeled = false
+        section.sectionDividerLabel.drawsBackground = false
+        section.sectionDividerLabel.isEditable = false
+        section.sectionDividerLabel.isSelectable = false
+        section.sectionDividerLeft.wantsLayer = true
+        section.sectionDividerRight.wantsLayer = true
+        section.sectionDivider.addSubview(section.sectionDividerLeft)
+        section.sectionDivider.addSubview(section.sectionDividerRight)
+        section.sectionDivider.addSubview(section.sectionDividerLabel)
+    }
+
+    func layoutSectionDivider(_ section: SubtranslateSection, x: CGFloat, y: CGFloat, width: CGFloat) {
+        let visualH = ChromeLayout.sectionDividerHeight
+        let reserved = ChromeLayout.sectionDividerReserved
+        section.sectionDivider.frame = NSRect(x: x, y: y, width: width, height: reserved)
+        section.sectionDividerLabel.sizeToFit()
+        let frames = PopoverLayoutMath.labeledHairlineDivider(
+            width: width,
+            height: visualH,
+            labelWidth: ceil(section.sectionDividerLabel.fittingSize.width)
+        )
+        section.sectionDividerLeft.frame = frames.left
+        section.sectionDividerLabel.frame = frames.label
+        section.sectionDividerRight.frame = frames.right
+        let lineColor = Palette.cg(Palette.hairline, in: section.sectionDivider)
+        section.sectionDividerLeft.layer?.backgroundColor = lineColor
+        section.sectionDividerRight.layer?.backgroundColor = lineColor
+    }
+
     @objc func closeSubtranslate() {
         removeSubSection()
         reflowLayout()
@@ -147,20 +183,30 @@ extension PopoverController {
         subSection = nil
     }
 
-    func setSubResultText(_ section: SubtranslateSection, _ value: String) {
-        let style = PopoverFeedback.resultStyle(for: value)
+    func setSubResultText(
+        _ section: SubtranslateSection,
+        _ value: String,
+        streaming: Bool = false,
+        style: PopoverFeedback.ResultStyle? = nil
+    ) {
+        let style = style ?? (streaming ? .loading : PopoverFeedback.resultStyle(for: value))
         let color: NSColor
         switch style {
         case .normal: color = Palette.bodyText
         case .loading: color = Palette.loadingText
         case .error: color = .systemRed
         }
-        section.setResult(value, font: .systemFont(ofSize: ChromeLayout.bodyFontSize), color: color)
+        section.setResult(
+            value,
+            font: .systemFont(ofSize: ChromeLayout.bodyFontSize),
+            color: color,
+            markdown: style == .normal
+        )
         updateSubButtons(section)
     }
 
     func updateSubButtons(_ section: SubtranslateSection) {
-        let copyable = PopoverFeedback.isCopyableResult(section.resultText)
+        let copyable = PopoverFeedback.isCopyableResult(section.resultText, isStreaming: section.requestInFlight)
         section.copyButton.isEnabled = copyable
         updateSubSpeakButtons(section)
         section.saveWordButton.isHidden = !copyable
@@ -174,7 +220,16 @@ extension PopoverController {
 
         let canRun = !section.requestInFlight && !section.sourceText.isEmpty
         section.retryButton.isEnabled = canRun
-        section.actionRow.applyEnabled(canRun: canRun, copyable: copyable, imagesEnabled: false)
+        section.actionRow.applyEnabled(
+            canRun: canRun,
+            copyable: copyable,
+            imagesEnabled: PopoverIntegrationPolicy.imagesEnabled(
+                isRequestInFlight: section.requestInFlight,
+                hasPendingImage: false,
+                sourceText: section.sourceText
+            )
+        )
+        applyStopAppearance(to: section.actionRow, stopping: section.requestInFlight, isSub: true)
     }
 
     /// The sub row's Translate / Learn / Proofread re-run against the sub pane's own source and
@@ -235,6 +290,15 @@ extension PopoverController {
         section.sourceHeaderLabel.stringValue = paneLanguageCode(displaySource)
         section.resultHeaderLabel.stringValue = paneLanguageCode(pair.target)
         section.setSource(text, font: .systemFont(ofSize: ChromeLayout.bodyFontSize), color: Palette.bodyText)
+        if inFlightScope == .main {
+            translator.cancelInFlight()
+            requestGeneration += 1
+            isRequestInFlight = false
+            pendingSourceSpeech = pendingSourceSpeech.filter { $0.key >= requestGeneration }
+            updateBusyState()
+        }
+        inFlightScope = .sub
+        lastStreamedSub = ""
         section.requestInFlight = true
         let waitingText: String
         switch mode {
@@ -263,17 +327,29 @@ extension PopoverController {
                 )
             }
         }
+        let onPartial: @Sendable (String) -> Void = { [weak self] partial in
+            Task { @MainActor in
+                self?.appendStreamedResult(partial, generation: generation, scope: .sub)
+            }
+        }
         if mode == .proofread {
-            translator.proofread(text, lang: displaySource, completion: handler)
+            translator.proofread(text, lang: displaySource, onPartial: onPartial, completion: handler)
         } else if mode == .learn {
-            translator.learn(text, sourceLang: displaySource, targetLang: pair.target, parentContext: inputTextView.string, completion: handler)
+            translator.learn(text, sourceLang: displaySource, targetLang: pair.target, parentContext: inputTextView.string, onPartial: onPartial, completion: handler)
         } else {
             let context = historyStore.recentContext(
                 sourceLanguage: displaySource,
                 targetLanguage: pair.target,
                 excludingText: text
             ).reversed().map { ContextPair(source: $0.sourceText, target: $0.resultText) }
-            translator.translate(text, sourceLang: displaySource, targetLang: pair.target, context: context, parentContext: inputTextView.string) { result in
+            translator.translate(
+                text,
+                sourceLang: displaySource,
+                targetLang: pair.target,
+                context: context,
+                parentContext: inputTextView.string,
+                onPartial: onPartial
+            ) { result in
                 handler(result.map(\.text))
             }
         }
@@ -322,8 +398,10 @@ extension PopoverController {
     ) {
         guard let section = subSection, section.generation == generation, generation == subGeneration else { return }
         section.requestInFlight = false
+        if inFlightScope == .sub { inFlightScope = nil }
         switch result {
         case let .success(value):
+            lastStreamedSub = ""
             setSubResultText(section, value)
             if let existingRecord {
                 section.recordID = existingRecord.id
@@ -347,7 +425,18 @@ extension PopoverController {
                 }
             }
         case let .failure(error):
-            setSubResultText(section, "Error: \(error.localizedDescription)")
+            let message = PopoverFeedback.userFacingError(error)
+            if message == PopoverFeedback.stopped {
+                if lastStreamedSub.isEmpty {
+                    setSubResultText(section, PopoverFeedback.stopped)
+                }
+            } else if !lastStreamedSub.isEmpty,
+                      (lastStreamedSub.hasPrefix("{") || lastStreamedSub.hasPrefix("```")),
+                      error is Translator.ResponseError {
+                setSubResultText(section, lastStreamedSub, style: .error)
+            } else {
+                setSubResultText(section, message)
+            }
         }
         updateSubButtons(section)
         prefetchSpeech(subSpeechIdentity(kind: .source), translationGeneration: nil)
@@ -439,14 +528,14 @@ extension PopoverController {
 
     func configureFloatingToolbar() {
         selectionFloatingBar.state = .active
-        selectionFloatingBar.material = .hudWindow
+        // `.hudWindow` stays dark in light mode, which washes out the dark icon tint.
+        selectionFloatingBar.material = .menu
         selectionFloatingBar.blendingMode = .withinWindow
         selectionFloatingBar.wantsLayer = true
         selectionFloatingBar.layer?.cornerRadius = 14
         selectionFloatingBar.layer?.cornerCurve = .continuous
         selectionFloatingBar.layer?.masksToBounds = true
         selectionFloatingBar.layer?.borderWidth = 1
-        selectionFloatingBar.layer?.borderColor = Palette.cg(Palette.hairline, in: selectionFloatingBar)
         selectionFloatingBar.isHidden = true
 
         configureFloatingButton(floatingQuickButton, symbol: "bolt.horizontal.circle", action: #selector(floatingQuickTranslateClicked), label: "Quick Translate")
@@ -577,6 +666,7 @@ extension PopoverController {
         }
 
         selectionFloatingBar.frame = NSRect(x: barX, y: barY, width: barWidth, height: barHeight)
+        selectionFloatingBar.layer?.borderColor = Palette.cg(Palette.hairline, in: selectionFloatingBar)
         updateSpeechButton(floatingSpeakButton, identity: floatingSpeechIdentity(), baseLabel: "phrase")
         selectionFloatingBar.isHidden = false
         chromeHost.addSubview(selectionFloatingBar, positioned: .above, relativeTo: nil)
@@ -628,7 +718,7 @@ extension PopoverController {
             targetLanguage: target,
             excludingText: text
         ).reversed().map { ContextPair(source: $0.sourceText, target: $0.resultText) }
-        translator.translate(text, sourceLang: displaySource, targetLang: target, context: context, parentContext: inputTextView.string) { [weak self] result in
+        translator.translate(text, sourceLang: displaySource, targetLang: target, context: context, parentContext: inputTextView.string, stream: false, replaceInFlight: false) { [weak self] result in
             Task { @MainActor in
                 guard let self, self.floatingRequestGeneration == generation,
                       self.currentFloatingSelectedText == text else { return }
@@ -686,12 +776,15 @@ extension PopoverController {
     func floatingSpeechIdentity() -> SpeechIdentity? {
         guard let text = currentFloatingSelectedText, !text.isEmpty else { return nil }
         let isResult = currentFloatingIsResult
-        let lang: String
+        let paneLang: String
         if currentFloatingIsSub, let sub = subSection {
-            lang = isResult ? sub.targetLanguage : sub.sourceLanguage
+            paneLang = isResult ? sub.targetLanguage : sub.sourceLanguage
         } else {
-            lang = isResult ? selectedTargetLanguage() : effectiveSourceLanguage(for: text)
+            paneLang = isResult ? selectedTargetLanguage() : effectiveSourceLanguage(for: text)
         }
+        // The pane language describes the whole text; a selected phrase can be another language,
+        // so detection on the phrase itself wins when it is confident.
+        let lang = LanguageDetector.detectedPhraseLanguage(text, candidates: config.languages) ?? paneLang
         let model = SpeechModelResolver.model(for: lang, config: config)
         return SpeechIdentity(kind: isResult ? .result : .source, text: text, model: model, recordID: nil)
     }
