@@ -65,20 +65,13 @@ extension PopoverController {
         applyStatusOverlay()
     }
 
+    /// Only the main pane is reset here; the subtranslate pane and Q&A keep running.
     func beginRequest() -> Int {
-        if inFlightScope == .sub {
-            translator?.cancelInFlight()
-            subGeneration += 1
-            lastStreamedSub = ""
-            if let section = subSection {
-                section.requestInFlight = false
-                section.generation = subGeneration
-            }
-        }
+        mainRequest?.cancel()
+        mainRequest = nil
         requestGeneration += 1
         pendingSourceSpeech = pendingSourceSpeech.filter { $0.key >= requestGeneration }
         isRequestInFlight = true
-        inFlightScope = .main
         lastStreamedMain = ""
         updateBusyState()
         return requestGeneration
@@ -87,7 +80,7 @@ extension PopoverController {
     func finishRequest(generation: Int) {
         guard generation == requestGeneration else { return }
         isRequestInFlight = false
-        if inFlightScope == .main { inFlightScope = nil }
+        mainRequest = nil
         updateBusyState()
         if lastResultStyle == .normal {
             announceAccessibility("Translation finished")
@@ -98,10 +91,8 @@ extension PopoverController {
         switch scope {
         case .main:
             requestGeneration += 1
-            if inFlightScope == .main {
-                translator?.cancelInFlight()
-                inFlightScope = nil
-            }
+            mainRequest?.cancel()
+            mainRequest = nil
             isRequestInFlight = false
             let current = textView.string.trimmingCharacters(in: .whitespacesAndNewlines)
             if current.isEmpty || PopoverFeedback.resultStyle(for: current) == .loading, lastStreamedMain.isEmpty {
@@ -109,10 +100,8 @@ extension PopoverController {
             }
         case .sub:
             subGeneration += 1
-            if inFlightScope == .sub {
-                translator?.cancelInFlight()
-                inFlightScope = nil
-            }
+            subRequest?.cancel()
+            subRequest = nil
             if let section = subSection {
                 section.requestInFlight = false
                 section.generation = subGeneration
@@ -216,10 +205,8 @@ extension PopoverController {
     func invalidateTranslationRequest() {
         requestGeneration += 1
         isRequestInFlight = false
-        if inFlightScope == .main {
-            translator?.cancelInFlight()
-            inFlightScope = nil
-        }
+        mainRequest?.cancel()
+        mainRequest = nil
         resolvedSourceLanguage = nil
         pendingSourceSpeech.removeAll()
         invalidateCurrentRecord()

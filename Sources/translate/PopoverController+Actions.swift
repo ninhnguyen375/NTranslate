@@ -32,7 +32,7 @@ extension PopoverController {
         }
         setResultText(PopoverFeedback.learning)
         reflowLayout()
-        translator.learn(text, sourceLang: pair.source, targetLang: pair.target, onPartial: { [weak self] partial in
+        mainRequest = translator.learn(text, sourceLang: pair.source, targetLang: pair.target, onPartial: { [weak self] partial in
             Task { @MainActor in
                 self?.appendStreamedResult(partial, generation: generation, scope: .main)
             }
@@ -110,7 +110,7 @@ extension PopoverController {
         }
         setResultText(PopoverFeedback.proofreading)
         reflowLayout()
-        translator.proofread(text, lang: lang, onPartial: { [weak self] partial in
+        mainRequest = translator.proofread(text, lang: lang, onPartial: { [weak self] partial in
             Task { @MainActor in
                 self?.appendStreamedResult(partial, generation: generation, scope: .main)
             }

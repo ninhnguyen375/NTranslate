@@ -290,14 +290,8 @@ extension PopoverController {
         section.sourceHeaderLabel.stringValue = paneLanguageCode(displaySource)
         section.resultHeaderLabel.stringValue = paneLanguageCode(pair.target)
         section.setSource(text, font: .systemFont(ofSize: ChromeLayout.bodyFontSize), color: Palette.bodyText)
-        if inFlightScope == .main {
-            translator.cancelInFlight()
-            requestGeneration += 1
-            isRequestInFlight = false
-            pendingSourceSpeech = pendingSourceSpeech.filter { $0.key >= requestGeneration }
-            updateBusyState()
-        }
-        inFlightScope = .sub
+        subRequest?.cancel()
+        subRequest = nil
         lastStreamedSub = ""
         section.requestInFlight = true
         let waitingText: String
@@ -333,16 +327,16 @@ extension PopoverController {
             }
         }
         if mode == .proofread {
-            translator.proofread(text, lang: displaySource, onPartial: onPartial, completion: handler)
+            subRequest = translator.proofread(text, lang: displaySource, onPartial: onPartial, completion: handler)
         } else if mode == .learn {
-            translator.learn(text, sourceLang: displaySource, targetLang: pair.target, parentContext: inputTextView.string, onPartial: onPartial, completion: handler)
+            subRequest = translator.learn(text, sourceLang: displaySource, targetLang: pair.target, parentContext: inputTextView.string, onPartial: onPartial, completion: handler)
         } else {
             let context = historyStore.recentContext(
                 sourceLanguage: displaySource,
                 targetLanguage: pair.target,
                 excludingText: text
             ).reversed().map { ContextPair(source: $0.sourceText, target: $0.resultText) }
-            translator.translate(
+            subRequest = translator.translate(
                 text,
                 sourceLang: displaySource,
                 targetLang: pair.target,
@@ -398,7 +392,7 @@ extension PopoverController {
     ) {
         guard let section = subSection, section.generation == generation, generation == subGeneration else { return }
         section.requestInFlight = false
-        if inFlightScope == .sub { inFlightScope = nil }
+        subRequest = nil
         switch result {
         case let .success(value):
             lastStreamedSub = ""
@@ -718,7 +712,7 @@ extension PopoverController {
             targetLanguage: target,
             excludingText: text
         ).reversed().map { ContextPair(source: $0.sourceText, target: $0.resultText) }
-        translator.translate(text, sourceLang: displaySource, targetLang: target, context: context, parentContext: inputTextView.string, stream: false, replaceInFlight: false) { [weak self] result in
+        translator.translate(text, sourceLang: displaySource, targetLang: target, context: context, parentContext: inputTextView.string, stream: false) { [weak self] result in
             Task { @MainActor in
                 guard let self, self.floatingRequestGeneration == generation,
                       self.currentFloatingSelectedText == text else { return }

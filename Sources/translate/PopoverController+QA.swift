@@ -166,6 +166,8 @@ extension PopoverController: NSTextFieldDelegate {
     }
 
     func removeQASection() {
+        qaRequest?.cancel()
+        qaRequest = nil
         qaGeneration += 1
         qaSection?.removeFromSuperview()
         qaSection = nil
@@ -213,6 +215,7 @@ extension PopoverController: NSTextFieldDelegate {
         }
         let section = qaSection ?? makeQASection()
         qaSection = section
+        qaRequest?.cancel()
         qaGeneration += 1
         let generation = qaGeneration
         section.generation = generation
@@ -225,7 +228,7 @@ extension PopoverController: NSTextFieldDelegate {
         reflowLayout()
         scrollQAToBottom(section)
 
-        translator.ask(
+        qaRequest = translator.ask(
             question,
             sourceText: targets.source,
             translatedText: targets.result,
@@ -245,6 +248,7 @@ extension PopoverController: NSTextFieldDelegate {
         ) { [weak self] result in
             Task { @MainActor in
                 guard let self, self.qaGeneration == generation, let currentSection = self.qaSection else { return }
+                self.qaRequest = nil
                 switch result {
                 case let .success(answer):
                     currentSection.completeLastTurn(with: answer)

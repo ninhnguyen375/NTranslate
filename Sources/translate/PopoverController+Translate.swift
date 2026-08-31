@@ -147,7 +147,7 @@ extension PopoverController {
                 targetLanguages: config.targetLanguages,
                 fallback: config.resolvedNativeLang
             )
-            translator.translateImage(image, targetLang: targetLang) { [weak self] result in
+            mainRequest = translator.translateImage(image, targetLang: targetLang) { [weak self] result in
                 Task { @MainActor in self?.finishImageTranslation(result, generation: generation) }
             }
             return
@@ -197,7 +197,7 @@ extension PopoverController {
             targetLanguage: pair.target,
             excludingText: text
         ).reversed().map { ContextPair(source: $0.sourceText, target: $0.resultText) }
-        translator.translate(
+        mainRequest = translator.translate(
             text,
             sourceLang: pair.source,
             targetLang: pair.target,

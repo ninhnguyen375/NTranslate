@@ -17,6 +17,38 @@ struct ContextPair: Equatable, Sendable {
     let target: String
 }
 
+/// One outstanding request. Each caller keeps its own handle, so the main pane, the subtranslate
+/// pane and Q&A can be in flight at the same time and cancel only their own work.
+final class RequestHandle: @unchecked Sendable {
+    private let lock = NSLock()
+    private var task: URLSessionTask?
+    private var isCancelled = false
+
+    /// Adopts the task once it exists; a handle cancelled before then cancels it immediately.
+    func adopt(_ task: URLSessionTask) {
+        lock.lock()
+        let cancelled = isCancelled
+        if !cancelled { self.task = task }
+        lock.unlock()
+        if cancelled { task.cancel() }
+    }
+
+    func cancel() {
+        lock.lock()
+        isCancelled = true
+        let task = self.task
+        self.task = nil
+        lock.unlock()
+        task?.cancel()
+    }
+
+    func clear() {
+        lock.lock()
+        task = nil
+        lock.unlock()
+    }
+}
+
 final class Translator: @unchecked Sendable {
     private struct TranslationResponsePayload: Decodable {
         let translation: String
@@ -24,22 +56,10 @@ final class Translator: @unchecked Sendable {
     }
     let config: AppConfig
     let apiKey: String
-    private let lock = NSLock()
-    private(set) var inFlightTask: URLSessionTask?
-    private var streamSession: URLSession?
-    private var streamDelegate: StreamCollector?
 
     enum ResponseError: Error {
         case invalidSchema
         case emptyContent
-    }
-
-    func cancelInFlight() {
-        lock.lock()
-        let task = inFlightTask
-        inFlightTask = nil
-        lock.unlock()
-        task?.cancel()
     }
 
     private enum RequestMode {
@@ -183,17 +203,17 @@ final class Translator: @unchecked Sendable {
         """
     }
 
+    @discardableResult
     private func request(
         _ text: String,
         mode: RequestMode,
         stream: Bool = true,
-        replaceInFlight: Bool = true,
         onPartial: (@Sendable (String) -> Void)? = nil,
         completion: @escaping @Sendable (Result<String, Error>) -> Void
-    ) {
+    ) -> RequestHandle {
         guard let url = URL(string: config.apiBaseURL) else {
             completion(.failure(NSError(domain: "Config", code: 1, userInfo: [NSLocalizedDescriptionKey: "Invalid API base URL"])))
-            return
+            return RequestHandle()
         }
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
@@ -236,48 +256,35 @@ final class Translator: @unchecked Sendable {
             )
         } catch {
             completion(.failure(error))
-            return
+            return RequestHandle()
         }
-        perform(req, stream: stream, replaceInFlight: replaceInFlight, onPartial: onPartial, completion: completion)
+        return perform(req, stream: stream, onPartial: onPartial, completion: completion)
     }
 
+    @discardableResult
     private func perform(
         _ req: URLRequest,
         stream: Bool,
-        replaceInFlight: Bool = true,
         onPartial: (@Sendable (String) -> Void)? = nil,
         completion: @escaping @Sendable (Result<String, Error>) -> Void
-    ) {
-        if replaceInFlight { cancelInFlight() }
-        if stream {
-            performStream(req, onPartial: onPartial, completion: completion)
-        } else {
-            performData(req, replaceInFlight: replaceInFlight, completion: completion)
-        }
+    ) -> RequestHandle {
+        stream
+            ? performStream(req, onPartial: onPartial, completion: completion)
+            : performData(req, completion: completion)
     }
 
     private func performData(
         _ req: URLRequest,
-        replaceInFlight: Bool = true,
         completion: @escaping @Sendable (Result<String, Error>) -> Void
-    ) {
-        final class TaskBox: @unchecked Sendable {
-            var task: URLSessionTask?
-        }
-        let box = TaskBox()
-        let task = URLSession.shared.dataTask(with: req) { [weak self] data, response, error in
-            if replaceInFlight, let current = box.task {
-                self?.clearTaskIfCurrent(current)
-            }
+    ) -> RequestHandle {
+        let handle = RequestHandle()
+        let task = URLSession.shared.dataTask(with: req) { data, response, error in
+            handle.clear()
             Self.finishHTTP(data: data, response: response, error: error, completion: completion)
         }
-        box.task = task
-        if replaceInFlight {
-            lock.lock()
-            inFlightTask = task
-            lock.unlock()
-        }
+        handle.adopt(task)
         task.resume()
+        return handle
     }
 
     /// OpenAI-compat SSE (`data:` lines). If the body is a one-shot JSON object, fall back to `responseContent`.
@@ -285,26 +292,16 @@ final class Translator: @unchecked Sendable {
         _ req: URLRequest,
         onPartial: (@Sendable (String) -> Void)?,
         completion: @escaping @Sendable (Result<String, Error>) -> Void
-    ) {
+    ) -> RequestHandle {
+        let handle = RequestHandle()
         let collector = StreamCollector()
+        // The session retains its delegate and the completion closure retains the session, so the
+        // pair stays alive for the life of this one request without any shared state.
         let session = URLSession(configuration: .default, delegate: collector, delegateQueue: nil)
         let task = session.dataTask(with: req)
-        lock.lock()
-        streamDelegate = collector
-        streamSession = session
-        inFlightTask = task
-        lock.unlock()
-        collector.onComplete = { [weak self] data, response, error in
+        collector.onComplete = { data, response, error in
             session.finishTasksAndInvalidate()
-            self?.clearTaskIfCurrent(task)
-            if let self {
-                self.lock.lock()
-                if self.streamSession === session {
-                    self.streamSession = nil
-                    self.streamDelegate = nil
-                }
-                self.lock.unlock()
-            }
+            handle.clear()
             if let error {
                 completion(.failure(error))
                 return
@@ -333,15 +330,9 @@ final class Translator: @unchecked Sendable {
             }
         }
         collector.onPartial = onPartial
+        handle.adopt(task)
         task.resume()
-    }
-
-    private func clearTaskIfCurrent(_ task: URLSessionTask) {
-        lock.lock()
-        if inFlightTask === task {
-            inFlightTask = nil
-        }
-        lock.unlock()
+        return handle
     }
 
     static func requestPayload(model: String, systemPrompt: String, userContent: Any, stream: Bool = true) throws -> Data {
@@ -532,6 +523,7 @@ final class Translator: @unchecked Sendable {
         return TranslationResult(text: translation, sourceLanguage: source)
     }
 
+    @discardableResult
     func translate(
         _ text: String,
         sourceLang: String,
@@ -539,15 +531,13 @@ final class Translator: @unchecked Sendable {
         context: [ContextPair] = [],
         parentContext: String? = nil,
         stream: Bool = true,
-        replaceInFlight: Bool = true,
         onPartial: (@Sendable (String) -> Void)? = nil,
         completion: @escaping @Sendable (Result<TranslationResult, Error>) -> Void
-    ) {
+    ) -> RequestHandle {
         request(
             text,
             mode: .translate(sourceLang: sourceLang, targetLang: targetLang, context: context, parentContext: parentContext),
             stream: stream,
-            replaceInFlight: replaceInFlight,
             onPartial: onPartial
         ) { [config] result in
             completion(result.flatMap { content in
@@ -563,6 +553,7 @@ final class Translator: @unchecked Sendable {
         }
     }
 
+    @discardableResult
     func learn(
         _ text: String,
         sourceLang: String,
@@ -570,7 +561,7 @@ final class Translator: @unchecked Sendable {
         parentContext: String? = nil,
         onPartial: (@Sendable (String) -> Void)? = nil,
         completion: @escaping @Sendable (Result<String, Error>) -> Void
-    ) {
+    ) -> RequestHandle {
         request(
             text,
             mode: .learn(sourceLang: sourceLang, targetLang: targetLang, parentContext: parentContext),
@@ -579,15 +570,17 @@ final class Translator: @unchecked Sendable {
         )
     }
 
+    @discardableResult
     func proofread(
         _ text: String,
         lang: String,
         onPartial: (@Sendable (String) -> Void)? = nil,
         completion: @escaping @Sendable (Result<String, Error>) -> Void
-    ) {
+    ) -> RequestHandle {
         request(text, mode: .proofread(lang: lang), onPartial: onPartial, completion: completion)
     }
 
+    @discardableResult
     func ask(
         _ question: String,
         sourceText: String,
@@ -598,7 +591,7 @@ final class Translator: @unchecked Sendable {
         parentContext: String? = nil,
         onPartial: (@Sendable (String) -> Void)? = nil,
         completion: @escaping @Sendable (Result<String, Error>) -> Void
-    ) {
+    ) -> RequestHandle {
         request(
             question,
             mode: .ask(
@@ -615,8 +608,9 @@ final class Translator: @unchecked Sendable {
         )
     }
 
-    func imageSearchQuery(_ text: String, completion: @escaping @Sendable (Result<String, Error>) -> Void) {
-        request(text, mode: .imageSearch, stream: false, replaceInFlight: false, completion: completion)
+    @discardableResult
+    func imageSearchQuery(_ text: String, completion: @escaping @Sendable (Result<String, Error>) -> Void) -> RequestHandle {
+        request(text, mode: .imageSearch, stream: false, completion: completion)
     }
 
     func testConnection(completion: @escaping @Sendable (Result<Void, Error>) -> Void) {
@@ -625,10 +619,11 @@ final class Translator: @unchecked Sendable {
         }
     }
 
-    func translateImage(_ pngData: Data, targetLang: String, completion: @escaping @Sendable (Result<ImageTranslation, Error>) -> Void) {
+    @discardableResult
+    func translateImage(_ pngData: Data, targetLang: String, completion: @escaping @Sendable (Result<ImageTranslation, Error>) -> Void) -> RequestHandle {
         guard let url = URL(string: config.apiBaseURL) else {
             completion(.failure(NSError(domain: "Config", code: 1, userInfo: [NSLocalizedDescriptionKey: "Invalid apiBaseURL"])))
-            return
+            return RequestHandle()
         }
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
@@ -652,24 +647,25 @@ final class Translator: @unchecked Sendable {
             )
         } catch {
             completion(.failure(error))
-            return
+            return RequestHandle()
         }
-        perform(req, stream: false) { [config] result in
+        return perform(req, stream: false) { [config] result in
             completion(result.flatMap { content in
                 Result { try Self.imageTranslation(from: content, supportedLanguages: config.languages) }
             })
         }
     }
 
-    func speak(_ text: String, model: String, speed: Float? = nil, completion: @escaping @Sendable (Result<Data, Error>) -> Void) {
+    @discardableResult
+    func speak(_ text: String, model: String, speed: Float? = nil, completion: @escaping @Sendable (Result<Data, Error>) -> Void) -> RequestHandle {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
             completion(.failure(NSError(domain: "Speech", code: 1, userInfo: [NSLocalizedDescriptionKey: "Empty text"])))
-            return
+            return RequestHandle()
         }
         guard let url = URL(string: config.apiSpeechURL) else {
             completion(.failure(NSError(domain: "Config", code: 2, userInfo: [NSLocalizedDescriptionKey: "Invalid speech URL"])))
-            return
+            return RequestHandle()
         }
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
@@ -684,7 +680,9 @@ final class Translator: @unchecked Sendable {
             jsonPayload["speed"] = speed
         }
         req.httpBody = try? JSONSerialization.data(withJSONObject: jsonPayload)
-        URLSession.shared.dataTask(with: req) { data, response, error in
+        let handle = RequestHandle()
+        let task = URLSession.shared.dataTask(with: req) { data, response, error in
+            handle.clear()
             if let error { completion(.failure(error)); return }
             guard let http = response as? HTTPURLResponse, let data else {
                 completion(.failure(NSError(domain: "HTTP", code: 0)))
@@ -695,7 +693,10 @@ final class Translator: @unchecked Sendable {
                 return
             }
             completion(.success(data))
-        }.resume()
+        }
+        handle.adopt(task)
+        task.resume()
+        return handle
     }
 }
 

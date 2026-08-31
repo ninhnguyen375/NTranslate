@@ -200,7 +200,10 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
 
     var requestGeneration = 0
     var isRequestInFlight = false
-    var inFlightScope: RequestScope?
+    // One handle per pane: the three run concurrently and each cancels only its own request.
+    var mainRequest: RequestHandle?
+    var subRequest: RequestHandle?
+    var qaRequest: RequestHandle?
     var lastStreamReflow = Date.distantPast
     var lastStreamedHeightMain: CGFloat = 0
     var lastStreamedHeightSub: CGFloat = 0

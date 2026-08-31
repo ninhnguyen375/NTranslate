@@ -439,12 +439,17 @@ extension PopoverController {
     func closePanel() {
         guard panel.isVisible else { return }
         hideFloatingSelectionBar()
-        translator?.cancelInFlight()
+        mainRequest?.cancel()
+        subRequest?.cancel()
+        qaRequest?.cancel()
+        mainRequest = nil
+        subRequest = nil
+        qaRequest = nil
         requestGeneration += 1
         isRequestInFlight = false
         subGeneration += 1
+        qaGeneration += 1
         subSection?.requestInFlight = false
-        inFlightScope = nil
         removeSubSection()
         invalidateCurrentRecord()
         invalidateSpeech(stopPlayback: true)
