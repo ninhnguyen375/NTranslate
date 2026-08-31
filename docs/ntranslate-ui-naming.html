@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="vi"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>NTranslate — Bảng tên gọi UI</title>
+<style>
+:root{color-scheme:light dark;--bg:#0f1115;--card:#171a21;--line:#272c36;--txt:#e6e9ef;--mut:#9aa3b2;--acc:#4c8dff}
+@media (prefers-color-scheme:light){:root{--bg:#f6f7f9;--card:#fff;--line:#e2e5ea;--txt:#1b1f27;--mut:#5d6675}}
+*{box-sizing:border-box}
+body{margin:0;padding:32px;background:var(--bg);color:var(--txt);font:14px/1.55 -apple-system,BlinkMacSystemFont,"SF Pro Text",Segoe UI,sans-serif}
+h1{font-size:22px;margin:0 0 4px}
+h2{font-size:16px;margin:32px 0 10px;padding-bottom:6px;border-bottom:1px solid var(--line)}
+p.sub{color:var(--mut);margin:0 0 8px}
+table{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+th{background:rgba(127,127,127,.08);font-weight:600;font-size:12px;letter-spacing:.03em;text-transform:uppercase;color:var(--mut)}
+tr:last-child td{border-bottom:0}
+a{color:var(--acc)}
+code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;background:rgba(127,127,127,.14);padding:1px 5px;border-radius:5px;white-space:nowrap}
+td:first-child{width:26%}
+.f{color:var(--mut);font-size:12px}
+.note{background:var(--card);border:1px solid var(--line);border-left:3px solid var(--acc);border-radius:8px;padding:12px 14px;margin:14px 0}
+</style></head><body>
+
+<h1>NTranslate — cách gọi đúng từng phần UI</h1>
+<p class="sub"><a href="ntranslate-ui-annotated.html">Xem sơ đồ chú thích trên ảnh thật</a> · Tên biến, tên chức năng và selector thực tế trong <code>Sources/translate/</code>. Dùng đúng tên này khi mô tả bug hoặc yêu cầu sửa.</p>
+
+<div class="note">Cấu trúc dọc của popup: <b>Title bar (chrome)</b> → <b>Main pane</b> (split source/result) → <b>Main action row</b> → <b>Subtranslate section</b> (split + action row riêng) → <b>Q&amp;A section</b>. Ô nhập câu hỏi <code>qaInputField</code> nằm cạnh action row của pane đang được hỏi.</div>
+
+<h2>0. Cách gọi cụm icon trên header pane</h2>
+<p class="sub">Code gọi chúng là <code>trailingIcons</code> — tham số của <code>layoutPaneChrome</code> (<code>PopoverController+Layout.swift:421</code>), đặt trên <code>sourceHeaderBar</code> / <code>resultHeaderBar</code>. Dùng đúng tên này, đừng đặt tên mới kiểu "toolbar" hay "action group".</p>
+<table>
+<tr><th>Cụm</th><th>Cách gọi</th><th>Thành phần</th></tr>
+<tr><td>Cụm icon góc phải ô nguồn</td><td><b>source pane trailing icons</b></td><td><code>[speakSourceButton, speakSourceSlowButton]</code></td></tr>
+<tr><td>Cụm icon góc phải ô kết quả</td><td><b>result pane trailing icons</b></td><td><code>[speakResultButton, speakResultSlowButton, retryButton, copyButton, saveWordButton]</code></td></tr>
+<tr><td>Cụm icon ô nguồn khu Subtranslate</td><td><b>sub source pane trailing icons</b></td><td><code>subSection.[speakSourceButton, speakSourceSlowButton]</code></td></tr>
+<tr><td>Cụm icon ô kết quả khu Subtranslate</td><td><b>sub result pane trailing icons</b></td><td><code>subSection.[speakResultButton, speakResultSlowButton, retryButton, copyButton, saveWordButton, closeButton]</code></td></tr>
+<tr><td>Cụm icon khu Q&amp;A</td><td><b>Q&amp;A pane trailing icons</b></td><td><code>qaSection.[copyButton, closeButton]</code></td></tr>
+</table>
+
+<h2>1. Thanh tiêu đề (chrome) — <code>chromeHost</code></h2>
+<table>
+<tr><th>Phần trong hình</th><th>Biến</th><th>Chức năng / selector</th></tr>
+<tr><td>Chữ "NTranslate"</td><td><code>titleLabel</code></td><td>Tiêu đề + tooltip version. Cell: <code>VerticallyCenteredTextFieldCell</code></td></tr>
+<tr><td>Dòng trạng thái ẩn/hiện dưới tiêu đề</td><td><code>statusLabel</code></td><td>Thông báo tạm (setup, lỗi, đang chạy)</td></tr>
+<tr><td>Nút "English ⌄"</td><td><code>sourceLanguageButton</code></td><td><code>showLanguageMenu(_:)</code>, giá trị lưu ở <code>sourceLanguageSelection</code></td></tr>
+<tr><td>Nút mũi tên đảo ⇄</td><td><code>swapLanguagesButton</code></td><td><code>swapLanguages</code></td></tr>
+<tr><td>Nút "Vietnamese ⌄"</td><td><code>targetLanguageButton</code></td><td><code>showLanguageMenu(_:)</code>, giá trị ở <code>targetLanguageSelection</code></td></tr>
+<tr><td>Icon chồng thẻ (có chấm đỏ)</td><td><code>reviewButton</code></td><td><code>openReviewWindow</code> — SF Symbol <code>rectangle.stack</code></td></tr>
+<tr><td>Chấm đỏ "!" trên icon đó</td><td><code>reviewBadgeLabel</code></td><td>Số thẻ tới hạn, cập nhật bởi <code>updateReviewBadge()</code></td></tr>
+<tr><td>Icon đồng hồ</td><td><code>historyButton</code></td><td><code>openTranslationHistory</code> — <code>clock.arrow.circlepath</code></td></tr>
+<tr><td>Icon ghim (đang xanh = bật)</td><td><code>pinButton</code></td><td><code>togglePin</code> — giữ popup không tự đóng</td></tr>
+<tr><td>Icon X</td><td><code>closeButton</code></td><td><code>closePopover</code></td></tr>
+<tr><td>Icon cập nhật (chỉ hiện khi có bản mới)</td><td><code>updateButton</code></td><td><code>checkForUpdatesClicked</code></td></tr>
+</table>
+
+<h2>2. Pane chính — <code>splitHost</code> / <code>splitDivider</code></h2>
+<table>
+<tr><th>Phần trong hình</th><th>Biến</th><th>Chức năng / selector</th></tr>
+<tr><td>Thẻ trái (ô chứa từ "tow")</td><td><code>sourceCard</code> + <code>sourceHeaderBar</code> + <code>sourceHeaderLabel</code></td><td>Header mặc định "Source"</td></tr>
+<tr><td>Vùng nhập/hiện văn bản nguồn</td><td><code>inputTextView</code> trong <code>inputScrollView</code></td><td>Lớp <code>InputTextView</code>, dán ảnh được</td></tr>
+<tr><td>Nhãn khi dán ảnh</td><td><code>imagePlaceholderLabel</code></td><td>Hiện khi <code>pendingImage != nil</code></td></tr>
+<tr><td>Nhãn ngữ cảnh trên ô nguồn</td><td><code>inputContextLabel</code></td><td>Danh sách bản dịch gần đây gửi kèm</td></tr>
+<tr><td>Loa nhỏ ở ô nguồn</td><td><code>speakSourceButton</code></td><td><code>speakInput</code></td></tr>
+<tr><td>Rùa (đọc chậm) ở ô nguồn</td><td><code>speakSourceSlowButton</code></td><td><code>speakInputSlow</code></td></tr>
+<tr><td>Thẻ phải (kết quả dịch)</td><td><code>resultCard</code> + <code>resultHeaderBar</code> + <code>resultHeaderLabel</code></td><td>Header mặc định "Translation"</td></tr>
+<tr><td>Nội dung kết quả</td><td><code>textView</code> trong <code>textScrollView</code></td><td><code>SelectableTextView</code>, render markdown inline</td></tr>
+<tr><td>Loa ở kết quả</td><td><code>speakResultButton</code></td><td><code>speakResult</code></td></tr>
+<tr><td>Rùa ở kết quả</td><td><code>speakResultSlowButton</code></td><td><code>speakResultSlow</code></td></tr>
+<tr><td>Mũi tên xoay</td><td><code>retryButton</code></td><td><code>retryRequest</code> (bỏ cache, gọi lại)</td></tr>
+<tr><td>Icon copy</td><td><code>copyButton</code></td><td><code>copyResult</code></td></tr>
+<tr><td>Icon bookmark</td><td><code>saveWordButton</code></td><td><code>toggleSaveWord</code> (lưu vào ôn tập)</td></tr>
+</table>
+
+<h2>3. Hàng nút hành động chính — <code>mainActionRow</code> (<code>ActionRowSection</code>)</h2>
+<p class="sub">Mỗi nút là <code>ActionChipButton</code>. Bố cục do <code>layoutActionRow</code> xử lý; nút không đủ chỗ dồn vào <code>overflowButton</code>.</p>
+<table>
+<tr><th>Nút</th><th>Biến</th><th>Selector (main / sub)</th></tr>
+<tr><td>Translate (xanh)</td><td><code>mainActionRow.translateButton</code> — alias <code>translateButton</code></td><td><code>runTranslate</code> / <code>runSubTranslate</code></td></tr>
+<tr><td>Learn</td><td><code>learnButton</code></td><td><code>runLearn</code> / <code>runSubLearn</code></td></tr>
+<tr><td>Proofread</td><td><code>proofreadButton</code></td><td><code>runProofread</code> / <code>runSubProofread</code></td></tr>
+<tr><td>Images</td><td><code>imagesButton</code></td><td><code>runImages</code> / <code>runSubImages</code></td></tr>
+<tr><td>Ask</td><td><code>askButton</code></td><td><code>askButtonClicked</code> / <code>askSubClicked</code></td></tr>
+<tr><td>Vạch ngăn giữa các nút chữ</td><td><code>mainActionRow.dividers</code></td><td>3 <code>NSView</code> hairline</td></tr>
+<tr><td>Ô "Ask follow-up questions…"</td><td><code>qaInputField</code></td><td><code>qaInputSubmitted(_:)</code>, phím tắt ⌘K</td></tr>
+</table>
+
+<h2>4. Khu Subtranslate — <code>subSection</code> (<code>SubtranslateSection</code>)</h2>
+<p class="sub">Hiện khi bôi đen một cụm nhỏ trong popup đang mở. Điều kiện ở <code>PopoverIntegrationPolicy.shouldSubtranslate</code>.</p>
+<table>
+<tr><th>Phần trong hình</th><th>Biến</th><th>Chức năng / selector</th></tr>
+<tr><td>Dải chữ "Subtranslate" giữa 2 vạch</td><td><code>sectionDividerLabel</code>, <code>sectionDivider</code>, <code>sectionDividerLeft/Right</code></td><td>Gradient ở <code>dividerGradient</code></td></tr>
+<tr><td>Thẻ trái ("pull")</td><td><code>subSection.sourceCard</code> / <code>sourceHeaderLabel</code> (mặc định "EN")</td><td>Nội dung: <code>sourceTextView</code>, set qua <code>setSource(_:font:color:)</code></td></tr>
+<tr><td>Thẻ phải (kết quả)</td><td><code>subSection.resultCard</code> / <code>resultHeaderLabel</code> (mặc định "VI")</td><td>Nội dung: <code>resultTextView</code>, set qua <code>setResult(_:font:color:markdown:)</code></td></tr>
+<tr><td>Loa / rùa ô nguồn</td><td><code>subSection.speakSourceButton</code>, <code>speakSourceSlowButton</code></td><td><code>speakSubSource</code>, <code>speakSubSourceSlow</code></td></tr>
+<tr><td>Loa / rùa ô kết quả</td><td><code>subSection.speakResultButton</code>, <code>speakResultSlowButton</code></td><td><code>speakSubResult</code>, <code>speakSubResultSlow</code></td></tr>
+<tr><td>Xoay lại</td><td><code>subSection.retryButton</code></td><td><code>retrySubRequest</code></td></tr>
+<tr><td>Copy</td><td><code>subSection.copyButton</code></td><td><code>copySubResult</code></td></tr>
+<tr><td>Bookmark</td><td><code>subSection.saveWordButton</code></td><td><code>toggleSaveSubWord</code></td></tr>
+<tr><td>X đóng khu này</td><td><code>subSection.closeButton</code></td><td><code>closeSubtranslate</code></td></tr>
+<tr><td>Hàng nút dưới khu này</td><td><code>subSection.actionRow</code></td><td>Cùng lớp <code>ActionRowSection</code>, nối vào các selector <code>runSub*</code></td></tr>
+</table>
+
+<h2>5. Khu Q&amp;A — <code>qaSection</code> (<code>QAPaneSection</code>)</h2>
+<table>
+<tr><th>Phần trong hình</th><th>Biến</th><th>Chức năng / selector</th></tr>
+<tr><td>Thẻ Q&amp;A dưới cùng</td><td><code>qaSection.card</code> trong <code>qaSection.host</code></td><td>Tiêu đề: <code>headerLabel</code> / <code>headerTitle</code> ("Q&amp;A" hoặc "Q&amp;A · Sub-translation")</td></tr>
+<tr><td>Dòng "ME: hi"</td><td>một <code>Turn.question</code></td><td>Vẽ bởi <code>render(font:…)</code>, tiền tố in đậm</td></tr>
+<tr><td>Dòng "AI: …"</td><td><code>Turn.answer</code></td><td>Đang chờ: <code>isPending</code>; lỗi: <code>failed</code></td></tr>
+<tr><td>Vùng transcript</td><td><code>qaSection.textView</code> / <code>scrollView</code></td><td>Toàn văn: <code>transcriptText</code></td></tr>
+<tr><td>Icon copy trong Q&amp;A</td><td><code>qaSection.copyButton</code></td><td><code>copyQAResult</code></td></tr>
+<tr><td>Icon X trong Q&amp;A</td><td><code>qaSection.closeButton</code></td><td><code>closeQASection</code></td></tr>
+<tr><td>Ô nhập câu hỏi</td><td><code>qaInputField</code></td><td><code>qaInputSubmitted(_:)</code>; pane đích theo <code>qaTargetsSub</code></td></tr>
+</table>
+
+<h2>6. Vỏ cửa sổ và trạng thái nền</h2>
+<table>
+<tr><th>Phần</th><th>Biến</th><th>Ghi chú</th></tr>
+<tr><td>Cửa sổ popup</td><td><code>panel</code> (<code>LiquidGlassWindow</code>)</td><td>Borderless, không kích hoạt app khi hiện</td></tr>
+<tr><td>Lớp kính</td><td><code>glassContainer</code>, <code>shellGlass</code></td><td><code>NSGlassEffectContainerView</code> / <code>NSGlassEffectView</code></td></tr>
+<tr><td>Icon trên menu bar</td><td><code>statusItem</code></td><td>Menu dựng ở <code>PopoverController+Menu.swift</code></td></tr>
+<tr><td>Nút nổi khi bôi đen chữ</td><td><code>floatingQuickButton</code>, <code>floatingTranslateButton</code>, <code>floatingLearnButton</code>, <code>floatingSpeakButton</code>, <code>floatingCopyButton</code></td><td><code>floating*Clicked</code></td></tr>
+<tr><td>Nút trong pane khi lỗi/chưa cấu hình</td><td><code>setupOpenSettingsButton</code>, <code>setupGrantAccessButton</code>, <code>inPaneRetryButton</code></td><td><code>openSettingsMenu</code>, <code>requestAccessibilityPermissionMenu</code>, <code>retryRequest</code></td></tr>
+</table>
+
+<p class="f">Nguồn: PopoverController.swift, +Chrome, +Layout, +QA, +Subtranslate, +Language, ActionRowSection.swift, SubtranslateSection.swift, QAPaneSection.swift.</p>
+</body></html>

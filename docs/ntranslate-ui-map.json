@@ -1,0 +1,288 @@
+{
+ "image": "ntranslate-ui-shot.jpg",
+ "out": "/Volumes/ESSD/Code/MacOS/NTranslate/docs/ntranslate-ui-annotated.html",
+ "title": "NTranslate — chú thích tên biến trên giao diện thật",
+ "intro": "Dòng xanh là tên biến trong <code>Sources/translate/</code>, dòng dưới là chức năng hoặc selector. Bảng đầy đủ: <a href=\"ntranslate-ui-naming.html\">ntranslate-ui-naming.html</a>.",
+ "items": [
+  {
+   "x": 160,
+   "y": 124,
+   "code": "titleLabel",
+   "desc": "Tiêu đề + tooltip version",
+   "side": "L"
+  },
+  {
+   "x": 311,
+   "y": 124,
+   "code": "sourceLanguageButton",
+   "desc": "Ngôn ngữ nguồn — showLanguageMenu(_:)",
+   "side": "L"
+  },
+  {
+   "x": 396,
+   "y": 124,
+   "code": "swapLanguagesButton",
+   "desc": "Đảo nguồn ↔ đích — swapLanguages",
+   "side": "L"
+  },
+  {
+   "x": 483,
+   "y": 124,
+   "code": "targetLanguageButton",
+   "desc": "Ngôn ngữ đích — showLanguageMenu(_:)",
+   "side": "L"
+  },
+  {
+   "x": 150,
+   "y": 210,
+   "code": "sourceCard + sourceHeaderLabel",
+   "desc": "Thẻ nguồn, header “Source”",
+   "side": "L"
+  },
+  {
+   "x": 290,
+   "y": 165,
+   "code": "source pane trailing icons",
+   "desc": "[speakSourceButton, speakSourceSlowButton]",
+   "side": "L"
+  },
+  {
+   "x": 200,
+   "y": 330,
+   "code": "inputTextView (trong inputScrollView)",
+   "desc": "Ô nhập nguồn, lớp InputTextView",
+   "side": "L"
+  },
+  {
+   "x": 168,
+   "y": 629,
+   "code": "mainActionRow.translateButton",
+   "desc": "runTranslate",
+   "side": "L"
+  },
+  {
+   "x": 264,
+   "y": 629,
+   "code": "mainActionRow.learnButton",
+   "desc": "runLearn",
+   "side": "L"
+  },
+  {
+   "x": 351,
+   "y": 629,
+   "code": "mainActionRow.proofreadButton",
+   "desc": "runProofread",
+   "side": "L"
+  },
+  {
+   "x": 443,
+   "y": 629,
+   "code": "mainActionRow.imagesButton",
+   "desc": "runImages",
+   "side": "L"
+  },
+  {
+   "x": 516,
+   "y": 629,
+   "code": "mainActionRow.askButton",
+   "desc": "askButtonClicked",
+   "side": "L"
+  },
+  {
+   "x": 463,
+   "y": 659,
+   "code": "sectionDividerLabel",
+   "desc": "Dải phân cách khu Subtranslate",
+   "side": "L"
+  },
+  {
+   "x": 141,
+   "y": 687,
+   "code": "subSection.sourceTextView",
+   "desc": "setSource(_:font:color:) — header “EN”",
+   "side": "L"
+  },
+  {
+   "x": 290,
+   "y": 687,
+   "code": "sub source pane trailing icons",
+   "desc": "subSection.[speakSourceButton, speakSourceSlowButton]",
+   "side": "L"
+  },
+  {
+   "x": 168,
+   "y": 1150,
+   "code": "subSection.actionRow",
+   "desc": "Cùng ActionRowSection, gọi runSub*",
+   "side": "L"
+  },
+  {
+   "x": 163,
+   "y": 1188,
+   "code": "qaSection.textView",
+   "desc": "Transcript ME:/AI: — render(font:…)",
+   "side": "L"
+  },
+  {
+   "x": 692,
+   "y": 124,
+   "code": "reviewButton",
+   "desc": "openReviewWindow — rectangle.stack",
+   "side": "R"
+  },
+  {
+   "x": 712,
+   "y": 108,
+   "code": "reviewBadgeLabel",
+   "desc": "Số thẻ tới hạn — updateReviewBadge()",
+   "side": "R"
+  },
+  {
+   "x": 728,
+   "y": 124,
+   "code": "historyButton",
+   "desc": "openTranslationHistory",
+   "side": "R"
+  },
+  {
+   "x": 764,
+   "y": 124,
+   "code": "pinButton",
+   "desc": "togglePin — xanh = đang ghim",
+   "side": "R"
+  },
+  {
+   "x": 800,
+   "y": 124,
+   "code": "closeButton",
+   "desc": "closePopover",
+   "side": "R"
+  },
+  {
+   "x": 742,
+   "y": 190,
+   "code": "result pane trailing icons",
+   "desc": "trailingIcons của layoutPaneChrome",
+   "side": "R"
+  },
+  {
+   "x": 690,
+   "y": 165,
+   "code": "speakResultButton",
+   "desc": "speakResult",
+   "side": "R"
+  },
+  {
+   "x": 716,
+   "y": 165,
+   "code": "speakResultSlowButton",
+   "desc": "speakResultSlow",
+   "side": "R"
+  },
+  {
+   "x": 743,
+   "y": 165,
+   "code": "retryButton",
+   "desc": "retryRequest — bỏ cache, gọi lại",
+   "side": "R"
+  },
+  {
+   "x": 769,
+   "y": 165,
+   "code": "copyButton",
+   "desc": "copyResult",
+   "side": "R"
+  },
+  {
+   "x": 795,
+   "y": 165,
+   "code": "saveWordButton",
+   "desc": "toggleSaveWord — lưu vào ôn tập",
+   "side": "R"
+  },
+  {
+   "x": 600,
+   "y": 250,
+   "code": "resultCard + resultHeaderLabel",
+   "desc": "Thẻ kết quả, header “Translation”",
+   "side": "R"
+  },
+  {
+   "x": 560,
+   "y": 360,
+   "code": "textView (trong textScrollView)",
+   "desc": "Kết quả — SelectableTextView + markdown",
+   "side": "R"
+  },
+  {
+   "x": 682,
+   "y": 629,
+   "code": "qaInputField",
+   "desc": "qaInputSubmitted(_:) — ⌘K",
+   "side": "R"
+  },
+  {
+   "x": 664,
+   "y": 686,
+   "code": "subSection.speakResultButton",
+   "desc": "speakSubResult",
+   "side": "R"
+  },
+  {
+   "x": 690,
+   "y": 686,
+   "code": "subSection.speakResultSlowButton",
+   "desc": "speakSubResultSlow",
+   "side": "R"
+  },
+  {
+   "x": 717,
+   "y": 686,
+   "code": "subSection.retryButton",
+   "desc": "retrySubRequest",
+   "side": "R"
+  },
+  {
+   "x": 743,
+   "y": 686,
+   "code": "subSection.copyButton",
+   "desc": "copySubResult",
+   "side": "R"
+  },
+  {
+   "x": 769,
+   "y": 686,
+   "code": "subSection.saveWordButton",
+   "desc": "toggleSaveSubWord",
+   "side": "R"
+  },
+  {
+   "x": 793,
+   "y": 686,
+   "code": "subSection.closeButton",
+   "desc": "closeSubtranslate",
+   "side": "R"
+  },
+  {
+   "x": 600,
+   "y": 900,
+   "code": "subSection.resultTextView",
+   "desc": "setResult(…) — header “VI”",
+   "side": "R"
+  },
+  {
+   "x": 769,
+   "y": 1189,
+   "code": "qaSection.copyButton",
+   "desc": "copyQAResult",
+   "side": "R"
+  },
+  {
+   "x": 793,
+   "y": 1189,
+   "code": "qaSection.closeButton",
+   "desc": "closeQASection",
+   "side": "R"
+  }
+ ]
+}
