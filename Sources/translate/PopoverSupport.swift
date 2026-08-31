@@ -275,6 +275,13 @@ final class ThemedView: NSView {
         super.viewDidChangeEffectiveAppearance()
         onAppearanceChange?()
     }
+
+    /// Chrome background — including the strip holding the action chips — is not text, so claim the
+    /// arrow for the whole host. Subview cursor rects (text views, pointer buttons) still win.
+    override func resetCursorRects() {
+        super.resetCursorRects()
+        addCursorRect(bounds, cursor: .arrow)
+    }
 }
 
 /// Popup colors that follow the system light/dark appearance. NSColor resolves the dynamic
@@ -443,6 +450,28 @@ class SelectableTextView: NSTextView {
     /// otherwise be swallowed by window activation: the view becomes first responder with an empty
     /// selection at index 0, which scrolls the pane back to the top mid-double-click.
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    /// AppKit routes `mouseMoved` to the first responder, not to the view under the pointer, and
+    /// NSTextView answers by setting the I-beam wherever the pointer happens to be. Ignoring moves
+    /// outside our visible area leaves the cursor to whoever is actually under it (action chips,
+    /// chrome background), instead of fighting it back after the fact.
+    override func mouseMoved(with event: NSEvent) {
+        guard ownsCursor(at: event) else { return }
+        super.mouseMoved(with: event)
+    }
+
+    /// The pane icons float on top of the text; NSTextView's cursor tracking still covers that
+    /// area and would paint the I-beam under them.
+    override func cursorUpdate(with event: NSEvent) {
+        guard ownsCursor(at: event) else { return }
+        super.cursorUpdate(with: event)
+    }
+
+    private func ownsCursor(at event: NSEvent) -> Bool {
+        guard visibleRect.contains(convert(event.locationInWindow, from: nil)) else { return false }
+        let hit = window?.contentView?.hitTest(event.locationInWindow)
+        return hit === self || hit?.isDescendant(of: self) == true
+    }
 
     override func resignFirstResponder() -> Bool {
         let resigned = super.resignFirstResponder()

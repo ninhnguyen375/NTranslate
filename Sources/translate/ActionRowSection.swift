@@ -21,6 +21,13 @@ final class ActionChipButton: NSButton {
 
     override func drawFocusRingMask() {}
 
+    /// Claim the arrow over the chip. Pairs with `SelectableTextView.mouseMoved`, which stops the
+    /// text panes from repainting the I-beam outside themselves.
+    override func resetCursorRects() {
+        super.resetCursorRects()
+        addCursorRect(bounds, cursor: .arrow)
+    }
+
     override var intrinsicContentSize: NSSize {
         lockedSize.width > 0 ? lockedSize : super.intrinsicContentSize
     }

@@ -140,15 +140,15 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     var imagesButton: NSButton { mainActionRow.imagesButton }
     var proofreadButton: NSButton { mainActionRow.proofreadButton }
     var askButton: NSButton { mainActionRow.askButton }
-    let copyButton = NSButton(frame: .zero)
-    let saveWordButton = NSButton(frame: .zero)
+    let copyButton = PointerButton(frame: .zero)
+    let saveWordButton = PointerButton(frame: .zero)
     let titleLabel = NSTextField(labelWithString: "Translate")
     let statusLabel = NSTextField(labelWithString: "")
-    let speakSourceButton = NSButton(frame: .zero)
-    let speakSourceSlowButton = NSButton(frame: .zero)
-    let speakResultButton = NSButton(frame: .zero)
-    let speakResultSlowButton = NSButton(frame: .zero)
-    let retryButton = NSButton(frame: .zero)
+    let speakSourceButton = PointerButton(frame: .zero)
+    let speakSourceSlowButton = PointerButton(frame: .zero)
+    let speakResultButton = PointerButton(frame: .zero)
+    let speakResultSlowButton = PointerButton(frame: .zero)
+    let retryButton = PointerButton(frame: .zero)
     var splitDividerGradient: CAGradientLayer?
     var translator: Translator?
     var registeredHotKeys: [EventHotKeyRef] = []
@@ -273,11 +273,6 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         applyDensity()
-        if let icon = NSImage(systemSymbolName: "translate", accessibilityDescription: "NTranslate") {
-            statusItem.button?.image = icon
-        } else {
-            statusItem.button?.title = "T"
-        }
         statusItem.button?.action = #selector(manualToggle)
         statusItem.button?.target = self
         CrashRecovery.presentCrashAlertIfNeeded()

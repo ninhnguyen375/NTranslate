@@ -328,6 +328,9 @@ extension PopoverController {
         layoutActionRowDividers(row, hidden: hidden, y: y, height: btnH, gap: gap)
         let overflowed = row.buttons.filter { hidden.contains(ObjectIdentifier($0)) }
         layoutActionRowOverflow(row, overflowed: overflowed, x: x, y: y, width: overflowWidth, height: btnH)
+        // Chips move by direct frame assignment, so their arrow cursor rects would keep the old
+        // geometry until something else invalidated them.
+        for button in row.buttons { button.window?.invalidateCursorRects(for: button) }
         return overflowed.isEmpty ? max(L.padding, x - gap) : row.overflowButton.frame.maxX
     }
 
