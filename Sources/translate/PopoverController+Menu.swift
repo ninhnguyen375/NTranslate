@@ -100,6 +100,7 @@ extension PopoverController {
     static let statsMenuItemTag = 9003
     static let statsActionMenuItemTag = 9005
     static let syncPromptsMenuItemTag = 9004
+    static let attentionDotLayerName = "ntranslate.attentionDot"
 
     func menuWillOpen(_ menu: NSMenu) {
         if let item = menu.item(withTag: Self.accessibilityMenuItemTag) {
@@ -113,23 +114,91 @@ extension PopoverController {
 
     func updateReviewBadge() {
         let stats = historyStore.computeStats()
-        let reviewTitle = stats.dueCount > 0 ? "Spaced Repetition (\(stats.dueCount) cards)" : "Spaced Repetition"
+        // Cards due can exceed the daily limit; show what this session will actually contain.
+        let sessionCount = min(stats.dueCount, max(1, config.learning.dailyReviewLimit))
+        let reviewTitle = sessionCount > 0 ? "Spaced Repetition (\(sessionCount) cards)" : "Spaced Repetition"
         reviewButton.toolTip = reviewTitle
         reviewButton.setAccessibilityLabel(reviewTitle)
-        if stats.dueCount > 0 {
-            reviewBadgeLabel.stringValue = stats.dueCount > 99 ? "99+" : "\(stats.dueCount)"
-            reviewBadgeLabel.isHidden = false
-            statusItem.button?.toolTip = "\(stats.dueCount) review cards due"
-        } else {
-            reviewBadgeLabel.isHidden = true
-            statusItem.button?.toolTip = "NTranslate"
-        }
+        reviewBadgeLabel.stringValue = "!"
+        reviewBadgeLabel.isHidden = sessionCount == 0
+        updateStatusBarIcon(reviewCardsDue: sessionCount)
         if let reviewItem = statusItem.menu?.item(withTag: Self.reviewMenuItemTag) {
             reviewItem.title = reviewTitle
+            reviewItem.attributedTitle = sessionCount > 0 ? Self.titleWithAttentionDot(reviewTitle) : nil
         }
         if let statsItem = statusItem.menu?.item(withTag: Self.statsMenuItemTag) {
             statsItem.title = "Saved: \(stats.totalSaved) · Mastered: \(stats.totalMastered) · Streak: \(stats.dayStreak)d"
         }
+    }
+
+    /// Menu bar has two states only: idle, or a red dot meaning "something wants you".
+    /// Which something is spelled out in the tooltip, where there is room for words.
+    func updateStatusBarIcon(reviewCardsDue: Int) {
+        guard let button = statusItem.button else { return }
+        let attention: String?
+        if !AXIsProcessTrusted() {
+            attention = "Accessibility permission required"
+        } else if apiKey.isEmpty {
+            attention = "API key is not configured"
+        } else if let loadError = historyStore.loadError {
+            attention = "History unavailable: \(loadError)"
+        } else if reviewCardsDue > 0 {
+            attention = "\(reviewCardsDue) review cards due"
+        } else {
+            attention = nil
+        }
+        button.toolTip = attention ?? "NTranslate"
+        if let icon = NSImage(systemSymbolName: "translate", accessibilityDescription: "NTranslate") {
+            icon.isTemplate = true
+            button.image = icon
+        } else {
+            button.title = "T"
+        }
+        // Baking the dot into the image would force isTemplate = false and break the
+        // menu bar's light/dark tinting, so it rides along as a sibling layer instead.
+        attentionDotLayer(on: button).isHidden = attention == nil
+    }
+
+    /// Menu items cannot carry a badge view, so the dot is a red bullet glyph in the title.
+    private static func titleWithAttentionDot(_ title: String) -> NSAttributedString {
+        let font = NSFont.menuFont(ofSize: 0)
+        let result = NSMutableAttributedString(string: title + "  ", attributes: [
+            .font: font,
+            .foregroundColor: NSColor.labelColor,
+        ])
+        let dotFont = NSFont.systemFont(ofSize: font.pointSize * 0.62)
+        // Centre the dot's ink on the text's cap height rather than guessing an offset:
+        // the bullet glyph does not sit centred within its own em box.
+        let ink = NSAttributedString(string: "\u{25CF}", attributes: [.font: dotFont])
+            .boundingRect(with: .zero, options: .usesDeviceMetrics)
+        result.append(NSAttributedString(string: "\u{25CF}", attributes: [
+            .font: dotFont,
+            .foregroundColor: NSColor.systemRed,
+            .baselineOffset: font.capHeight / 2 - ink.midY,
+        ]))
+        return result
+    }
+
+    private func attentionDotLayer(on button: NSStatusBarButton) -> CALayer {
+        button.wantsLayer = true
+        if let existing = button.layer?.sublayers?.first(where: { $0.name == Self.attentionDotLayerName }) {
+            return existing
+        }
+        let diameter: CGFloat = 5
+        let dot = CALayer()
+        dot.name = Self.attentionDotLayerName
+        dot.backgroundColor = NSColor.systemRed.cgColor
+        dot.cornerRadius = diameter / 2
+        // The status button's backing layer is flipped, so smaller y sits higher.
+        dot.frame = NSRect(
+            x: button.bounds.midX + 5,
+            y: button.bounds.midY - 8,
+            width: diameter,
+            height: diameter
+        )
+        dot.autoresizingMask = [.layerMinXMargin, .layerMaxYMargin]
+        button.layer?.addSublayer(dot)
+        return dot
     }
 
     @objc func syncAllPromptsMenu() {
@@ -153,7 +222,7 @@ extension PopoverController {
         let stats = historyStore.computeStats()
         let alert = NSAlert()
         alert.messageText = "Learning Progress"
-        alert.informativeText = "• Saved words: \(stats.totalSaved)\n• Mastered (interval >= 21 days): \(stats.totalMastered)\n• Daily streak: \(stats.dayStreak) days\n• Cards due today: \(stats.dueCount) cards"
+        alert.informativeText = "• Saved words: \(stats.totalSaved)\n• Mastered (interval >= 21 days): \(stats.totalMastered)\n• Daily streak: \(stats.dayStreak) days\n• Cards due today: \(stats.dueCount) cards (session limit: \(config.learning.dailyReviewLimit))"
         alert.alertStyle = .informational
         alert.addButton(withTitle: "OK")
         alert.runModal()

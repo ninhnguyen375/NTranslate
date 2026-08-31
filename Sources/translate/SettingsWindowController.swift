@@ -153,7 +153,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         apiKeyField.placeholderString = "Stored in macOS Keychain"
         maxTranslateLengthField.formatter = integerFormatter(minimum: 1)
         dailyReviewLimitField.formatter = integerFormatter(minimum: 1)
-        dailyReviewLimitField.toolTip = "Maximum review cards per day. New words are not limited."
+        dailyReviewLimitField.toolTip = "Maximum cards per review session. New words fill any slots left over by due reviews."
         widthField.formatter = integerFormatter(minimum: 1)
         heightField.formatter = integerFormatter(minimum: 1)
         [hotkeyFields, copyTranslateHotkeyFields, learnHotkeyFields, proofreadHotkeyFields, ocrHotkeyFields].forEach { $0.configure() }
