@@ -80,7 +80,9 @@ extension PopoverController {
 
     func resultSpeechIdentity(recordID: UUID? = nil) -> SpeechIdentity? {
         let text = textView.string.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard PopoverFeedback.isCopyableResult(text) else { return nil }
+        // A half-streamed translation is not worth speaking, and the speak button no longer
+        // hides behind a global in-flight gate.
+        guard PopoverFeedback.isCopyableResult(text, isStreaming: isRequestInFlight) else { return nil }
         return SpeechIdentity(
             kind: .result,
             text: text,
@@ -275,13 +277,16 @@ extension PopoverController {
         guard remaining > 0 else { return }
         // No player capture: every state change cancels this timer, so if it fires the current
         // player is still the one it was scheduled for.
-        speechStopTimer = Timer.scheduledTimer(withTimeInterval: remaining, repeats: false) { [weak self] _ in
+        let timer = Timer(timeInterval: remaining, repeats: false) { [weak self] _ in
             Task { @MainActor in
                 guard let self, let current = self.audioPlayer else { return }
                 current.stop()
                 self.resetSpeechPlayback()
             }
         }
+        // .common so menu tracking or a resize drag cannot hold the stop past the trailing silence.
+        RunLoop.main.add(timer, forMode: .common)
+        speechStopTimer = timer
     }
 
     func cancelSpeechStopTimer() {

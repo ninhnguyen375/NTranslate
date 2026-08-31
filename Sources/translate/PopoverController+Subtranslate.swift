@@ -444,7 +444,10 @@ extension PopoverController {
     func subSpeechIdentity(kind: SpeechKind) -> SpeechIdentity? {
         guard let section = subSection else { return nil }
         let text = kind == .source ? section.sourceText : section.resultText
-        guard kind == .source ? !text.isEmpty : PopoverFeedback.isCopyableResult(text) else { return nil }
+        guard kind == .source
+            ? !text.isEmpty
+            : PopoverFeedback.isCopyableResult(text, isStreaming: section.requestInFlight)
+        else { return nil }
         let language = kind == .source ? section.sourceLanguage : section.targetLanguage
         return SpeechIdentity(
             kind: kind,
