@@ -836,6 +836,7 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
         audioPlayer = player
         activeSpeechIdentity = identity
         activeSpeechRate = speed
+        SpeechTrim.seekPastLeadingSilence(player, data: data)
 
         guard player.play() else {
             stopAudio()

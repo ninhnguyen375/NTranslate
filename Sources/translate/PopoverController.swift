@@ -163,6 +163,8 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     var speechState = SpeechPlaybackState()
     var activeSpeechRate: Float = 1.0
     var speechCache: [SpeechIdentity: Data] = [:]
+    var speechTrim: [SpeechIdentity: SpeechTrim.Bounds] = [:]
+    var speechStopTimer: Timer?
     var prefetchGeneration = 0
     var prefetchingSpeech: Set<SpeechIdentity> = []
     var pendingSourceSpeech: [Int: PendingSourceSpeech] = [:]

@@ -54,7 +54,17 @@ extension PopoverController {
         button.contentTintColor = Palette.iconTint
         button.toolTip = label
         button.setAccessibilityLabel(label)
-        button.isEnabled = presentation.enabled && !isRequestInFlight
+        // Speech runs on its own request; an in-flight translation must not block cached playback.
+        button.isEnabled = presentation.enabled
+    }
+
+    /// Decodes the clip off the main thread to learn where the audible part starts and ends.
+    func cacheSpeechTrim(_ data: Data, identity: SpeechIdentity) {
+        guard speechTrim[identity] == nil else { return }
+        Task.detached(priority: .utility) {
+            guard let bounds = SpeechTrim.bounds(of: data) else { return }
+            await MainActor.run { [weak self] in self?.speechTrim[identity] = bounds }
+        }
     }
 
     func speechMatches(_ lhs: SpeechIdentity, _ rhs: SpeechIdentity) -> Bool {
@@ -102,6 +112,7 @@ extension PopoverController {
                   SpeechAudioPolicy.isValid(data)
             else { continue }
             speechCache[identity] = data
+            cacheSpeechTrim(data, identity: identity)
         }
     }
 
@@ -116,6 +127,8 @@ extension PopoverController {
         prefetchingSpeech.insert(identity)
         updateSpeakButtons()
         translator.speak(identity.text, model: identity.model, speed: 1.0) { [weak self] result in
+            // Still on the network queue: decode here so playback never waits on the analysis.
+            let bounds = (try? result.get()).flatMap(SpeechTrim.bounds)
             Task { @MainActor in
                 guard let self else { return }
                 self.prefetchingSpeech.remove(identity)
@@ -124,6 +137,7 @@ extension PopoverController {
                       SpeechAudioPolicy.isValid(data)
                 else { return }
                 self.speechCache[identity] = data
+                self.speechTrim[identity] = bounds
                 self.acceptPrefetchedSpeech(data, identity: identity, translationGeneration: translationGeneration)
             }
         }
@@ -153,12 +167,14 @@ extension PopoverController {
         if sameActive {
             switch speechState.action(for: identity) {
             case .pause:
+                cancelSpeechStopTimer()
                 audioPlayer?.pause()
                 _ = speechState.pause(identity)
                 updateSpeakButtons()
                 return
             case .resume:
-                guard audioPlayer?.play() == true else { resetSpeechPlayback(); return }
+                guard let player = audioPlayer, player.play() else { resetSpeechPlayback(); return }
+                scheduleSpeechStop(for: player, bounds: speechTrim[identity], speed: speed)
                 _ = speechState.resume(identity)
                 updateSpeakButtons()
                 return
@@ -180,8 +196,10 @@ extension PopoverController {
         let generation = speechState.beginLoading(identity)
         updateSpeakButtons()
         translator.speak(identity.text, model: identity.model, speed: 1.0) { [weak self] result in
+            let bounds = (try? result.get()).flatMap(SpeechTrim.bounds)
             Task { @MainActor in
                 guard let self, self.speechState.accepts(generation: generation, identity: identity) else { return }
+                self.speechTrim[identity] = bounds
                 switch result {
                 case let .success(data):
                     guard SpeechAudioPolicy.isValid(data),
@@ -213,9 +231,14 @@ extension PopoverController {
             player.enableRate = true
             player.rate = speed
             player.prepareToPlay()
+            let bounds = speechTrim[identity]
+            if let bounds, bounds.lead >= SpeechTrim.minimumGain {
+                player.currentTime = bounds.lead
+            }
             guard player.play() else { throw NSError(domain: "Speech", code: 2, userInfo: [NSLocalizedDescriptionKey: "Audio could not be played"]) }
             audioPlayer = player
             activeSpeechRate = speed
+            scheduleSpeechStop(for: player, bounds: bounds, speed: speed)
             if let loadingGeneration {
                 guard speechState.markPlaying(generation: loadingGeneration, identity: identity) else { player.stop(); return false }
             } else {
@@ -230,13 +253,37 @@ extension PopoverController {
         }
     }
 
+    /// AVAudioPlayer has no end marker, so the trailing silence is cut by stopping on time.
+    func scheduleSpeechStop(for player: AVAudioPlayer, bounds: SpeechTrim.Bounds?, speed: Float) {
+        cancelSpeechStopTimer()
+        guard let bounds, player.duration - bounds.tail >= SpeechTrim.minimumGain else { return }
+        let remaining = (bounds.tail - player.currentTime) / Double(speed)
+        guard remaining > 0 else { return }
+        // No player capture: every state change cancels this timer, so if it fires the current
+        // player is still the one it was scheduled for.
+        speechStopTimer = Timer.scheduledTimer(withTimeInterval: remaining, repeats: false) { [weak self] _ in
+            Task { @MainActor in
+                guard let self, let current = self.audioPlayer else { return }
+                current.stop()
+                self.resetSpeechPlayback()
+            }
+        }
+    }
+
+    func cancelSpeechStopTimer() {
+        speechStopTimer?.invalidate()
+        speechStopTimer = nil
+    }
+
     func stopCurrentSpeech() {
+        cancelSpeechStopTimer()
         audioPlayer?.stop()
         audioPlayer = nil
         speechState.reset()
     }
 
     func resetSpeechPlayback() {
+        cancelSpeechStopTimer()
         audioPlayer = nil
         speechState.reset()
         updateSpeakButtons()
