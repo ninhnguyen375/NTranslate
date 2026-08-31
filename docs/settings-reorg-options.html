@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="vi"><head><meta charset="utf-8">
+<title>NTranslate · Settings reorganization options</title>
+<style>
+:root{--bg:#f6f6f7;--card:#fff;--ink:#1c1c1e;--dim:#6e6e73;--line:#e3e3e6;--acc:#0a84ff;--warn:#c9631a;--ok:#1a7f37}
+@media(prefers-color-scheme:dark){:root{--bg:#131315;--card:#1c1c1f;--ink:#f2f2f5;--dim:#98989f;--line:#2e2e33}}
+*{box-sizing:border-box}body{margin:0;padding:32px;background:var(--bg);color:var(--ink);font:14px/1.55 -apple-system,BlinkMacSystemFont,"SF Pro Text",Segoe UI,sans-serif}
+.wrap{max-width:1180px;margin:0 auto}
+h1{font-size:26px;margin:0 0 4px}h2{font-size:19px;margin:0 0 2px}
+.sub{color:var(--dim);margin:0 0 28px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:20px;margin-bottom:20px}
+.tag{display:inline-block;font-size:11px;padding:2px 8px;border-radius:999px;border:1px solid var(--line);color:var(--dim);margin-left:8px;vertical-align:middle}
+.tag.rec{color:#fff;background:var(--ok);border-color:var(--ok)}
+.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px;margin:16px 0 0}
+.tabbox{border:1px solid var(--line);border-radius:9px;overflow:hidden}
+.tabhd{background:rgba(128,128,128,.09);padding:8px 12px;font-weight:600;font-size:13px;border-bottom:1px solid var(--line)}
+.tabbox ul{margin:0;padding:10px 12px 12px 26px}
+.tabbox li{margin:3px 0}
+.grp{list-style:none;margin:10px 0 2px -14px;font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--dim)}
+.grp:first-child{margin-top:0}
+.new{color:var(--acc);font-weight:600}
+.mv{color:var(--warn)}
+.pro,.con{margin:10px 0 0;padding-left:20px}
+.pro li::marker{content:"+ "}.con li::marker{content:"− "}
+.pro li,.con li{list-style:none;position:relative}
+.pro li:before{content:"+";position:absolute;left:-14px;color:var(--ok)}
+.con li:before{content:"−";position:absolute;left:-14px;color:var(--warn)}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:24px}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--line)}
+th{color:var(--dim);font-weight:600}
+code{background:rgba(128,128,128,.13);padding:1px 5px;border-radius:4px;font-size:12px}
+.legend{font-size:12px;color:var(--dim);margin-top:6px}
+@media(max-width:760px){.two{grid-template-columns:1fr}}
+</style></head><body><div class="wrap">
+
+<h1>Settings · phương án sắp xếp lại</h1>
+<p class="sub">Chọn 1 trong 3. <span class="new">Xanh</span> = mục/nhóm mới, <span class="mv">cam</span> = chuyển từ tab khác sang.</p>
+
+<div class="card">
+<h2>Hiện trạng &amp; vấn đề</h2>
+<div class="two">
+<div>
+<div class="tabbox"><div class="tabhd">4 tab hiện tại</div><ul>
+<li><b>General</b> — Theme, API Key, Source/Target/Native Language, Maximum Length, Daily Reviews, Copy, Paste, Speech</li>
+<li><b>Prompts</b> — 6 prompt</li>
+<li><b>Languages</b> — bảng Source / Target</li>
+<li><b>Advanced</b> — API Base URL, Model, Connection, Speech Provider/URL/Key/Models/Fallback, History Folder, Panel W×H, Density, 5 hotkey, Hotkey Conflicts</li>
+</ul></div>
+</div>
+<div>
+<ul class="con">
+<li><b>Advanced quá tải</b>: 17+ hàng trộn 4 chủ đề khác nhau (LLM, speech, cửa sổ, hotkey) trong một danh sách phẳng, không heading.</li>
+<li><b>API Key ở General, API Base URL + Model ở Advanced</b> — cùng một nhóm bị tách hai tab.</li>
+<li><b>Speech bị xé ba chỗ</b>: checkbox prefetch ở General, provider/URL/key ở Advanced, model per-language ở giữa Advanced.</li>
+<li><b>Language trùng lặp</b>: popup chọn ngôn ngữ ở General nhưng danh sách nguồn lại ở tab Languages.</li>
+<li><b>Hotkey không có nhóm riêng</b> dù chiếm 6 hàng.</li>
+<li>General là túi rác: theme + ngôn ngữ + giới hạn + clipboard + speech đứng ngang hàng.</li>
+</ul>
+</div></div>
+</div>
+
+<div class="card">
+<h2>Phương án A — 6 tab theo chủ đề<span class="tag rec">Khuyến nghị</span></h2>
+<p class="sub" style="margin:4px 0 0">Tách Advanced thành các tab đúng nghĩa. Mỗi tab một câu hỏi người dùng: "trông thế nào", "dịch gì", "gọi API nào", "đọc bằng gì", "phím nào", "prompt nào".</p>
+<div class="cols">
+<div class="tabbox"><div class="tabhd">General</div><ul>
+<li>Theme</li><li class="mv">Panel Width × Height</li><li class="mv">Density</li>
+<li class="mv">History Folder</li><li>Copy</li><li>Paste</li>
+</ul></div>
+<div class="tabbox"><div class="tabhd">Translation</div><ul>
+<li>Source Language</li><li>Target Language</li><li>Native Language</li>
+<li>Maximum Length</li><li>Daily Reviews</li>
+<li class="mv">Source Languages (bảng)</li><li class="mv">Target Languages (bảng)</li>
+</ul></div>
+<div class="tabbox"><div class="tabhd">API</div><ul>
+<li class="mv">API Base URL</li><li class="mv">API Key</li><li class="mv">Model</li><li class="mv">Connection (Test)</li>
+</ul></div>
+<div class="tabbox"><div class="tabhd">Speech</div><ul>
+<li class="mv">Speech Provider</li><li class="mv">Speech URL</li><li class="mv">Speech API Key</li>
+<li class="mv">Per-language Models</li><li class="mv">Fallback Model</li><li class="mv">Prefetch speech</li>
+</ul></div>
+<div class="tabbox"><div class="tabhd">Shortcuts</div><ul>
+<li class="mv">Global</li><li class="mv">Copy &amp; Translate</li><li class="mv">Learn</li>
+<li class="mv">Proofread</li><li class="mv">OCR Translate</li><li class="mv">Conflicts</li>
+</ul></div>
+<div class="tabbox"><div class="tabhd">Prompts</div><ul>
+<li>6 prompt (giữ nguyên)</li>
+</ul></div>
+</div>
+<div class="two" style="margin-top:16px">
+<ul class="pro">
+<li>Không tab nào quá 7 hàng, hết cuộn dọc.</li>
+<li>Tên tab = mục tiêu người dùng, tìm setting bằng đoán được.</li>
+<li>Xoá hẳn từ "Advanced" mơ hồ.</li>
+<li>Gộp Languages vào Translation, hết cảnh popup và bảng ở hai nơi.</li>
+</ul>
+<ul class="con">
+<li>6 tab hơi nhiều cho cửa sổ hẹp, có thể tràn thanh tab.</li>
+<li>Người dùng cũ phải học lại vị trí.</li>
+<li>Diff lớn nhất trong 3 phương án.</li>
+</ul>
+</div>
+</div>
+
+<div class="card">
+<h2>Phương án B — giữ 4 tab, thêm heading nhóm<span class="tag">Ít rủi ro nhất</span></h2>
+<p class="sub" style="margin:4px 0 0">Không đổi số tab. Chỉ chèn header nhóm in đậm + đường kẻ vào trong mỗi tab và dời vài hàng lạc chỗ.</p>
+<div class="cols">
+<div class="tabbox"><div class="tabhd">General</div><ul>
+<li class="grp">Appearance</li><li>Theme</li><li class="mv">Panel W×H</li><li class="mv">Density</li>
+<li class="grp">Languages</li><li>Source / Target / Native</li>
+<li class="grp">Behavior</li><li>Maximum Length</li><li>Daily Reviews</li><li>Copy</li><li>Paste</li>
+</ul></div>
+<div class="tabbox"><div class="tabhd">Prompts</div><ul><li>6 prompt (giữ nguyên)</li></ul></div>
+<div class="tabbox"><div class="tabhd">Languages</div><ul><li>Source Languages</li><li>Target Languages</li></ul></div>
+<div class="tabbox"><div class="tabhd">Advanced</div><ul>
+<li class="grp new">Translation API</li><li class="mv">API Key</li><li>API Base URL</li><li>Model</li><li>Connection</li>
+<li class="grp new">Speech</li><li>Provider</li><li>URL</li><li>API Key</li><li>Models</li><li>Fallback</li><li class="mv">Prefetch</li>
+<li class="grp new">Shortcuts</li><li>5 hotkey + Conflicts</li>
+<li class="grp new">Storage</li><li>History Folder</li>
+</ul></div>
+</div>
+<div class="two" style="margin-top:16px">
+<ul class="pro">
+<li>Diff nhỏ nhất: chỉ cần hàm <code>sectionHeader(_:)</code> + sắp lại mảng trong <code>makeAdvancedView</code>/<code>makeGeneralView</code>.</li>
+<li>Người dùng cũ không mất phương hướng.</li>
+<li>Gom API Key về cùng chỗ với Base URL, gom trọn Speech.</li>
+</ul>
+<ul class="con">
+<li>Advanced vẫn dài, vẫn phải cuộn tìm hotkey.</li>
+<li>Vẫn còn hai chỗ chọn ngôn ngữ (General popup + tab Languages).</li>
+<li>"Advanced" vẫn là nhãn không nói lên gì.</li>
+</ul>
+</div>
+</div>
+
+<div class="card">
+<h2>Phương án C — sidebar dọc kiểu System Settings<span class="tag">Tham vọng nhất</span></h2>
+<p class="sub" style="margin:4px 0 0">Thay <code>NSTabView</code> bằng source list bên trái + ô tìm kiếm. Danh mục giống phương án A nhưng thêm được mục mà không sợ tràn.</p>
+<div class="cols">
+<div class="tabbox"><div class="tabhd">Sidebar</div><ul>
+<li class="new">🔎 Search settings</li>
+<li>General</li><li>Translation</li><li>Languages</li>
+<li>API</li><li>Speech</li><li>Shortcuts</li><li>Prompts</li>
+<li class="new">History &amp; Sync</li>
+</ul></div>
+<div class="tabbox"><div class="tabhd">Vùng nội dung</div><ul>
+<li>Nhóm dạng thẻ bo góc như macOS 13+</li>
+<li>Mỗi hàng có dòng mô tả phụ</li>
+<li>Cuộn độc lập từng mục</li>
+</ul></div>
+<div class="tabbox"><div class="tabhd">Được thêm</div><ul>
+<li class="new">Search lọc theo tên setting</li>
+<li class="new">Thêm mục sau này không giới hạn</li>
+<li class="new">Deep-link từ popup vào đúng mục</li>
+</ul></div>
+</div>
+<div class="two" style="margin-top:16px">
+<ul class="pro">
+<li>Giống Settings gốc của macOS, quen tay nhất về lâu dài.</li>
+<li>Search giải quyết luôn bài toán "setting này nằm đâu".</li>
+<li>Mở đường cho mục mới mà không phải sắp lại tab lần nữa.</li>
+</ul>
+<ul class="con">
+<li>Viết lại toàn bộ khung <code>SettingsWindowController</code>, tốn công gấp nhiều lần A và B.</li>
+<li>Search cần index tên setting, thêm code state.</li>
+<li>Nút Cancel/Revert/Save phải bố trí lại cho hợp layout mới.</li>
+</ul>
+</div>
+</div>
+
+<div class="card">
+<h2>So sánh nhanh</h2>
+<table>
+<tr><th>Tiêu chí</th><th>A · 6 tab</th><th>B · 4 tab + heading</th><th>C · sidebar</th></tr>
+<tr><td>Công sức</td><td>Trung bình</td><td>Thấp</td><td>Cao</td></tr>
+<tr><td>Rủi ro hồi quy</td><td>Thấp (chỉ dời view)</td><td>Rất thấp</td><td>Trung bình–cao</td></tr>
+<tr><td>Advanced hết quá tải</td><td>Có</td><td>Một phần</td><td>Có</td></tr>
+<tr><td>Hết trùng chỗ chọn ngôn ngữ</td><td>Có</td><td>Không</td><td>Có</td></tr>
+<tr><td>Tìm setting nhanh</td><td>Tốt</td><td>Khá</td><td>Tốt nhất (có search)</td></tr>
+<tr><td>Người dùng cũ phải học lại</td><td>Vừa</td><td>Gần như không</td><td>Nhiều</td></tr>
+<tr><td>Mở rộng về sau</td><td>Giới hạn bởi bề ngang tab</td><td>Kém</td><td>Không giới hạn</td></tr>
+</table>
+<p class="legend">Cả 3 phương án đều chỉ đụng <code>SettingsWindowController.swift</code>; <code>AppConfig</code> và logic load/save giữ nguyên.</p>
+</div>
+
+</div></body></html>

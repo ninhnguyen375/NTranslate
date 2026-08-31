@@ -113,9 +113,12 @@ extension PopoverController {
         let langY = headerY + (L.headerHeight - langH) / 2
         let swapSize = L.swapWidth
         let iconsLeft = firstIconMinX - 12
-        var titleWidth: CGFloat = 118
+        // Title takes only what its text needs so the language controls sit right beside it and
+        // the leftover header room can hold the hint text.
+        var titleWidth = min(118, max(48, ceil(titleLabel.attributedStringValue.size().width) + 8))
         var langWidth = L.languageWidth
-        let needed = titleWidth + 12 + langWidth + 5 + swapSize + 5 + langWidth
+        let titleGap: CGFloat = 8
+        let needed = titleWidth + titleGap + langWidth + 5 + swapSize + 5 + langWidth
         let available = max(80, iconsLeft - (L.padding + 2))
         if needed > available {
             let overflow = needed - available
@@ -123,11 +126,11 @@ extension PopoverController {
             titleWidth -= titleShrink
             let still = overflow - titleShrink
             if still > 0 {
-                langWidth = max(72, langWidth - still / 2)
+                langWidth = max(58, langWidth - still / 2)
             }
         }
         titleLabel.frame = NSRect(x: L.padding + 2, y: langY, width: titleWidth, height: langH)
-        let langX = titleLabel.frame.maxX + 12
+        let langX = titleLabel.frame.maxX + titleGap
         sourceLanguageButton.frame = NSRect(x: langX, y: langY, width: langWidth, height: langH)
         swapLanguagesButton.frame = NSRect(
             x: sourceLanguageButton.frame.maxX + 5,
@@ -253,18 +256,16 @@ extension PopoverController {
     /// message is readable; no split reflow (statusHeight stays 0).
     func applyStatusOverlay(headerY: CGFloat? = nil, headerHeight: CGFloat? = nil, iconsLeft: CGFloat? = nil) {
         let showing = !statusLabel.isHidden && !statusLabel.stringValue.isEmpty
-        sourceLanguageButton.isHidden = showing
-        swapLanguagesButton.isHidden = showing
-        targetLanguageButton.isHidden = showing
         guard showing else { return }
         let L = ChromeLayout.self
         let y = headerY ?? titleLabel.frame.minY
         let h = headerHeight ?? L.headerHeight
         let right = iconsLeft ?? ((updateButton.isHidden ? reviewButton.frame.minX : updateButton.frame.minX) - 12)
+        let statusX = targetLanguageButton.frame.maxX + 8
         statusLabel.frame = NSRect(
-            x: titleLabel.frame.maxX + 8,
+            x: statusX,
             y: y,
-            width: max(40, right - titleLabel.frame.maxX - 12),
+            width: max(0, right - statusX - 4),
             height: h
         )
         if statusLabel.superview !== chromeHost || chromeHost.subviews.last !== statusLabel {

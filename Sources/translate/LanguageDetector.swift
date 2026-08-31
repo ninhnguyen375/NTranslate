@@ -10,6 +10,22 @@ enum LanguageDetector {
     static var supportedLanguages: [String] { defaultLanguages }
     static var targetLanguages: [String] { defaultTargetLanguages }
 
+    /// Compact button label: "Auto detect" -> "Auto", "Vietnamese" -> "VI".
+    static func shortCode(_ language: String) -> String {
+        if language == autoDetect { return "Auto" }
+        if let cached = shortCodeCache[language] { return cached }
+        let english = Locale(identifier: "en_US")
+        let match = Locale.LanguageCode.isoLanguageCodes.first {
+            english.localizedString(forLanguageCode: $0.identifier)?
+                .caseInsensitiveCompare(language) == .orderedSame
+        }
+        let code = (match?.identifier ?? String(language.prefix(2))).uppercased()
+        shortCodeCache[language] = code
+        return code
+    }
+
+    private nonisolated(unsafe) static var shortCodeCache: [String: String] = [:]
+
     static func normalizeSource(_ value: String, languages: [String] = defaultLanguages) -> String {
         if languages.contains(value) { return value }
         if languages.contains(autoDetect) { return autoDetect }

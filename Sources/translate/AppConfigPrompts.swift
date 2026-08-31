@@ -43,16 +43,20 @@ extension AppConfig {
         4. Translate the transcription into the target language chosen in step 3.
 
         Constraints:
-        - "sourceText" must be the transcription only. Never put a translation there.
-        - "translation" must be in the target language from step 3 and must differ from "sourceText" whenever the two languages differ.
+        - <source> must hold the transcription only. Never put a translation there.
+        - <translation> must be in the target language from step 3 and must differ from <source> whenever the two languages differ.
         - Never return the transcription unchanged as the translation. If both languages match, step 3 already told you to switch to {{config.alternateLang}}.
         - Translate every line, including headings, labels, and text ending in a colon.
         - Name languages in English ("Vietnamese", "English", "Japanese").
-        - If the image contains no readable text, return empty strings for both text fields.
-        - Output the JSON object only: no markdown fence, no commentary, no extra keys.
+        - Keep real line breaks inside the tags; do not escape them.
+        - If the image contains no readable text, leave <source> and <translation> empty.
+        - Output the four tags only, in that order: no markdown fence, no commentary, no extra tags.
 
         Example (image showing the German line "Guten Morgen", {{config.targetLang}} requested as English):
-        {"sourceLanguage":"German","sourceText":"Guten Morgen","targetLanguage":"English","translation":"Good morning"}
+        <source_lang>German</source_lang>
+        <source>Guten Morgen</source>
+        <target_lang>English</target_lang>
+        <translation>Good morning</translation>
         """
 
     /// Follow-up Q&A about a finished translation. Placeholders: `{{sourceText}}`, `{{translatedText}}`,

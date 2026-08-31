@@ -451,6 +451,26 @@ final class TranslationHistoryStore {
         }
     }
 
+    /// Drops stored audio for one record so the next play re-fetches it from the current speech
+    /// provider. Scoped to a single record on purpose: audio on other records stays valid until
+    /// the user retries them.
+    func removeAudio(recordID: UUID) throws {
+        try ensureWritable()
+        guard var record = records.first(where: { $0.id == recordID }) else { return }
+        let previousPaths = [record.sourceAudioPath, record.resultAudioPath].compactMap { $0 }
+        guard !previousPaths.isEmpty else { return }
+        record.sourceAudioPath = nil
+        record.resultAudioPath = nil
+        record.updatedAt = Date()
+        try persistRecordToMonthFile(record)
+        applyLocally(record)
+        for path in previousPaths {
+            if let url = try? containedAudioURL(for: path) {
+                try? fileManager.removeItem(at: url)
+            }
+        }
+    }
+
     func audioExists(for recordID: UUID, kind: TranslationAudioKind) throws -> Bool {
         guard let record = records.first(where: { $0.id == recordID }) else { throw StoreError.recordNotFound }
         let path = kind == .source ? record.sourceAudioPath : record.resultAudioPath

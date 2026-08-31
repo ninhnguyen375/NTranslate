@@ -67,7 +67,7 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         static var bottomBarHeight: CGFloat { controlHeight }
         /// Same height as chrome icon pills so the header row shares one padding rhythm.
         static var languageControlHeight: CGFloat { headerHeight }
-        static let languageWidth: CGFloat = 132
+        static let languageWidth: CGFloat = 76
         /// Language chips use a pill of `height / 2` after layout — never a CSS-style 999.
         static var swapWidth: CGFloat { languageControlHeight }
         static let iconButtonSize: CGFloat = 18
@@ -158,6 +158,8 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         didSet { applyDensity() }
     }
     var apiKey = ""
+    /// Empty means the speech endpoint reuses `apiKey`.
+    var speechAPIKey = ""
     var settingsWindowController: SettingsWindowController?
     var audioPlayer: AVAudioPlayer?
     var speechState = SpeechPlaybackState()
@@ -204,6 +206,9 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     var mainRequest: RequestHandle?
     var subRequest: RequestHandle?
     var qaRequest: RequestHandle?
+    /// Set once an image request has streamed its transcription into the input pane; the pane is no
+    /// longer in image mode, but the in-flight image response still belongs to it.
+    var imageStreamAdoptedSource = false
     var lastStreamReflow = Date.distantPast
     var lastStreamedHeightMain: CGFloat = 0
     var lastStreamedHeightSub: CGFloat = 0

@@ -147,7 +147,21 @@ extension PopoverController {
                 targetLanguages: config.targetLanguages,
                 fallback: config.resolvedNativeLang
             )
-            mainRequest = translator.translateImage(image, targetLang: targetLang) { [weak self] result in
+            imageStreamAdoptedSource = false
+            mainRequest = translator.translateImage(
+                image,
+                targetLang: targetLang,
+                onPartial: { [weak self] partial in
+                    Task { @MainActor in
+                        self?.appendStreamedResult(partial, generation: generation, scope: .main)
+                    }
+                },
+                onSourceText: { [weak self] source in
+                    Task { @MainActor in
+                        self?.adoptStreamedTranscription(source, generation: generation)
+                    }
+                }
+            ) { [weak self] result in
                 Task { @MainActor in self?.finishImageTranslation(result, generation: generation) }
             }
             return
@@ -212,9 +226,20 @@ extension PopoverController {
         }
     }
 
+    /// The transcription arrives before the translation, so the input pane can drop image mode mid
+    /// stream and show real text while the translation is still being written.
+    func adoptStreamedTranscription(_ text: String, generation: Int) {
+        guard generation == requestGeneration, pendingImage != nil, !text.isEmpty else { return }
+        inputTextView.string = text
+        setPendingImage(nil)
+        imageStreamAdoptedSource = true
+        resolvedSourceLanguage = LanguageDetector.detectedLanguage(text)
+        reflowLayout()
+    }
+
     func finishImageTranslation(_ result: Result<Translator.ImageTranslation, Error>, generation: Int) {
         defer { finishRequest(generation: generation) }
-        guard generation == requestGeneration, pendingImage != nil else { return }
+        guard generation == requestGeneration, pendingImage != nil || imageStreamAdoptedSource else { return }
         invalidateCurrentRecord()
         switch result {
         case let .success(value):

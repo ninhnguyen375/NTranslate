@@ -35,9 +35,20 @@ extension PopoverController {
         titleLabel.alignment = .left
         titleLabel.toolTip = "NTranslate v\(Self.buildVersion)"
 
+        let statusCell = VerticallyCenteredTextFieldCell(textCell: "")
+        statusCell.horizontalInset = 0
+        statusCell.centersMultiline = true
+        statusCell.wraps = true
+        statusCell.isScrollable = false
+        statusLabel.cell = statusCell
+        statusLabel.isEditable = false
+        statusLabel.isSelectable = false
+        statusLabel.isBezeled = false
         statusLabel.font = .systemFont(ofSize: 11)
         statusLabel.textColor = Palette.mutedText
-        statusLabel.lineBreakMode = .byTruncatingTail
+        statusLabel.alignment = .left
+        statusLabel.maximumNumberOfLines = 2
+        statusLabel.lineBreakMode = .byWordWrapping
         statusLabel.stringValue = ""
         statusLabel.isHidden = true
         statusLabel.drawsBackground = false

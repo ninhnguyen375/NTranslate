@@ -48,9 +48,10 @@ extension PopoverController {
     }
 
     func styleLanguageButtonTitle(_ button: NSButton, language: String) {
-        button.title = language
+        let label = LanguageDetector.shortCode(language)
+        button.title = label
         button.attributedTitle = NSAttributedString(
-            string: language,
+            string: label,
             attributes: [
                 .font: languageMenuFont(),
                 .foregroundColor: Palette.languageTitle

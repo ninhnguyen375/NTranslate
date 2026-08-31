@@ -106,6 +106,21 @@ struct AppConfig: Codable {
     var grammarPrompt: String
     var imagePrompt: String
     var qaPrompt: String
+    /// Where spoken audio comes from. `.native` uses macOS voices offline; `.api` posts to
+    /// `apiSpeechURL`.
+    enum SpeechProvider: String, Codable, CaseIterable {
+        case api
+        case native
+
+        var displayName: String {
+            switch self {
+            case .api: return "API"
+            case .native: return "Native macOS"
+            }
+        }
+    }
+
+    var speechProvider: SpeechProvider
     var autoPrefetchSpeech: Bool
     /// Longest text still worth prefetching speech for, in characters.
     var speechPrefetchMaxLength: Int
@@ -162,6 +177,7 @@ struct AppConfig: Codable {
         grammarPrompt: defaultGrammarPrompt,
         imagePrompt: defaultImagePrompt,
         qaPrompt: defaultQAPrompt,
+        speechProvider: .api,
         autoPrefetchSpeech: true,
         speechPrefetchMaxLength: 300,
         theme: .system,
@@ -196,6 +212,7 @@ struct AppConfig: Codable {
         grammarPrompt: String,
         imagePrompt: String = defaultImagePrompt,
         qaPrompt: String = defaultQAPrompt,
+        speechProvider: SpeechProvider = .api,
         autoPrefetchSpeech: Bool,
         speechPrefetchMaxLength: Int = 300,
         theme: AppTheme = .system,
@@ -225,6 +242,7 @@ struct AppConfig: Codable {
         self.grammarPrompt = grammarPrompt
         self.imagePrompt = imagePrompt
         self.qaPrompt = qaPrompt
+        self.speechProvider = speechProvider
         self.autoPrefetchSpeech = autoPrefetchSpeech
         self.speechPrefetchMaxLength = speechPrefetchMaxLength
         self.theme = theme
@@ -264,6 +282,7 @@ struct AppConfig: Codable {
         grammarPrompt = try container.decodeIfPresent(String.self, forKey: .grammarPrompt) ?? Self.defaultGrammarPrompt
         imagePrompt = try container.decodeIfPresent(String.self, forKey: .imagePrompt) ?? Self.defaultImagePrompt
         qaPrompt = try container.decodeIfPresent(String.self, forKey: .qaPrompt) ?? Self.defaultQAPrompt
+        speechProvider = try container.decodeIfPresent(SpeechProvider.self, forKey: .speechProvider) ?? .api
         autoPrefetchSpeech = try container.decodeIfPresent(Bool.self, forKey: .autoPrefetchSpeech) ?? true
         speechPrefetchMaxLength = try container.decodeIfPresent(Int.self, forKey: .speechPrefetchMaxLength) ?? 300
         theme = try container.decodeIfPresent(AppTheme.self, forKey: .theme) ?? .system
@@ -486,7 +505,11 @@ struct AppConfig: Codable {
 
     func validationIssues() -> [String] {
         var issues: [String] = []
-        for (name, value) in [("API base URL", apiBaseURL), ("Speech URL", apiSpeechURL)] {
+        // The speech URL is only reachable in Settings while the API provider is selected, so
+        // validating it under the native provider would block Save with an unfixable error.
+        var urls = [("API base URL", apiBaseURL)]
+        if speechProvider == .api { urls.append(("Speech URL", apiSpeechURL)) }
+        for (name, value) in urls {
             guard let url = URL(string: value),
                   let scheme = url.scheme?.lowercased(),
                   ["http", "https"].contains(scheme),
@@ -554,7 +577,10 @@ struct AppConfig: Codable {
                 action: .openSettings
             ))
         }
-        if apiSpeechURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || URL(string: apiSpeechURL) == nil {
+        // Only under the API provider: Settings hides the speech URL when native is selected, so
+        // otherwise this would be a permanent banner pointing at a field the user cannot reach.
+        if speechProvider == .api,
+           apiSpeechURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || URL(string: apiSpeechURL) == nil {
             issues.append(SetupIssue(
                 kind: .url,
                 message: "Speech URL must be a valid http:// or https:// URL.",

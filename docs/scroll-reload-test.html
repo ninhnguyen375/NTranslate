@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>NTranslate: Test Scroll Position & Live Reload</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 30px;
+      background: #0f1115;
+      color: #e6e9ef;
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+    }
+    .container {
+      max-width: 720px;
+      margin: 0 auto;
+    }
+    .sticky-header {
+      position: sticky;
+      top: 10px;
+      background: rgba(24, 27, 34, 0.9);
+      backdrop-filter: blur(8px);
+      border: 1px solid #282d37;
+      padding: 12px 20px;
+      border-radius: 8px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 24px;
+      z-index: 100;
+    }
+    .box {
+      background: #181b22;
+      border: 1px solid #282d37;
+      border-radius: 10px;
+      padding: 24px;
+      margin-bottom: 20px;
+      min-height: 120px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+    .box.highlight {
+      border-color: #4c8dff;
+      background: #121826;
+    }
+    .box.target {
+      border-color: #ffb020;
+      background: #261d10;
+    }
+    h2 {
+      margin: 0 0 8px;
+      font-size: 18px;
+      color: #4c8dff;
+    }
+    .target h2 {
+      color: #ffb020;
+    }
+    p {
+      margin: 0;
+      color: #9aa3b2;
+      line-height: 1.5;
+    }
+    .tag {
+      display: inline-block;
+      align-self: flex-start;
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 4px;
+      background: rgba(255, 255, 255, 0.08);
+      margin-bottom: 8px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="sticky-header">
+      <strong style="color: #4c8dff;">Scroll Position Test Page</strong>
+      <span id="scroll-display" style="font-size: 13px; color: #9aa3b2;">Y: 0px</span>
+    </div>
+
+    <div class="box highlight">
+      <div class="tag">Mục 01</div>
+      <h2>Phần đầu trang (Top)</h2>
+      <p>Cuộn chuột xuống phía dưới để test giữ vị trí scroll khi file thay đổi.</p>
+    </div>
+
+    <div class="box">
+      <div class="tag">Mục 02</div>
+      <h2>Khối nội dung 02</h2>
+      <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Integer nec odio.</p>
+    </div>
+
+    <div class="box">
+      <div class="tag">Mục 03</div>
+      <h2>Khối nội dung 03</h2>
+      <p>Praesent libero. Sed cursus ante dapibus diam. Sed nisi.</p>
+    </div>
+
+    <div class="box">
+      <div class="tag">Mục 04</div>
+      <h2>Khối nội dung 04</h2>
+      <p>Nulla quis sem at nibh elementum imperdiet. Duis sagittis ipsum.</p>
+    </div>
+
+    <div class="box">
+      <div class="tag">Mục 05</div>
+      <h2>Khối nội dung 05</h2>
+      <p>Praesent mauris. Fusce nec tellus sed augue semper porta.</p>
+    </div>
+
+    <div class="box target" id="target-box">
+      <div class="tag" style="background: rgba(40, 200, 64, 0.2); color: #28c840;">Target Update (Vừa cập nhật!)</div>
+      <h2 style="color: #28c840;">Mục 06: Test thành công!</h2>
+      <p>Nội dung khung này vừa được thay đổi lúc 16:48. Nếu trang tự refresh mà không bị nhảy lên đầu trang thì extension hoạt động hoàn hảo.</p>
+    </div>
+
+    <div class="box">
+      <div class="tag">Mục 07</div>
+      <h2>Khối nội dung 07</h2>
+      <p>Vestibulum lacinia arcu eget nulla. Class aptent taciti sociosqu ad litora torquent.</p>
+    </div>
+
+    <div class="box">
+      <div class="tag">Mục 08</div>
+      <h2>Khối nội dung 08</h2>
+      <p>Curabitur sodales ligula in libero. Sed dignissim lacinia nunc.</p>
+    </div>
+
+    <div class="box">
+      <div class="tag">Mục 09</div>
+      <h2>Khối nội dung 09</h2>
+      <p>Curabitur tortor. Pellentesque nibh. Aenean quam. In scelerisque sem at dolor.</p>
+    </div>
+
+    <div class="box">
+      <div class="tag">Mục 10</div>
+      <h2>Khối nội dung 10</h2>
+      <p>Maecenas mattis. Sed convallis tristique sem. Proin ut ligula vel nunc egestas porttitor.</p>
+    </div>
+
+    <div class="box">
+      <div class="tag">Mục 11</div>
+      <h2>Khối nội dung 11</h2>
+      <p>Morbi lectus risus, iaculis vel, suscipit quis, luctus non, massa.</p>
+    </div>
+
+    <div class="box">
+      <div class="tag">Mục 12</div>
+      <h2>Khối nội dung 12</h2>
+      <p>Fusce ac turpis quis ligula lacinia aliquet. Mauris ipsum.</p>
+    </div>
+
+    <div class="box">
+      <div class="tag">Mục 13</div>
+      <h2>Khối nội dung 13</h2>
+      <p>Nulla metus metus, ullamcorper vel, tincidunt sed, euismod in, nibh.</p>
+    </div>
+
+    <div class="box">
+      <div class="tag">Mục 14</div>
+      <h2>Khối nội dung 14</h2>
+      <p>Quisque volutpat condimentum velit. Class aptent taciti sociosqu ad litora.</p>
+    </div>
+
+    <div class="box">
+      <div class="tag">Mục 15</div>
+      <h2>Khối nội dung 15</h2>
+      <p>Nam nec ante. Sed lacinia, urna non tincidunt mattis, tortor neque adipiscing diam.</p>
+    </div>
+
+    <div class="box">
+      <div class="tag">Mục 17</div>
+      <h2>Khối nội dung 17</h2>
+      <p>Pellentesque habitant morbi tristique senectus et netus et malesuada fames ac turpis egestas.</p>
+    </div>
+
+    <div class="box">
+      <div class="tag">Mục 18</div>
+      <h2>Khối nội dung 18</h2>
+      <p>Vivamus fermentum semper porta. Nunc diam velit, adipiscing ut tristique vitae, sagittis vel odio.</p>
+    </div>
+
+    <div class="box highlight" style="border-color: #28c840; background: #102414;">
+      <div class="tag" style="background: rgba(40, 200, 64, 0.2); color: #28c840;">Đáy trang mới nhất</div>
+      <h2 style="color: #28c840;">Mục 19: Kết thúc danh sách</h2>
+      <p>Đã chèn thêm Mục 17, 18, 19 xuống cuối file lúc 16:50.</p>
+    </div>
+  </div>
+
+  <script>
+    window.addEventListener('scroll', () => {
+      document.getElementById('scroll-display').textContent = 'Y: ' + Math.round(window.scrollY) + 'px';
+    });
+  </script>
+</body>
+</html>

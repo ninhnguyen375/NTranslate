@@ -205,7 +205,7 @@ extension PopoverController {
         var updated = config
         updated.syncAllPromptsWithDefaults()
         do {
-            try saveSettings(config: updated, apiKey: apiKey)
+            try saveSettings(config: updated, apiKey: apiKey, speechAPIKey: speechAPIKey)
             setStatus("Synced all prompts with app defaults", autoClearAfter: 6)
         } catch {
             setStatus("Sync prompts failed: \(error.localizedDescription)", autoClearAfter: 10)
@@ -240,8 +240,10 @@ extension PopoverController {
     @objc func openSettingsMenu() {
         let outcome = AppConfig.loadOutcome()
         let key: String
+        let speechKey: String
         do {
             key = try APIKeyStore.shared.load() ?? ""
+            speechKey = try APIKeyStore.speech.load() ?? ""
         } catch {
             setResultText("Error: \(error.localizedDescription)", style: .error)
             openTranslatePanelShowingSetupStatus(loadMessage: error.localizedDescription)
@@ -249,20 +251,30 @@ extension PopoverController {
         }
 
         if let controller = settingsWindowController {
-            controller.showSettings(config: outcome.config, apiKey: key)
+            controller.showSettings(config: outcome.config, apiKey: key, speechAPIKey: speechKey)
             return
         }
 
-        let controller = SettingsWindowController(config: outcome.config, apiKey: key) { [weak self] config, key in
-            try self?.saveSettings(config: config, apiKey: key)
+        let controller = SettingsWindowController(
+            config: outcome.config, apiKey: key, speechAPIKey: speechKey
+        ) { [weak self] config, key, speechKey in
+            try self?.saveSettings(config: config, apiKey: key, speechAPIKey: speechKey)
         }
         settingsWindowController = controller
-        controller.showSettings(config: outcome.config, apiKey: key)
+        controller.showSettings(config: outcome.config, apiKey: key, speechAPIKey: speechKey)
     }
 
-    func saveSettings(config: AppConfig, apiKey newAPIKey: String) throws {
+    func saveSettings(config: AppConfig, apiKey newAPIKey: String, speechAPIKey newSpeechKey: String) throws {
         let previousKey = try APIKeyStore.shared.load()
+        // A changed speech provider, endpoint, credential, or voice makes every cached clip
+        // stale. The key counts: pointing it at a different vendor changes the voice too.
+        let speechChanged = config.speechProvider != self.config.speechProvider
+            || config.apiSpeechURL != self.config.apiSpeechURL
+            || config.speechModels != self.config.speechModels
+            || config.speechFallbackModel != self.config.speechFallbackModel
+            || newSpeechKey != speechAPIKey
         try APIKeyStore.shared.save(newAPIKey)
+        try APIKeyStore.speech.save(newSpeechKey)
         do {
             try AppConfig.write(config)
         } catch {
@@ -282,6 +294,7 @@ extension PopoverController {
             }
             throw configError
         }
+        if speechChanged { clearAudioCache(recordID: currentRecordID) }
         _ = reloadConfig(showSuccess: true)
     }
 
@@ -385,8 +398,10 @@ extension PopoverController {
         registerHotKey()
         do {
             apiKey = try APIKeyStore.shared.load() ?? ""
+            speechAPIKey = try APIKeyStore.speech.load() ?? ""
         } catch {
             apiKey = ""
+            speechAPIKey = ""
             translator = nil
             setResultText("Error: \(error.localizedDescription)", style: .error)
             return outcome
@@ -408,7 +423,7 @@ extension PopoverController {
         if trimmedAPIKey.isEmpty {
             translator = nil
         } else {
-            translator = Translator(config: config, apiKey: trimmedAPIKey)
+            translator = Translator(config: config, apiKey: trimmedAPIKey, speechAPIKey: speechAPIKey)
         }
         reviewWindowController.updateDependencies(store: historyStore, translator: translator, config: config)
         guard !trimmedAPIKey.isEmpty else {

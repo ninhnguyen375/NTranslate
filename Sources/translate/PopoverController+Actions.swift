@@ -161,7 +161,7 @@ extension PopoverController {
     }
 
     @objc func retryRequest() {
-        invalidateSpeech(stopPlayback: true)
+        clearAudioCache(recordID: currentRecordID)
         switch lastExecutionMode {
         case .translate:
             performTranslate(generation: nil, bypassCache: true)

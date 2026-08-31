@@ -308,6 +308,25 @@ extension PopoverController {
         updateSpeakButtons()
     }
 
+    /// Drops every cached clip for one record, in memory and on disk, so the next play goes back
+    /// to whichever speech provider is configured now. Both retry buttons and a speech settings
+    /// change route through here — `invalidateSpeech` alone only bumps generations and would
+    /// leave the old audio in `speechCache` and in the history store.
+    func clearAudioCache(recordID: UUID?) {
+        invalidateSpeech(stopPlayback: true)
+        // Keep only clips belonging to *other* records. Orphans (nil record ID, cached before the
+        // record existed) go too, or `adoptCachedSpeech` would pull the stale clip right back in.
+        speechCache = speechCache.filter { $0.key.recordID != nil && $0.key.recordID != recordID }
+        speechTrim = speechTrim.filter { $0.key.recordID != nil && $0.key.recordID != recordID }
+        guard let recordID else { return }
+        do {
+            try historyStore.removeAudio(recordID: recordID)
+            historyWindowController.reloadHistory()
+        } catch {
+            setStatus("Could not clear stored audio: \(error.localizedDescription)", autoClearAfter: 12)
+        }
+    }
+
     func invalidateSpeech(stopPlayback: Bool) {
         prefetchGeneration += 1
         prefetchingSpeech.removeAll()

@@ -411,13 +411,18 @@ enum LiquidGlassChrome {
 
 final class VerticallyCenteredTextFieldCell: NSTextFieldCell {
     var horizontalInset: CGFloat = 10
+    /// Centre wrapped text on its full measured height instead of a single line.
+    var centersMultiline = false
 
     override func drawingRect(forBounds rect: NSRect) -> NSRect {
         let newRect = super.drawingRect(forBounds: rect)
         // Centre on one line of the font, never on `cellSize`: a long string wraps, its measured
         // height fills the cell, and the text would snap back to the top edge.
         let lineHeight = (font ?? .systemFont(ofSize: NSFont.systemFontSize)).boundingRectForFont.height
-        let textHeight = min(cellSize(forBounds: rect).height, lineHeight.rounded(.up))
+        let measured = cellSize(forBounds: rect).height
+        let textHeight = centersMultiline
+            ? min(measured, rect.height)
+            : min(measured, lineHeight.rounded(.up))
         let heightDelta = newRect.height - textHeight
         if heightDelta > 0 {
             return NSRect(
@@ -465,6 +470,16 @@ class SelectableTextView: NSTextView {
     override func cursorUpdate(with event: NSEvent) {
         guard ownsCursor(at: event) else { return }
         super.cursorUpdate(with: event)
+    }
+
+    /// `updateFloatingSelectionBar` reads `layoutManager`, and the first such read downgrades the
+    /// view from TextKit 2 to TextKit 1 — a full layout rebuild. Landing that inside NSTextView's
+    /// mouse-tracking loop cancels the double-click word selection, so the first double-click after
+    /// the popup opens produced an empty selection and only the second one worked. Force the
+    /// downgrade once, before any click can reach the view.
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        _ = layoutManager
     }
 
     private func ownsCursor(at event: NSEvent) -> Bool {

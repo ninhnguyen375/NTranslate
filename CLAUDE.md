@@ -10,8 +10,29 @@
 - Khi đã chạy script, luôn báo user version/build từ output để user test.
 - Sau khi PR/feature/release đã merge thành công vào `main`, kiểm tra rồi xóa branch local/remote đã merge và worktree liên quan nếu sạch; không xóa branch chưa merge hoặc worktree có thay đổi chưa commit, chạy `git worktree prune`, và báo rõ mọi branch/worktree được giữ lại.
 - Không bao giờ xóa branch local/remote `windows-app` khi cleanup branch/worktree. Đây là nhánh phát triển app Windows độc lập, tồn tại lâu dài và không merge vào `main`.
+- Chạy bản debug bằng `./Scripts/run-dev.sh`, không chạy thẳng `.build/debug/translate`: script ký binary bằng cùng identity với app đã cài nên Keychain không hỏi lại password mỗi lần build.
 - Verify code bằng `swift build`. Không chạy `swift test`: target test dùng swift-testing (`import Testing`) mà toolchain hiện tại không cung cấp, luôn fail với `no such module 'Testing'`.
 - Khi sửa giá trị mặc định trong `AppConfig.default` (width, height, hotkey...), đồng thời cập nhật field tương ứng trong `~/Library/Application Support/NTranslate/config.json` trên máy user, vì config đã tồn tại sẽ giữ giá trị cũ và không tự nhận default mới.
+
+## Test
+
+- Verify mặc định là `swift build`. `swift test` không dùng được (lý do ở trên), nên logic không tầm thường đi kèm một self-check standalone trong `Scripts/`, chạy bằng `swiftc` chứ không qua test target.
+- Chạy các check hiện có:
+
+```bash
+swiftc -parse-as-library Sources/translate/SpeechTrim.swift Scripts/speech-trim-check.swift \
+  -o /tmp/speech-trim-check && /tmp/speech-trim-check
+
+swiftc -parse-as-library Scripts/double-click-selection-check.swift \
+  -o /tmp/dclick-check && /tmp/dclick-check
+
+swiftc -parse-as-library Scripts/tagged-response-check.swift \
+  -o /tmp/tagged-response-check && /tmp/tagged-response-check
+```
+
+- `double-click-selection-check` bắn chuột tổng hợp qua `CGEvent`, nên terminal đang chạy phải có quyền Accessibility. Check này fail cả khi bản có fix mất selection lẫn khi bản không fix bỗng chạy đúng (tức check hết tái hiện được bug).
+- Muốn tái hiện lỗi tương tác chuột trong app thật thì dựng harness tạm: một file `Sources/translate/*Sim.swift` gọi từ `applicationDidFinishLaunching`, bật bằng biến môi trường, bắn `CGEvent` rồi log ra stderr. Gỡ sạch harness và mọi log tạm ngay khi tìm xong root cause, chỉ giữ lại check trong `Scripts/`.
+- Đọc kết quả bằng `Scripts/run-dev.sh` thay vì `.build/debug/translate` để Keychain không hỏi password giữa chừng.
 
 ## SPDD
 

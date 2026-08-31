@@ -381,6 +381,7 @@ extension PopoverController {
 
     @objc func retrySubRequest() {
         guard let section = subSection, !section.sourceText.isEmpty, !section.requestInFlight else { return }
+        clearAudioCache(recordID: section.recordID)
         runSubRequest(text: section.sourceText, mode: section.mode, bypassCache: true)
     }
 

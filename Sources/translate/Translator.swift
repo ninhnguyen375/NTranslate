@@ -56,6 +56,14 @@ final class Translator: @unchecked Sendable {
     }
     let config: AppConfig
     let apiKey: String
+    /// Empty means the speech endpoint reuses `apiKey`. Resolved here rather than at the call
+    /// sites so the inheritance rule lives in one place.
+    let speechAPIKey: String
+
+    private var effectiveSpeechKey: String {
+        let trimmed = speechAPIKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? apiKey : trimmed
+    }
 
     enum ResponseError: Error {
         case invalidSchema
@@ -70,9 +78,10 @@ final class Translator: @unchecked Sendable {
         case imageSearch
     }
 
-    init(config: AppConfig, apiKey: String) {
+    init(config: AppConfig, apiKey: String, speechAPIKey: String = "") {
         self.config = config
         self.apiKey = apiKey
+        self.speechAPIKey = speechAPIKey
     }
 
     private func renderSystemPrompt(sourceLang: String, targetLang: String) -> String {
@@ -170,7 +179,10 @@ final class Translator: @unchecked Sendable {
         let allowed = languages.filter { $0 != LanguageDetector.autoDetect }.joined(separator: ", ")
         return """
 
-        Return exactly one JSON object with this shape: {"translation":"<translated text>","sourceLanguage":"<detected source language>"}. sourceLanguage must be one of: \(allowed). No markdown fence, intro, commentary, or extra keys.
+        Return exactly these two tags, in this order, and nothing else:
+        <source_lang>detected source language</source_lang>
+        <translation>translated text</translation>
+        <source_lang> must be one of: \(allowed). Keep real line breaks inside <translation>. No markdown fence, intro, commentary, or extra tags.
         """
     }
 
@@ -403,9 +415,15 @@ final class Translator: @unchecked Sendable {
             .replacingOccurrences(of: "{{config.nativeLang}}", with: config.resolvedNativeLang)
     }
 
+    /// Tags rather than JSON: the four fields arrive in order, so the translation can be streamed into
+    /// the result pane as it is typed, and real newlines need no escaping (the JSON contract made
+    /// models emit unescaped ones and the whole payload failed to decode).
     static let imageResponseContract = """
-        Return exactly one JSON object with this shape, newlines inside the strings escaped as \\n:
-        {"sourceLanguage":"<language of the transcription>","sourceText":"<verbatim transcription>","targetLanguage":"<language you translated into>","translation":"<the translation>"}
+        Return exactly these four tags, in this order, and nothing else:
+        <source_lang>language of the transcription</source_lang>
+        <source>verbatim transcription</source>
+        <target_lang>language you translated into</target_lang>
+        <translation>the translation</translation>
         """
 
     /// Image mode returns the transcription alongside the translation, so the source pane can be
@@ -424,9 +442,42 @@ final class Translator: @unchecked Sendable {
         let translation: String
     }
 
+    static func taggedValue(_ tag: String, in text: String) -> String? {
+        guard let open = text.range(of: "<\(tag)>"),
+              let close = text.range(of: "</\(tag)>", range: open.upperBound..<text.endIndex)
+        else { return nil }
+        return String(text[open.upperBound..<close.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// The translation typed so far, for the streaming result pane. `nil` until `<translation>` opens,
+    /// so the pane keeps showing the loading text while the model is still working on the fields
+    /// that come before it (the transcription for images, the detected language for text).
+    static func streamedTaggedTranslation(from partial: String) -> String? {
+        guard let open = partial.range(of: "<translation>") else { return nil }
+        var text = String(partial[open.upperBound...])
+        if let close = text.range(of: "</translation>") {
+            return String(text[..<close.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        // A half-arrived "</translation>" would otherwise flicker in the pane.
+        if let last = text.lastIndex(of: "<"), "</translation>".hasPrefix(text[last...]) {
+            text = String(text[..<last])
+        }
+        return text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     static func imageTranslation(from content: String, supportedLanguages: [String] = LanguageDetector.defaultLanguages) throws -> ImageTranslation {
         let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { throw ResponseError.emptyContent }
+        if let translation = taggedValue("translation", in: trimmed) {
+            guard !translation.isEmpty else { throw ResponseError.emptyContent }
+            let sourceText = taggedValue("source", in: trimmed) ?? ""
+            return ImageTranslation(
+                sourceLanguage: canonical(taggedValue("source_lang", in: trimmed), fallbackFor: sourceText, supportedLanguages: supportedLanguages),
+                sourceText: sourceText,
+                targetLanguage: LanguageDetector.canonicalLanguage(taggedValue("target_lang", in: trimmed) ?? "", supportedLanguages: supportedLanguages) ?? "",
+                translation: translation
+            )
+        }
         var payloadText = trimmed
         if payloadText.hasPrefix("```") {
             guard payloadText.hasSuffix("```") else { throw ResponseError.invalidSchema }
@@ -459,12 +510,12 @@ final class Translator: @unchecked Sendable {
             ?? (text.isEmpty ? "" : LanguageDetector.detectedLanguage(text))
     }
 
-    static func imageRequestPayload(pngData: Data, targetLang: String, systemPrompt: String, model: String) throws -> Data {
+    static func imageRequestPayload(pngData: Data, targetLang: String, systemPrompt: String, model: String, stream: Bool = true) throws -> Data {
         let instruction = "Transcribe this image, then translate the transcription. Requested target language: \(targetLang).\n\n" + imageResponseContract
         return try requestPayload(model: model, systemPrompt: systemPrompt, userContent: [
             ["type": "text", "text": instruction],
             ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(pngData.base64EncodedString())"]]
-        ], stream: false)
+        ], stream: stream)
     }
 
     static func responseContent(from data: Data) throws -> String {
@@ -490,6 +541,13 @@ final class Translator: @unchecked Sendable {
             let source = LanguageDetector.canonicalLanguage(requestedSource, supportedLanguages: supportedLanguages)
                 ?? requestedSource
             return TranslationResult(text: trimmed, sourceLanguage: source)
+        }
+
+        if let translation = taggedValue("translation", in: trimmed) {
+            guard !translation.isEmpty else { throw ResponseError.emptyContent }
+            let source = LanguageDetector.canonicalLanguage(taggedValue("source_lang", in: trimmed) ?? "", supportedLanguages: supportedLanguages)
+                ?? LanguageDetector.detectedLanguage(inputText)
+            return TranslationResult(text: translation, sourceLanguage: source)
         }
 
         var payloadText = trimmed
@@ -534,11 +592,20 @@ final class Translator: @unchecked Sendable {
         onPartial: (@Sendable (String) -> Void)? = nil,
         completion: @escaping @Sendable (Result<TranslationResult, Error>) -> Void
     ) -> RequestHandle {
-        request(
+        // Auto-detect answers in tags, so the raw stream would show markup in the result pane.
+        var streamPartial = onPartial
+        if sourceLang == LanguageDetector.autoDetect, let emit = onPartial {
+            streamPartial = { partial in
+                if let translation = Self.streamedTaggedTranslation(from: partial), !translation.isEmpty {
+                    emit(translation)
+                }
+            }
+        }
+        return request(
             text,
             mode: .translate(sourceLang: sourceLang, targetLang: targetLang, context: context, parentContext: parentContext),
             stream: stream,
-            onPartial: onPartial
+            onPartial: streamPartial
         ) { [config] result in
             completion(result.flatMap { content in
                 Result {
@@ -620,7 +687,13 @@ final class Translator: @unchecked Sendable {
     }
 
     @discardableResult
-    func translateImage(_ pngData: Data, targetLang: String, completion: @escaping @Sendable (Result<ImageTranslation, Error>) -> Void) -> RequestHandle {
+    func translateImage(
+        _ pngData: Data,
+        targetLang: String,
+        onPartial: (@Sendable (String) -> Void)? = nil,
+        onSourceText: (@Sendable (String) -> Void)? = nil,
+        completion: @escaping @Sendable (Result<ImageTranslation, Error>) -> Void
+    ) -> RequestHandle {
         guard let url = URL(string: config.apiBaseURL) else {
             completion(.failure(NSError(domain: "Config", code: 1, userInfo: [NSLocalizedDescriptionKey: "Invalid apiBaseURL"])))
             return RequestHandle()
@@ -649,7 +722,20 @@ final class Translator: @unchecked Sendable {
             completion(.failure(error))
             return RequestHandle()
         }
-        return perform(req, stream: false) { [config] result in
+        var streamPartial: (@Sendable (String) -> Void)?
+        if onPartial != nil || onSourceText != nil {
+            streamPartial = { partial in
+                // `taggedValue` only answers once `</source>` has arrived, so the transcription is
+                // handed over whole rather than growing character by character in the input pane.
+                if let emit = onSourceText, let source = Self.taggedValue("source", in: partial), !source.isEmpty {
+                    emit(source)
+                }
+                if let emit = onPartial, let translation = Self.streamedTaggedTranslation(from: partial), !translation.isEmpty {
+                    emit(translation)
+                }
+            }
+        }
+        return perform(req, stream: true, onPartial: streamPartial) { [config] result in
             completion(result.flatMap { content in
                 Result { try Self.imageTranslation(from: content, supportedLanguages: config.languages) }
             })
@@ -663,6 +749,12 @@ final class Translator: @unchecked Sendable {
             completion(.failure(NSError(domain: "Speech", code: 1, userInfo: [NSLocalizedDescriptionKey: "Empty text"])))
             return RequestHandle()
         }
+        if model.hasPrefix(NativeSpeechEngine.modelPrefix) {
+            // ponytail: no cancellation handle — local synthesis finishes in well under a second
+            // and the caller already drops late results by generation.
+            NativeSpeechEngine.synthesize(text: trimmed, model: model, completion: completion)
+            return RequestHandle()
+        }
         guard let url = URL(string: config.apiSpeechURL) else {
             completion(.failure(NSError(domain: "Config", code: 2, userInfo: [NSLocalizedDescriptionKey: "Invalid speech URL"])))
             return RequestHandle()
@@ -671,7 +763,7 @@ final class Translator: @unchecked Sendable {
         req.httpMethod = "POST"
         req.timeoutInterval = Self.requestTimeoutInterval
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        req.setValue("Bearer \(effectiveSpeechKey)", forHTTPHeaderField: "Authorization")
         var jsonPayload: [String: Any] = [
             "model": model,
             "input": trimmed

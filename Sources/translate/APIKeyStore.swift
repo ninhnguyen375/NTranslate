@@ -3,6 +3,9 @@ import Security
 
 struct APIKeyStore: Sendable {
     static let shared = APIKeyStore(service: "local.ninh.ntranslate", account: "apiKey")
+    /// Optional key for the speech endpoint. Empty means "use the LLM key", so a user pointing
+    /// both services at one host never types the same key twice and no migration is needed.
+    static let speech = APIKeyStore(service: "local.ninh.ntranslate", account: "speechAPIKey")
 
     let service: String
     let account: String
