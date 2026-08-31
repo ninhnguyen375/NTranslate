@@ -302,6 +302,8 @@ extension PopoverController {
         }
         setSubResultText(section, waitingText)
         reflowLayout()
+        // The sub source is known now, so its speech fetches alongside the model call.
+        prefetchSpeech(subSpeechIdentity(kind: .source), translationGeneration: nil)
 
         if !bypassCache, let record = reusableSubRecord(
             mode: mode,

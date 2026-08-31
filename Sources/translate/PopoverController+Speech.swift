@@ -116,8 +116,22 @@ extension PopoverController {
         }
     }
 
+    /// Speech fetched before its history record existed is cached under a nil record ID. Adopting
+    /// it once the ID is known keeps the later prefetch from paying for the same audio twice.
+    func adoptCachedSpeech(for identity: SpeechIdentity) {
+        guard identity.recordID != nil, speechCache[identity] == nil else { return }
+        let orphan = SpeechIdentity(kind: identity.kind, text: identity.text, model: identity.model)
+        guard let data = speechCache[orphan] else { return }
+        speechCache[identity] = data
+        speechTrim[identity] = speechTrim[orphan]
+    }
+
     func prefetchSpeech(_ identity: SpeechIdentity?, translationGeneration: Int?) {
-        guard config.autoPrefetchSpeech, let identity, identity.text.count <= 50, let translator else { return }
+        guard config.autoPrefetchSpeech, let identity,
+              identity.text.count <= config.speechPrefetchMaxLength,
+              let translator
+        else { return }
+        adoptCachedSpeech(for: identity)
         if let data = speechCache[identity] {
             acceptPrefetchedSpeech(data, identity: identity, translationGeneration: translationGeneration)
             return

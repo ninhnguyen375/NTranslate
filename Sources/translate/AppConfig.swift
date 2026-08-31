@@ -107,6 +107,8 @@ struct AppConfig: Codable {
     var imagePrompt: String
     var qaPrompt: String
     var autoPrefetchSpeech: Bool
+    /// Longest text still worth prefetching speech for, in characters.
+    var speechPrefetchMaxLength: Int
     var theme: AppTheme
     /// Speech model per language name, e.g. ["English": "edge-tts/en-US-AvaMultilingualNeural"].
     var speechModels: [String: String]
@@ -161,6 +163,7 @@ struct AppConfig: Codable {
         imagePrompt: defaultImagePrompt,
         qaPrompt: defaultQAPrompt,
         autoPrefetchSpeech: true,
+        speechPrefetchMaxLength: 300,
         theme: .system,
         speechModels: [
             "English": "edge-tts/en-US-AvaMultilingualNeural",
@@ -194,6 +197,7 @@ struct AppConfig: Codable {
         imagePrompt: String = defaultImagePrompt,
         qaPrompt: String = defaultQAPrompt,
         autoPrefetchSpeech: Bool,
+        speechPrefetchMaxLength: Int = 300,
         theme: AppTheme = .system,
         speechModels: [String: String],
         speechFallbackModel: String,
@@ -222,6 +226,7 @@ struct AppConfig: Codable {
         self.imagePrompt = imagePrompt
         self.qaPrompt = qaPrompt
         self.autoPrefetchSpeech = autoPrefetchSpeech
+        self.speechPrefetchMaxLength = speechPrefetchMaxLength
         self.theme = theme
         self.speechModels = speechModels
         self.speechFallbackModel = speechFallbackModel
@@ -260,6 +265,7 @@ struct AppConfig: Codable {
         imagePrompt = try container.decodeIfPresent(String.self, forKey: .imagePrompt) ?? Self.defaultImagePrompt
         qaPrompt = try container.decodeIfPresent(String.self, forKey: .qaPrompt) ?? Self.defaultQAPrompt
         autoPrefetchSpeech = try container.decodeIfPresent(Bool.self, forKey: .autoPrefetchSpeech) ?? true
+        speechPrefetchMaxLength = try container.decodeIfPresent(Int.self, forKey: .speechPrefetchMaxLength) ?? 300
         theme = try container.decodeIfPresent(AppTheme.self, forKey: .theme) ?? .system
         historyDirectory = try container.decodeIfPresent(String.self, forKey: .historyDirectory)
         hotkey = try container.decode(Hotkey.self, forKey: .hotkey)

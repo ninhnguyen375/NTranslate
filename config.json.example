@@ -26,6 +26,7 @@
   "speechTargetModel": "edge-tts/vi-VN-HoaiMyNeural",
   "historyDirectory": "",
   "autoPrefetchSpeech": false,
+  "speechPrefetchMaxLength": 300,
   "hotkey": {
     "key": "D",
     "option": true,

@@ -32,6 +32,8 @@ extension PopoverController {
         }
         setResultText(PopoverFeedback.learning)
         reflowLayout()
+        // The source is known now, so its speech fetches alongside the model call.
+        prefetchSpeech(sourceSpeechIdentity(recordID: nil), translationGeneration: generation)
         mainRequest = translator.learn(text, sourceLang: pair.source, targetLang: pair.target, onPartial: { [weak self] partial in
             Task { @MainActor in
                 self?.appendStreamedResult(partial, generation: generation, scope: .main)
@@ -110,6 +112,8 @@ extension PopoverController {
         }
         setResultText(PopoverFeedback.proofreading)
         reflowLayout()
+        // The source is known now, so its speech fetches alongside the model call.
+        prefetchSpeech(sourceSpeechIdentity(recordID: nil), translationGeneration: generation)
         mainRequest = translator.proofread(text, lang: lang, onPartial: { [weak self] partial in
             Task { @MainActor in
                 self?.appendStreamedResult(partial, generation: generation, scope: .main)
