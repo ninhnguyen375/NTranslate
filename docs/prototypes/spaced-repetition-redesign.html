@@ -1,0 +1,375 @@
+<!doctype html>
+<html lang="vi" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>NTranslate · Spaced Repetition redesign</title>
+<style>
+:root{
+  --bg:#1c1c1e; --card:#2c2c2e; --card2:#3a3a3c; --line:#48484a;
+  --text:#f2f2f7; --text2:#aeaeb2; --text3:#8e8e93;
+  --blue:#0a84ff; --green:#32d74b; --orange:#ff9f0a; --red:#ff453a; --purple:#bf5af2;
+  --radius:14px;
+}
+[data-theme="light"]{
+  --bg:#ececee; --card:#ffffff; --card2:#f2f2f7; --line:#d1d1d6;
+  --text:#1c1c1e; --text2:#6c6c70; --text3:#8e8e93;
+  --blue:#007aff; --green:#28cd41; --orange:#ff9500; --red:#ff3b30; --purple:#af52de;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);
+  font:13px/1.45 -apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",sans-serif;}
+.wrap{max-width:1040px;margin:0 auto;padding:22px 18px 60px}
+h1{font-size:19px;margin:0 0 2px;font-weight:650}
+.sub{color:var(--text2);margin:0 0 18px}
+
+/* ---- fake macOS menu bar ---- */
+.menubar{display:flex;align-items:center;gap:18px;background:rgba(255,255,255,.06);
+  backdrop-filter:blur(20px);border:1px solid var(--line);border-radius:8px;
+  padding:5px 12px;font-size:12.5px;margin-bottom:10px}
+[data-theme="light"] .menubar{background:rgba(255,255,255,.7)}
+.menubar .apple{font-size:14px;opacity:.8}
+.menubar b{font-weight:650}
+.menubar .spacer{margin-left:auto;display:flex;gap:14px;color:var(--text2)}
+.menu-note{color:var(--text3);font-size:11.5px;margin:0 0 18px}
+
+/* ---- window chrome ---- */
+.win{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+  overflow:hidden;box-shadow:0 18px 50px rgba(0,0,0,.35)}
+.titlebar{display:flex;align-items:center;gap:8px;padding:9px 12px;
+  background:var(--card2);border-bottom:1px solid var(--line)}
+.dot{width:11px;height:11px;border-radius:50%}
+.d1{background:#ff5f57}.d2{background:#febc2e}.d3{background:#28c840}
+.titlebar .t{flex:1;text-align:center;font-size:12.5px;color:var(--text2);font-weight:600;margin-right:44px}
+.body{padding:22px}
+
+/* ---- tabs ---- */
+.tabs{display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap}
+.tab{padding:6px 12px;border-radius:8px;border:1px solid var(--line);background:transparent;
+  color:var(--text2);font-size:12.5px;cursor:pointer}
+.tab.on{background:var(--blue);border-color:var(--blue);color:#fff}
+.screen{display:none}.screen.on{display:block}
+
+/* ---- generic ---- */
+.row{display:flex;gap:12px}
+.muted{color:var(--text2)}
+.tiny{font-size:11.5px;color:var(--text3)}
+.btn{border:1px solid var(--line);background:var(--card2);color:var(--text);
+  border-radius:9px;padding:9px 14px;font-size:13px;cursor:pointer;display:inline-flex;
+  align-items:center;gap:7px;font-weight:550}
+.btn:hover{border-color:var(--text3)}
+.btn.primary{background:var(--blue);border-color:var(--blue);color:#fff}
+.btn.big{padding:12px 22px;font-size:14px;border-radius:11px}
+.kbd{font:11px ui-monospace,SFMono-Regular,Menlo,monospace;border:1px solid var(--line);
+  border-radius:5px;padding:1px 5px;color:var(--text3);background:rgba(127,127,127,.12)}
+
+/* ---- home ---- */
+.hero{display:grid;grid-template-columns:170px 1fr;gap:26px;align-items:center;
+  padding:20px;background:var(--card2);border-radius:var(--radius);margin-bottom:16px}
+.ring{position:relative;width:150px;height:150px}
+.ring svg{transform:rotate(-90deg)}
+.ring .mid{position:absolute;inset:0;display:grid;place-content:center;text-align:center}
+.ring .mid b{display:block;font-size:38px;font-weight:700;line-height:1}
+.ring .mid span{font-size:11.5px;color:var(--text2)}
+.legend{display:flex;flex-direction:column;gap:9px}
+.legend div{display:flex;align-items:center;gap:9px;font-size:13px}
+.sw{width:10px;height:10px;border-radius:3px}
+.legend b{margin-left:auto;font-variant-numeric:tabular-nums}
+
+.streak{display:flex;align-items:center;gap:14px;margin-top:16px;padding-top:14px;
+  border-top:1px solid var(--line)}
+.heat{display:flex;gap:4px}
+.heat i{width:22px;height:22px;border-radius:5px;background:rgba(127,127,127,.2);display:block}
+.heat i.l1{background:rgba(50,215,75,.28)}.heat i.l2{background:rgba(50,215,75,.55)}
+.heat i.l3{background:var(--green)}
+
+.section-h{font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);
+  margin:20px 0 9px;font-weight:650}
+.modes{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.mode{border:1.5px solid var(--line);border-radius:11px;padding:11px 12px;cursor:pointer;background:transparent}
+.mode.on{border-color:var(--blue);background:rgba(10,132,255,.12)}
+.mode b{display:block;font-size:13px;margin-bottom:3px}
+.mode span{font-size:11.5px;color:var(--text2);line-height:1.35;display:block}
+.goals{display:flex;gap:8px;flex-wrap:wrap}
+.chip{border:1px solid var(--line);border-radius:20px;padding:6px 14px;font-size:12.5px;
+  cursor:pointer;color:var(--text2);background:transparent}
+.chip.on{background:var(--text);color:var(--bg);border-color:var(--text)}
+.footer-actions{display:flex;gap:10px;align-items:center;margin-top:22px;
+  padding-top:16px;border-top:1px solid var(--line);flex-wrap:wrap}
+
+/* ---- session ---- */
+.topbar{display:flex;align-items:center;gap:12px;margin-bottom:4px}
+.icons{display:flex;gap:4px}
+.ib{width:28px;height:28px;border-radius:7px;border:1px solid transparent;background:transparent;
+  color:var(--text2);cursor:pointer;font-size:14px;display:grid;place-content:center}
+.ib:hover{background:var(--card2);border-color:var(--line)}
+.bar{flex:1;height:6px;border-radius:3px;background:rgba(127,127,127,.22);overflow:hidden;display:flex}
+.bar i{display:block;height:100%}
+.counts{display:flex;gap:12px;font-size:12px;font-variant-numeric:tabular-nums;color:var(--text2)}
+.counts b{color:var(--text)}
+.metaline{display:flex;justify-content:center;gap:10px;font-size:11.5px;color:var(--text3);margin:10px 0 24px}
+.pill{border:1px solid var(--line);border-radius:20px;padding:2px 9px}
+.pill.k{color:var(--purple);border-color:rgba(191,90,242,.5)}
+
+.cardface{text-align:center;padding:14px 0 8px}
+.term{font-size:30px;font-weight:700;letter-spacing:-.4px;margin-bottom:8px;
+  display:flex;align-items:center;justify-content:center;gap:10px}
+.term .aud{display:flex;gap:2px}
+.ctx{color:var(--text2);font-size:14px;max-width:520px;margin:0 auto 4px;line-height:1.5}
+.ctx u{text-decoration:none;border-bottom:2px solid var(--orange);padding-bottom:1px}
+.answer{margin-top:22px;padding:16px;border-radius:11px;background:var(--card2);max-width:520px;
+  margin-left:auto;margin-right:auto}
+.answer .lbl{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);margin-bottom:5px}
+.answer .val{font-size:18px;font-weight:600}
+input.tf{width:100%;max-width:360px;padding:10px 12px;border-radius:9px;border:1.5px solid var(--line);
+  background:var(--bg);color:var(--text);font-size:15px;text-align:center;outline:none}
+input.tf:focus{border-color:var(--blue)}
+.fb{margin-top:12px;font-size:13px;font-weight:600}
+.fb.ok{color:var(--green)}.fb.near{color:var(--orange)}
+
+.grades{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:26px}
+.g{border-radius:11px;padding:10px;text-align:center;border:1.5px solid;cursor:pointer;background:transparent}
+.g b{display:block;font-size:13.5px}
+.g span{font-size:11.5px;color:var(--text3);font-variant-numeric:tabular-nums}
+.g.again{border-color:rgba(255,69,58,.55);color:var(--red)}
+.g.hard{border-color:rgba(255,159,10,.55);color:var(--orange)}
+.g.easy{border-color:rgba(50,215,75,.55);color:var(--green)}
+.g:hover{background:rgba(127,127,127,.1)}
+
+/* ---- summary ---- */
+.sumgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:18px 0}
+.stat{background:var(--card2);border-radius:11px;padding:14px;text-align:center}
+.stat b{display:block;font-size:24px;font-weight:700;line-height:1.2}
+.stat span{font-size:11.5px;color:var(--text2)}
+.misslist{background:var(--card2);border-radius:11px;padding:6px 4px}
+.miss{display:flex;align-items:center;gap:10px;padding:9px 12px;border-bottom:1px solid var(--line)}
+.miss:last-child{border-bottom:none}
+.miss .w{font-weight:600}
+.miss .m{color:var(--text2);font-size:12.5px}
+.miss .tagx{margin-left:auto;font-size:11px;padding:2px 8px;border-radius:20px;
+  background:rgba(255,69,58,.16);color:var(--red)}
+.notes{margin-top:18px;padding:14px 16px;border-left:3px solid var(--blue);background:var(--card2);
+  border-radius:0 10px 10px 0}
+.notes li{margin:4px 0;color:var(--text2)}
+.theme-toggle{position:fixed;top:14px;right:16px;z-index:5}
+</style>
+</head>
+<body>
+<button class="btn theme-toggle" onclick="document.documentElement.dataset.theme=document.documentElement.dataset.theme==='dark'?'light':'dark'">Light / Dark</button>
+
+<div class="wrap">
+  <h1>Spaced Repetition, bản thiết kế lại</h1>
+  <p class="sub">Prototype tĩnh để review. Bấm tab để đổi màn hình, bấm thử mode/goal/grade để thấy trạng thái.</p>
+
+  <div class="menubar">
+    <span class="apple">&#63743;</span><b>NTranslate</b><span>File</span><span>Edit</span>
+    <span>Study</span><span>Window</span><span>Help</span>
+    <span class="spacer"><span>&#9201; 14:22</span><span>&#128204;</span></span>
+  </div>
+  <p class="menu-note">Hướng A: khi cửa sổ Study mở, app đổi sang <code>.regular</code> nên có menu bar riêng + Dock icon + Cmd+Tab. Đóng hết cửa sổ thì quay lại <code>.accessory</code>, menu bar biến mất, NTranslate lại là app menubar sạch.</p>
+
+  <div class="tabs">
+    <button class="tab on" data-s="home">1 · Home dashboard</button>
+    <button class="tab" data-s="flip">2 · Card (Flip)</button>
+    <button class="tab" data-s="cloze">3 · Card (Cloze, đã trả lời)</button>
+    <button class="tab" data-s="sum">4 · Session summary</button>
+  </div>
+
+  <div class="win">
+    <div class="titlebar"><span class="dot d1"></span><span class="dot d2"></span><span class="dot d3"></span>
+      <span class="t">Study &mdash; NTranslate</span></div>
+    <div class="body">
+
+    <!-- ================= HOME ================= -->
+    <div class="screen on" id="home">
+      <div class="hero">
+        <div class="ring">
+          <svg width="150" height="150" viewBox="0 0 150 150">
+            <circle cx="75" cy="75" r="62" fill="none" stroke="rgba(127,127,127,.2)" stroke-width="14"/>
+            <circle cx="75" cy="75" r="62" fill="none" stroke="var(--blue)" stroke-width="14"
+              stroke-linecap="round" stroke-dasharray="389" stroke-dashoffset="233"/>
+            <circle cx="75" cy="75" r="62" fill="none" stroke="var(--orange)" stroke-width="14"
+              stroke-linecap="round" stroke-dasharray="389" stroke-dashoffset="311"
+              transform="rotate(144 75 75)"/>
+            <circle cx="75" cy="75" r="62" fill="none" stroke="var(--green)" stroke-width="14"
+              stroke-linecap="round" stroke-dasharray="389" stroke-dashoffset="350"
+              transform="rotate(216 75 75)"/>
+          </svg>
+          <div class="mid"><b>38</b><span>due hôm nay</span></div>
+        </div>
+        <div>
+          <div class="legend">
+            <div><i class="sw" style="background:var(--blue)"></i>Learning &mdash; đang thuộc dần<b>18</b></div>
+            <div><i class="sw" style="background:var(--orange)"></i>Due &mdash; tới hạn ôn<b>12</b></div>
+            <div><i class="sw" style="background:var(--green)"></i>New &mdash; chưa học lần nào<b>8</b></div>
+            <div><i class="sw" style="background:rgba(127,127,127,.35)"></i>Mastered<b>146</b></div>
+            <div style="color:var(--red)"><i class="sw" style="background:var(--red)"></i>Leech &mdash; sai &ge;8 lần<b>3</b></div>
+          </div>
+          <div class="streak">
+            <div><b style="font-size:20px">12</b> <span class="muted">ngày liên tiếp</span></div>
+            <div class="heat">
+              <i class="l2"></i><i class="l3"></i><i class="l1"></i><i class="l3"></i>
+              <i class="l3"></i><i class="l2"></i><i></i>
+            </div>
+            <span class="tiny">7 ngày gần nhất &middot; trung bình 21 thẻ/ngày</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="section-h">Mục tiêu phiên này</div>
+      <div class="goals">
+        <button class="chip" onclick="pick(this)">10 thẻ</button>
+        <button class="chip on" onclick="pick(this)">20 thẻ</button>
+        <button class="chip" onclick="pick(this)">Tất cả 38</button>
+        <button class="chip" onclick="pick(this)">5 phút</button>
+        <button class="chip" onclick="pick(this)">15 phút</button>
+      </div>
+
+      <div class="section-h">Kiểu hỏi</div>
+      <div class="modes">
+        <div class="mode on" onclick="pick(this)"><b>Auto</b><span>Thẻ mới thì nhận mặt, thẻ cũ thì bắt tự nhớ. Khuyến nghị.</span></div>
+        <div class="mode" onclick="pick(this)"><b>Flip</b><span>Xem từ, tự đánh giá rồi lật đáp án.</span></div>
+        <div class="mode" onclick="pick(this)"><b>Cloze</b><span>Điền từ bị khuyết trong câu ví dụ.</span></div>
+        <div class="mode" onclick="pick(this)"><b>Recall</b><span>Thấy nghĩa tiếng Việt, gõ lại từ tiếng Anh.</span></div>
+        <div class="mode" onclick="pick(this)"><b>Listen</b><span>Chỉ nghe phát âm rồi gõ lại từ.</span></div>
+        <div class="mode" onclick="pick(this)"><b>Contrast</b><span>Chọn đúng giữa hai từ dễ nhầm.</span></div>
+      </div>
+      <p class="tiny" style="margin-top:8px">Mode nào thẻ không có dữ liệu sẽ tự lùi về Flip, và hiện dòng nhắc ngay trên thẻ.</p>
+
+      <div class="footer-actions">
+        <button class="btn primary big">&#9654;&nbsp; Start Review (20)</button>
+        <button class="btn">&#128214; Reading Passage</button>
+        <button class="btn">&#9776; Saved Passages</button>
+        <span style="margin-left:auto" class="tiny">
+          <span class="kbd">Return</span> bắt đầu &middot; <span class="kbd">R</span> reading &middot; <span class="kbd">&#8984;,</span> settings
+        </span>
+      </div>
+    </div>
+
+    <!-- ================= FLIP ================= -->
+    <div class="screen" id="flip">
+      <div class="topbar">
+        <div class="icons"><button class="ib" title="Home (Esc)">&#8962;</button>
+          <button class="ib" title="Undo (Cmd+Z)">&#8630;</button>
+          <button class="ib" title="Bỏ thẻ khỏi deck">&#128065;</button></div>
+        <div class="bar">
+          <i style="width:38%;background:var(--green)"></i>
+          <i style="width:10%;background:var(--red)"></i>
+        </div>
+        <div class="counts"><span>Đúng <b>7</b></span><span>Sai <b>2</b></span><span>Còn <b>11</b></span><span>&#9201; 4:12</span></div>
+      </div>
+      <div class="metaline">
+        <span class="pill k">Flip</span><span class="pill">Learning &middot; lần 3</span>
+        <span class="pill">EN &rarr; VI</span><span class="pill">Ôn lần cuối 4 ngày trước</span>
+      </div>
+
+      <div class="cardface">
+        <div class="term">resilient
+          <span class="aud"><button class="ib" title="Đọc (4)">&#128266;</button>
+            <button class="ib" title="Đọc chậm (5)">&#128034;</button>
+            <button class="ib" title="Mở trong Translate (6)">&#128172;</button></span>
+        </div>
+        <div class="ctx">The team stayed <u>resilient</u> after three failed launches and shipped anyway.</div>
+        <button class="btn" style="padding:4px 10px;font-size:12px;margin-top:6px">Read more</button>
+
+        <div class="answer">
+          <div class="lbl">Đáp án</div>
+          <div class="val">kiên cường, bền bỉ</div>
+          <div class="tiny" style="margin-top:6px">/rɪˈzɪliənt/ &middot; adj &middot; đồng nghĩa: tough, hardy</div>
+        </div>
+      </div>
+
+      <div class="grades">
+        <div class="g again"><b>Again <span class="kbd">1</span></b><span>&lt; 1 phút</span></div>
+        <div class="g hard"><b>Hard <span class="kbd">2</span></b><span>2 ngày</span></div>
+        <div class="g easy"><b>Easy <span class="kbd">3</span></b><span>6 ngày</span></div>
+      </div>
+      <p class="tiny" style="text-align:center;margin-top:10px">
+        <span class="kbd">Space</span> lật thẻ &middot; <span class="kbd">1/2/3</span> chấm điểm &middot; <span class="kbd">&#8984;Z</span> undo &middot; <span class="kbd">Esc</span> về home
+      </p>
+    </div>
+
+    <!-- ================= CLOZE ================= -->
+    <div class="screen" id="cloze">
+      <div class="topbar">
+        <div class="icons"><button class="ib">&#8962;</button><button class="ib">&#8630;</button><button class="ib">&#128065;</button></div>
+        <div class="bar"><i style="width:45%;background:var(--green)"></i><i style="width:10%;background:var(--red)"></i></div>
+        <div class="counts"><span>Đúng <b>8</b></span><span>Sai <b>2</b></span><span>Còn <b>10</b></span><span>&#9201; 4:38</span></div>
+      </div>
+      <div class="metaline">
+        <span class="pill k">Cloze</span><span class="pill">Due &middot; lần 5</span><span class="pill">EN &rarr; VI</span>
+      </div>
+
+      <div class="cardface">
+        <div class="term" style="font-size:22px;font-weight:600;color:var(--text2)">Điền từ còn thiếu</div>
+        <div class="ctx" style="font-size:17px;color:var(--text)">
+          She gave a <u>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</u> account of what happened that night.
+        </div>
+        <div style="margin-top:18px"><input class="tf" value="candit" readonly></div>
+        <div class="fb near">Gần đúng &mdash; sai 1 ký tự, tính là Hard. Đáp án: <b>candid</b></div>
+        <div class="answer" style="margin-top:16px">
+          <div class="lbl">Nghĩa</div><div class="val">thẳng thắn, thật lòng</div>
+        </div>
+      </div>
+
+      <div class="grades">
+        <div class="g again"><b>Again <span class="kbd">1</span></b><span>&lt; 1 phút</span></div>
+        <div class="g hard" style="background:rgba(255,159,10,.16)"><b>Hard <span class="kbd">2</span></b><span>tự chấm &middot; 3 ngày</span></div>
+        <div class="g easy"><b>Easy <span class="kbd">3</span></b><span>9 ngày</span></div>
+      </div>
+      <p class="tiny" style="text-align:center;margin-top:10px">Câu trả lời tự chấm sẵn; <span class="kbd">Return</span> nhận điểm gợi ý và sang thẻ kế.</p>
+    </div>
+
+    <!-- ================= SUMMARY ================= -->
+    <div class="screen" id="sum">
+      <div style="text-align:center;padding:8px 0 4px">
+        <div style="font-size:40px">&#127881;</div>
+        <div style="font-size:20px;font-weight:650;margin-top:6px">Xong phiên hôm nay</div>
+        <div class="muted">20 thẻ &middot; chuỗi 13 ngày</div>
+      </div>
+
+      <div class="sumgrid">
+        <div class="stat"><b style="color:var(--green)">85%</b><span>Chính xác</span></div>
+        <div class="stat"><b>8:41</b><span>Thời gian</span></div>
+        <div class="stat"><b>26s</b><span>Trung bình/thẻ</span></div>
+        <div class="stat"><b>18</b><span>Còn lại hôm nay</span></div>
+      </div>
+
+      <div class="section-h">Thẻ cần chú ý</div>
+      <div class="misslist">
+        <div class="miss"><span class="w">candid</span><span class="m">thẳng thắn</span><span class="tagx">sai 3 lần</span></div>
+        <div class="miss"><span class="w">meticulous</span><span class="m">tỉ mỉ</span><span class="tagx">sai 2 lần</span></div>
+        <div class="miss"><span class="w">obsolete</span><span class="m">lỗi thời</span><span class="tagx">leech &middot; 8 lần</span></div>
+      </div>
+
+      <div class="footer-actions">
+        <button class="btn primary">&#8635; Ôn lại 3 thẻ vừa sai</button>
+        <button class="btn">&#128214; Dệt 3 thẻ này thành đoạn đọc</button>
+        <button class="btn">Tiếp tục 18 thẻ còn lại</button>
+        <button class="btn" style="margin-left:auto">&#8962; Về home</button>
+      </div>
+
+      <div class="notes">
+        <b>Đề xuất tự động</b>
+        <ul>
+          <li><b>obsolete</b> đã sai 8 lần: gợi ý đổi câu ví dụ hoặc tạm ẩn khỏi deck.</li>
+          <li>Ngày mai có 24 thẻ tới hạn, học sớm buổi sáng để giữ chuỗi.</li>
+        </ul>
+      </div>
+    </div>
+
+    </div><!-- /body -->
+  </div><!-- /win -->
+</div>
+
+<script>
+document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>{
+  document.querySelectorAll('.tab').forEach(x=>x.classList.remove('on'));
+  document.querySelectorAll('.screen').forEach(x=>x.classList.remove('on'));
+  t.classList.add('on');
+  document.getElementById(t.dataset.s).classList.add('on');
+});
+function pick(el){[...el.parentElement.children].forEach(c=>c.classList.remove('on'));el.classList.add('on');}
+</script>
+</body>
+</html>
