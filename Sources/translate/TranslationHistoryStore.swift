@@ -14,12 +14,6 @@ enum TranslationMode: String, Codable, Equatable, Sendable {
     }
 }
 
-enum SRSGrade: Int, Sendable {
-    case again = 0 // Lại
-    case hard = 1  // Khó
-    case easy = 2  // Dễ
-}
-
 struct TranslationRecord: Codable, Equatable, Identifiable, Sendable {
     let id: UUID
     let timestamp: Date
@@ -115,39 +109,29 @@ struct TranslationRecord: Codable, Equatable, Identifiable, Sendable {
     }
 
     /// SM-2 simplified algorithm: 3 levels (again: 0, hard: 1, easy: 2)
-    mutating func applySRSGrade(_ grade: SRSGrade, currentDate: Date = Date(), calendar: Calendar = .current) {
-        let currentEase = ease > 1.3 ? ease : 2.5
-        var nextInterval: Int
-        var nextEase: Double
-
+    /// Applies one grade. The arithmetic lives in `ReviewPlanner.nextSchedule` so it can be
+    /// checked without a store; `fuzz` is injected for the same reason.
+    mutating func applySRSGrade(
+        _ grade: SRSGrade,
+        currentDate: Date = Date(),
+        calendar: Calendar = .current,
+        fuzz: Double = ReviewPlanner.randomFuzz()
+    ) {
+        let next = ReviewPlanner.nextSchedule(grade: grade, interval: interval, ease: ease, fuzz: fuzz)
         switch grade {
         case .again:
-            nextInterval = 1
-            nextEase = max(1.3, currentEase - 0.2)
             repetitions = 0
             lapses += 1
-        case .hard:
-            nextInterval = interval <= 1 ? 2 : Int(Double(interval) * 1.2)
-            nextEase = max(1.3, currentEase - 0.15)
-            repetitions += 1
-        case .easy:
-            if interval == 0 {
-                nextInterval = 1
-            } else if interval == 1 {
-                nextInterval = 3
-            } else {
-                nextInterval = max(interval + 1, Int(Double(interval) * currentEase))
-            }
-            nextEase = currentEase + 0.1
+        case .hard, .easy:
             repetitions += 1
         }
 
         self.lastReviewedAt = currentDate
-
-        self.interval = nextInterval
-        self.ease = nextEase
+        self.interval = next.interval
+        self.ease = next.ease
         let startOfToday = calendar.startOfDay(for: currentDate)
-        self.dueDate = calendar.date(byAdding: .day, value: nextInterval, to: startOfToday) ?? currentDate.addingTimeInterval(Double(nextInterval) * 86400)
+        self.dueDate = calendar.date(byAdding: .day, value: next.interval, to: startOfToday)
+            ?? currentDate.addingTimeInterval(Double(next.interval) * 86400)
     }
 }
 
@@ -365,6 +349,29 @@ final class TranslationHistoryStore {
             record.applySRSGrade(grade, currentDate: currentDate, calendar: calendar)
             record.updatedAt = currentDate
         }
+    }
+
+    /// Puts back the scheduling fields exactly as they were, so one mis-tap can be undone.
+    func restoreSRS(from snapshot: TranslationRecord) throws {
+        try update(recordID: snapshot.id) { record in
+            record.dueDate = snapshot.dueDate
+            record.interval = snapshot.interval
+            record.ease = snapshot.ease
+            record.repetitions = snapshot.repetitions
+            record.lapses = snapshot.lapses
+            record.lastReviewedAt = snapshot.lastReviewedAt
+            record.updatedAt = Date()
+        }
+    }
+
+    /// How many saved cards come due on the day after `currentDate`.
+    func dueCount(onDayAfter currentDate: Date = Date(), calendar: Calendar = .current) -> Int {
+        guard let tomorrow = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: currentDate)) else { return 0 }
+        guard let dayAfter = calendar.date(byAdding: .day, value: 1, to: tomorrow) else { return 0 }
+        return records.filter { record in
+            guard record.isSaved, let due = record.dueDate else { return false }
+            return due >= tomorrow && due < dayAfter
+        }.count
     }
 
     func dueReviews(currentDate: Date = Date(), calendar: Calendar = .current) -> [TranslationRecord] {

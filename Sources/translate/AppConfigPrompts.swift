@@ -168,14 +168,19 @@ extension AppConfig {
     Đi kèm thường gặp
     - <collocation nguyên gốc>: <nghĩa ngắn tiếng Việt>
 
+    Họ từ
+    - <dạng phái sinh>: <từ loại> - <nghĩa ngắn tiếng Việt>
+
     Dễ nhầm với
     - <từ gần nghĩa>: <khác nhau ở chỗ nào>
       → <câu ví dụ ngắn cho thấy khác biệt>
 
     Ví dụ
-    - Example sentence.
+    - [dễ] Example sentence.
       → Bản dịch tiếng Việt.
-    - Example sentence.
+    - [trung] Example sentence.
+      → Bản dịch tiếng Việt.
+    - [khó] Example sentence.
       → Bản dịch tiếng Việt.
 
     Nhớ nhanh
@@ -194,7 +199,11 @@ extension AppConfig {
     - Keep each meaning very short.
     - List 2-4 collocations that a B1-B2 learner would realistically use; prefer verb + noun, adjective + noun, and preposition pairings over rare ones.
     - "Dễ nhầm với" holds 1-2 near-synonyms that learners actually misuse. If the word has no such confusable, write: Dễ nhầm với: (không có)
+    - The "→" line under each "Dễ nhầm với" entry MUST be one short English sentence that uses the headword itself correctly, not the confusable word, so the contrast is anchored on the word being learned.
+    - "Họ từ" lists 2-4 real derived forms of the headword (noun, verb, adjective, adverb), each with its part of speech and a short Vietnamese meaning. Never repeat the headword itself, and never invent a form that does not exist. If the word has no derived family, write: Họ từ: (không có)
     - Examples must be natural and useful, and reflect the register named in "Mức dùng".
+    - Give exactly three examples, tagged "[dễ]", "[trung]", "[khó]", in that order, one per line.
+    - "[dễ]" uses only A1-A2 vocabulary in one simple clause. "[trung]" sits at B1-B2. "[khó]" shows a less obvious, figurative, or idiomatic use at B2-C1.
     - Each example sentence MUST start with "- " on its own line.
     - Each Vietnamese translation MUST be on the next line and start with "  → ".
     - Put exactly one blank line between sections.
@@ -210,6 +219,43 @@ extension AppConfig {
     - Source language hint: {{config.sourceLang}}. Target language hint: {{config.targetLang}}.
     """
 
+    /// Bumped whenever `defaultWeavePrompt` changes, so cached passages from the old wording
+    /// are ignored instead of served.
+    static let weavePromptVersion = "4"
+
+    static let defaultWeavePrompt = """
+    You write short spoken-{{config.sourceLang}} practice dialogues for a learner of {{config.sourceLang}} at B1-B2 level.
+    Weave every word in this list into one natural conversation: {{words}}
+
+    Return plain text only. No markdown. No intro. No commentary. No code fences.
+    Follow this format exactly:
+
+    Topic: <one short sentence in {{config.sourceLang}} naming the situation, at most 10 words>
+
+    <the dialogue in {{config.sourceLang}}>
+
+    <the same dialogue translated into {{config.targetLang}}>
+
+    How to make it sound like real speech:
+    - Read every line out loud in your head. If a person would never say it that way, rewrite it.
+    - Vary the turn length. Several turns are two to five words. A few are one full sentence. None run longer than two sentences.
+    - Use the small words talk is made of: yeah, well, oh, wait, I mean, actually, kind of, honestly. Use contractions everywhere.
+    - Let speakers interrupt, ask back, half agree, change their mind, react before answering.
+    - Two speakers labelled "A:" and "B:", 14-18 turns.
+
+    Hard rules:
+    - One everyday situation the learner really lives: two coworkers at lunch, two friends on the way home, a chat before a meeting starts. No lecture, no news report, no product review.
+    - At most one word from the list per turn, and several turns carry none at all. Never stack two listed words in one sentence.
+    - Every word from the list appears at least once. An inflected or derived form counts, and it must sit where a normal speaker would put it.
+    - Every other word stays at A2 level or below, so the listed words are the only hard part.
+    - No narration, no stage directions, no names, no descriptions of tone.
+    - Do not number, bold, or mark the target words in any way.
+    - Keep the "A:" and "B:" labels in the translation so the two versions line up turn by turn.
+    - The {{config.targetLang}} is spoken {{config.targetLang}}, written with every accent and diacritic it needs. Translate the feeling, not the grammar.
+    - The first line is the topic line and starts with "Topic:". It is not part of the dialogue and is never translated.
+    - Put exactly one blank line between the topic line, the dialogue, and its translation, and nothing else in the output.
+    """
+
     var hasOutOfSyncPrompts: Bool {
         SettingsWindowController.promptNeedsSync(current: systemPrompt, appDefault: Self.defaultSystemPrompt)
             || SettingsWindowController.promptNeedsSync(current: learnPrompt, appDefault: Self.defaultLearnPrompt)
@@ -217,6 +263,7 @@ extension AppConfig {
             || SettingsWindowController.promptNeedsSync(current: grammarPrompt, appDefault: Self.defaultGrammarPrompt)
             || SettingsWindowController.promptNeedsSync(current: imagePrompt, appDefault: Self.defaultImagePrompt)
             || SettingsWindowController.promptNeedsSync(current: qaPrompt, appDefault: Self.defaultQAPrompt)
+            || SettingsWindowController.promptNeedsSync(current: weavePrompt, appDefault: Self.defaultWeavePrompt)
     }
 
     mutating func syncAllPromptsWithDefaults() {
@@ -226,5 +273,6 @@ extension AppConfig {
         grammarPrompt = Self.defaultGrammarPrompt
         imagePrompt = Self.defaultImagePrompt
         qaPrompt = Self.defaultQAPrompt
+        weavePrompt = Self.defaultWeavePrompt
     }
 }

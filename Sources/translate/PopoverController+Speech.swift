@@ -5,9 +5,9 @@ import AVFoundation
 extension PopoverController {
     func updateSpeakButtons() {
         updateSpeechButton(speakSourceButton, identity: sourceSpeechIdentity(), baseLabel: "source", speed: 1.0, idleSymbol: "speaker.wave.2")
-        updateSpeechButton(speakSourceSlowButton, identity: sourceSpeechIdentity(), baseLabel: "source slowly", speed: 0.5, idleSymbol: "tortoise")
+        updateSpeechButton(speakSourceSlowButton, identity: sourceSpeechIdentity(), baseLabel: "source slowly", speed: config.speechSlowRate, idleSymbol: "tortoise")
         updateSpeechButton(speakResultButton, identity: resultSpeechIdentity(), baseLabel: "translation", speed: 1.0, idleSymbol: "speaker.wave.2")
-        updateSpeechButton(speakResultSlowButton, identity: resultSpeechIdentity(), baseLabel: "translation slowly", speed: 0.5, idleSymbol: "tortoise")
+        updateSpeechButton(speakResultSlowButton, identity: resultSpeechIdentity(), baseLabel: "translation slowly", speed: config.speechSlowRate, idleSymbol: "tortoise")
         if let section = subSection {
             updateSubSpeakButtons(section)
         }
@@ -19,9 +19,9 @@ extension PopoverController {
     /// Same play/loading/pause/resume presentation as the main pane, for the subtranslate pane.
     func updateSubSpeakButtons(_ section: SubtranslateSection) {
         updateSpeechButton(section.speakSourceButton, identity: subSpeechIdentity(kind: .source), baseLabel: "subtranslate source", speed: 1.0, idleSymbol: "speaker.wave.2")
-        updateSpeechButton(section.speakSourceSlowButton, identity: subSpeechIdentity(kind: .source), baseLabel: "subtranslate source slowly", speed: 0.5, idleSymbol: "tortoise")
+        updateSpeechButton(section.speakSourceSlowButton, identity: subSpeechIdentity(kind: .source), baseLabel: "subtranslate source slowly", speed: config.speechSlowRate, idleSymbol: "tortoise")
         updateSpeechButton(section.speakResultButton, identity: subSpeechIdentity(kind: .result), baseLabel: "subtranslate translation", speed: 1.0, idleSymbol: "speaker.wave.2")
-        updateSpeechButton(section.speakResultSlowButton, identity: subSpeechIdentity(kind: .result), baseLabel: "subtranslate translation slowly", speed: 0.5, idleSymbol: "tortoise")
+        updateSpeechButton(section.speakResultSlowButton, identity: subSpeechIdentity(kind: .result), baseLabel: "subtranslate translation slowly", speed: config.speechSlowRate, idleSymbol: "tortoise")
     }
 
     func updateSpeechButton(
@@ -368,7 +368,7 @@ extension PopoverController {
     }
 
     @objc func speakInput() { playSpeech(sourceSpeechIdentity(), speed: 1.0) }
-    @objc func speakInputSlow() { playSpeech(sourceSpeechIdentity(), speed: 0.5) }
+    @objc func speakInputSlow() { playSpeech(sourceSpeechIdentity(), speed: config.speechSlowRate) }
     @objc func speakResult() { playSpeech(resultSpeechIdentity(), speed: 1.0) }
-    @objc func speakResultSlow() { playSpeech(resultSpeechIdentity(), speed: 0.5) }
+    @objc func speakResultSlow() { playSpeech(resultSpeechIdentity(), speed: config.speechSlowRate) }
 }

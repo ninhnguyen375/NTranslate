@@ -12,3 +12,4 @@ config.json
 /.superpowers/
 /.cursor-runs/
 /.playwright-mcp/
+/Scripts/.vocab-work/

@@ -112,6 +112,10 @@ cp "$PLIST" "$APP_DST/Contents/Info.plist"
 if [ -f "$APP_ICON_DST" ]; then
   cp "$APP_ICON_DST" "$APP_DST/Contents/Resources/NTranslate.icns"
 fi
+# Pre-generated Learn cards for common words. Optional: without it, Learn just calls the API.
+if [ -f "$PROJECT_DIR/Resources/vocab-en-vi.json" ]; then
+  cp "$PROJECT_DIR/Resources/vocab-en-vi.json" "$APP_DST/Contents/Resources/vocab-en-vi.json"
+fi
 codesign --force --deep --options runtime --sign "$SIGN_IDENTITY" "$APP_DST"
 codesign -vv "$APP_DST"
 codesign -dv --verbose=4 "$APP_DST" 2>&1 | grep -E 'Identifier=|Authority=|TeamIdentifier=|flags=' || true

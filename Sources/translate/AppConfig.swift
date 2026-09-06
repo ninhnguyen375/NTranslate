@@ -106,6 +106,8 @@ struct AppConfig: Codable {
     var grammarPrompt: String
     var imagePrompt: String
     var qaPrompt: String
+    /// Instruction for the review window's reading passage, which weaves due words into prose.
+    var weavePrompt: String
     /// Where spoken audio comes from. `.native` uses macOS voices offline; `.api` posts to
     /// `apiSpeechURL`.
     enum SpeechProvider: String, Codable, CaseIterable {
@@ -124,6 +126,8 @@ struct AppConfig: Codable {
     var autoPrefetchSpeech: Bool
     /// Longest text still worth prefetching speech for, in characters.
     var speechPrefetchMaxLength: Int
+    /// Playback rate used by the "speak slowly" buttons.
+    var speechSlowRate: Float
     var theme: AppTheme
     /// Speech model per language name, e.g. ["English": "edge-tts/en-US-AvaMultilingualNeural"].
     var speechModels: [String: String]
@@ -177,9 +181,11 @@ struct AppConfig: Codable {
         grammarPrompt: defaultGrammarPrompt,
         imagePrompt: defaultImagePrompt,
         qaPrompt: defaultQAPrompt,
+        weavePrompt: defaultWeavePrompt,
         speechProvider: .api,
         autoPrefetchSpeech: true,
         speechPrefetchMaxLength: 300,
+        speechSlowRate: 0.4,
         theme: .system,
         speechModels: [
             "English": "edge-tts/en-US-AvaMultilingualNeural",
@@ -212,9 +218,11 @@ struct AppConfig: Codable {
         grammarPrompt: String,
         imagePrompt: String = defaultImagePrompt,
         qaPrompt: String = defaultQAPrompt,
+        weavePrompt: String = defaultWeavePrompt,
         speechProvider: SpeechProvider = .api,
         autoPrefetchSpeech: Bool,
         speechPrefetchMaxLength: Int = 300,
+        speechSlowRate: Float = 0.4,
         theme: AppTheme = .system,
         speechModels: [String: String],
         speechFallbackModel: String,
@@ -242,9 +250,11 @@ struct AppConfig: Codable {
         self.grammarPrompt = grammarPrompt
         self.imagePrompt = imagePrompt
         self.qaPrompt = qaPrompt
+        self.weavePrompt = weavePrompt
         self.speechProvider = speechProvider
         self.autoPrefetchSpeech = autoPrefetchSpeech
         self.speechPrefetchMaxLength = speechPrefetchMaxLength
+        self.speechSlowRate = speechSlowRate
         self.theme = theme
         self.speechModels = speechModels
         self.speechFallbackModel = speechFallbackModel
@@ -282,9 +292,11 @@ struct AppConfig: Codable {
         grammarPrompt = try container.decodeIfPresent(String.self, forKey: .grammarPrompt) ?? Self.defaultGrammarPrompt
         imagePrompt = try container.decodeIfPresent(String.self, forKey: .imagePrompt) ?? Self.defaultImagePrompt
         qaPrompt = try container.decodeIfPresent(String.self, forKey: .qaPrompt) ?? Self.defaultQAPrompt
+        weavePrompt = try container.decodeIfPresent(String.self, forKey: .weavePrompt) ?? Self.defaultWeavePrompt
         speechProvider = try container.decodeIfPresent(SpeechProvider.self, forKey: .speechProvider) ?? .api
         autoPrefetchSpeech = try container.decodeIfPresent(Bool.self, forKey: .autoPrefetchSpeech) ?? true
         speechPrefetchMaxLength = try container.decodeIfPresent(Int.self, forKey: .speechPrefetchMaxLength) ?? 300
+        speechSlowRate = min(max(try container.decodeIfPresent(Float.self, forKey: .speechSlowRate) ?? 0.4, 0.25), 1.0)
         theme = try container.decodeIfPresent(AppTheme.self, forKey: .theme) ?? .system
         historyDirectory = try container.decodeIfPresent(String.self, forKey: .historyDirectory)
         hotkey = try container.decode(Hotkey.self, forKey: .hotkey)

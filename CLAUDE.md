@@ -10,6 +10,8 @@
 - Khi đã chạy script, luôn báo user version/build từ output để user test.
 - Sau khi PR/feature/release đã merge thành công vào `main`, kiểm tra rồi xóa branch local/remote đã merge và worktree liên quan nếu sạch; không xóa branch chưa merge hoặc worktree có thay đổi chưa commit, chạy `git worktree prune`, và báo rõ mọi branch/worktree được giữ lại.
 - Không bao giờ xóa branch local/remote `windows-app` khi cleanup branch/worktree. Đây là nhánh phát triển app Windows độc lập, tồn tại lâu dài và không merge vào `main`.
+- Sinh tiếp gói từ vựng theo từng đợt bằng `./Scripts/vocab-daily.sh [số từ]` (mặc định 500). Script tự build generator khi nguồn đổi, chạy đợt mới rồi fold luôn `Resources/vocab-en-vi.json`; thẻ theo prompt cũ vẫn nằm trong gói cho tới ngày từ đó được sinh lại.
+- `learnPrompt` và `weavePrompt` nằm trong `config.json`, và app đang chạy sẽ ghi đè cả file config từ bộ nhớ khi pin popup. Sửa prompt trong config phải làm lúc app đã tắt, hoặc dùng mục sync prompt trong Settings sau khi cài bản mới.
 - Chạy bản debug bằng `./Scripts/run-dev.sh`, không chạy thẳng `.build/debug/translate`: script ký binary bằng cùng identity với app đã cài nên Keychain không hỏi lại password mỗi lần build.
 - Verify code bằng `swift build`. Không chạy `swift test`: target test dùng swift-testing (`import Testing`) mà toolchain hiện tại không cung cấp, luôn fail với `no such module 'Testing'`.
 - Khi sửa giá trị mặc định trong `AppConfig.default` (width, height, hotkey...), đồng thời cập nhật field tương ứng trong `~/Library/Application Support/NTranslate/config.json` trên máy user, vì config đã tồn tại sẽ giữ giá trị cũ và không tự nhận default mới.
@@ -28,6 +30,15 @@ swiftc -parse-as-library Scripts/double-click-selection-check.swift \
 
 swiftc -parse-as-library Scripts/tagged-response-check.swift \
   -o /tmp/tagged-response-check && /tmp/tagged-response-check
+
+swiftc -parse-as-library Sources/translate/VocabPack.swift Scripts/VocabWork.swift \
+  Scripts/vocab-pack-check.swift -o /tmp/vocab-pack-check && /tmp/vocab-pack-check
+
+swiftc -parse-as-library Sources/translate/LearnCard.swift Scripts/learn-card-check.swift \
+  -o /tmp/learn-card-check && /tmp/learn-card-check
+
+swiftc -parse-as-library Sources/translate/LearnCard.swift Sources/translate/ReviewPlanner.swift \
+  Scripts/review-planner-check.swift -o /tmp/review-planner-check && /tmp/review-planner-check
 ```
 
 - `double-click-selection-check` bắn chuột tổng hợp qua `CGEvent`, nên terminal đang chạy phải có quyền Accessibility. Check này fail cả khi bản có fix mất selection lẫn khi bản không fix bỗng chạy đúng (tức check hết tái hiện được bug).

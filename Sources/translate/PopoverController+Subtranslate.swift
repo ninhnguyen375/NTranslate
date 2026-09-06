@@ -314,6 +314,24 @@ extension PopoverController {
             finishSubRequest(generation: generation, text: text, mode: mode, pair: (displaySource, pair.target), result: .success(record.resultText), existingRecord: record)
             return
         }
+        if !bypassCache, mode == .learn, Translator.isDictionaryTerm(text) {
+            let parent = inputTextView.string.trimmingCharacters(in: .whitespacesAndNewlines)
+            // Sub-learn normally explains a word inside its sentence. The pack was generated
+            // without any context, so it may only answer when there is no parent sentence.
+            if parent.isEmpty || parent == text,
+               let packed = VocabPack.shared.lookup(
+                   text,
+                   sourceLanguage: displaySource,
+                   targetLanguage: pair.target,
+                   sourceIsAutoDetect: selectedSourceLanguage() == LanguageDetector.autoDetect
+               ) {
+                finishSubRequest(
+                    generation: generation, text: text, mode: mode,
+                    pair: (displaySource, pair.target), result: .success(packed), existingRecord: nil
+                )
+                return
+            }
+        }
 
         let handler: @Sendable (Result<String, Error>) -> Void = { [weak self] result in
             Task { @MainActor in
@@ -459,9 +477,9 @@ extension PopoverController {
     }
 
     @objc func speakSubSource() { playSpeech(subSpeechIdentity(kind: .source), speed: 1.0) }
-    @objc func speakSubSourceSlow() { playSpeech(subSpeechIdentity(kind: .source), speed: 0.5) }
+    @objc func speakSubSourceSlow() { playSpeech(subSpeechIdentity(kind: .source), speed: config.speechSlowRate) }
     @objc func speakSubResult() { playSpeech(subSpeechIdentity(kind: .result), speed: 1.0) }
-    @objc func speakSubResultSlow() { playSpeech(subSpeechIdentity(kind: .result), speed: 0.5) }
+    @objc func speakSubResultSlow() { playSpeech(subSpeechIdentity(kind: .result), speed: config.speechSlowRate) }
 
     @objc func copySubResult() {
         guard let section = subSection, PopoverFeedback.isCopyableResult(section.resultText) else { return }

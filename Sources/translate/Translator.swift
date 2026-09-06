@@ -76,6 +76,7 @@ final class Translator: @unchecked Sendable {
         case proofread(lang: String)
         case ask(question: String, sourceText: String, translatedText: String, sourceLang: String, targetLang: String, history: [QATurn], parentContext: String?)
         case imageSearch
+        case weave(words: [String], sourceLang: String, targetLang: String)
     }
 
     init(config: AppConfig, apiKey: String, speechAPIKey: String = "") {
@@ -244,6 +245,11 @@ final class Translator: @unchecked Sendable {
                 + Self.parentContextBlock(parentContext)
         case .imageSearch:
             systemPrompt = Self.imageSearchPrompt
+        case let .weave(words, sourceLang, targetLang):
+            systemPrompt = config.weavePrompt
+                .replacingOccurrences(of: "{{words}}", with: words.joined(separator: ", "))
+                .replacingOccurrences(of: "{{config.sourceLang}}", with: sourceLang)
+                .replacingOccurrences(of: "{{config.targetLang}}", with: targetLang)
         case let .ask(_, sourceText, translatedText, sourceLang, targetLang, history, parentContext):
             systemPrompt = renderQAPrompt(
                 sourceText: sourceText,
@@ -635,6 +641,49 @@ final class Translator: @unchecked Sendable {
             onPartial: onPartial,
             completion: completion
         )
+    }
+
+    /// One short reading passage containing every supplied word. The list is capped because a
+    /// long one produces a passage that reads like a word dump rather than a scene.
+    static let weaveWordLimit = 12
+
+    @discardableResult
+    func weave(
+        _ words: [String],
+        sourceLang: String,
+        targetLang: String,
+        onPartial: (@Sendable (String) -> Void)? = nil,
+        completion: @escaping @Sendable (Result<String, Error>) -> Void
+    ) -> RequestHandle {
+        let cleaned = Self.weaveWords(words)
+        guard !cleaned.isEmpty else {
+            completion(.failure(NSError(
+                domain: "Weave",
+                code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "No words to build a passage from."]
+            )))
+            return RequestHandle()
+        }
+        return request(
+            cleaned.joined(separator: ", "),
+            mode: .weave(words: cleaned, sourceLang: sourceLang, targetLang: targetLang),
+            onPartial: onPartial,
+            completion: completion
+        )
+    }
+
+    /// Trims, drops blanks and duplicates, and caps the list. Case-insensitive duplicates matter:
+    /// the same word saved twice would otherwise eat two slots in the passage.
+    static func weaveWords(_ words: [String]) -> [String] {
+        var seen = Set<String>()
+        var result: [String] = []
+        for word in words {
+            let trimmed = word.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty, seen.insert(trimmed.lowercased()).inserted else { continue }
+            result.append(trimmed)
+            if result.count == weaveWordLimit { break }
+        }
+        return result
     }
 
     @discardableResult

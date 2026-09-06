@@ -30,6 +30,33 @@ extension PopoverController {
             finishRequest(generation: generation)
             return
         }
+        if !bypassCache,
+           Translator.isDictionaryTerm(text),
+           let packed = VocabPack.shared.lookup(
+               text,
+               sourceLanguage: pair.source,
+               targetLanguage: pair.target,
+               sourceIsAutoDetect: sourceWasAutoDetect
+           ) {
+            // Materialize the pack hit into history before showing it: the reused-record path
+            // assigns `currentRecordID`, and Save Word plus stored audio both resolve that ID
+            // against the store. A pack entry that never lands there would break both.
+            let record = TranslationRecord(
+                id: UUID(), timestamp: Date(), mode: .learn, sourceText: text, resultText: packed,
+                sourceLanguage: effectiveSourceLanguage(for: text), targetLanguage: pair.target,
+                isSaved: false
+            )
+            do {
+                let stored = try historyStore.appendIfAbsent(record)
+                historyWindowController.reloadHistory()
+                applyReusableRecord(stored, mode: .learn, generation: generation)
+                finishRequest(generation: generation)
+                return
+            } catch {
+                // History refused the record, so fall through and let the model answer as usual.
+                setStatus("History failed: \(error.localizedDescription)", autoClearAfter: 12)
+            }
+        }
         setResultText(PopoverFeedback.learning)
         reflowLayout()
         // The source is known now, so its speech fetches alongside the model call.

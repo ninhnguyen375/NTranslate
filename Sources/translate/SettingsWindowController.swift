@@ -94,6 +94,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
     private let grammarPromptView = NSTextView()
     private let imagePromptView = NSTextView()
     private let qaPromptView = NSTextView()
+    private let weavePromptView = NSTextView()
 
     /// Each editable prompt paired with the default this build ships, so the Prompts tab can offer
     /// "Sync with app prompt" when an update changes a default the user never customized.
@@ -102,6 +103,10 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
 
     let languagesTable = NSTableView()
     let targetLanguagesTable = NSTableView()
+
+    private let speechSlowRatePopup = NSPopUpButton()
+    /// Rates offered by the "Slow speed" popup, matching the tortoise buttons.
+    private static let speechSlowRates: [Float] = [0.25, 0.3, 0.4, 0.5, 0.6, 0.75]
 
     private let autoPrefetchSpeechCheckbox = NSButton(
         checkboxWithTitle: "Prefetch speech automatically",
@@ -198,7 +203,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         heightField.formatter = integerFormatter(minimum: 1)
         [hotkeyFields, copyTranslateHotkeyFields, learnHotkeyFields, proofreadHotkeyFields, ocrHotkeyFields].forEach { $0.configure() }
 
-        [systemPromptView, learnPromptView, sentenceLearnPromptView, grammarPromptView, imagePromptView, qaPromptView].forEach {
+        [systemPromptView, learnPromptView, sentenceLearnPromptView, grammarPromptView, imagePromptView, qaPromptView, weavePromptView].forEach {
             $0.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
             $0.isRichText = false
             $0.isAutomaticQuoteSubstitutionEnabled = false
@@ -281,7 +286,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
             SettingsSidebarItem(
                 title: "Speech",
                 symbolName: "speaker.wave.2",
-                keywords: ["Speech Provider", "Speech URL", "Speech API Key", "Fallback Model", "Prefetch speech"],
+                keywords: ["Speech Provider", "Speech URL", "Speech API Key", "Fallback Model", "Slow speed", "Prefetch speech"],
                 contentView: makeSpeechView()
             ),
             SettingsSidebarItem(
@@ -368,6 +373,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
             promptSection("Grammar Prompt", grammarPromptView, appDefault: AppConfig.defaultGrammarPrompt, variables: "{{lang}}, {{config.nativeLang}}"),
             promptSection("Image Prompt", imagePromptView, appDefault: AppConfig.defaultImagePrompt, variables: "{{config.targetLang}}, {{config.alternateLang}}, {{config.sourceLang}}, {{config.nativeLang}}"),
             promptSection("Q&A Prompt", qaPromptView, appDefault: AppConfig.defaultQAPrompt, variables: "{{sourceText}}, {{translatedText}}, {{config.sourceLang}}, {{config.targetLang}}"),
+            promptSection("Reading Passage Prompt", weavePromptView, appDefault: AppConfig.defaultWeavePrompt, variables: "{{words}}, {{config.sourceLang}}, {{config.targetLang}}"),
         ]
         let stack = NSStackView(views: sections)
         stack.orientation = .vertical
@@ -465,6 +471,9 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         let speechURLRow = addFormRow(grid, "Speech URL", apiSpeechURLField)
         let speechAPIKeyRow = addFormRow(grid, "Speech API Key", speechAPIKeyField)
         let speechFallbackModelRow = addFormRow(grid, "Fallback Model", speechFallbackModelField)
+        speechSlowRatePopup.removeAllItems()
+        Self.speechSlowRates.forEach { speechSlowRatePopup.addItem(withTitle: String(format: "%.2gx", $0)) }
+        addFormRow(grid, "Slow speed", speechSlowRatePopup)
         addFormRow(grid, "Prefetch speech", autoPrefetchSpeechCheckbox)
         speechAPIRows = [speechURLRow, speechAPIKeyRow, speechFallbackModelRow]
         return wrapFormGrid(grid)
@@ -690,7 +699,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
     }
 
     private func promptView(for key: ObjectIdentifier) -> NSTextView? {
-        [systemPromptView, learnPromptView, sentenceLearnPromptView, grammarPromptView, imagePromptView, qaPromptView]
+        [systemPromptView, learnPromptView, sentenceLearnPromptView, grammarPromptView, imagePromptView, qaPromptView, weavePromptView]
             .first { ObjectIdentifier($0) == key }
     }
 
@@ -728,7 +737,10 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         grammarPromptView.string = config.grammarPrompt
         imagePromptView.string = config.imagePrompt
         qaPromptView.string = config.qaPrompt
+        weavePromptView.string = config.weavePrompt
         refreshPromptSyncButtons()
+        let slowIndex = Self.speechSlowRates.firstIndex(of: config.speechSlowRate) ?? Self.speechSlowRates.firstIndex(of: 0.4) ?? 0
+        speechSlowRatePopup.selectItem(at: slowIndex)
         autoPrefetchSpeechCheckbox.state = config.autoPrefetchSpeech ? .on : .off
         speechModelFields.removeAll()
         rebuildSpeechModelRows()
@@ -868,6 +880,9 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         config.grammarPrompt = grammarPromptView.string
         config.imagePrompt = imagePromptView.string
         config.qaPrompt = qaPromptView.string
+        config.weavePrompt = weavePromptView.string
+        let slowRateIndex = speechSlowRatePopup.indexOfSelectedItem
+        config.speechSlowRate = Self.speechSlowRates.indices.contains(slowRateIndex) ? Self.speechSlowRates[slowRateIndex] : 0.4
         config.autoPrefetchSpeech = autoPrefetchSpeechCheckbox.state == .on
         config.speechModels = speechModelFields.reduce(into: [:]) { result, entry in
             let value = entry.value.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)

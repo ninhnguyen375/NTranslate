@@ -24,6 +24,12 @@ enum SpeechButtonAction: Equatable, Sendable {
     case loading
     case pause
     case resume
+
+    /// A button only shows loading/pause/resume when the audio running is its own speed; otherwise
+    /// it offers to start playback at that speed.
+    func applies(whenSlow buttonIsSlow: Bool, activeIsSlow: Bool) -> SpeechButtonAction {
+        buttonIsSlow == activeIsSlow ? self : .play
+    }
 }
 
 struct SpeechPlaybackState: Equatable, Sendable {
