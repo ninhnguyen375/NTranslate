@@ -84,7 +84,7 @@ final class ReviewHomeView: NSView {
             cell.toolTip = index < week.count ? "\(week[index]) thẻ" : nil
         }
         let total = week.reduce(0, +)
-        heatCaption.stringValue = "7 ngày gần nhất · \(total) thẻ · mai có \(stats.dueTomorrow) thẻ"
+        heatCaption.stringValue = "7 ngày gần nhất: \(total) thẻ · ngày mai: \(stats.dueTomorrow) thẻ"
 
         emptyLabel.isHidden = hasSavedCards
         emptyLabel.stringValue = "Chưa có thẻ nào được lưu. Bấm Học từ mới để lấy thẻ từ kho có sẵn, hoặc lưu từ trong popup dịch."
@@ -148,12 +148,18 @@ final class ReviewHomeView: NSView {
         heatCaption.font = .systemFont(ofSize: 11)
         heatCaption.textColor = .tertiaryLabelColor
 
-        let streakRow = NSStackView(views: [streakLabel, streakCaption, heatRow, heatCaption])
+        let streakRow = NSStackView(views: [streakLabel, streakCaption, heatRow])
         streakRow.orientation = .horizontal
         streakRow.spacing = 8
         streakRow.alignment = .centerY
 
-        let statsColumn = NSStackView(views: [legendStack, streakRow])
+        // The caption is a full sentence; on the same line as the strip it gets truncated.
+        let streakColumn = NSStackView(views: [streakRow, heatCaption])
+        streakColumn.orientation = .vertical
+        streakColumn.spacing = 4
+        streakColumn.alignment = .leading
+
+        let statsColumn = NSStackView(views: [legendStack, streakColumn])
         statsColumn.orientation = .vertical
         statsColumn.spacing = 12
         statsColumn.alignment = .leading
@@ -215,9 +221,17 @@ final class ReviewHomeView: NSView {
         primaryRow.orientation = .horizontal
         primaryRow.spacing = 10
 
-        let secondaryRow = NSStackView(views: [readingButton, passagesButton, practiceButton, shuffleButton])
-        secondaryRow.orientation = .horizontal
-        secondaryRow.spacing = 8
+        // Four buttons on one line overflow the window; two rows of two keep every label on one line.
+        let readingRow = NSStackView(views: [readingButton, passagesButton])
+        readingRow.orientation = .horizontal
+        readingRow.spacing = 8
+        let practiceRow = NSStackView(views: [practiceButton, shuffleButton])
+        practiceRow.orientation = .horizontal
+        practiceRow.spacing = 8
+        let secondaryRow = NSStackView(views: [readingRow, practiceRow])
+        secondaryRow.orientation = .vertical
+        secondaryRow.spacing = 6
+        secondaryRow.alignment = .centerX
 
         let stack = NSStackView(views: [
             hero,

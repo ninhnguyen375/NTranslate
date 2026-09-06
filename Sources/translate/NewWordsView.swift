@@ -127,6 +127,9 @@ final class NewWordsView: NSView {
         detailScroll.layer?.cornerRadius = 10
         detailScroll.translatesAutoresizingMaskIntoConstraints = false
 
+        // Added straight to the view rather than to a stack, so it has to opt into Auto Layout
+        // itself; without this its constraints break and it lands in the bottom-left corner.
+        emptyLabel.translatesAutoresizingMaskIntoConstraints = false
         emptyLabel.font = .systemFont(ofSize: 13)
         emptyLabel.textColor = .secondaryLabelColor
         emptyLabel.alignment = .center

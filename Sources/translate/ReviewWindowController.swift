@@ -94,12 +94,12 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
         self.translator = translator
         self.config = config
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 620, height: 560),
+            contentRect: NSRect(x: 0, y: 0, width: 620, height: 640),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false
         )
-        window.minSize = NSSize(width: 560, height: 460)
+        window.minSize = NSSize(width: 620, height: 640)
         window.isReleasedWhenClosed = false
         window.title = "Study"
         window.setFrameAutosaveName("ReviewSRSWindow")
@@ -166,7 +166,13 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
             ])
         }
 
+        // Every screen lives inside a scroll view, so the content's fitting size is almost zero and
+        // AppKit's constraint-based layout happily shrinks the window to the titlebar. `minSize`
+        // only guards a user drag, not that path, so the floor has to be a constraint too, and it
+        // is set to the window's designed size: the mode grid alone needs about 590 points.
         NSLayoutConstraint.activate([
+            cardView.widthAnchor.constraint(greaterThanOrEqualToConstant: 588),
+            cardView.heightAnchor.constraint(greaterThanOrEqualToConstant: 608),
             cardView.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 16),
             cardView.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -16),
             cardView.topAnchor.constraint(equalTo: content.topAnchor, constant: 16),
