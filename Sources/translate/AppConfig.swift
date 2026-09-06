@@ -65,16 +65,37 @@ struct AppConfig: Codable {
         }
     }
 
-    struct LearningSettings: Codable {
+    struct LearningSettings: Codable, Equatable {
         var dailyReviewLimit: Int
+        /// What the review home was left on. All three are nil-able because nil is a real choice:
+        /// no cap, Auto question kind, no bucket filter.
+        var reviewSessionLimit: Int?
+        var reviewQuestionKind: String?
+        var reviewFilter: String?
+        /// Last CEFR level browsed on the new-words screen; nil means every level.
+        var newWordsLevel: String?
 
-        init(dailyReviewLimit: Int = 12) {
+        init(
+            dailyReviewLimit: Int = 12,
+            reviewSessionLimit: Int? = 20,
+            reviewQuestionKind: String? = nil,
+            reviewFilter: String? = nil,
+            newWordsLevel: String? = nil
+        ) {
             self.dailyReviewLimit = max(1, dailyReviewLimit)
+            self.reviewSessionLimit = reviewSessionLimit
+            self.reviewQuestionKind = reviewQuestionKind
+            self.reviewFilter = reviewFilter
+            self.newWordsLevel = newWordsLevel
         }
 
         private enum CodingKeys: String, CodingKey {
             case dailyReviewLimit
             case dailyNewWordLimit // legacy key kept so existing config.json values survive
+            case reviewSessionLimit
+            case reviewQuestionKind
+            case reviewFilter
+            case newWordsLevel
         }
 
         init(from decoder: Decoder) throws {
@@ -83,11 +104,19 @@ struct AppConfig: Codable {
                 ?? container.decodeIfPresent(Int.self, forKey: .dailyNewWordLimit)
                 ?? 12
             dailyReviewLimit = max(1, stored)
+            reviewSessionLimit = try container.decodeIfPresent(Int.self, forKey: .reviewSessionLimit)
+            reviewQuestionKind = try container.decodeIfPresent(String.self, forKey: .reviewQuestionKind)
+            reviewFilter = try container.decodeIfPresent(String.self, forKey: .reviewFilter)
+            newWordsLevel = try container.decodeIfPresent(String.self, forKey: .newWordsLevel)
         }
 
         func encode(to encoder: Encoder) throws {
             var container = encoder.container(keyedBy: CodingKeys.self)
             try container.encode(dailyReviewLimit, forKey: .dailyReviewLimit)
+            try container.encodeIfPresent(reviewSessionLimit, forKey: .reviewSessionLimit)
+            try container.encodeIfPresent(reviewQuestionKind, forKey: .reviewQuestionKind)
+            try container.encodeIfPresent(reviewFilter, forKey: .reviewFilter)
+            try container.encodeIfPresent(newWordsLevel, forKey: .newWordsLevel)
         }
     }
 

@@ -28,6 +28,7 @@ final class VocabPack {
     private var sourceLanguage = ""
     private var targetLanguage = ""
     private var index: [String: String] = [:]
+    private var entries: [VocabPackEntry] = []
 
     /// Lowercased, whitespace-collapsed form used as the lookup key on both sides.
     nonisolated static func normalize(_ text: String) -> String {
@@ -89,6 +90,7 @@ final class VocabPack {
                 sourceLanguage = file.sourceLanguage
                 targetLanguage = file.targetLanguage
                 index = Self.buildIndex(file)
+                entries = file.entries
                 return
             } catch {
                 // A corrupt pack must never break Learn: fall through and let the API answer.
@@ -127,5 +129,11 @@ final class VocabPack {
     var isEmpty: Bool {
         loadIfNeeded()
         return index.isEmpty
+    }
+
+    /// Every entry in pack order, for screens that browse the pack instead of looking one word up.
+    func allEntries() -> [VocabPackEntry] {
+        loadIfNeeded()
+        return entries
     }
 }

@@ -5,9 +5,16 @@ import Carbon.HIToolbox
 
 extension PopoverController {
     func buildMenu() {
-        let appMenu = NSMenu()
+        let appMenu = NSMenu(title: "NTranslate")
+        appMenu.addItem(withTitle: "About NTranslate", action: #selector(showAboutPanel), keyEquivalent: "")
+        appMenu.addItem(NSMenuItem.separator())
+        appMenu.addItem(withTitle: "Settings…", action: #selector(openSettingsMenu), keyEquivalent: ",")
+        appMenu.addItem(withTitle: "Check for Updates…", action: #selector(checkForUpdatesClicked), keyEquivalent: "")
+        appMenu.addItem(NSMenuItem.separator())
         appMenu.addItem(withTitle: "Quit NTranslate", action: #selector(quitApp), keyEquivalent: "q")
         appMenu.items.forEach { $0.target = self }
+        // Hide walks the responder chain to NSApp, so it must not be retargeted at the controller.
+        appMenu.addItem(withTitle: "Hide NTranslate", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
 
         let editMenu = NSMenu(title: "Edit")
         editMenu.addItem(withTitle: "Undo", action: Selector(("undo:")), keyEquivalent: "z")
@@ -27,12 +34,26 @@ extension PopoverController {
         editItem.submenu = editMenu
         mainMenu.addItem(editItem)
 
+        let studyItem = NSMenuItem()
+        studyItem.submenu = buildStudyMenu()
+        mainMenu.addItem(studyItem)
+
         let windowMenu = NSMenu(title: "Window")
         windowMenu.addItem(withTitle: "Close", action: #selector(closePanelMenu), keyEquivalent: "w")
         windowMenu.items.forEach { $0.target = self }
+        windowMenu.addItem(withTitle: "Minimize", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
+        windowMenu.addItem(withTitle: "Zoom", action: #selector(NSWindow.performZoom(_:)), keyEquivalent: "")
         let windowItem = NSMenuItem()
         windowItem.submenu = windowMenu
         mainMenu.addItem(windowItem)
+
+        let helpMenu = NSMenu(title: "Help")
+        let shortcutsItem = NSMenuItem(title: "Keyboard Shortcuts", action: #selector(showKeyboardShortcuts), keyEquivalent: "?")
+        shortcutsItem.target = self
+        helpMenu.addItem(shortcutsItem)
+        let helpItem = NSMenuItem()
+        helpItem.submenu = helpMenu
+        mainMenu.addItem(helpItem)
         NSApp.mainMenu = mainMenu
 
         let statusMenu = NSMenu()
@@ -215,7 +236,32 @@ extension PopoverController {
     @objc func openReviewWindow() {
         reviewWindowController.translator = translator
         reviewWindowController.config = config
+        reviewWindowController.onLearningSettingsChanged = { [weak self] learning in
+            self?.applyLearningSettings(learning)
+        }
+        reviewWindowController.onWindowClosed = { [weak self] in
+            self?.demoteAfterStudyWindow()
+        }
         reviewWindowController.showReview()
+        promoteForStudyWindow()
+    }
+
+    /// The Study window is the only screen that changes these, and it changes them one click at a
+    /// time, so the whole config is written back the same way Settings does it.
+    func applyLearningSettings(_ learning: AppConfig.LearningSettings) {
+        guard config.learning != learning else { return }
+        config.learning = learning
+        do {
+            try saveSettings(config: config, apiKey: apiKey, speechAPIKey: speechAPIKey)
+        } catch {
+            NSLog("[NTranslate] Failed to save learning settings: \(error.localizedDescription)")
+        }
+    }
+
+    @objc func showAboutPanel() {
+        NSApp.orderFrontStandardAboutPanel(options: [
+            .applicationVersion: Self.appVersionString()
+        ])
     }
 
     @objc func showLearningStats() {

@@ -39,6 +39,13 @@ swiftc -parse-as-library Sources/translate/LearnCard.swift Scripts/learn-card-ch
 
 swiftc -parse-as-library Sources/translate/LearnCard.swift Sources/translate/ReviewPlanner.swift \
   Scripts/review-planner-check.swift -o /tmp/review-planner-check && /tmp/review-planner-check
+
+swiftc -parse-as-library Sources/translate/TranslationHistoryStore.swift Sources/translate/ReviewPlanner.swift \
+  Sources/translate/LearnCard.swift Sources/translate/DeckStats.swift Scripts/deck-stats-check.swift \
+  -o /tmp/deck-stats-check && /tmp/deck-stats-check
+
+swiftc -parse-as-library Sources/translate/VocabPack.swift Sources/translate/VocabDiscovery.swift \
+  Scripts/vocab-discovery-check.swift -o /tmp/vocab-discovery-check && /tmp/vocab-discovery-check
 ```
 
 - `double-click-selection-check` bắn chuột tổng hợp qua `CGEvent`, nên terminal đang chạy phải có quyền Accessibility. Check này fail cả khi bản có fix mất selection lẫn khi bản không fix bỗng chạy đúng (tức check hết tái hiện được bug).
