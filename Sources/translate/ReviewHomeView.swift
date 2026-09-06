@@ -29,7 +29,7 @@ final class ReviewHomeView: NSView {
     private let heatRow = NSStackView()
     private let heatCaption = NSTextField(labelWithString: "")
     private let limitRow = NSStackView()
-    private let modeGrid = NSGridView(numberOfColumns: 3, rows: 2)
+    private let modeGrid = NSStackView()
     private let startButton = NSButton()
     private let newWordsButton = NSButton()
     private let readingButton = NSButton()
@@ -45,6 +45,8 @@ final class ReviewHomeView: NSView {
     private var stats = DeckStats()
 
     private static let limits: [Int?] = [10, 20, nil]
+    /// Every section lines up on this width: 3 mode columns + 2 gaps.
+    private static let contentWidth: CGFloat = 526
 
     init(limit: Int?, kind: ReviewPlanner.QuestionKind?, bucket: DeckStats.Bucket?) {
         sessionLimit = limit
@@ -97,7 +99,7 @@ final class ReviewHomeView: NSView {
         readingButton.title = missedCount == 0 ? "  Reading Passage" : "  Reading Passage (\(missedCount))"
 
         let count = plannedCount()
-        startButton.title = count > 0 ? "  Start Review (\(count))" : "  Review Anyway"
+        setStartTitle(count > 0 ? "  Start Review (\(count))" : "  Review Anyway")
         hintLabel.stringValue = selectionHint()
     }
 
@@ -164,17 +166,28 @@ final class ReviewHomeView: NSView {
         statsColumn.spacing = 12
         statsColumn.alignment = .leading
 
-        let hero = NSStackView(views: [ring, statsColumn])
-        hero.orientation = .horizontal
-        hero.spacing = 22
-        hero.alignment = .centerY
-        hero.edgeInsets = NSEdgeInsets(top: 14, left: 16, bottom: 14, right: 16)
+        let heroContent = NSStackView(views: [ring, statsColumn])
+        heroContent.orientation = .horizontal
+        heroContent.spacing = 22
+        heroContent.alignment = .centerY
+        heroContent.translatesAutoresizingMaskIntoConstraints = false
+
+        let hero = NSView()
+        hero.translatesAutoresizingMaskIntoConstraints = false
         hero.wantsLayer = true
         hero.layer?.cornerRadius = 12
         hero.layer?.backgroundColor = NSColor.quaternaryLabelColor.withAlphaComponent(0.12).cgColor
+        hero.addSubview(heroContent)
+        NSLayoutConstraint.activate([
+            heroContent.leadingAnchor.constraint(equalTo: hero.leadingAnchor, constant: 18),
+            heroContent.trailingAnchor.constraint(equalTo: hero.trailingAnchor, constant: -18),
+            heroContent.topAnchor.constraint(equalTo: hero.topAnchor, constant: 18),
+            heroContent.bottomAnchor.constraint(equalTo: hero.bottomAnchor, constant: -18)
+        ])
 
         limitRow.orientation = .horizontal
         limitRow.spacing = 8
+        limitRow.distribution = .fillEqually
         for limit in Self.limits {
             let tile = ReviewTile(title: limit.map { "\($0) thẻ" } ?? "Tất cả", detail: nil, compact: true)
             tile.isSelected = limit == sessionLimit
@@ -183,8 +196,6 @@ final class ReviewHomeView: NSView {
             limitRow.addArrangedSubview(tile)
         }
 
-        modeGrid.rowSpacing = 8
-        modeGrid.columnSpacing = 8
         var tiles: [ReviewTile] = []
         for option in Self.modeOptions {
             let tile = ReviewTile(title: option.title, detail: option.detail, compact: false)
@@ -193,13 +204,24 @@ final class ReviewHomeView: NSView {
             tiles.append(tile)
         }
         modeTiles = tiles
+        // NSGridView hugs vertically too weakly and swallowed the window's spare height,
+        // so the rows are plain stacks that keep their intrinsic height.
+        modeGrid.orientation = .vertical
+        modeGrid.spacing = 8
+        modeGrid.distribution = .fillEqually
         for row in 0..<2 {
             let slice = Array(tiles[(row * 3)..<min(tiles.count, row * 3 + 3)])
-            modeGrid.addRow(with: slice)
+            let rowStack = NSStackView(views: slice)
+            rowStack.orientation = .horizontal
+            rowStack.spacing = 8
+            rowStack.distribution = .fillEqually
+            modeGrid.addArrangedSubview(rowStack)
+            rowStack.widthAnchor.constraint(equalTo: modeGrid.widthAnchor).isActive = true
         }
-        modeGrid.column(at: 0).width = 170
-        modeGrid.column(at: 1).width = 170
-        modeGrid.column(at: 2).width = 170
+        // One tile with two lines of detail must not make its row taller than the other.
+        for tile in tiles.dropFirst() {
+            tile.heightAnchor.constraint(equalTo: tiles[0].heightAnchor).isActive = true
+        }
 
         ReviewControls.actionButton(startButton, title: "Start Review", symbol: "play.fill", target: self, action: #selector(tapStart))
         ReviewControls.actionButton(newWordsButton, title: "Học từ mới", symbol: "sparkles", target: self, action: #selector(tapNewWords))
@@ -207,7 +229,30 @@ final class ReviewHomeView: NSView {
         ReviewControls.actionButton(passagesButton, title: "Saved Passages", symbol: "list.bullet.rectangle", target: self, action: #selector(tapPassages))
         ReviewControls.actionButton(practiceButton, title: "Review All", symbol: "arrow.clockwise", target: self, action: #selector(tapPractice))
         ReviewControls.actionButton(shuffleButton, title: "Review All (Shuffled)", symbol: "shuffle", target: self, action: #selector(tapShuffle))
-        startButton.controlSize = .large
+
+        // One accented primary, the rest tinted by role so the block is scannable.
+        let tints: [(NSButton, NSColor)] = [
+            (newWordsButton, .systemGreen),
+            (readingButton, .systemPurple),
+            (passagesButton, .systemTeal),
+            (practiceButton, .systemOrange),
+            (shuffleButton, .systemPink)
+        ]
+        for (button, color) in tints { button.contentTintColor = color }
+        startButton.bezelColor = .controlAccentColor
+        startButton.contentTintColor = .white
+        // The glass bezel ignores contentTintColor for the symbol, so paint it into the image.
+        startButton.image = startButton.image?.withSymbolConfiguration(
+            NSImage.SymbolConfiguration(paletteColors: [.white])
+        )
+        startButton.keyEquivalent = "\r"
+        for button in [startButton, newWordsButton, readingButton, passagesButton, practiceButton, shuffleButton] {
+            button.controlSize = .large
+            button.font = .systemFont(ofSize: 14, weight: .semibold)
+            button.translatesAutoresizingMaskIntoConstraints = false
+            button.heightAnchor.constraint(equalToConstant: 54).isActive = true
+        }
+        setStartTitle(startButton.title)
 
         emptyLabel.font = .systemFont(ofSize: 13)
         emptyLabel.textColor = .secondaryLabelColor
@@ -217,36 +262,43 @@ final class ReviewHomeView: NSView {
         hintLabel.font = .systemFont(ofSize: 11)
         hintLabel.textColor = .tertiaryLabelColor
 
-        let primaryRow = NSStackView(views: [startButton, newWordsButton])
-        primaryRow.orientation = .horizontal
-        primaryRow.spacing = 10
-
         // Four buttons on one line overflow the window; two rows of two keep every label on one line.
-        let readingRow = NSStackView(views: [readingButton, passagesButton])
-        readingRow.orientation = .horizontal
-        readingRow.spacing = 8
-        let practiceRow = NSStackView(views: [practiceButton, shuffleButton])
-        practiceRow.orientation = .horizontal
-        practiceRow.spacing = 8
-        let secondaryRow = NSStackView(views: [readingRow, practiceRow])
-        secondaryRow.orientation = .vertical
-        secondaryRow.spacing = 6
-        secondaryRow.alignment = .centerX
+        let buttonRows = [
+            NSStackView(views: [startButton, newWordsButton]),
+            NSStackView(views: [readingButton, passagesButton]),
+            NSStackView(views: [practiceButton, shuffleButton])
+        ]
+        for row in buttonRows {
+            row.orientation = .horizontal
+            row.spacing = 10
+            row.distribution = .fillEqually
+        }
 
+        let limitHeader = Self.sectionHeader("Mục tiêu phiên")
+        let modeHeader = Self.sectionHeader("Kiểu hỏi")
         let stack = NSStackView(views: [
             hero,
             emptyLabel,
-            Self.sectionHeader("Mục tiêu phiên"),
+            limitHeader,
             limitRow,
-            Self.sectionHeader("Kiểu hỏi"),
+            modeHeader,
             modeGrid,
-            hintLabel,
-            primaryRow,
-            secondaryRow
-        ])
+            hintLabel
+        ] + buttonRows)
         stack.orientation = .vertical
-        stack.spacing = 10
-        stack.alignment = .centerX
+        stack.spacing = 8
+        stack.alignment = .leading
+        // Headers start a new section; the control they label stays tight under them.
+        // A hidden empty label collapses, so the gap before the first header hangs off the hero.
+        stack.setCustomSpacing(28, after: hero)
+        stack.setCustomSpacing(28, after: emptyLabel)
+        stack.setCustomSpacing(8, after: limitHeader)
+        stack.setCustomSpacing(28, after: limitRow)
+        stack.setCustomSpacing(8, after: modeHeader)
+        stack.setCustomSpacing(14, after: modeGrid)
+        stack.setCustomSpacing(22, after: hintLabel)
+        // One spacing rule for every button row, so the block reads as an even grid.
+        for row in buttonRows.dropLast() { stack.setCustomSpacing(10, after: row) }
         stack.translatesAutoresizingMaskIntoConstraints = false
 
         let scroll = NSScrollView()
@@ -272,13 +324,19 @@ final class ReviewHomeView: NSView {
             document.topAnchor.constraint(equalTo: scroll.topAnchor),
             document.widthAnchor.constraint(equalTo: scroll.widthAnchor),
             document.heightAnchor.constraint(greaterThanOrEqualTo: scroll.heightAnchor),
-            stack.topAnchor.constraint(equalTo: document.topAnchor, constant: 18),
+            stack.topAnchor.constraint(equalTo: document.topAnchor, constant: 24),
             stack.centerXAnchor.constraint(equalTo: document.centerXAnchor),
             stack.leadingAnchor.constraint(greaterThanOrEqualTo: document.leadingAnchor, constant: 18),
             stack.trailingAnchor.constraint(lessThanOrEqualTo: document.trailingAnchor, constant: -18),
-            stack.bottomAnchor.constraint(lessThanOrEqualTo: document.bottomAnchor, constant: -18),
+            stack.bottomAnchor.constraint(lessThanOrEqualTo: document.bottomAnchor, constant: -24),
+            stack.widthAnchor.constraint(equalToConstant: Self.contentWidth),
             hero.widthAnchor.constraint(equalTo: stack.widthAnchor),
-            emptyLabel.widthAnchor.constraint(equalTo: stack.widthAnchor)
+            emptyLabel.widthAnchor.constraint(equalTo: stack.widthAnchor),
+            limitRow.widthAnchor.constraint(equalTo: stack.widthAnchor),
+            modeGrid.widthAnchor.constraint(equalTo: stack.widthAnchor),
+            buttonRows[0].widthAnchor.constraint(equalTo: stack.widthAnchor),
+            buttonRows[1].widthAnchor.constraint(equalTo: stack.widthAnchor),
+            buttonRows[2].widthAnchor.constraint(equalTo: stack.widthAnchor)
         ])
     }
 
@@ -307,6 +365,15 @@ final class ReviewHomeView: NSView {
         }
     }
 
+    /// The accented primary needs its title drawn white; contentTintColor only tints the symbol.
+    private func setStartTitle(_ title: String) {
+        // Same font the other buttons get from controlSize .large, so the row reads as one set.
+        startButton.attributedTitle = NSAttributedString(string: title, attributes: [
+            .font: startButton.font ?? .systemFont(ofSize: 14, weight: .semibold),
+            .foregroundColor: NSColor.white
+        ])
+    }
+
     private static func sectionHeader(_ text: String) -> NSTextField {
         let label = NSTextField(labelWithString: text.uppercased())
         label.font = .systemFont(ofSize: 10, weight: .semibold)
@@ -321,7 +388,7 @@ final class ReviewHomeView: NSView {
         selectedBucket = selectedBucket == bucket ? nil : bucket
         for (key, row) in legendTiles { row.isSelected = key == selectedBucket }
         hintLabel.stringValue = selectionHint()
-        startButton.title = plannedCount() > 0 ? "  Start Review (\(plannedCount()))" : "  Review Anyway"
+        setStartTitle(plannedCount() > 0 ? "  Start Review (\(plannedCount()))" : "  Review Anyway")
         delegate?.homeViewDidChangeOptions(self)
     }
 
@@ -331,7 +398,7 @@ final class ReviewHomeView: NSView {
             tile.isSelected = Self.limits[index] == limit
         }
         hintLabel.stringValue = selectionHint()
-        startButton.title = plannedCount() > 0 ? "  Start Review (\(plannedCount()))" : "  Review Anyway"
+        setStartTitle(plannedCount() > 0 ? "  Start Review (\(plannedCount()))" : "  Review Anyway")
         delegate?.homeViewDidChangeOptions(self)
     }
 
@@ -516,26 +583,27 @@ final class ReviewTile: NSView {
         super.init(frame: .zero)
         translatesAutoresizingMaskIntoConstraints = false
         wantsLayer = true
-        layer?.cornerRadius = compact ? 13 : 9
+        layer?.cornerRadius = compact ? 16 : 9
         layer?.borderWidth = 1.5
 
         titleLabel.font = .systemFont(ofSize: compact ? 12 : 13, weight: .semibold)
         detailLabel?.font = .systemFont(ofSize: 11)
         detailLabel?.textColor = .secondaryLabelColor
         // Inside the grid the tile has no natural width to wrap against, so name one.
-        detailLabel?.preferredMaxLayoutWidth = 150
+        detailLabel?.preferredMaxLayoutWidth = 148
 
+        titleLabel.alignment = compact ? .center : .left
         let stack = NSStackView(views: [titleLabel] + (detailLabel.map { [$0] } ?? []))
         stack.orientation = .vertical
         stack.spacing = 2
-        stack.alignment = .leading
+        stack.alignment = compact ? .centerX : .leading
         stack.translatesAutoresizingMaskIntoConstraints = false
         addSubview(stack)
         NSLayoutConstraint.activate([
             stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: compact ? 13 : 10),
             stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: compact ? -13 : -10),
-            stack.topAnchor.constraint(equalTo: topAnchor, constant: compact ? 5 : 8),
-            stack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: compact ? -5 : -8)
+            stack.topAnchor.constraint(equalTo: topAnchor, constant: compact ? 18 : 17),
+            stack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: compact ? -18 : -17)
         ])
         refresh()
     }
@@ -544,6 +612,11 @@ final class ReviewTile: NSView {
     required init?(coder: NSCoder) { nil }
 
     override func mouseDown(with event: NSEvent) { onClick?() }
+
+    /// The labels would otherwise eat the click, leaving only the tile's padding clickable.
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        bounds.contains(convert(point, from: superview)) ? self : nil
+    }
 
     private func refresh() {
         layer?.borderColor = isSelected

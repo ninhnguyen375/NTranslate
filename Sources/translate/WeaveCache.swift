@@ -13,6 +13,11 @@ struct WeavePassage: Codable, Sendable {
     let text: String
     let promptVersion: String
     let generatedAt: Date
+    /// Set once a title has been generated for a passage whose own text carries none.
+    /// Absent in files written before titles existed, which is why it is optional.
+    var title: String?
+    /// Set when the learner marks the passage as read. Absent in files written before Done existed.
+    var isDone: Bool?
 }
 
 enum WeaveCache {
@@ -46,6 +51,23 @@ enum WeaveCache {
             .filter { $0.pathExtension == "json" }
             .compactMap { try? JSONDecoder().decode(WeavePassage.self, from: Data(contentsOf: $0)) }
             .sorted { $0.generatedAt > $1.generatedAt }
+    }
+
+    /// Same as `all()`, but paired with the key each passage is filed under, so a row in the
+    /// list can be deleted or retitled.
+    static func entries() -> [(key: String, passage: WeavePassage)] {
+        let urls = (try? FileManager.default.contentsOfDirectory(at: directory(), includingPropertiesForKeys: nil)) ?? []
+        return urls
+            .filter { $0.pathExtension == "json" }
+            .compactMap { url in
+                guard let passage = try? JSONDecoder().decode(WeavePassage.self, from: Data(contentsOf: url)) else { return nil }
+                return (url.deletingPathExtension().lastPathComponent, passage)
+            }
+            .sorted { $0.passage.generatedAt > $1.passage.generatedAt }
+    }
+
+    static func delete(key: String) {
+        try? FileManager.default.removeItem(at: url(for: key))
     }
 
     static func store(_ passage: WeavePassage, key: String) {

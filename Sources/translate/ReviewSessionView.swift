@@ -10,6 +10,8 @@ protocol ReviewSessionViewDelegate: AnyObject {
     func sessionViewDidTapHide(_ view: ReviewSessionView)
     func sessionViewDidTapReveal(_ view: ReviewSessionView)
     func sessionViewDidTapBack(_ view: ReviewSessionView)
+    func sessionViewDidTogglePassageDone(_ view: ReviewSessionView)
+    func sessionViewDidRequestPassageTitle(_ view: ReviewSessionView)
     func sessionView(_ view: ReviewSessionView, didGrade grade: SRSGrade)
     func sessionView(_ view: ReviewSessionView, didChooseAt index: Int)
     func sessionViewDidSubmitAnswer(_ view: ReviewSessionView)
@@ -33,6 +35,8 @@ final class ReviewSessionView: NSView {
 
     // Card body
     let termLabel = NSTextField(wrappingLabelWithString: "")
+    /// Only visible on the reading screen: asks the model to name the passage.
+    let titleRefreshButton = NSButton()
     let contextLabel = NSTextField(wrappingLabelWithString: "")
     let readMoreButton = NSButton()
     let speakSourceButton = NSButton()
@@ -57,6 +61,7 @@ final class ReviewSessionView: NSView {
     // Actions
     let revealButton = NSButton()
     let backButton = NSButton()
+    let markDoneButton = NSButton()
     private let againButton = NSButton()
     private let hardButton = NSButton()
     private let easyButton = NSButton()
@@ -167,9 +172,18 @@ final class ReviewSessionView: NSView {
 
         // The buttons sit to the right of the term, so a spacer of the same width on the left
         // keeps the term itself optically centred, and collapses when the buttons hide.
+        ReviewControls.iconButton(
+            titleRefreshButton,
+            symbol: "arrow.clockwise",
+            label: "Generate a title for this passage",
+            target: self,
+            action: #selector(tapTitleRefresh)
+        )
+        titleRefreshButton.isHidden = true
+
         let leadingSpacer = NSView()
         leadingSpacer.translatesAutoresizingMaskIntoConstraints = false
-        let termStack = NSStackView(views: [leadingSpacer, termLabel, audioStack])
+        let termStack = NSStackView(views: [leadingSpacer, termLabel, titleRefreshButton, audioStack])
         termStack.orientation = .horizontal
         termStack.spacing = 8
         termStack.alignment = .centerY
@@ -251,6 +265,8 @@ final class ReviewSessionView: NSView {
         ReviewControls.actionButton(revealButton, title: "Show Answer (Space)", symbol: "eye", target: self, action: #selector(tapReveal))
         ReviewControls.actionButton(backButton, title: "Back", symbol: "chevron.backward", target: self, action: #selector(tapBack))
         backButton.isHidden = true
+        ReviewControls.actionButton(markDoneButton, title: "Mark Done", symbol: "checkmark.circle", target: self, action: #selector(tapMarkDone))
+        markDoneButton.isHidden = true
 
         for button in [againButton, hardButton, easyButton] {
             button.bezelStyle = .flexiblePush
@@ -279,7 +295,14 @@ final class ReviewSessionView: NSView {
         actionStack.translatesAutoresizingMaskIntoConstraints = false
         actionStack.addArrangedSubview(revealButton)
         actionStack.addArrangedSubview(gradeStack)
-        actionStack.addArrangedSubview(backButton)
+        // Back and Done sit side by side under the passage; Done is the green half.
+        let readingRow = NSStackView(views: [backButton, markDoneButton])
+        readingRow.orientation = .horizontal
+        readingRow.spacing = 10
+        readingRow.distribution = .fillEqually
+        readingRow.translatesAutoresizingMaskIntoConstraints = false
+        actionStack.addArrangedSubview(readingRow)
+        readingRow.widthAnchor.constraint(equalTo: actionStack.widthAnchor).isActive = true
 
         addSubview(topBar)
         addSubview(pillRow)
@@ -320,7 +343,7 @@ final class ReviewSessionView: NSView {
             revealButton.widthAnchor.constraint(greaterThanOrEqualToConstant: 220),
             revealButton.heightAnchor.constraint(equalToConstant: 38),
             backButton.heightAnchor.constraint(equalToConstant: 38),
-            backButton.widthAnchor.constraint(greaterThanOrEqualToConstant: 220),
+            markDoneButton.heightAnchor.constraint(equalToConstant: 38),
             firstChoiceButton.heightAnchor.constraint(equalToConstant: 34),
             secondChoiceButton.heightAnchor.constraint(equalToConstant: 34)
         ])
@@ -381,6 +404,19 @@ final class ReviewSessionView: NSView {
     @objc private func tapHide() { delegate?.sessionViewDidTapHide(self) }
     @objc private func tapReveal() { delegate?.sessionViewDidTapReveal(self) }
     @objc private func tapBack() { delegate?.sessionViewDidTapBack(self) }
+    @objc private func tapMarkDone() { delegate?.sessionViewDidTogglePassageDone(self) }
+
+    /// Shows whether the open passage is already done, and which way the button will flip it.
+    func setPassageDone(_ isDone: Bool) {
+        markDoneButton.title = isDone ? "  Done" : "  Mark Done"
+        markDoneButton.image = NSImage(
+            systemSymbolName: isDone ? "checkmark.circle.fill" : "checkmark.circle",
+            accessibilityDescription: markDoneButton.title
+        )
+        markDoneButton.contentTintColor = isDone ? .systemGreen : .systemTeal
+    }
+    @objc private func tapTitleRefresh() { delegate?.sessionViewDidRequestPassageTitle(self) }
+
     @objc private func tapReadMore() { delegate?.sessionViewDidToggleContext(self) }
     @objc private func tapSpeak() { delegate?.sessionView(self, didRequestSpeechSlow: false) }
     @objc private func tapSpeakSlow() { delegate?.sessionView(self, didRequestSpeechSlow: true) }

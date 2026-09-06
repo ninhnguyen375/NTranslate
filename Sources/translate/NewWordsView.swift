@@ -145,6 +145,13 @@ final class NewWordsView: NSView {
         ReviewControls.actionButton(knownButton, title: "Đã biết (1)", symbol: "checkmark.circle", target: self, action: #selector(tapKnown))
         ReviewControls.actionButton(learnButton, title: "Học (2)", symbol: "plus.circle.fill", target: self, action: #selector(tapLearn))
         ReviewControls.actionButton(skipButton, title: "Bỏ qua (3)", symbol: "arrow.uturn.forward", target: self, action: #selector(tapSkip))
+        // Only the first button used to carry a height, which left the row visibly uneven.
+        for button in [knownButton, learnButton, skipButton] {
+            button.translatesAutoresizingMaskIntoConstraints = false
+            button.heightAnchor.constraint(equalToConstant: 38).isActive = true
+            button.setContentHuggingPriority(.defaultLow, for: .horizontal)
+            button.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        }
         knownButton.toolTip = "Bỏ hẳn từ này khỏi danh sách gợi ý"
         learnButton.toolTip = "Thêm vào deck và ôn ngay hôm nay"
         skipButton.toolTip = "Để lại cuối hàng, ưu tiên từ chưa gặp trước"
@@ -179,8 +186,7 @@ final class NewWordsView: NSView {
 
             actionRow.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 24),
             actionRow.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -24),
-            actionRow.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -20),
-            knownButton.heightAnchor.constraint(equalToConstant: 38)
+            actionRow.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -20)
         ])
     }
 

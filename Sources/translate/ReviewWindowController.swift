@@ -66,7 +66,11 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
     // Reading passage
     private var weaveRequest: RequestHandle?
     private var didRetryWeave = false
-    private var savedPassages: [WeavePassage] = []
+    /// The passage on the reading screen, with the key it is filed under, so a regenerated title
+    /// can be written back to the same file.
+    private var currentPassage: (key: String, passage: WeavePassage)?
+    private var titleRequest: RequestHandle?
+    private let passageListPanel = PassageListPanel()
 
     // New words
     private var newWordsQueue: [VocabPackEntry] = []
@@ -94,7 +98,7 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
         self.translator = translator
         self.config = config
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 620, height: 640),
+            contentRect: NSRect(x: 0, y: 0, width: 620, height: 880),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false
@@ -102,7 +106,7 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
         window.minSize = NSSize(width: 620, height: 640)
         window.isReleasedWhenClosed = false
         window.title = "Study"
-        window.setFrameAutosaveName("ReviewSRSWindow")
+        window.setFrameAutosaveName("ReviewSRSWindowTall2")
 
         super.init(window: window)
         window.delegate = self
@@ -438,11 +442,13 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
 
         sessionView.sourceContainer.isHidden = false
         setSourceGiveaways(hidden: false)
+        sessionView.titleRefreshButton.isHidden = true
         sessionView.resultLabel.stringValue = record.resultText
         sessionView.resultLabel.isHidden = true
         hideReadingChat()
         sessionView.revealButton.isHidden = false
         sessionView.backButton.isHidden = true
+        sessionView.markDoneButton.isHidden = true
         sessionView.gradeStack.isHidden = true
         isAnswerRevealed = false
         stopAudio()
@@ -1055,7 +1061,7 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
             prompt: (config ?? AppConfig.load()).weavePrompt
         )
         if let cached = WeaveCache.load(key: key) {
-            presentReading(cached.text, words: words)
+            presentReading(cached.text, words: words, entry: (key, cached))
             return
         }
         guard let translator else {
@@ -1082,11 +1088,14 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
                         self.requestReadingPassage()
                         return
                     }
-                    WeaveCache.store(
-                        WeavePassage(words: words, text: text, promptVersion: AppConfig.weavePromptVersion, generatedAt: Date()),
-                        key: key
+                    let passage = WeavePassage(
+                        words: words,
+                        text: text,
+                        promptVersion: AppConfig.weavePromptVersion,
+                        generatedAt: Date()
                     )
-                    self.presentReading(text, words: words)
+                    WeaveCache.store(passage, key: key)
+                    self.presentReading(text, words: words, entry: (key, passage))
                 case let .failure(error):
                     self.presentReading("Could not generate the passage: \(error.localizedDescription)", words: words)
                 }
@@ -1094,14 +1103,16 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
         }
     }
 
-    private func presentReading(_ text: String, words: [String]) {
+    private func presentReading(_ text: String, words: [String], entry: (key: String, passage: WeavePassage)? = nil) {
         isReadingMode = true
+        currentPassage = entry
+        titleRequest?.cancel()
+        titleRequest = nil
         stopAudio()
         show(.session)
         sessionView.setPills(["Reading", "\(words.count) từ"])
         sessionView.updateProgress(correct: 0, wrong: 0, remaining: 0, elapsed: 0, practice: false)
-        sessionView.termLabel.stringValue = "Reading"
-        sessionView.termLabel.font = .systemFont(ofSize: 22, weight: .bold)
+        applyReadingTitle()
         sessionView.sourceContainer.isHidden = false
         setSourceGiveaways(hidden: true)
         sessionView.answerField.isHidden = true
@@ -1124,12 +1135,86 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
         sessionView.undoButton.isEnabled = false
         sessionView.hideButton.isEnabled = false
         sessionView.backButton.isHidden = false
+        sessionView.markDoneButton.isHidden = entry == nil
+        sessionView.setPassageDone(entry?.passage.isDone == true)
         adjustWindowHeightForContentIfNeeded()
+    }
+
+    /// Names the passage on the reading screen. Without a title the header says so and offers the
+    /// button that asks the model for one.
+    private func applyReadingTitle() {
+        sessionView.termLabel.font = .systemFont(ofSize: 20, weight: .bold)
+        let headline = currentPassage.map { Self.passageHeadline($0.passage) } ?? ""
+        sessionView.termLabel.stringValue = headline.isEmpty ? "Untitled passage" : headline
+        // Only a passage that is actually on disk can keep the title it gets back.
+        sessionView.titleRefreshButton.isHidden = currentPassage == nil
+        sessionView.titleRefreshButton.isEnabled = true
+        sessionView.titleRefreshButton.toolTip = headline.isEmpty
+            ? "Ask the model for a title"
+            : "Generate a new title"
+    }
+
+    /// Asks the model for a short title and files it with the passage, so the list and this header
+    /// both stop saying "Untitled".
+    private func regeneratePassageTitle() {
+        guard let entry = currentPassage, let translator else { return }
+        sessionView.titleRefreshButton.isEnabled = false
+        sessionView.termLabel.stringValue = "Naming the passage…"
+        let language = readingPool().first?.targetLanguage ?? config?.targetLang ?? "Vietnamese"
+        titleRequest?.cancel()
+        titleRequest = translator.ask(
+            "Give this conversation a title in \(language). Hard limit: 8 words or fewer, ideally 4 to 6. Reply with the title only, no quotes and no punctuation at the end.",
+            sourceText: entry.passage.text,
+            translatedText: "",
+            sourceLang: readingPool().first?.sourceLanguage ?? "English",
+            targetLang: language
+        ) { [weak self] result in
+            Task { @MainActor in
+                guard let self, self.isReadingMode, self.currentPassage?.key == entry.key else { return }
+                switch result {
+                case let .success(text):
+                    let title = Self.cleanTitle(text)
+                    guard !title.isEmpty else { self.applyReadingTitle(); return }
+                    var passage = entry.passage
+                    passage.title = title
+                    WeaveCache.store(passage, key: entry.key)
+                    self.currentPassage = (entry.key, passage)
+                case .failure:
+                    break
+                }
+                self.applyReadingTitle()
+            }
+        }
+    }
+
+    /// Models like to answer with quotes, a trailing period, or a "Title:" prefix.
+    static func cleanTitle(_ raw: String) -> String {
+        var title = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        title = title.components(separatedBy: "\n").first ?? title
+        if title.lowercased().hasPrefix("title:") {
+            title = String(title.dropFirst("title:".count))
+        }
+        title = title.trimmingCharacters(in: CharacterSet(charactersIn: " \t\"'“”‘’.,;:"))
+        // The prompt asks for at most 8 words; a model that ignores it gets trimmed here.
+        let words = title.split(separator: " ")
+        if words.count > 8 { title = words.prefix(8).joined(separator: " ") }
+        if title.count > 80 { title = String(title.prefix(79)) + "…" }
+        return title
     }
 
     /// Which of the requested words never made it into the passage.
     static func wordsMissing(from text: String, words: [String]) -> [String] {
         words.filter { ReadingHighlight.ranges(in: text, words: [$0]).isEmpty }
+    }
+
+    /// Flips the Done flag on the open passage and writes it back to its cache file.
+    private func togglePassageDone() {
+        guard let entry = currentPassage else { return }
+        var passage = entry.passage
+        passage.isDone = !(passage.isDone ?? false)
+        WeaveCache.store(passage, key: entry.key)
+        currentPassage = (entry.key, passage)
+        sessionView.setPassageDone(passage.isDone == true)
     }
 
     private func hideReadingChat() {
@@ -1166,43 +1251,31 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
     }
 
     private func presentPassageMenu(from sender: NSButton?) {
-        savedPassages = WeaveCache.all()
-        let menu = NSMenu()
-        if savedPassages.isEmpty {
-            let empty = NSMenuItem(title: "No saved passages yet", action: nil, keyEquivalent: "")
-            empty.isEnabled = false
-            menu.addItem(empty)
-        }
-        for (index, passage) in savedPassages.enumerated() {
-            let item = NSMenuItem(title: Self.passageTitle(passage), action: #selector(openSavedPassage(_:)), keyEquivalent: "")
-            item.target = self
-            item.tag = index
-            menu.addItem(item)
-        }
-        if let sender {
-            menu.popUp(positioning: nil, at: NSPoint(x: 0, y: sender.bounds.height + 4), in: sender)
-        } else if let contentView = window?.contentView {
-            menu.popUp(positioning: nil, at: NSPoint(x: 20, y: contentView.bounds.height - 20), in: contentView)
+        guard let window else { return }
+        passageListPanel.present(over: window) { [weak self] passage, key in
+            guard let self else { return }
+            self.stopAudio()
+            self.presentReading(passage.text, words: passage.words, entry: (key, passage))
         }
     }
 
-    /// The topic line the passage was generated with. Passages made before the prompt asked for one
-    /// fall back to their first spoken line, so every row still says something.
+    /// The passage's own title: the one generated for it, else the topic line the model wrote.
+    /// Empty when the passage predates both, which is what puts the regenerate button on screen.
+    static func passageHeadline(_ passage: WeavePassage) -> String {
+        if let title = passage.title?.trimmingCharacters(in: .whitespacesAndNewlines), !title.isEmpty {
+            return title
+        }
+        let topic = ReadingDialogue.parse(passage.text)?.topic ?? ""
+        return topic.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// One row in the saved list: headline plus how many words and when it was made.
     static func passageTitle(_ passage: WeavePassage) -> String {
-        let dialogue = ReadingDialogue.parse(passage.text)
-        let topic = dialogue?.topic ?? ""
-        let fallback = dialogue?.turns.first?.source ?? passage.words.joined(separator: ", ")
-        var title = topic.isEmpty ? fallback : topic
+        var title = passageHeadline(passage)
+        if title.isEmpty { title = passage.words.joined(separator: ", ") }
         if title.count > 60 { title = String(title.prefix(59)) + "…" }
         let date = DateFormatter.localizedString(from: passage.generatedAt, dateStyle: .short, timeStyle: .none)
         return "\(title)  ·  \(passage.words.count) words  ·  \(date)"
-    }
-
-    @objc private func openSavedPassage(_ sender: NSMenuItem) {
-        guard sender.tag < savedPassages.count else { return }
-        let passage = savedPassages[sender.tag]
-        stopAudio()
-        presentReading(passage.text, words: passage.words)
     }
 
     private static func readingDisplay(_ text: String, words: [String]) -> NSAttributedString {
@@ -1220,15 +1293,8 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
     }
 
     private func leaveReading() {
-        weaveRequest?.cancel()
-        weaveRequest = nil
-        isReadingMode = false
-        if recordsToReview.isEmpty || currentIndex >= recordsToReview.count {
-            showHome()
-        } else {
-            show(.session)
-            loadCurrentCard()
-        }
+        // Back on the reading screen means back to home; the session is resumed from there.
+        goHome()
     }
 
     private func adjustWindowHeightForContentIfNeeded() {
@@ -1489,7 +1555,10 @@ extension ReviewWindowController: ReviewSessionViewDelegate {
     func sessionViewDidTapUndo(_ view: ReviewSessionView) { undoLastGrade() }
     func sessionViewDidTapHide(_ view: ReviewSessionView) { hideCurrentCard() }
     func sessionViewDidTapReveal(_ view: ReviewSessionView) { revealAnswer() }
+    func sessionViewDidRequestPassageTitle(_ view: ReviewSessionView) { regeneratePassageTitle() }
+
     func sessionViewDidTapBack(_ view: ReviewSessionView) { leaveReading() }
+    func sessionViewDidTogglePassageDone(_ view: ReviewSessionView) { togglePassageDone() }
     func sessionView(_ view: ReviewSessionView, didGrade grade: SRSGrade) { applyGrade(grade) }
     func sessionView(_ view: ReviewSessionView, didChooseAt index: Int) { chooseContrast(index: index) }
     func sessionViewDidSubmitAnswer(_ view: ReviewSessionView) { submitTypedAnswer() }

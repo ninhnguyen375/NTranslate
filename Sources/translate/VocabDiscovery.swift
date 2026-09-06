@@ -25,10 +25,11 @@ enum VocabDiscovery {
         guard let line = rendered.split(separator: "\n").first(where: { $0.hasPrefix("Mức dùng:") }) else {
             return .unranked
         }
-        // The band is a standalone token on that line: "Mức dùng: neutral · rất phổ biến · A1".
+        // The band sits on that line either bare or prefixed: "· A1" and "· CEFR A1" both occur.
         for part in line.split(separator: "·") {
-            let token = part.trimmingCharacters(in: .whitespaces).lowercased()
-            if let level = Level(rawValue: token), level != .unranked { return level }
+            for word in part.lowercased().split(whereSeparator: { !$0.isLetter && !$0.isNumber }) {
+                if let level = Level(rawValue: String(word)), level != .unranked { return level }
+            }
         }
         return .unranked
     }

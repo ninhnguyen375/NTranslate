@@ -27,6 +27,7 @@ struct VocabDiscoveryCheck {
     static func main() {
         expect(VocabDiscovery.level(of: entry("a", level: "A1").r) == .a1, "A1 must parse")
         expect(VocabDiscovery.level(of: entry("b", level: "C2").r) == .c2, "C2 must parse")
+        expect(VocabDiscovery.level(of: entry("c", level: "CEFR B2").r) == .b2, "a CEFR-prefixed band must parse")
         expect(VocabDiscovery.level(of: entry("c", level: nil).r) == .unranked, "a missing band must read as unranked")
         expect(
             VocabDiscovery.level(of: "no usage line here") == .unranked,
