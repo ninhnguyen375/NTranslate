@@ -33,6 +33,8 @@ final class ReviewSessionView: NSView {
     private let progressBar = SessionProgressBar()
     private let countsLabel = NSTextField(labelWithString: "")
     let pillRow = NSStackView()
+    private let wordsDetailLabel = NSTextField(labelWithString: "")
+    private let pillContainer = NSStackView()
 
     // Card body
     let termLabel = NSTextField(wrappingLabelWithString: "")
@@ -93,11 +95,28 @@ final class ReviewSessionView: NSView {
     }
 
     func setPills(_ pills: [String]) {
+        wordsDetailLabel.stringValue = ""
+        wordsDetailLabel.isHidden = true
         pillRow.arrangedSubviews.forEach { $0.removeFromSuperview() }
         for text in pills where !text.isEmpty {
             pillRow.addArrangedSubview(Self.makePill(text))
         }
         pillRow.isHidden = pills.isEmpty
+        pillContainer.isHidden = pills.isEmpty
+    }
+
+    func setReadingPills(count: Int, words: [String]) {
+        wordsDetailLabel.stringValue = words.joined(separator: ", ")
+        wordsDetailLabel.isHidden = true
+        pillRow.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        pillRow.addArrangedSubview(Self.makePill("Reading"))
+        let countPill = Self.makeClickablePill("\(count) words") { [weak self] in
+            guard let self else { return }
+            self.wordsDetailLabel.isHidden.toggle()
+        }
+        pillRow.addArrangedSubview(countPill)
+        pillRow.isHidden = false
+        pillContainer.isHidden = false
     }
 
     /// Grade buttons carry the interval they would schedule, so the choice is never blind.
@@ -133,6 +152,22 @@ final class ReviewSessionView: NSView {
         pillRow.spacing = 6
         pillRow.alignment = .centerY
         pillRow.translatesAutoresizingMaskIntoConstraints = false
+
+        wordsDetailLabel.font = .systemFont(ofSize: 11.5, weight: .regular)
+        wordsDetailLabel.textColor = .secondaryLabelColor
+        wordsDetailLabel.alignment = .center
+        wordsDetailLabel.lineBreakMode = .byTruncatingTail
+        wordsDetailLabel.maximumNumberOfLines = 1
+        wordsDetailLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        wordsDetailLabel.translatesAutoresizingMaskIntoConstraints = false
+        wordsDetailLabel.isHidden = true
+
+        pillContainer.orientation = .vertical
+        pillContainer.spacing = 6
+        pillContainer.alignment = .centerX
+        pillContainer.translatesAutoresizingMaskIntoConstraints = false
+        pillContainer.addArrangedSubview(pillRow)
+        pillContainer.addArrangedSubview(wordsDetailLabel)
 
         termLabel.font = .systemFont(ofSize: 24, weight: .bold)
         termLabel.alignment = .center
@@ -310,7 +345,7 @@ final class ReviewSessionView: NSView {
         readingRow.widthAnchor.constraint(equalTo: actionStack.widthAnchor).isActive = true
 
         addSubview(topBar)
-        addSubview(pillRow)
+        addSubview(pillContainer)
         addSubview(scrollView)
         addSubview(actionStack)
 
@@ -319,12 +354,14 @@ final class ReviewSessionView: NSView {
             topBar.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -16),
             topBar.topAnchor.constraint(equalTo: topAnchor, constant: 12),
 
-            pillRow.centerXAnchor.constraint(equalTo: centerXAnchor),
-            pillRow.topAnchor.constraint(equalTo: topBar.bottomAnchor, constant: 10),
+            pillContainer.centerXAnchor.constraint(equalTo: centerXAnchor),
+            pillContainer.topAnchor.constraint(equalTo: topBar.bottomAnchor, constant: 10),
+            pillContainer.leadingAnchor.constraint(greaterThanOrEqualTo: leadingAnchor, constant: 24),
+            pillContainer.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -24),
 
             scrollView.leadingAnchor.constraint(equalTo: leadingAnchor),
             scrollView.trailingAnchor.constraint(equalTo: trailingAnchor),
-            scrollView.topAnchor.constraint(equalTo: pillRow.bottomAnchor, constant: 10),
+            scrollView.topAnchor.constraint(equalTo: pillContainer.bottomAnchor, constant: 10),
             scrollView.bottomAnchor.constraint(equalTo: actionStack.topAnchor, constant: -14),
 
             documentView.leadingAnchor.constraint(equalTo: scrollView.leadingAnchor),
@@ -382,6 +419,21 @@ final class ReviewSessionView: NSView {
         return stack
     }
 
+    private final class ClickablePill: NSView {
+        var onClick: (() -> Void)?
+
+        override func resetCursorRects() {
+            addCursorRect(bounds, cursor: .pointingHand)
+        }
+
+        override func mouseUp(with event: NSEvent) {
+            let point = convert(event.locationInWindow, from: nil)
+            if bounds.contains(point) {
+                onClick?()
+            }
+        }
+    }
+
     static func makePill(_ text: String) -> NSView {
         let label = NSTextField(labelWithString: text)
         label.font = .systemFont(ofSize: 11, weight: .medium)
@@ -391,6 +443,29 @@ final class ReviewSessionView: NSView {
         box.layer?.cornerRadius = 9
         box.layer?.borderWidth = 1
         box.layer?.borderColor = NSColor.separatorColor.cgColor
+        box.translatesAutoresizingMaskIntoConstraints = false
+        label.translatesAutoresizingMaskIntoConstraints = false
+        box.addSubview(label)
+        NSLayoutConstraint.activate([
+            label.leadingAnchor.constraint(equalTo: box.leadingAnchor, constant: 9),
+            label.trailingAnchor.constraint(equalTo: box.trailingAnchor, constant: -9),
+            label.topAnchor.constraint(equalTo: box.topAnchor, constant: 3),
+            label.bottomAnchor.constraint(equalTo: box.bottomAnchor, constant: -3)
+        ])
+        return box
+    }
+
+    private static func makeClickablePill(_ text: String, onClick: @escaping () -> Void) -> NSView {
+        let label = NSTextField(labelWithString: text)
+        label.font = .systemFont(ofSize: 11, weight: .medium)
+        label.textColor = .secondaryLabelColor
+        let box = ClickablePill()
+        box.onClick = onClick
+        box.wantsLayer = true
+        box.layer?.cornerRadius = 9
+        box.layer?.borderWidth = 1
+        box.layer?.borderColor = NSColor.separatorColor.cgColor
+        box.toolTip = "Click to toggle word list"
         box.translatesAutoresizingMaskIntoConstraints = false
         label.translatesAutoresizingMaskIntoConstraints = false
         box.addSubview(label)

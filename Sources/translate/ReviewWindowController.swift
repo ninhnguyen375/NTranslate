@@ -11,7 +11,7 @@ private enum ReviewLayout {
 
 @MainActor
 final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preconcurrency AVAudioPlayerDelegate {
-    private enum Screen { case home, session, summary, newWords }
+    private enum Screen { case home, session, summary, newWords, passages }
 
     private enum ActiveQuestion {
         /// Cloze, Recall and Listen all ask for one typed word; only the prompt differs.
@@ -77,7 +77,8 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
     /// can be written back to the same file.
     private var currentPassage: (key: String, passage: WeavePassage)?
     private var titleRequest: RequestHandle?
-    private let passageListPanel = PassageListPanel()
+    private var readingReturnScreen: Screen = .home
+    private let passagesView = PassagesView()
 
     // New words
     private var newWordsQueue: [VocabPackEntry] = []
@@ -159,6 +160,7 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
         sessionView.delegate = self
         summaryView.delegate = self
         newWordsView.delegate = self
+        passagesView.delegate = self
         sessionView.readingChatView.onSpeak = { [weak self] line, isSlow in self?.speakReadingLine(line, slow: isSlow) }
         sessionView.readingChatView.onWord = { [weak self] word in self?.openTranslateForWord(word) }
         sessionView.readingChatView.onLearn = { [weak self] line in
@@ -170,7 +172,7 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
         // field says attributes are its own. Without this the reading underlines vanish on click.
         sessionView.resultLabel.allowsEditingTextAttributes = true
 
-        for screen in [homeView, sessionView, summaryView, newWordsView] as [NSView] {
+        for screen in [homeView, sessionView, summaryView, newWordsView, passagesView] as [NSView] {
             screen.translatesAutoresizingMaskIntoConstraints = false
             screen.isHidden = true
             cardView.addSubview(screen)
@@ -202,6 +204,7 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
         sessionView.isHidden = screen != .session
         summaryView.isHidden = screen != .summary
         newWordsView.isHidden = screen != .newWords
+        passagesView.isHidden = screen != .passages
         sessionTimer?.invalidate()
         sessionTimer = nil
         if screen == .session, !isReadingMode {
@@ -212,6 +215,13 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
             RunLoop.main.add(timer, forMode: .common)
             sessionTimer = timer
         }
+    }
+
+    private func showPassages() {
+        isReadingMode = false
+        stopAudio()
+        passagesView.reload(entries: WeaveCache.entries())
+        show(.passages)
     }
 
     func showReview() {
@@ -987,7 +997,7 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
             case "5": speakNewWord(slow: true); return nil
             default: return event
             }
-        case .summary:
+        case .summary, .passages:
             return event
         case .session:
             return handleSessionKey(event, chars: chars)
@@ -1108,6 +1118,7 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
     }
 
     private func showReadingPassage() {
+        readingReturnScreen = .home
         didRetryWeave = false
         isAwaitingWeave = false
         preferredReadingMode = nil
@@ -1115,8 +1126,8 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
         requestReadingPassage()
     }
 
-    private func requestReadingPassage(force: Bool = false) {
-        let words = readingWords()
+    private func requestReadingPassage(words explicitWords: [String]? = nil, force: Bool = false) {
+        let words = explicitWords ?? readingWords()
         guard !words.isEmpty else { return }
         // The prompt actually in use decides the passage, so it decides the cache key too.
         let key = WeaveCache.cacheKey(
@@ -1150,7 +1161,7 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
                     let missing = Self.wordsMissing(from: text, words: words)
                     if !missing.isEmpty, !self.didRetryWeave {
                         self.didRetryWeave = true
-                        self.requestReadingPassage(force: force)
+                        self.requestReadingPassage(words: explicitWords, force: force)
                         return
                     }
                     let passage = WeavePassage(
@@ -1185,14 +1196,20 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
         presentReading(text, words: words, entry: entry)
     }
 
-    private func presentReading(_ text: String, words: [String], entry: (key: String, passage: WeavePassage)? = nil) {
+    private func presentReading(
+        _ text: String,
+        words: [String],
+        entry: (key: String, passage: WeavePassage)? = nil,
+        returnScreen: Screen? = nil
+    ) {
+        if let returnScreen { readingReturnScreen = returnScreen }
         isReadingMode = true
         currentPassage = entry
         titleRequest?.cancel()
         titleRequest = nil
         stopAudio()
         show(.session)
-        sessionView.setPills(["Reading", "\(words.count) từ"])
+        sessionView.setReadingPills(count: words.count, words: words)
         sessionView.updateProgress(correct: 0, wrong: 0, remaining: 0, elapsed: 0, practice: false)
         applyReadingTitle()
         sessionView.sourceContainer.isHidden = false
@@ -1258,7 +1275,8 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
         guard translator != nil, !isAwaitingWeave else { return }
         didRetryWeave = false
         sessionView.regenerateButton.isEnabled = false
-        requestReadingPassage(force: true)
+        let words = currentPassage?.passage.words ?? readingWords()
+        requestReadingPassage(words: words, force: true)
     }
 
     /// Asks the model for a short title and files it with the passage, so the list and this header
@@ -1318,10 +1336,14 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
     private func togglePassageDone() {
         guard let entry = currentPassage else { return }
         var passage = entry.passage
-        passage.isDone = !(passage.isDone ?? false)
+        let newStatus = !(passage.isDone ?? false)
+        passage.isDone = newStatus
         WeaveCache.store(passage, key: entry.key)
         currentPassage = (entry.key, passage)
-        sessionView.setPassageDone(passage.isDone == true)
+        sessionView.setPassageDone(newStatus)
+        if newStatus {
+            showPassages()
+        }
     }
 
     private func hideReadingChat() {
@@ -1367,12 +1389,7 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
     }
 
     private func presentPassageMenu(from sender: NSButton?) {
-        guard let window else { return }
-        passageListPanel.present(over: window) { [weak self] passage, key in
-            guard let self else { return }
-            self.stopAudio()
-            self.presentReading(passage.text, words: passage.words, entry: (key, passage))
-        }
+        showPassages()
     }
 
     /// The passage's own title: the one generated for it, else the topic line the model wrote.
@@ -1409,8 +1426,11 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
     }
 
     private func leaveReading() {
-        // Back on the reading screen means back to home; the session is resumed from there.
-        goHome()
+        if readingReturnScreen == .passages {
+            showPassages()
+        } else {
+            goHome()
+        }
     }
 
     private func adjustWindowHeightForContentIfNeeded() {
@@ -1739,4 +1759,40 @@ extension ReviewWindowController: NewWordsViewDelegate {
     }
 
     func newWordsViewDidRequestHome(_ view: NewWordsView) { goHome() }
+}
+
+extension ReviewWindowController: PassagesViewDelegate {
+    func passagesViewDidTapBack(_ view: PassagesView) {
+        goHome()
+    }
+
+    func passagesView(_ view: PassagesView, didSelectPassage passage: WeavePassage, key: String) {
+        stopAudio()
+        presentReading(passage.text, words: passage.words, entry: (key, passage), returnScreen: .passages)
+    }
+
+    func passagesView(_ view: PassagesView, didToggleDone key: String) {
+        guard var passage = WeaveCache.load(key: key) else { return }
+        passage.isDone = !(passage.isDone ?? false)
+        WeaveCache.store(passage, key: key)
+        passagesView.reload(entries: WeaveCache.entries())
+    }
+
+    func passagesView(_ view: PassagesView, didDeletePassage key: String) {
+        WeaveCache.delete(key: key)
+        passagesView.reload(entries: WeaveCache.entries())
+    }
+
+    func passagesViewDidRequestCreate(_ view: PassagesView) {
+        guard let window else { return }
+        CustomDialogueDialog.present(over: window) { [weak self] words in
+            guard let self, !words.isEmpty else { return }
+            self.readingReturnScreen = .passages
+            self.didRetryWeave = false
+            self.isAwaitingWeave = false
+            self.preferredReadingMode = nil
+            self.pendingReading = nil
+            self.requestReadingPassage(words: words, force: false)
+        }
+    }
 }
