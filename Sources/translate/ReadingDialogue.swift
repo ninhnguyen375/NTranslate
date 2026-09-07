@@ -58,7 +58,9 @@ struct ReadingDialogue: Equatable {
             guard let colon = line.firstIndex(of: ":") else { return nil }
             let speaker = String(line[..<colon]).trimmingCharacters(in: .whitespaces)
             // A speaker label is a short name, not a sentence that happens to hold a colon.
+            let lower = speaker.lowercased()
             guard !speaker.isEmpty, speaker.count <= 12,
+                  lower != "topic", lower != "title", lower != "chủ đề",
                   speaker.allSatisfy({ $0.isLetter || $0.isNumber || $0 == " " })
             else { return nil }
             let text = String(line[line.index(after: colon)...]).trimmingCharacters(in: .whitespaces)

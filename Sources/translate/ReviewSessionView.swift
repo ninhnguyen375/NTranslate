@@ -12,6 +12,7 @@ protocol ReviewSessionViewDelegate: AnyObject {
     func sessionViewDidTapBack(_ view: ReviewSessionView)
     func sessionViewDidTogglePassageDone(_ view: ReviewSessionView)
     func sessionViewDidRequestPassageTitle(_ view: ReviewSessionView)
+    func sessionViewDidRequestPassageRegenerate(_ view: ReviewSessionView)
     func sessionView(_ view: ReviewSessionView, didGrade grade: SRSGrade)
     func sessionView(_ view: ReviewSessionView, didChooseAt index: Int)
     func sessionViewDidSubmitAnswer(_ view: ReviewSessionView)
@@ -62,6 +63,7 @@ final class ReviewSessionView: NSView {
     let revealButton = NSButton()
     let backButton = NSButton()
     let markDoneButton = NSButton()
+    let regenerateButton = NSButton()
     private let againButton = NSButton()
     private let hardButton = NSButton()
     private let easyButton = NSButton()
@@ -267,6 +269,9 @@ final class ReviewSessionView: NSView {
         backButton.isHidden = true
         ReviewControls.actionButton(markDoneButton, title: "Mark Done", symbol: "checkmark.circle", target: self, action: #selector(tapMarkDone))
         markDoneButton.isHidden = true
+        ReviewControls.actionButton(regenerateButton, title: "Regenerate", symbol: "arrow.clockwise", target: self, action: #selector(tapRegenerate))
+        regenerateButton.isHidden = true
+        regenerateButton.toolTip = "Ask the model for a new conversation from the same words"
 
         for button in [againButton, hardButton, easyButton] {
             button.bezelStyle = .flexiblePush
@@ -296,7 +301,7 @@ final class ReviewSessionView: NSView {
         actionStack.addArrangedSubview(revealButton)
         actionStack.addArrangedSubview(gradeStack)
         // Back and Done sit side by side under the passage; Done is the green half.
-        let readingRow = NSStackView(views: [backButton, markDoneButton])
+        let readingRow = NSStackView(views: [backButton, regenerateButton, markDoneButton])
         readingRow.orientation = .horizontal
         readingRow.spacing = 10
         readingRow.distribution = .fillEqually
@@ -344,6 +349,7 @@ final class ReviewSessionView: NSView {
             revealButton.heightAnchor.constraint(equalToConstant: 38),
             backButton.heightAnchor.constraint(equalToConstant: 38),
             markDoneButton.heightAnchor.constraint(equalToConstant: 38),
+            regenerateButton.heightAnchor.constraint(equalToConstant: 38),
             firstChoiceButton.heightAnchor.constraint(equalToConstant: 34),
             secondChoiceButton.heightAnchor.constraint(equalToConstant: 34)
         ])
@@ -405,6 +411,7 @@ final class ReviewSessionView: NSView {
     @objc private func tapReveal() { delegate?.sessionViewDidTapReveal(self) }
     @objc private func tapBack() { delegate?.sessionViewDidTapBack(self) }
     @objc private func tapMarkDone() { delegate?.sessionViewDidTogglePassageDone(self) }
+    @objc private func tapRegenerate() { delegate?.sessionViewDidRequestPassageRegenerate(self) }
 
     /// Shows whether the open passage is already done, and which way the button will flip it.
     func setPassageDone(_ isDone: Bool) {

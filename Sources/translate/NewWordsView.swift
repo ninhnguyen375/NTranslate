@@ -6,13 +6,13 @@ import AppKit
 protocol NewWordsViewDelegate: AnyObject {
     func newWordsView(_ view: NewWordsView, didDecide decision: NewWordsView.Decision)
     func newWordsView(_ view: NewWordsView, didRequestSpeechSlow slow: Bool)
-    func newWordsView(_ view: NewWordsView, didSelect level: VocabDiscovery.Level?)
+    func newWordsView(_ view: NewWordsView, didSelect filter: VocabDiscovery.Filter)
     func newWordsViewDidRequestHome(_ view: NewWordsView)
 }
 
 @MainActor
 final class NewWordsView: NSView {
-    enum Decision { case known, learn, skip }
+    enum Decision { case known, learn, skip, unmarkKnown, next }
 
     weak var delegate: NewWordsViewDelegate?
 
@@ -31,8 +31,9 @@ final class NewWordsView: NSView {
     private let actionRow = NSStackView()
     private let bodyStack = NSStackView()
 
-    /// Popup order, so a selection maps back to a level. `nil` is the "Tất cả" row.
-    private var levelOrder: [VocabDiscovery.Level?] = []
+    /// Popup order, so a selection maps back to a filter.
+    private var filterOrder: [VocabDiscovery.Filter] = []
+    private var isKnownMode = false
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -44,20 +45,25 @@ final class NewWordsView: NSView {
 
     // MARK: - Data
 
-    func setLevels(_ counts: [VocabDiscovery.Level: Int], selected: VocabDiscovery.Level?) {
+    func setLevels(_ counts: [VocabDiscovery.Level: Int], knownCount: Int, selected: VocabDiscovery.Filter) {
         levelPopup.removeAllItems()
-        levelOrder = [nil] + VocabDiscovery.Level.allCases.filter { (counts[$0] ?? 0) > 0 }
+        filterOrder = [.all] + VocabDiscovery.Level.allCases.filter { (counts[$0] ?? 0) > 0 }.map { .level($0) }
+        filterOrder.append(.known)
         let total = counts.values.reduce(0, +)
-        for level in levelOrder {
-            guard let level else {
+        for filter in filterOrder {
+            switch filter {
+            case .all:
                 levelPopup.addItem(withTitle: "Tất cả (\(total))")
-                continue
+            case .level(let level):
+                levelPopup.addItem(withTitle: "\(level.label) (\(counts[level] ?? 0))")
+            case .known:
+                levelPopup.addItem(withTitle: "Đã biết (\(knownCount))")
             }
-            levelPopup.addItem(withTitle: "\(level.label) (\(counts[level] ?? 0))")
         }
-        if let index = levelOrder.firstIndex(where: { $0 == selected }) {
+        if let index = filterOrder.firstIndex(of: selected) {
             levelPopup.selectItem(at: index)
         }
+        updateActionButtons(isKnown: selected == .known)
     }
 
     func show(word: String, detail: String, remaining: Int, learned: Int, known: Int, skipped: Int) {
@@ -67,7 +73,11 @@ final class NewWordsView: NSView {
         wordLabel.stringValue = word
         detailView.string = detail
         detailView.scrollRangeToVisible(NSRange(location: 0, length: 0))
-        progressLabel.stringValue = "\(learned) đã học · \(known) đã biết · \(skipped) bỏ qua · còn \(remaining) từ"
+        if isKnownMode {
+            progressLabel.stringValue = "Đang xem từ đã biết · còn \(remaining) từ"
+        } else {
+            progressLabel.stringValue = "\(learned) đã học · \(known) đã biết · \(skipped) bỏ qua · còn \(remaining) từ"
+        }
     }
 
     func showEmpty(message: String) {
@@ -190,16 +200,46 @@ final class NewWordsView: NSView {
         ])
     }
 
-    @objc private func tapKnown() { delegate?.newWordsView(self, didDecide: .known) }
-    @objc private func tapLearn() { delegate?.newWordsView(self, didDecide: .learn) }
-    @objc private func tapSkip() { delegate?.newWordsView(self, didDecide: .skip) }
+    @objc private func tapKnown() {
+        delegate?.newWordsView(self, didDecide: isKnownMode ? .unmarkKnown : .known)
+    }
+
+    @objc private func tapLearn() {
+        delegate?.newWordsView(self, didDecide: .learn)
+    }
+
+    @objc private func tapSkip() {
+        delegate?.newWordsView(self, didDecide: isKnownMode ? .next : .skip)
+    }
+
     @objc private func tapSpeak() { delegate?.newWordsView(self, didRequestSpeechSlow: false) }
     @objc private func tapSpeakSlow() { delegate?.newWordsView(self, didRequestSpeechSlow: true) }
     @objc private func tapHome() { delegate?.newWordsViewDidRequestHome(self) }
 
     @objc private func levelChanged() {
         let index = levelPopup.indexOfSelectedItem
-        guard index >= 0, index < levelOrder.count else { return }
-        delegate?.newWordsView(self, didSelect: levelOrder[index])
+        guard index >= 0, index < filterOrder.count else { return }
+        let selected = filterOrder[index]
+        updateActionButtons(isKnown: selected == .known)
+        delegate?.newWordsView(self, didSelect: selected)
+    }
+
+    private func updateActionButtons(isKnown: Bool) {
+        isKnownMode = isKnown
+        if isKnown {
+            setButton(knownButton, title: "Bỏ đã biết (1)", symbol: "arrow.uturn.backward", toolTip: "Xóa khỏi danh sách đã biết để quay lại gợi ý học từ mới")
+            setButton(learnButton, title: "Học (2)", symbol: "plus.circle.fill", toolTip: "Thêm vào deck và ôn ngay hôm nay")
+            setButton(skipButton, title: "Tiếp tục (3)", symbol: "arrow.forward", toolTip: "Xem từ đã biết tiếp theo")
+        } else {
+            setButton(knownButton, title: "Đã biết (1)", symbol: "checkmark.circle", toolTip: "Bỏ hẳn từ này khỏi danh sách gợi ý")
+            setButton(learnButton, title: "Học (2)", symbol: "plus.circle.fill", toolTip: "Thêm vào deck và ôn ngay hôm nay")
+            setButton(skipButton, title: "Bỏ qua (3)", symbol: "arrow.uturn.forward", toolTip: "Để lại cuối hàng, ưu tiên từ chưa gặp trước")
+        }
+    }
+
+    private func setButton(_ button: NSButton, title: String, symbol: String, toolTip: String) {
+        button.title = "  " + title
+        button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: title)
+        button.toolTip = toolTip
     }
 }

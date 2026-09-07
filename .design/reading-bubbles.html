@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<title>Reading chat bubbles - redesign</title>
+<style>
+:root{
+  --bg:#1c1c1e; --panel:#232326;
+  --ink:#f2f2f4; --ink-2:#a1a1a8; --ink-3:#6f6f77;
+  --them:#2c2c30; --them-line:#3a3a3f;
+  --me:#3a5ccc; --me-soft:#2f3f7a;
+  --accent:#7ea2ff;
+  --r:16px;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font:13.5px/1.5 -apple-system,BlinkMacSystemFont,"SF Pro Text",Inter,sans-serif;
+  -webkit-font-smoothing:antialiased}
+.wrap{max-width:830px;margin:0 auto;padding:0 0 24px}
+
+/* toolbar */
+.bar{display:flex;align-items:center;gap:14px;padding:12px 18px;color:var(--ink-2)}
+.bar .ico{width:17px;height:17px;opacity:.75}
+.track{flex:1;height:5px;border-radius:3px;background:#3a3a3f;position:relative}
+.track i{position:absolute;inset:0 62% 0 0;background:var(--accent);border-radius:3px;opacity:.8}
+.stat{font-variant-numeric:tabular-nums;font-size:12px}
+
+.tags{display:flex;justify-content:center;gap:8px;margin:2px 0 18px}
+.tag.mode{cursor:pointer}
+.tag.mode.on{background:var(--me-soft);color:#cfd9ff;border-color:transparent}
+.tag{font-size:11px;letter-spacing:.02em;padding:3px 10px;border-radius:999px;
+  background:#2b2b30;color:var(--ink-2);border:1px solid #37373d}
+
+/* thread */
+.thread{padding:0 22px;display:flex;flex-direction:column;gap:4px}
+.row{display:flex;gap:9px;align-items:flex-end;max-width:100%}
+.row.me{flex-direction:row-reverse}
+.row+.row{margin-top:12px}
+.row.tight+.row.tight{margin-top:3px}
+
+.av{width:26px;height:26px;border-radius:50%;flex:none;
+  display:grid;place-items:center;font-size:11px;font-weight:600;
+  background:#33333a;color:var(--ink-2)}
+.row.me .av{background:var(--me-soft);color:#cfd9ff}
+.av.hide{visibility:hidden}
+
+.stack{display:flex;flex-direction:column;gap:5px;
+  width:fit-content;                 /* co theo nội dung */
+  min-width:min(30ch,100%);          /* sàn chữ; hàng nút giữ sàn riêng bên dưới */
+  max-width:min(74%,54ch);           /* 54ch ~ đoạn văn dễ đọc nhất */
+}
+
+.bubble{position:relative;padding:9px 11px 7px 13px;border-radius:var(--r);
+  background:var(--them);border:1px solid var(--them-line);
+  display:grid}                      /* src + tr cùng 1 grid column */
+.row.me .bubble{background:var(--me);border-color:transparent;color:#fff}
+.row:not(.me) .bubble{border-bottom-left-radius:5px}
+.row.me .bubble{border-bottom-right-radius:5px}
+.row.tight:not(.me) .bubble{border-bottom-left-radius:var(--r)}
+.row.tight.me .bubble{border-bottom-right-radius:var(--r)}
+
+.src{margin:0}
+.tr{margin:6px 0 0;padding-top:6px;border-top:1px solid rgba(255,255,255,.12);
+  font-size:12.5px;color:var(--ink)}
+.row.me .tr{color:#fff}
+
+/* Ẩn mà vẫn đóng góp chiều rộng: item vẫn nằm trong grid column,
+   nên column width = max(width câu gốc, width bản dịch) ở mọi mode. */
+.ghost{visibility:hidden;height:0;margin:0;padding:0;border:0;overflow:hidden}
+
+u.term{text-decoration:underline;text-decoration-style:dotted;
+  text-underline-offset:3px;text-decoration-color:var(--accent);cursor:pointer}
+
+/* controls: trong khung bubble, luôn hiện */
+.ctl{display:flex;align-items:center;gap:8px;margin-top:7px;padding-top:6px;
+  border-top:1px solid rgba(255,255,255,.09);
+  min-width:148px}
+.ctl-sep{width:1px;height:12px;background:rgba(255,255,255,.16);flex:none}
+.row.me .ctl{justify-content:flex-end;border-top-color:rgba(255,255,255,.18)}
+.btn{width:26px;height:24px;border:0;border-radius:6px;background:transparent;
+  color:var(--ink-3);display:grid;place-items:center;cursor:pointer}
+.row.me .btn{color:rgba(255,255,255,.62)}
+.btn:hover{background:rgba(255,255,255,.09);color:var(--ink)}
+.row.me .btn:hover{color:#fff}
+.btn svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1.6;
+  stroke-linecap:round;stroke-linejoin:round}
+.btn.on{color:var(--accent)}
+
+/* footer */
+.foot{display:flex;gap:10px;padding:16px 22px 0}
+.fbtn{flex:1;padding:11px;border-radius:11px;background:#151517;border:1px solid #303036;
+  color:var(--ink);display:flex;align-items:center;justify-content:center;gap:8px;
+  font-size:13px;cursor:pointer}
+.fbtn:hover{background:#1d1d20}
+.fbtn svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.6}
+
+.note{max-width:830px;margin:26px auto 40px;padding:0 22px;color:var(--ink-3);font-size:12px}
+.note b{color:var(--ink-2);font-weight:600}
+</style></head><body>
+<div class="wrap">
+
+<div class="bar">
+  <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 10l9-7 9 7v10a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z"/></svg>
+  <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 12a9 9 0 1 0 3-6.7M3 4v5h5"/></svg>
+  <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>
+  <div class="track"><i></i></div>
+  <span class="stat">✓ 0</span><span class="stat">✕ 0</span>
+  <span class="stat">còn 0</span><span class="stat">0:00</span>
+</div>
+
+<div class="tags">
+  <span class="tag">Reading</span><span class="tag">12 từ</span>
+  <span class="tag mode" data-m="source">Source</span>
+  <span class="tag mode" data-m="translation">Translation</span>
+  <span class="tag mode on" data-m="both">Both</span>
+</div>
+
+<div class="thread" id="t"></div>
+
+<div class="foot">
+  <div class="fbtn"><svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg>Back</div>
+  <div class="fbtn"><svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7M3 4v5h5"/></svg>Regenerate</div>
+  <div class="fbtn"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8 12l3 3 5-5"/></svg>Mark Done</div>
+</div>
+
+<p class="note">
+<b>Chiều rộng:</b> mỗi bubble rộng bằng <b>max(câu gốc, bản dịch, hàng nút 132px)</b>, kẹp trong
+<b>[30ch, min(74%, 54ch)]</b>. Hàng nút nằm trong khung và luôn hiện nên nó thành sàn cứng thứ hai. Bấm Source / Translation / Both ở trên để thấy width không nhảy.<br><br>
+<b>Đổi gì:</b> nút hành động nằm hẳn trong khung bubble, dưới một hairline, luôn hiện (trước đây nổi ngoài lề, kéo mắt ra giữa màn hình);
+bubble bên trái có nền + viền riêng thay vì text trần; bản dịch tách bằng hairline và giảm cấp chữ;
+thêm avatar chữ cái để nhận diện người nói; góc bo bất đối xứng đánh dấu phía nói; các lượt liên tiếp cùng người dồn sát nhau.
+</p>
+</div>
+
+<script>
+const D=[
+ {me:1,s:"Chính xác. Bàn làm việc của tôi nặng nề hẳn với mấy cái báo cáo mới này.",t:"Exactly. My desk has felt heavier with these new reports."},
+ {me:0,s:"Đưa đây, để tôi cầm hộ cái túi nặng trịch đó cho.",t:"Here, let me carry that heavy bag for you."},
+ {me:1,s:"Cảm ơn nhé. Cậu lúc nào cũng biết cách làm giờ ăn trưa thấy yên bình.",t:"Thanks. You always know how to make lunch feel calm."},
+ {me:1,s:"Ổ chuẩn, nó thực sự nuôi dưỡng một bầu không khí dễ chịu giữa trưa.",t:"Right, it really nurtures a pleasant midday mood.",tight:1},
+ {me:0,s:"À, quán cà phê này có mảnh đất màu mỡ cho cà phê ngon mà, ít ra là thế.",t:"Well, this cafe has fertile ground for good coffee, at least."},
+ {me:0,s:"Mình cần thế lắm. Cái đội đối thủ suýt làm tôi phát điên hôm nay.",t:"I needed that. The rival team nearly drove me crazy today.",tight:1},
+ {me:1,s:"Bọn họ chỉ thích bịa chuyện để gây chú ý thôi.",t:"They just love making things up for attention."},
+ {me:0,s:"Đúng. Vài bình luận viên thể thao trên đài nghe còn đỡ kịch tính hơn.",t:"True. Some radio sports commentators sound less dramatic."},
+ {me:1,s:"Đúng thế. Lúc nãy tôi thấy có thiết bị âm thanh tinh vi mới bán giảm giá bên cạnh.",t:"Right. I saw sophisticated audio gear on sale next door."},
+ {me:0,s:"Ổ, đừng dụ tôi. Mấy cái â-li-phi-ê của tôi ở nhà vẫn dùng tốt chán.",t:"Oh, don't tempt me. My amplifiers at home still work fine."},
+ {me:1,s:"Chỉ nhìn thôi có sao đâu. Mình vẫn còn mười phút trước đợt triển khai buổi chiều.",t:"Just looking is fine. We still have ten minutes before the afternoon rollout."}
+];
+const TERMS=["nặng nề","màu mỡ","nuôi dưỡng","bịa chuyện","tinh vi","triển khai","kịch tính"];
+const ico={
+ lang:'<path d="M4 5h9M8.5 4v1.5c0 3.5-2 6-5 7.5"/><path d="M6 9.5c1 2 2.6 3.4 4.5 4"/><path d="M11.5 20l4-9 4 9M12.8 17.5h5.4"/>',
+ copy:'<rect x="6" y="6" width="12" height="12" rx="2.5"/><path d="M4 14V4.5A1.5 1.5 0 0 1 5.5 3H14"/>',
+ speak:'<path d="M4 9.5v5h3l4.5 3.5V6L7 9.5z"/><path d="M15 9a4 4 0 0 1 0 6"/>',
+ slow:'<path d="M4 9.5v5h3l4.5 3.5V6L7 9.5z"/><path d="M15 9a4 4 0 0 1 0 6"/><path d="M18.5 6.5v11"/>',
+ learn:'<path d="M12 6.5 3.5 9.5 12 12.5l8.5-3z"/><path d="M7 11v4c0 1.4 2.2 2.5 5 2.5s5-1.1 5-2.5v-4"/>'
+};
+const b=(k,cls='')=>`<button class="btn ${cls}" title="${k}"><svg viewBox="0 0 24 24">${ico[k]}</svg></button>`;
+const mark=s=>{TERMS.forEach(w=>s=s.replace(w,`<u class="term">${w}</u>`));return s};
+document.getElementById('t').innerHTML=D.map((d,i)=>{
+ const prev=D[i-1], tight=prev&&prev.me===d.me;
+ return `<div class="row ${d.me?'me':''} ${tight?'tight':''}">
+  <div class="av ${tight?'hide':''}">${d.me?'B':'A'}</div>
+  <div class="stack">
+    <div class="bubble">
+      <p class="src">${mark(d.s)}</p>
+      <p class="tr">${d.t}</p>
+      <div class="ctl">${b('speak')}<i class="ctl-sep"></i>${b('slow')}<i class="ctl-sep"></i>${b('lang')}<i class="ctl-sep"></i>${b('learn')}</div>
+    </div>
+  </div>
+ </div>`}).join('');
+
+// Đổi mode: chỉ bật/tắt .ghost, chiều rộng bubble giữ nguyên vì grid vẫn đo cả hai.
+document.querySelectorAll('.tag.mode').forEach(t=>t.onclick=()=>{
+  document.querySelectorAll('.tag.mode').forEach(x=>x.classList.remove('on'));
+  t.classList.add('on');
+  const m=t.dataset.m;
+  document.querySelectorAll('.src').forEach(e=>e.classList.toggle('ghost',m==='translation'));
+  document.querySelectorAll('.tr').forEach(e=>e.classList.toggle('ghost',m==='source'));
+});
+</script>
+</body></html>

@@ -67,6 +67,14 @@ struct VocabDiscoveryCheck {
         expect(counts[.b2] == 1, "B2 has apple left, got \(counts[.b2] ?? -1)")
         expect(counts[.unranked] == 1, "one unranked word left, got \(counts[.unranked] ?? -1)")
 
+        let knownWords = VocabDiscovery.knownQueue(entries: entries, progress: progress).map(\.w)
+        expect(knownWords == ["known"], "knownQueue must return only known words, got \(knownWords)")
+
+        expect(VocabDiscovery.Filter(rawValue: "all") == .all, "filter 'all' must parse")
+        expect(VocabDiscovery.Filter(rawValue: "known") == .known, "filter 'known' must parse")
+        expect(VocabDiscovery.Filter(rawValue: "b2") == .level(.b2), "filter 'b2' must parse")
+        expect(VocabDiscovery.Filter(rawValue: "invalid") == nil, "invalid filter must fail")
+
         if failures == 0 {
             print("vocab-discovery-check: all checks passed")
         } else {

@@ -183,14 +183,12 @@ extension PopoverController {
         if sameActive {
             switch speechState.action(for: identity) {
             case .pause:
-                cancelSpeechStopTimer()
                 audioPlayer?.pause()
                 _ = speechState.pause(identity)
                 updateSpeakButtons()
                 return
             case .resume:
                 guard let player = audioPlayer, player.play() else { resetSpeechPlayback(); return }
-                scheduleSpeechStop(for: player, bounds: speechTrim[identity], speed: speed)
                 _ = speechState.resume(identity)
                 updateSpeakButtons()
                 return
@@ -254,7 +252,6 @@ extension PopoverController {
             guard player.play() else { throw NSError(domain: "Speech", code: 2, userInfo: [NSLocalizedDescriptionKey: "Audio could not be played"]) }
             audioPlayer = player
             activeSpeechRate = speed
-            scheduleSpeechStop(for: player, bounds: bounds, speed: speed)
             if let loadingGeneration {
                 guard speechState.markPlaying(generation: loadingGeneration, identity: identity) else { player.stop(); return false }
             } else {
@@ -269,40 +266,13 @@ extension PopoverController {
         }
     }
 
-    /// AVAudioPlayer has no end marker, so the trailing silence is cut by stopping on time.
-    func scheduleSpeechStop(for player: AVAudioPlayer, bounds: SpeechTrim.Bounds?, speed: Float) {
-        cancelSpeechStopTimer()
-        guard let bounds, player.duration - bounds.tail >= SpeechTrim.minimumGain else { return }
-        let remaining = (bounds.tail - player.currentTime) / Double(speed)
-        guard remaining > 0 else { return }
-        // No player capture: every state change cancels this timer, so if it fires the current
-        // player is still the one it was scheduled for.
-        let timer = Timer(timeInterval: remaining, repeats: false) { [weak self] _ in
-            Task { @MainActor in
-                guard let self, let current = self.audioPlayer else { return }
-                current.stop()
-                self.resetSpeechPlayback()
-            }
-        }
-        // .common so menu tracking or a resize drag cannot hold the stop past the trailing silence.
-        RunLoop.main.add(timer, forMode: .common)
-        speechStopTimer = timer
-    }
-
-    func cancelSpeechStopTimer() {
-        speechStopTimer?.invalidate()
-        speechStopTimer = nil
-    }
-
     func stopCurrentSpeech() {
-        cancelSpeechStopTimer()
         audioPlayer?.stop()
         audioPlayer = nil
         speechState.reset()
     }
 
     func resetSpeechPlayback() {
-        cancelSpeechStopTimer()
         audioPlayer = nil
         speechState.reset()
         updateSpeakButtons()

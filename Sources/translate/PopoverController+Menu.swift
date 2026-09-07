@@ -453,6 +453,7 @@ extension PopoverController {
             return outcome
         }
         historyStore = TranslationHistoryStore(config: config)
+        WeaveCache.prepare(historyDirectory: config.historyDirectoryURL)
         historyWindowController = HistoryWindowController(store: historyStore) { [weak self] record in
             guard let self else { return }
             self.historyWindowController.close()

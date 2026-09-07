@@ -166,7 +166,6 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     var activeSpeechRate: Float = 1.0
     var speechCache: [SpeechIdentity: Data] = [:]
     var speechTrim: [SpeechIdentity: SpeechTrim.Bounds] = [:]
-    var speechStopTimer: Timer?
     var prefetchGeneration = 0
     var prefetchingSpeech: Set<SpeechIdentity> = []
     var pendingSourceSpeech: [Int: PendingSourceSpeech] = [:]
@@ -190,6 +189,11 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
             guard let self else { return }
             self.openTranslatePanelShowingSetupStatus()
             self.openHistoryRecord(record)
+        }
+        controller.onLearnSentence = { [weak self] sentence in
+            guard let self else { return }
+            self.openTranslatePanelShowingSetupStatus()
+            self.learn(sentence)
         }
         return controller
     }()
@@ -277,6 +281,7 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        WeaveCache.prepare(historyDirectory: config.historyDirectoryURL)
         applyDensity()
         statusItem.button?.action = #selector(manualToggle)
         statusItem.button?.target = self

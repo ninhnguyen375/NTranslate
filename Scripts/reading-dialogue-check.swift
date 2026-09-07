@@ -50,6 +50,23 @@ struct ReadingDialogueCheck {
         """
         assert(ReadingDialogue.parse(split)?.turns[1].translation == "Hai.")
 
+        // A repeated Topic: header before translation must not become a turn or shift lines.
+        let repeatedTopic = """
+        Topic: Setup music.
+
+        A: Is that new?
+        B: Yes it is.
+
+        Topic: Setup music.
+
+        A: Mới hả?
+        B: Đúng rồi.
+        """
+        let repDialogue = ReadingDialogue.parse(repeatedTopic)
+        assert(repDialogue?.turns.count == 2, "must ignore repeated topic line")
+        assert(repDialogue?.turns[0].translation == "Mới hả?", "translation must not be shifted by topic header")
+        assert(repDialogue?.turns[1].translation == "Đúng rồi.")
+
         // A missing translation block leaves the turns without one instead of failing.
         let onlySource = "A: One.\nB: Two."
         assert(ReadingDialogue.parse(onlySource)?.turns.allSatisfy { $0.translation.isEmpty } == true)

@@ -20,6 +20,7 @@ struct WeavePassage: Codable, Sendable {
     var isDone: Bool?
 }
 
+@MainActor
 enum WeaveCache {
     static func cacheKey(words: [String], promptVersion: String, prompt: String = "") -> String {
         let payload = ([promptVersion, prompt] + words.map { $0.lowercased() }.sorted()).joined(separator: "\n")
@@ -27,10 +28,50 @@ enum WeaveCache {
         return digest.map { String(format: "%02x", $0) }.joined()
     }
 
-    static func directory() -> URL {
+    /// Passages and their audio sit beside history, so pointing history at a synced folder takes
+    /// the reading library along. Set from `AppConfig` at launch and whenever settings are saved.
+    @MainActor private(set) static var root: URL = legacyRoot
+
+    nonisolated static var legacyRoot: URL {
         FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("NTranslate", isDirectory: true)
-            .appendingPathComponent("weave", isDirectory: true)
+    }
+
+    @MainActor
+    static func prepare(historyDirectory: URL, legacy: URL = legacyRoot) {
+        root = historyDirectory.standardizedFileURL
+        migrateLegacy(from: legacy)
+    }
+
+    /// Passages written before they followed the history folder stay readable: they are moved once,
+    /// on the first launch that points somewhere else.
+    @MainActor
+    private static func migrateLegacy(from legacy: URL) {
+        let progress = legacy.appendingPathComponent("vocab-progress.json").standardizedFileURL
+        let progressTarget = root.appendingPathComponent("vocab-progress.json").standardizedFileURL
+        if progress.path != progressTarget.path,
+           FileManager.default.fileExists(atPath: progress.path),
+           !FileManager.default.fileExists(atPath: progressTarget.path) {
+            try? FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+            try? FileManager.default.moveItem(at: progress, to: progressTarget)
+        }
+        for name in ["weave", "weave-audio"] {
+            let from = legacy.appendingPathComponent(name, isDirectory: true)
+            let to = root.appendingPathComponent(name, isDirectory: true)
+            guard from.standardizedFileURL != to.standardizedFileURL,
+                  let files = try? FileManager.default.contentsOfDirectory(at: from, includingPropertiesForKeys: nil),
+                  !files.isEmpty
+            else { continue }
+            try? FileManager.default.createDirectory(at: to, withIntermediateDirectories: true)
+            for file in files {
+                try? FileManager.default.moveItem(at: file, to: to.appendingPathComponent(file.lastPathComponent))
+            }
+        }
+    }
+
+    @MainActor
+    static func directory() -> URL {
+        root.appendingPathComponent("weave", isDirectory: true)
     }
 
     static func url(for key: String) -> URL {
@@ -78,6 +119,37 @@ enum WeaveCache {
         } catch {
             // Losing the cache costs one extra request, never the passage itself.
             FileHandle.standardError.write(Data("WeaveCache: could not store passage: \(error)\n".utf8))
+        }
+    }
+}
+
+
+/// Spoken reading lines are not cards, so they have no record to hang audio on. They are cached by
+/// their own text instead, next to the passages, so replaying a line costs nothing.
+@MainActor
+enum WeaveAudioCache {
+    static func directory() -> URL {
+        WeaveCache.root.appendingPathComponent("weave-audio", isDirectory: true)
+    }
+
+    static func url(text: String, model: String) -> URL {
+        let digest = SHA256.hash(data: Data("\(model)\n\(text)".utf8))
+        let name = digest.map { String(format: "%02x", $0) }.joined()
+        return directory().appendingPathComponent("\(name).audio")
+    }
+
+    static func load(text: String, model: String) -> Data? {
+        try? Data(contentsOf: url(text: text, model: model))
+    }
+
+    static func store(_ data: Data, text: String, model: String) {
+        do {
+            try FileManager.default.createDirectory(at: directory(), withIntermediateDirectories: true)
+            try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: directory().path)
+            try data.write(to: url(text: text, model: model), options: .atomic)
+        } catch {
+            // Losing the cache costs one extra request, never the playback itself.
+            FileHandle.standardError.write(Data("WeaveAudioCache: could not store audio: \(error)\n".utf8))
         }
     }
 }

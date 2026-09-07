@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="vi"><head><meta charset="utf-8">
+<title>NTranslate - inline bubble controls prototype</title>
+<style>
+:root{--bg:#1e1f22;--bubble:#2b2d31;--me:#2f4d7a;--text:#e8e9ea;--dim:#9aa0a6;
+ --dim2:#6f757c;--accent:#4a9eff;--line:rgba(255,255,255,.09)}
+*{box-sizing:border-box}
+body{margin:0;padding:24px;background:var(--bg);color:var(--text);
+ font:13px/1.5 -apple-system,BlinkMacSystemFont,"SF Pro Text",sans-serif}
+h1{font-size:16px;margin:0 0 4px}
+.sub{color:var(--dim);font-size:12px;margin-bottom:18px}
+.global{display:inline-flex;background:rgba(255,255,255,.06);border-radius:8px;
+ padding:2px;margin-bottom:22px}
+.global button{font:inherit;font-size:11px;font-weight:600;color:var(--dim2);
+ background:none;border:0;cursor:pointer;padding:4px 12px;border-radius:6px}
+.global button.on{background:var(--accent);color:#fff}
+.chat{max-width:600px}
+.turn{display:flex;align-items:flex-start;gap:6px;margin-bottom:12px}
+.turn.me{flex-direction:row-reverse}
+.bubble{background:var(--bubble);border-radius:14px;padding:9px 12px;max-width:400px}
+.turn.me .bubble{background:var(--me)}
+.en{font-size:13.5px}
+.vi{font-size:12.5px;color:var(--dim);margin-top:2px}
+u{text-decoration-color:var(--dim2);text-underline-offset:3px}
+.ctl{display:flex;gap:2px;padding-top:7px;opacity:.45;transition:opacity .12s}
+.turn:hover .ctl{opacity:1}
+.ctl button{background:none;border:0;cursor:pointer;color:var(--dim2);
+ padding:4px;border-radius:6px;display:flex}
+.ctl button:hover{background:rgba(255,255,255,.10);color:var(--text)}
+.ctl button.on{color:var(--accent);background:rgba(74,158,255,.16)}
+.ico{width:15px;height:15px;display:block}
+.note{margin-top:24px;color:var(--dim);font-size:12px;max-width:70ch;
+ border-top:1px solid var(--line);padding-top:14px}
+#learnpop{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;
+ align-items:center;justify-content:center}
+#learnpop[hidden]{display:none}
+.pop{background:#26282c;border:1px solid var(--line);border-radius:14px;
+ padding:16px 18px;width:440px;box-shadow:0 20px 60px rgba(0,0,0,.5)}
+.pop-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.pop-mode{font-size:11px;font-weight:700;letter-spacing:.06em;color:var(--accent);
+ background:rgba(74,158,255,.16);border-radius:999px;padding:3px 10px}
+.pop-x{background:none;border:0;color:var(--dim2);font-size:20px;cursor:pointer;line-height:1}
+.pop-en{font-size:14px}
+.pop-vi{font-size:12.5px;color:var(--dim);margin-top:4px}
+.pop-body{margin-top:12px;padding-top:12px;border-top:1px solid var(--line);
+ font-size:12px;color:var(--dim)}
+kbd{background:rgba(255,255,255,.08);border-radius:4px;padding:1px 5px;font-size:11px}
+</style></head><body>
+
+<h1>Nút nằm ngang với bubble</h1>
+<div class="sub">Icon dịch: ép Both cho dòng đó, bấm lần nữa về global. Icon mũ tốt nghiệp: mở popup Translate ở chế độ Learn.</div>
+
+<div class="global" id="global">
+  <button data-m="source">English</button>
+  <button data-m="translation" class="on">Vietnamese</button>
+  <button data-m="both">Both</button>
+</div>
+
+<div class="chat" id="chat"></div>
+
+<div id="learnpop" hidden>
+  <div class="pop">
+    <div class="pop-head">
+      <span class="pop-mode">Learn</span>
+      <button data-close class="pop-x">&times;</button>
+    </div>
+    <div class="pop-en"></div>
+    <div class="pop-vi"></div>
+    <div class="pop-body">Popup Translate mở ở chế độ Learn với nguyên câu này: nghĩa, cấu trúc, từ vựng, ví dụ.</div>
+  </div>
+</div>
+
+<div class="note">
+Icon dịch sáng = dòng đang bị ép Both. Đổi thanh global sẽ reset mọi dòng chưa ép.
+Nút speak / speak slow giữ nguyên hành vi cũ, bấm để xem trạng thái pause.
+</div>
+
+<script>
+const TURNS = [
+ {me:false, en:'Did you see those big company <u>acquisitions</u> in the news today?',
+  vi:'Anh có thấy mấy vụ công ty lớn thâu tóm trên tin tức hôm nay không?'},
+ {me:true, en:'Yeah, well, that <u>rival</u> firm finally sold out.',
+  vi:'Ừ, thì cái hãng đối thủ đó cuối cùng cũng bán mình rồi.'},
+ {me:false, en:'Honestly, all that corporate <u>fragmentation</u> is kind of confusing to follow.',
+  vi:'Thật tình, mấy cái vụ chia rẽ doanh nghiệp đấy theo dõi thấy hơi rối não.'},
+ {me:true, en:'Right. I mean, the market commentators on TV keep saying it boosts growth.',
+  vi:'Công nhận. Ý tôi là, mấy tay bình luận viên thị trường trên tivi cứ bảo là nó giúp tăng trưởng.'},
+];
+
+const SVG = {
+  translate:'<path d="M4 5h9M8.5 5v-2M11 5c-.5 5-4 8-7 9"/><path d="M6 10c1 2.5 3.5 4.5 6 5.5"/><path d="M12 20l4.5-10L21 20M13.8 17h5.4"/>',
+  speak:'<path d="M11 5 6 9H3v6h3l5 4V5z"/><path d="M16 9a4 4 0 0 1 0 6"/><path d="M19 6.5a8 8 0 0 1 0 11"/>',
+  slow:'<path d="M11 5 6 9H3v6h3l5 4V5z"/><path d="M16 9a4 4 0 0 1 0 6"/><path d="M20 4 4 20"/>',
+  learn:'<path d="M12 4 2 9l10 5 10-5-10-5z"/><path d="M6 11.5V16c0 1.4 2.7 2.5 6 2.5s6-1.1 6-2.5v-4.5"/>',
+  pause:'<path d="M9 5v14M15 5v14"/>',
+};
+const icon = k => `<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+  stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${SVG[k]}</svg>`;
+
+let globalMode = 'translation';
+const overrides = new Map();   // index -> 'both' | undefined
+let playing = null;            // `${i}:${slow}`
+
+function render(){
+  document.querySelectorAll('#global button').forEach(b =>
+    b.classList.toggle('on', b.dataset.m === globalMode));
+
+  document.getElementById('chat').innerHTML = TURNS.map((t,i)=>{
+    const mode = overrides.get(i) || globalMode;
+    const forced = overrides.has(i);
+    const showEn = mode !== 'translation', showVi = mode !== 'source';
+    const btn = (k,cls,title) =>
+      `<button data-i="${i}" data-k="${k}" class="${cls}" title="${title}">${icon(k)}</button>`;
+    return `<div class="turn ${t.me?'me':''}">
+      <div class="bubble">
+        ${showEn?`<div class="en">${t.en}</div>`:''}
+        ${showVi?`<div class="vi">${t.vi}</div>`:''}
+      </div>
+      <div class="ctl">
+        ${btn('translate', forced?'on':'', forced?'Back to global mode':'Show both languages')}
+        ${btn('speak', playing===`${i}:0`?'on':'', 'Speak')}
+        ${btn('slow',  playing===`${i}:1`?'on':'', 'Speak slowly')}
+        ${btn('learn', '', 'Learn this sentence')}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+document.getElementById('global').onclick = e => {
+  const b = e.target.closest('button'); if(!b) return;
+  globalMode = b.dataset.m; overrides.clear(); render();
+};
+
+document.getElementById('chat').onclick = e => {
+  const b = e.target.closest('button'); if(!b) return;
+  const i = +b.dataset.i;
+  if(b.dataset.k === 'learn'){
+    openLearn(i); return;
+  }
+  if(b.dataset.k === 'translate'){
+    overrides.has(i) ? overrides.delete(i) : overrides.set(i,'both');
+  } else {
+    const key = `${i}:${b.dataset.k==='slow'?1:0}`;
+    playing = playing === key ? null : key;
+  }
+  render();
+};
+
+function openLearn(i){
+  const t = TURNS[i];
+  const pop = document.getElementById('learnpop');
+  pop.querySelector('.pop-en').innerHTML = t.en;
+  pop.querySelector('.pop-vi').textContent = t.vi;
+  pop.hidden = false;
+}
+document.getElementById('learnpop').onclick = e => {
+  if(e.target.id === 'learnpop' || e.target.dataset.close !== undefined)
+    e.currentTarget.hidden = true;
+};
+
+render();
+</script>
+</body></html>

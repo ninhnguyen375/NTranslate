@@ -30,6 +30,8 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
     /// Lets the app drop back to a menu-bar utility once this window is gone.
     var onWindowClosed: (() -> Void)?
     var onOpenTranslate: ((TranslationRecord) -> Void)?
+    /// Called with a reading line to explain in the translate panel's Learn mode.
+    var onLearnSentence: ((String) -> Void)?
 
     private var recordsToReview: [TranslationRecord] = []
     private var currentIndex = 0
@@ -66,6 +68,11 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
     // Reading passage
     private var weaveRequest: RequestHandle?
     private var didRetryWeave = false
+    /// Which language the reading passage opens in. Picked while the model is still writing it,
+    /// and nil until the learner picks: a passage that arrives first waits in `pendingReading`.
+    private var preferredReadingMode: ReadingChatView.Mode?
+    private var isAwaitingWeave = false
+    private var pendingReading: (text: String, words: [String], entry: (key: String, passage: WeavePassage)?)?
     /// The passage on the reading screen, with the key it is filed under, so a regenerated title
     /// can be written back to the same file.
     private var currentPassage: (key: String, passage: WeavePassage)?
@@ -75,7 +82,7 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
     // New words
     private var newWordsQueue: [VocabPackEntry] = []
     private var newWordsIndex = 0
-    private var newWordsLevel: VocabDiscovery.Level?
+    private var newWordsFilter: VocabDiscovery.Filter = .all
     private var newWordsLearned = 0
 
     private let cardView = NSVisualEffectView()
@@ -130,7 +137,7 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
             ReviewPlanner.QuestionKind.allCases.first { $0.label == label }
         }
         selectedBucket = learning.reviewFilter.flatMap(DeckStats.Bucket.init(rawValue:))
-        newWordsLevel = learning.newWordsLevel.flatMap(VocabDiscovery.Level.init(rawValue:))
+        newWordsFilter = learning.newWordsLevel.flatMap(VocabDiscovery.Filter.init(rawValue:)) ?? .all
     }
 
     private func configureUI() {
@@ -154,6 +161,11 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
         newWordsView.delegate = self
         sessionView.readingChatView.onSpeak = { [weak self] line, isSlow in self?.speakReadingLine(line, slow: isSlow) }
         sessionView.readingChatView.onWord = { [weak self] word in self?.openTranslateForWord(word) }
+        sessionView.readingChatView.onLearn = { [weak self] line in
+            guard let self else { return }
+            self.stopAudio()
+            self.onLearnSentence?(line)
+        }
         // Selecting the text hands it to the field editor, which drops every attribute unless the
         // field says attributes are its own. Without this the reading underlines vanish on click.
         sessionView.resultLabel.allowsEditingTextAttributes = true
@@ -449,6 +461,7 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
         sessionView.revealButton.isHidden = false
         sessionView.backButton.isHidden = true
         sessionView.markDoneButton.isHidden = true
+        sessionView.regenerateButton.isHidden = true
         sessionView.gradeStack.isHidden = true
         isAnswerRevealed = false
         stopAudio()
@@ -777,6 +790,17 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
         rebuildNewWordsQueue()
     }
 
+    private func updateNewWordsLevels() {
+        let progress = VocabProgressStore.shared.progress
+        let entries = VocabPack.shared.allEntries()
+        let inStore = Set(store.records.filter { $0.isSaved }.map { VocabPack.normalize(displayTerm(of: $0)) })
+        newWordsView.setLevels(
+            VocabDiscovery.remainingByLevel(entries: entries, progress: progress, inStore: inStore),
+            knownCount: progress.known.count,
+            selected: newWordsFilter
+        )
+    }
+
     private func rebuildNewWordsQueue() {
         VocabProgressStore.shared.load()
         let progress = VocabProgressStore.shared.progress
@@ -784,25 +808,39 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
         let inStore = Set(store.records.filter { $0.isSaved }.map { VocabPack.normalize(displayTerm(of: $0)) })
         newWordsView.setLevels(
             VocabDiscovery.remainingByLevel(entries: entries, progress: progress, inStore: inStore),
-            selected: newWordsLevel
+            knownCount: progress.known.count,
+            selected: newWordsFilter
         )
-        newWordsQueue = VocabDiscovery.queue(
-            entries: entries,
-            level: newWordsLevel,
-            progress: progress,
-            inStore: inStore
-        )
+        if newWordsFilter == .known {
+            newWordsQueue = VocabDiscovery.knownQueue(entries: entries, progress: progress)
+        } else {
+            let level: VocabDiscovery.Level?
+            switch newWordsFilter {
+            case .level(let lvl): level = lvl
+            case .all, .known: level = nil
+            }
+            newWordsQueue = VocabDiscovery.queue(
+                entries: entries,
+                level: level,
+                progress: progress,
+                inStore: inStore
+            )
+        }
         newWordsIndex = 0
         showCurrentNewWord()
     }
 
     private func showCurrentNewWord() {
         guard newWordsIndex < newWordsQueue.count else {
-            newWordsView.showEmpty(
-                message: VocabPack.shared.isEmpty
-                    ? "Không tìm thấy kho từ vựng. Kiểm tra tệp vocab-en-vi.json trong Application Support."
-                    : "Hết từ ở mức này. Chọn cấp độ khác ở góc trên bên trái."
-            )
+            let emptyMessage: String
+            if VocabPack.shared.isEmpty {
+                emptyMessage = "Không tìm thấy kho từ vựng. Kiểm tra tệp vocab-en-vi.json trong Application Support."
+            } else if newWordsFilter == .known {
+                emptyMessage = "Chưa có từ nào trong danh sách Đã biết."
+            } else {
+                emptyMessage = "Hết từ ở mức này. Chọn cấp độ khác ở góc trên bên trái."
+            }
+            newWordsView.showEmpty(message: emptyMessage)
             stopAudio()
             return
         }
@@ -827,17 +865,35 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
         switch decision {
         case .known:
             VocabProgressStore.shared.record(.known, word: entry.w)
+            newWordsIndex += 1
+        case .unmarkKnown:
+            VocabProgressStore.shared.unmarkKnown(word: entry.w)
+            newWordsQueue.remove(at: newWordsIndex)
+            updateNewWordsLevels()
+            showCurrentNewWord()
+            return
         case .skip:
             VocabProgressStore.shared.record(.skipped, word: entry.w)
             // A skipped word belongs at the back of the queue, not gone: move it there now so the
             // rest of this sitting keeps offering words never seen before.
             newWordsQueue.append(newWordsQueue.remove(at: newWordsIndex))
+            updateNewWordsLevels()
             showCurrentNewWord()
             return
+        case .next:
+            newWordsIndex += 1
         case .learn:
             addNewWordToDeck(entry)
+            if newWordsFilter == .known {
+                VocabProgressStore.shared.unmarkKnown(word: entry.w)
+                newWordsQueue.remove(at: newWordsIndex)
+                updateNewWordsLevels()
+                showCurrentNewWord()
+                return
+            }
+            newWordsIndex += 1
         }
-        newWordsIndex += 1
+        updateNewWordsLevels()
         showCurrentNewWord()
     }
 
@@ -859,6 +915,7 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
             let stored = try store.appendIfAbsent(record)
             try store.setSaved(true, recordID: stored.id)
             VocabProgressStore.shared.clearSkip(word: entry.w)
+            VocabProgressStore.shared.unmarkKnown(word: entry.w)
             newWordsLearned += 1
         } catch {
             NSLog("[NTranslate] Failed to add new word: \(error.localizedDescription)")
@@ -947,6 +1004,10 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
             return event
         }
         if isReadingMode {
+            if isAwaitingWeave, let index = ["1", "2"].firstIndex(of: chars) {
+                sessionView(sessionView, didChooseAt: index)
+                return nil
+            }
             if !sessionView.readingModeControl.isHidden, let index = ["1", "2", "3"].firstIndex(of: chars) {
                 sessionView.readingModeControl.selectedSegment = index
                 readingModeChanged(index)
@@ -1048,10 +1109,13 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
 
     private func showReadingPassage() {
         didRetryWeave = false
+        isAwaitingWeave = false
+        preferredReadingMode = nil
+        pendingReading = nil
         requestReadingPassage()
     }
 
-    private func requestReadingPassage() {
+    private func requestReadingPassage(force: Bool = false) {
         let words = readingWords()
         guard !words.isEmpty else { return }
         // The prompt actually in use decides the passage, so it decides the cache key too.
@@ -1060,7 +1124,7 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
             promptVersion: AppConfig.weavePromptVersion,
             prompt: (config ?? AppConfig.load()).weavePrompt
         )
-        if let cached = WeaveCache.load(key: key) {
+        if !force, let cached = WeaveCache.load(key: key) {
             presentReading(cached.text, words: words, entry: (key, cached))
             return
         }
@@ -1068,6 +1132,7 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
             presentReading("No translator is configured, so the passage cannot be generated.", words: words)
             return
         }
+        isAwaitingWeave = true
         presentReading("Generating a passage from \(words.count) words…", words: words)
         // The words come from these records, so their own language pair is the right one to ask
         // for. `config.sourceLang` is often "Auto detect", which means nothing to the model here.
@@ -1085,7 +1150,7 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
                     let missing = Self.wordsMissing(from: text, words: words)
                     if !missing.isEmpty, !self.didRetryWeave {
                         self.didRetryWeave = true
-                        self.requestReadingPassage()
+                        self.requestReadingPassage(force: force)
                         return
                     }
                     let passage = WeavePassage(
@@ -1095,12 +1160,29 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
                         generatedAt: Date()
                     )
                     WeaveCache.store(passage, key: key)
-                    self.presentReading(text, words: words, entry: (key, passage))
+                    self.deliverReading(text, words: words, entry: (key, passage))
                 case let .failure(error):
-                    self.presentReading("Could not generate the passage: \(error.localizedDescription)", words: words)
+                    self.deliverReading("Could not generate the passage: \(error.localizedDescription)", words: words)
                 }
             }
         }
+    }
+
+    /// A finished passage still waits for the language choice, so the screen never jumps ahead of
+    /// the learner just because the model was quick.
+    private func deliverReading(
+        _ text: String,
+        words: [String],
+        entry: (key: String, passage: WeavePassage)? = nil
+    ) {
+        guard preferredReadingMode != nil else {
+            pendingReading = (text, words, entry)
+            sessionView.hintLabel.stringValue = "Passage is ready. Pick a language to open it."
+            return
+        }
+        isAwaitingWeave = false
+        pendingReading = nil
+        presentReading(text, words: words, entry: entry)
     }
 
     private func presentReading(_ text: String, words: [String], entry: (key: String, passage: WeavePassage)? = nil) {
@@ -1120,6 +1202,7 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
         sessionView.feedbackLabel.isHidden = true
         if let dialogue = ReadingDialogue.parse(text) {
             sessionView.readingChatView.show(dialogue, words: words)
+            sessionView.readingChatView.setGlobalMode(preferredReadingMode ?? .both)
             sessionView.readingChatView.isHidden = false
             sessionView.readingModeControl.isHidden = false
             sessionView.readingModeControl.selectedSegment = sessionView.readingChatView.currentMode.rawValue
@@ -1136,13 +1219,27 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
         sessionView.hideButton.isEnabled = false
         sessionView.backButton.isHidden = false
         sessionView.markDoneButton.isHidden = entry == nil
+        sessionView.regenerateButton.isHidden = entry == nil
+        sessionView.regenerateButton.isEnabled = !isAwaitingWeave
         sessionView.setPassageDone(entry?.passage.isDone == true)
+        // The wait is dead time otherwise, so it buys the one setting the passage needs. The
+        // passage has no title yet, so the header would only say "Untitled" over the question.
+        if isAwaitingWeave, preferredReadingMode == nil {
+            sessionView.termLabel.isHidden = true
+            sessionView.titleRefreshButton.isHidden = true
+            sessionView.firstChoiceButton.title = "  English first (EN to VI)"
+            sessionView.secondChoiceButton.title = "  Vietnamese first (VI to EN)"
+            sessionView.choiceStack.isHidden = false
+            sessionView.hintLabel.stringValue = readingModeHint()
+            sessionView.hintLabel.isHidden = false
+        }
         adjustWindowHeightForContentIfNeeded()
     }
 
     /// Names the passage on the reading screen. Without a title the header says so and offers the
     /// button that asks the model for one.
     private func applyReadingTitle() {
+        sessionView.termLabel.isHidden = false
         sessionView.termLabel.font = .systemFont(ofSize: 20, weight: .bold)
         let headline = currentPassage.map { Self.passageHeadline($0.passage) } ?? ""
         sessionView.termLabel.stringValue = headline.isEmpty ? "Untitled passage" : headline
@@ -1152,6 +1249,16 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
         sessionView.titleRefreshButton.toolTip = headline.isEmpty
             ? "Ask the model for a title"
             : "Generate a new title"
+    }
+
+    /// Throws the open passage away and asks for a new one from the same words. The cache key is
+    /// built from the words and the prompt, so the only way to get different text is to skip the
+    /// cache on the way in and overwrite the file on the way out.
+    private func regeneratePassage() {
+        guard translator != nil, !isAwaitingWeave else { return }
+        didRetryWeave = false
+        sessionView.regenerateButton.isEnabled = false
+        requestReadingPassage(force: true)
     }
 
     /// Asks the model for a short title and files it with the passage, so the list and this header
@@ -1222,13 +1329,22 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
         sessionView.readingModeControl.isHidden = true
     }
 
+    private func readingModeHint() -> String {
+        switch preferredReadingMode {
+        case .source: return "Passage will open in English. Press 1 or 2 to change."
+        case .translation: return "Passage will open in Vietnamese. Press 1 or 2 to change."
+        default: return "Pick how the passage should open while it is being written."
+        }
+    }
+
     private func readingModeChanged(_ segment: Int) {
         guard let mode = ReadingChatView.Mode(rawValue: segment) else { return }
+        preferredReadingMode = mode
         sessionView.readingChatView.setGlobalMode(mode)
     }
 
     /// One line of the conversation, spoken in the language it is written in. These lines are not
-    /// cards, so nothing is cached: each click is its own request.
+    /// cards, so their audio is cached by text under the history folder instead of on a record.
     private func speakReadingLine(_ line: String, slow: Bool) {
         let speechCfg = config ?? AppConfig.load()
         let language = readingPool().first?.sourceLanguage ?? "English"
@@ -1439,6 +1555,12 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
             startPlayback(data, identity: identity, speed: speed)
             return
         }
+        if identity.recordID == nil,
+           let data = WeaveAudioCache.load(text: identity.text, model: identity.model),
+           SpeechAudioPolicy.isValid(data) {
+            startPlayback(data, identity: identity, speed: speed)
+            return
+        }
 
         guard let translator else { return }
         let generation = speechState.beginLoading(identity)
@@ -1454,6 +1576,8 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
                 }
                 if let recordID = identity.recordID {
                     try? self.store.attachAudio(data, kind: .source, recordID: recordID)
+                } else {
+                    WeaveAudioCache.store(data, text: identity.text, model: identity.model)
                 }
                 self.startPlayback(data, identity: identity, speed: speed, loadingGeneration: generation)
             }
@@ -1544,7 +1668,7 @@ extension ReviewWindowController: ReviewHomeViewDelegate {
         learning.reviewSessionLimit = sessionLimit
         learning.reviewQuestionKind = requestedKind?.label
         learning.reviewFilter = selectedBucket?.rawValue
-        learning.newWordsLevel = newWordsLevel?.rawValue
+        learning.newWordsLevel = newWordsFilter.rawValue
         config?.learning = learning
         onLearningSettingsChanged?(learning)
     }
@@ -1556,11 +1680,24 @@ extension ReviewWindowController: ReviewSessionViewDelegate {
     func sessionViewDidTapHide(_ view: ReviewSessionView) { hideCurrentCard() }
     func sessionViewDidTapReveal(_ view: ReviewSessionView) { revealAnswer() }
     func sessionViewDidRequestPassageTitle(_ view: ReviewSessionView) { regeneratePassageTitle() }
+    func sessionViewDidRequestPassageRegenerate(_ view: ReviewSessionView) { regeneratePassage() }
 
     func sessionViewDidTapBack(_ view: ReviewSessionView) { leaveReading() }
     func sessionViewDidTogglePassageDone(_ view: ReviewSessionView) { togglePassageDone() }
     func sessionView(_ view: ReviewSessionView, didGrade grade: SRSGrade) { applyGrade(grade) }
-    func sessionView(_ view: ReviewSessionView, didChooseAt index: Int) { chooseContrast(index: index) }
+    func sessionView(_ view: ReviewSessionView, didChooseAt index: Int) {
+        // While the passage is being written the same two buttons pick the language it opens in.
+        guard !isAwaitingWeave else {
+            preferredReadingMode = index == 0 ? .source : .translation
+            if let pending = pendingReading {
+                deliverReading(pending.text, words: pending.words, entry: pending.entry)
+            } else {
+                sessionView.hintLabel.stringValue = readingModeHint()
+            }
+            return
+        }
+        chooseContrast(index: index)
+    }
     func sessionViewDidSubmitAnswer(_ view: ReviewSessionView) { submitTypedAnswer() }
 
     func sessionViewDidToggleContext(_ view: ReviewSessionView) {
@@ -1595,8 +1732,8 @@ extension ReviewWindowController: NewWordsViewDelegate {
         speakNewWord(slow: slow)
     }
 
-    func newWordsView(_ view: NewWordsView, didSelect level: VocabDiscovery.Level?) {
-        newWordsLevel = level
+    func newWordsView(_ view: NewWordsView, didSelect filter: VocabDiscovery.Filter) {
+        newWordsFilter = filter
         persistOptions()
         rebuildNewWordsQueue()
     }

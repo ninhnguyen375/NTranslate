@@ -418,6 +418,22 @@ struct AppConfig: Codable {
         try fileManager.createDirectory(atPath: directory, withIntermediateDirectories: true)
         try encodePrettyJSON(config).write(to: URL(fileURLWithPath: path), options: .atomic)
         try fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: path)
+        mirrorToHistoryDirectory(config, primaryPath: path, fileManager: fileManager)
+    }
+
+    /// The history folder is meant to hold the whole setup: copy it to another machine, point
+    /// Settings at it, and everything but the API keys comes back (those stay in the Keychain).
+    /// A failed mirror is silent, since the real config has already been written.
+    private static func mirrorToHistoryDirectory(
+        _ config: AppConfig,
+        primaryPath: String,
+        fileManager: FileManager
+    ) {
+        let mirror = config.historyDirectoryURL.appendingPathComponent("config.json").standardizedFileURL
+        guard mirror.path != URL(fileURLWithPath: primaryPath).standardizedFileURL.path else { return }
+        try? fileManager.createDirectory(at: config.historyDirectoryURL, withIntermediateDirectories: true)
+        try? encodePrettyJSON(config).write(to: mirror, options: .atomic)
+        try? fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: mirror.path)
     }
 
     @discardableResult

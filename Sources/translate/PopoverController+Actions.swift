@@ -7,6 +7,22 @@ extension PopoverController {
         runLearn(bypassCache: false)
     }
 
+    /// Drops a sentence into the input pane and explains it, the way the Learn hotkey does with a
+    /// selection. Used by the reading view's per-line Learn button.
+    func learn(_ text: String) {
+        invalidateTranslationRequest()
+        invalidateSpeech(stopPlayback: true)
+        setPendingImage(nil)
+        inputContextLabel.stringValue = ""
+        inputContextLabel.toolTip = nil
+        inputContextLabel.isHidden = true
+        inputTextView.string = text
+        updateLanguageSelection(for: text)
+        setResultText(PopoverFeedback.learning)
+        reflowLayout()
+        runLearn()
+    }
+
     func runLearn(bypassCache: Bool = false) {
         guard pendingImage == nil, let translator else { return }
         lastExecutionMode = .learn

@@ -28,8 +28,8 @@ import Foundation
         let raw = SpeechTrim.bounds(
             channels: buffer.floatChannelData!, channelCount: 1, frames: Int(frameCount), sampleRate: rate
         )!
-        assert(abs(raw.lead - 0.27) < 0.02, "lead off: \(raw.lead)")
-        assert(abs(raw.tail - 0.73) < 0.02, "tail off: \(raw.tail)")
+        assert(abs(raw.lead - 0.22) < 0.02, "lead off: \(raw.lead)")
+        assert(abs(raw.tail - 0.78) < 0.02, "tail off: \(raw.tail)")
 
         // A clip with nothing above the floor must play untrimmed.
         for index in 0..<Int(frameCount) { samples[index] = 0 }
@@ -50,8 +50,8 @@ import Foundation
         }
         let encoded = SpeechTrim.bounds(of: try Data(contentsOf: url))!
         try? FileManager.default.removeItem(at: url)
-        assert(abs(encoded.lead - 0.27) < 0.05, "encoded lead off: \(encoded.lead)")
-        assert(abs(encoded.tail - 0.73) < 0.05, "encoded tail off: \(encoded.tail)")
+        assert(abs(encoded.lead - 0.22) < 0.05, "encoded lead off: \(encoded.lead)")
+        assert(abs(encoded.tail - 0.78) < 0.05, "encoded tail off: \(encoded.tail)")
 
         print("SpeechTrim OK — lead \(raw.lead), tail \(raw.tail)")
     }

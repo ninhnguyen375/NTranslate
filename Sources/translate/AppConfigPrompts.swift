@@ -23,7 +23,7 @@ extension AppConfig {
     - Then, when the source is not in {{config.nativeLang}}, add a second block listing at most 3 words or phrases most worth learning, for a B1-B2 learner:
 
       Từ khóa đáng học:
-      - <từ/cụm gốc> — <phiên âm: IPA cho chữ Latinh, pinyin có dấu thanh cho tiếng Trung> — <nghĩa trong ngữ cảnh này> — <mức dùng: formal | neutral | thân mật | lóng>
+      - <từ/cụm gốc> - <phiên âm: IPA cho chữ Latinh, pinyin có dấu thanh cho tiếng Trung> - <nghĩa trong ngữ cảnh này> - <mức dùng: formal | neutral | thân mật | lóng>
 
     - Skip the Từ khóa đáng học block when the source is already in {{config.nativeLang}}, when the text is trivial, or when nothing in it is worth learning. Never pad it to reach 3 items.
     - Pick words by usefulness, not difficulty: high-frequency words used in a way the learner would get wrong beat rare showy words.
@@ -39,7 +39,7 @@ extension AppConfig {
         Do these steps in order:
         1. Transcribe every readable line of text in the image verbatim, preserving reading order, line breaks, numbers, names, punctuation, and diacritics. Do not correct spelling or rewrite anything.
         2. Identify the language of that transcribed text.
-        3. Choose the target language: {{config.targetLang}}, unless the transcribed text is already in {{config.targetLang}} — in that case use {{config.alternateLang}}.
+        3. Choose the target language: {{config.targetLang}}, unless the transcribed text is already in {{config.targetLang}} - in that case use {{config.alternateLang}}.
         4. Translate the transcription into the target language chosen in step 3.
 
         Constraints:
@@ -221,7 +221,7 @@ extension AppConfig {
 
     /// Bumped whenever `defaultWeavePrompt` changes, so cached passages from the old wording
     /// are ignored instead of served.
-    static let weavePromptVersion = "4"
+    static let weavePromptVersion = "6"
 
     static let defaultWeavePrompt = """
     You write short spoken-{{config.sourceLang}} practice dialogues for a learner of {{config.sourceLang}} at B1-B2 level.
@@ -230,7 +230,7 @@ extension AppConfig {
     Return plain text only. No markdown. No intro. No commentary. No code fences.
     Follow this format exactly:
 
-    Topic: <one short sentence in {{config.sourceLang}} naming the situation, at most 10 words>
+    Topic: <a short, specific, catchy title in {{config.sourceLang}}, 3 to 6 words (hard limit: 8 words). Never write generic situation sentences like "Two coworkers talking about...". Capture the exact concrete subject, debate, or moment, e.g. "Testing New Desk Speakers">
 
     <the dialogue in {{config.sourceLang}}>
 
@@ -243,6 +243,13 @@ extension AppConfig {
     - Let speakers interrupt, ask back, half agree, change their mind, react before answering.
     - Two speakers labelled "A:" and "B:", 14-18 turns.
 
+    What the conversation should feel like:
+    - Two people who like each other. One of them needs something small: a bit of help, a bit of reassurance, someone to notice they are tired.
+    - The other one notices, asks, listens, then offers something concrete and small that the situation itself suggests.
+    - Warm, not sweet. No speeches, no advice-giving, no moral at the end. The care shows in what they offer, not in what they say about caring.
+    - End on a small ordinary turn that closes the moment, and pick a different kind of ending each time rather than a standing plan for tomorrow.
+    - Keep the stakes small and human. Nothing cruel, nothing that is still hurting when the conversation ends.
+
     Hard rules:
     - One everyday situation the learner really lives: two coworkers at lunch, two friends on the way home, a chat before a meeting starts. No lecture, no news report, no product review.
     - At most one word from the list per turn, and several turns carry none at all. Never stack two listed words in one sentence.
@@ -252,7 +259,8 @@ extension AppConfig {
     - Do not number, bold, or mark the target words in any way.
     - Keep the "A:" and "B:" labels in the translation so the two versions line up turn by turn.
     - The {{config.targetLang}} is spoken {{config.targetLang}}, written with every accent and diacritic it needs. Translate the feeling, not the grammar.
-    - The first line is the topic line and starts with "Topic:". It is not part of the dialogue and is never translated.
+    - The first line is the topic line and starts with "Topic:". It must be a short, specific, punchy title (3 to 6 words, maximum 8 words). Never write a generic situation description like "Two coworkers talking about..." or "A conversation about...". Name the specific object, debate, or moment. It is not part of the dialogue and is never translated.
+    - Never include or repeat "Topic:" in the translation block; start the translation directly with the first speaker turn "A:".
     - Put exactly one blank line between the topic line, the dialogue, and its translation, and nothing else in the output.
     """
 

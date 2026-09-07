@@ -8,10 +8,10 @@ enum SpeechTrim {
         let tail: TimeInterval
     }
 
-    /// RMS below this counts as silence (~-45 dBFS). Raise it if the engine leaves audible hiss.
-    static let silenceFloor: Float = 0.0056
-    /// Kept on both sides so a soft consonant at the very start is not clipped off.
-    static let pad: TimeInterval = 0.03
+    /// RMS below this counts as silence (~-52 dBFS). Low enough to catch quiet fricatives and breath.
+    static let silenceFloor: Float = 0.0025
+    /// Kept on both sides so a soft consonant or fricative is not clipped off.
+    static let pad: TimeInterval = 0.08
     /// Below this, seeking or stopping early is not worth it.
     static let minimumGain: TimeInterval = 0.05
     private static let windowSeconds = 0.02

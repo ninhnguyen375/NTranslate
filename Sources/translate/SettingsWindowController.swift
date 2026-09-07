@@ -999,6 +999,31 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         panel.allowsMultipleSelection = false
         guard panel.runModal() == .OK, let url = panel.url else { return }
         historyDirectoryField.stringValue = url.path
+        offerRestore(from: url)
+    }
+
+    /// A folder that already carries a config was written by another install of the app, so a fresh
+    /// machine can adopt the whole setup instead of retyping it. The API keys are not in there:
+    /// they live in the Keychain and still have to be entered once.
+    private func offerRestore(from url: URL) {
+        let mirror = url.appendingPathComponent("config.json")
+        guard FileManager.default.fileExists(atPath: mirror.path),
+              case let .loaded(restored) = AppConfig.loadOutcome(at: mirror.path)
+        else { return }
+
+        let alert = NSAlert()
+        alert.messageText = "Restore settings from this folder?"
+        alert.informativeText = "This folder holds settings saved by NTranslate, including prompts, "
+            + "hotkeys and speech models. Restoring replaces what is on screen. API keys live in the "
+            + "Keychain and are not restored."
+        alert.addButton(withTitle: "Restore")
+        alert.addButton(withTitle: "Keep Current")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+
+        // The folder is the one the user just picked, whatever path the other machine wrote.
+        var adopted = restored
+        adopted.historyDirectory = url.path
+        populate(config: adopted, apiKey: apiKeyField.stringValue, speechAPIKey: speechAPIKeyField.stringValue)
     }
 
     private func makeSettingsSplitView() -> NSSplitView {

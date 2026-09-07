@@ -12,6 +12,33 @@ enum VocabDiscovery {
         var label: String { self == .unranked ? "Chưa gắn" : rawValue.uppercased() }
     }
 
+    enum Filter: Equatable, Sendable {
+        case all
+        case level(Level)
+        case known
+
+        var rawValue: String {
+            switch self {
+            case .all: return "all"
+            case .level(let lvl): return lvl.rawValue
+            case .known: return "known"
+            }
+        }
+
+        init?(rawValue: String) {
+            switch rawValue {
+            case "all": self = .all
+            case "known": self = .known
+            default:
+                if let level = Level(rawValue: rawValue) {
+                    self = .level(level)
+                } else {
+                    return nil
+                }
+            }
+        }
+    }
+
     /// What the learner said about a word. `known` leaves the deck for good; `skipped` goes to
     /// the back of the queue so it stops blocking words never seen before.
     struct Progress: Codable, Equatable, Sendable {
@@ -65,6 +92,20 @@ enum VocabDiscovery {
         return sort(unseen) + sort(skipped)
     }
 
+    /// Every word marked known, sorted alphabetically for browsing.
+    static func knownQueue(
+        entries: [VocabPackEntry],
+        progress: Progress
+    ) -> [VocabPackEntry] {
+        var knownEntries: [VocabPackEntry] = []
+        for entry in entries {
+            let key = VocabPack.normalize(entry.w)
+            guard !key.isEmpty, progress.known.contains(key) else { continue }
+            knownEntries.append(entry)
+        }
+        return knownEntries.sorted { $0.w.lowercased() < $1.w.lowercased() }
+    }
+
     /// How many words each level still has to offer, so the picker can show real numbers.
     static func remainingByLevel(
         entries: [VocabPackEntry],
@@ -101,9 +142,7 @@ final class VocabProgressStore {
     private var loaded = false
 
     static var fileURL: URL {
-        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("NTranslate", isDirectory: true)
-            .appendingPathComponent("vocab-progress.json")
+        WeaveCache.root.appendingPathComponent("vocab-progress.json")
     }
 
     func load() {
@@ -125,6 +164,14 @@ final class VocabProgressStore {
         case .skipped:
             progress.skipped.insert(key)
         }
+        save()
+    }
+
+    /// Removes a word from the known set, returning it to ordinary discovery queues.
+    func unmarkKnown(word: String) {
+        load()
+        let key = VocabPack.normalize(word)
+        guard progress.known.remove(key) != nil else { return }
         save()
     }
 
