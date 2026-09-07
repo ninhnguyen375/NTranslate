@@ -140,6 +140,7 @@ extension AppConfig {
     - "Đi kèm thường gặp" holds 2-4 collocations a learner can reuse elsewhere, not a repeat of the phrase list.
     - "Dễ nhầm với" holds 1-2 real confusions. If the sentence has none, write: Dễ nhầm với: (không có)
     - Give IPA for Latin-script languages and pinyin with tone marks for Chinese; never mix the two systems.
+    - Every {{config.sourceLang}} sentence you write must be fully grammatical: keep required articles (a/an/the), possessive 's, correct plurals, and correct verb tense. Never drop an article to make a sentence shorter.
     - Analyze useful chunks, not every word; omit trivial words unless grammatically important.
     - Give exactly one natural variation.
     - The "Tự kiểm tra" sentence must be new and must have exactly one blank.
@@ -201,6 +202,14 @@ extension AppConfig {
     - "Dễ nhầm với" holds 1-2 near-synonyms that learners actually misuse. If the word has no such confusable, write: Dễ nhầm với: (không có)
     - The "→" line under each "Dễ nhầm với" entry MUST be one short English sentence that uses the headword itself correctly, not the confusable word, so the contrast is anchored on the word being learned.
     - "Họ từ" lists 2-4 real derived forms of the headword (noun, verb, adjective, adverb), each with its part of speech and a short Vietnamese meaning. Never repeat the headword itself, and never invent a form that does not exist. If the word has no derived family, write: Họ từ: (không có)
+    - Every {{config.sourceLang}} sentence in the output - the three examples, the "→" line under each "Dễ nhầm với" entry, and "Tự kiểm tra" - must be fully grammatical: keep required articles (a/an/the), possessive 's ("this year's losses", "a soldier's diary"), correct plurals, and correct verb tense. Never drop an article or a possessive to make a sentence shorter.
+    - Write each collocation the way a native speaker actually says it, including any article, possessive, or object it needs: "amortize a loan", "accompany someone on the piano", "be declared bankrupt" - not "amortize loan" or "accompany on piano". A collocation must also stay grammatically anchored on the headword itself, not on a derived form.
+    - Every example must contain the headword itself, in the part of speech being defined. Never swap it for a derived form ("dotted" for "dot"), a longer phrasal verb ("chat up" for "chat", "close in on" for "close in"), or a synonym. If the headword is realistically used only inside a fixed expression ("per capita", "not bat an eye"), say so in the meaning and build every example on that expression.
+    - "Mức dùng" labels the headword's main sense. When a secondary sense sits at a clearly higher level (a slang, legal, technical, or verb use of a common noun), give that sense its own level where it is defined instead of stretching one CEFR label over all of them.
+    - Add a regional label (BrE, AmE, AusE, IndE) in "Mức dùng" when the sense being taught is mainly used in one variety.
+    - In "Phiên âm:", when stress moves with the part of speech, give both forms labelled, e.g. Phiên âm: n. /ˈdɪskaʊnt/, v. /dɪsˈkaʊnt/.
+    - A phrasal verb carries its primary stress on the particle, so mark it: /ˌfleər ˈʌp/, /ˌɡet əˈkrɒs/ - never write it unstressed.
+    - Vietnamese translations must use the established Vietnamese term for a domain concept ("public domain" -> "phạm vi công cộng", not "tài sản công cộng"), never a word-by-word rendering. Keep the card self-consistent: "Dễ nhầm với" must not contradict the examples above it.
     - Examples must be natural and useful, and reflect the register named in "Mức dùng".
     - Give exactly three examples, tagged "[dễ]", "[trung]", "[khó]", in that order, one per line.
     - "[dễ]" uses only A1-A2 vocabulary in one simple clause. "[trung]" sits at B1-B2. "[khó]" shows a less obvious, figurative, or idiomatic use at B2-C1.
@@ -213,7 +222,7 @@ extension AppConfig {
     - List 2-4 common synonyms and 1-3 common antonyms when they exist.
     - If no natural antonym exists, write: Từ trái nghĩa: (không có)
     - If no useful synonym exists, write: Từ đồng nghĩa: (không có)
-    - In "Nhớ nhanh", explain the fastest way to grasp and remember the word: root, image, cognate, or a Vietnamese hook.
+    - In "Nhớ nhanh", explain the fastest way to grasp and remember the word: root, image, cognate, or a Vietnamese hook. Only state an etymology you are certain of - a wrong root teaches the learner something false, so when unsure use an image or a usage hook instead. Never invent a Latin or Greek origin, and never build the cue on a Vietnamese word that merely sounds like the English pronunciation.
     - The "Tự kiểm tra" sentence must be a new sentence, not one already used above, and must have exactly one blank.
     - Output plain text only. Do not use markdown formatting such as **, *, #, _, [], or code fences.
     - Source language hint: {{config.sourceLang}}. Target language hint: {{config.targetLang}}.
@@ -221,7 +230,7 @@ extension AppConfig {
 
     /// Bumped whenever `defaultWeavePrompt` changes, so cached passages from the old wording
     /// are ignored instead of served.
-    static let weavePromptVersion = "6"
+    static let weavePromptVersion = "7"
 
     static let defaultWeavePrompt = """
     You write short spoken-{{config.sourceLang}} practice dialogues for a learner of {{config.sourceLang}} at B1-B2 level.
@@ -239,7 +248,8 @@ extension AppConfig {
     How to make it sound like real speech:
     - Read every line out loud in your head. If a person would never say it that way, rewrite it.
     - Vary the turn length. Several turns are two to five words. A few are one full sentence. None run longer than two sentences.
-    - Use the small words talk is made of: yeah, well, oh, wait, I mean, actually, kind of, honestly. Use contractions everywhere.
+    - Use the small words talk is made of: yeah, well, oh, wait, I mean, actually, kind of, honestly.
+    - Contract every pair a speaker would contract: write "I'm", "don't", "can't", "he's", "I'll", "we've", "didn't". Writing "I am", "cannot", "he is" or "I will" in a spoken line is wrong unless the speaker is stressing that word.
     - Let speakers interrupt, ask back, half agree, change their mind, react before answering.
     - Two speakers labelled "A:" and "B:", 14-18 turns.
 
@@ -251,14 +261,16 @@ extension AppConfig {
     - Keep the stakes small and human. Nothing cruel, nothing that is still hurting when the conversation ends.
 
     Hard rules:
-    - One everyday situation the learner really lives: two coworkers at lunch, two friends on the way home, a chat before a meeting starts. No lecture, no news report, no product review.
+    - One everyday situation the learner really lives, and one where these particular words are genuinely spoken. Everyday domestic words belong at home or on the way home; work words belong in an office moment; money, policy or technical words belong where people actually discuss them, such as two colleagues after a budget meeting or a couple going over a bill. Match the setting to the list rather than forcing every list into a lunch break. No lecture, no news report, no product review.
     - At most one word from the list per turn, and several turns carry none at all. Never stack two listed words in one sentence.
     - Every word from the list appears at least once. An inflected or derived form counts, and it must sit where a normal speaker would put it.
     - Every other word stays at A2 level or below, so the listed words are the only hard part.
+    - Spoken does not mean ungrammatical: keep articles, possessives and plurals ("didn't the boss say", "my sister's place"). Drop only what a real speaker drops - the subject of a short reply, an auxiliary at the start of a question ("Got a minute?").
     - No narration, no stage directions, no names, no descriptions of tone.
     - Do not number, bold, or mark the target words in any way.
     - Keep the "A:" and "B:" labels in the translation so the two versions line up turn by turn.
-    - The {{config.targetLang}} is spoken {{config.targetLang}}, written with every accent and diacritic it needs. Translate the feeling, not the grammar.
+    - The {{config.targetLang}} is spoken {{config.targetLang}}, written with every accent and diacritic it needs. Translate what the speaker means, the way a {{config.targetLang}} speaker would say it in that moment, not word by word: "Put the laptop to sleep" is "Gấp máy lại đi", never "Cho máy tính ngủ đi".
+    - Vary the wording in the translation the way real speech does. Two turns in a row must not lean on the same {{config.targetLang}} word, and a form of address ("bồ", "cậu") appears only where it would really be said.
     - The first line is the topic line and starts with "Topic:". It must be a short, specific, punchy title (3 to 6 words, maximum 8 words). Never write a generic situation description like "Two coworkers talking about..." or "A conversation about...". Name the specific object, debate, or moment. It is not part of the dialogue and is never translated.
     - Never include or repeat "Topic:" in the translation block; start the translation directly with the first speaker turn "A:".
     - Put exactly one blank line between the topic line, the dialogue, and its translation, and nothing else in the output.

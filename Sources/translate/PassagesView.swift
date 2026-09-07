@@ -65,6 +65,18 @@ final class PassagesView: NSView, NSTableViewDataSource, NSTableViewDelegate {
         )
         createButton.bezelColor = .controlAccentColor
         createButton.contentTintColor = .white
+        // Glass bezels tint the title from the label color, which stays dark on the accent fill.
+        createButton.attributedTitle = NSAttributedString(
+            string: createButton.title,
+            attributes: [
+                .foregroundColor: NSColor.white,
+                .font: NSFont.systemFont(ofSize: 13, weight: .medium)
+            ]
+        )
+        // The symbol picks up the same label color the title did, so paint it white too.
+        createButton.image = createButton.image?.withSymbolConfiguration(
+            .init(paletteColors: [.white])
+        )
 
         let headerLeading = NSStackView(views: [backButton, titleLabel, countLabel])
         headerLeading.orientation = .horizontal

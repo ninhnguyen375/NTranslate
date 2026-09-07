@@ -92,6 +92,9 @@ extension PopoverController {
 
         inputTextView.isEditable = true
         inputTextView.isSelectable = true
+        // ponytail: plain text only, so pasted rich text keeps our palette instead of the source colour
+        inputTextView.isRichText = false
+        inputTextView.importsGraphics = false
         inputTextView.delegate = self
         inputTextView.onResignFirstResponder = { [weak self] in
             self?.hideFloatingSelectionBar()

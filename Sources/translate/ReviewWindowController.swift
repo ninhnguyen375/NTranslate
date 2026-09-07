@@ -68,6 +68,8 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
     // Reading passage
     private var weaveRequest: RequestHandle?
     private var didRetryWeave = false
+    /// Scenario behind the open passage, so Regenerate asks for the same setting again.
+    private var currentScenario: String?
     /// Which language the reading passage opens in. Picked while the model is still writing it,
     /// and nil until the learner picks: a passage that arrives first waits in `pendingReading`.
     private var preferredReadingMode: ReadingChatView.Mode?
@@ -1117,8 +1119,15 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
         Translator.weaveWords(readingPool().map { displayTerm(of: $0) })
     }
 
+    /// A fresh random handful drawn from every saved word, not just the ones due in this session.
+    private func randomStudyWords() -> [String] {
+        let saved = store.records.filter { $0.isSaved && $0.mode == .learn }
+        return Translator.weaveWords(saved.map { displayTerm(of: $0) }.shuffled())
+    }
+
     private func showReadingPassage() {
         readingReturnScreen = .home
+        currentScenario = nil
         didRetryWeave = false
         isAwaitingWeave = false
         preferredReadingMode = nil
@@ -1126,14 +1135,19 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
         requestReadingPassage()
     }
 
-    private func requestReadingPassage(words explicitWords: [String]? = nil, force: Bool = false) {
+    private func requestReadingPassage(
+        words explicitWords: [String]? = nil,
+        force: Bool = false,
+        scenario: String? = nil
+    ) {
         let words = explicitWords ?? readingWords()
-        guard !words.isEmpty else { return }
-        // The prompt actually in use decides the passage, so it decides the cache key too.
+        guard !words.isEmpty || !(scenario ?? "").isEmpty else { return }
+        // The prompt actually in use decides the passage, so it decides the cache key too, and the
+        // scenario is part of the prompt the model really sees.
         let key = WeaveCache.cacheKey(
             words: words,
             promptVersion: AppConfig.weavePromptVersion,
-            prompt: (config ?? AppConfig.load()).weavePrompt
+            prompt: (config ?? AppConfig.load()).weavePrompt + (scenario.map { "\n" + $0 } ?? "")
         )
         if !force, let cached = WeaveCache.load(key: key) {
             presentReading(cached.text, words: words, entry: (key, cached))
@@ -1144,14 +1158,22 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
             return
         }
         isAwaitingWeave = true
-        presentReading("Generating a passage from \(words.count) words…", words: words)
+        let progress = words.isEmpty
+            ? "Generating a dialogue for your scenario…"
+            : "Generating a passage from \(words.count) words…"
+        presentReading(progress, words: words)
         // The words come from these records, so their own language pair is the right one to ask
         // for. `config.sourceLang` is often "Auto detect", which means nothing to the model here.
         let first = readingPool().first
         let sourceLang = first?.sourceLanguage ?? "English"
         let targetLang = first?.targetLanguage ?? config?.targetLang ?? "Vietnamese"
         weaveRequest?.cancel()
-        weaveRequest = translator.weave(words, sourceLang: sourceLang, targetLang: targetLang) { [weak self] result in
+        weaveRequest = translator.weave(
+            words,
+            sourceLang: sourceLang,
+            targetLang: targetLang,
+            scenario: scenario
+        ) { [weak self] result in
             Task { @MainActor in
                 guard let self, self.isReadingMode else { return }
                 switch result {
@@ -1161,7 +1183,7 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
                     let missing = Self.wordsMissing(from: text, words: words)
                     if !missing.isEmpty, !self.didRetryWeave {
                         self.didRetryWeave = true
-                        self.requestReadingPassage(words: explicitWords, force: force)
+                        self.requestReadingPassage(words: explicitWords, force: force, scenario: scenario)
                         return
                     }
                     let passage = WeavePassage(
@@ -1276,7 +1298,7 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
         didRetryWeave = false
         sessionView.regenerateButton.isEnabled = false
         let words = currentPassage?.passage.words ?? readingWords()
-        requestReadingPassage(words: words, force: true)
+        requestReadingPassage(words: words, force: true, scenario: currentScenario)
     }
 
     /// Asks the model for a short title and files it with the passage, so the list and this header
@@ -1785,14 +1807,18 @@ extension ReviewWindowController: PassagesViewDelegate {
 
     func passagesViewDidRequestCreate(_ view: PassagesView) {
         guard let window else { return }
-        CustomDialogueDialog.present(over: window) { [weak self] words in
-            guard let self, !words.isEmpty else { return }
+        CustomDialogueDialog.present(
+            over: window,
+            randomWords: { [weak self] in self?.randomStudyWords() ?? [] }
+        ) { [weak self] words, scenario in
+            guard let self, !words.isEmpty || scenario != nil else { return }
             self.readingReturnScreen = .passages
             self.didRetryWeave = false
             self.isAwaitingWeave = false
             self.preferredReadingMode = nil
             self.pendingReading = nil
-            self.requestReadingPassage(words: words, force: false)
+            self.currentScenario = scenario
+            self.requestReadingPassage(words: words, force: false, scenario: scenario)
         }
     }
 }

@@ -76,7 +76,7 @@ final class Translator: @unchecked Sendable {
         case proofread(lang: String)
         case ask(question: String, sourceText: String, translatedText: String, sourceLang: String, targetLang: String, history: [QATurn], parentContext: String?)
         case imageSearch
-        case weave(words: [String], sourceLang: String, targetLang: String)
+        case weave(words: [String], sourceLang: String, targetLang: String, scenario: String?)
     }
 
     init(config: AppConfig, apiKey: String, speechAPIKey: String = "") {
@@ -245,11 +245,15 @@ final class Translator: @unchecked Sendable {
                 + Self.parentContextBlock(parentContext)
         case .imageSearch:
             systemPrompt = Self.imageSearchPrompt
-        case let .weave(words, sourceLang, targetLang):
+        case let .weave(words, sourceLang, targetLang, scenario):
+            let wordList = words.isEmpty
+                ? "(no fixed list - pick natural vocabulary that the scene itself calls for)"
+                : words.joined(separator: ", ")
             systemPrompt = config.weavePrompt
-                .replacingOccurrences(of: "{{words}}", with: words.joined(separator: ", "))
+                .replacingOccurrences(of: "{{words}}", with: wordList)
                 .replacingOccurrences(of: "{{config.sourceLang}}", with: sourceLang)
                 .replacingOccurrences(of: "{{config.targetLang}}", with: targetLang)
+                + Self.weaveScenarioBlock(scenario)
         case let .ask(_, sourceText, translatedText, sourceLang, targetLang, history, parentContext):
             systemPrompt = renderQAPrompt(
                 sourceText: sourceText,
@@ -647,26 +651,44 @@ final class Translator: @unchecked Sendable {
     /// long one produces a passage that reads like a word dump rather than a scene.
     static let weaveWordLimit = 12
 
+    /// Extra user-supplied setting for the dialogue. It wins over the prompt's own scene picking,
+    /// which otherwise infers a situation from the word list alone.
+    static func weaveScenarioBlock(_ scenario: String?) -> String {
+        let trimmed = scenario?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !trimmed.isEmpty else { return "" }
+        return """
+
+
+        <scenario>
+        \(trimmed)
+        </scenario>
+
+        Set the conversation in the situation described in <scenario>. It overrides the guidance above about choosing a setting: use this one, and let the roles, place and purpose of the speakers follow from it. Every other rule about format, spoken style and translation still applies.
+        """
+    }
+
     @discardableResult
     func weave(
         _ words: [String],
         sourceLang: String,
         targetLang: String,
+        scenario: String? = nil,
         onPartial: (@Sendable (String) -> Void)? = nil,
         completion: @escaping @Sendable (Result<String, Error>) -> Void
     ) -> RequestHandle {
         let cleaned = Self.weaveWords(words)
-        guard !cleaned.isEmpty else {
+        let scene = scenario?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !cleaned.isEmpty || !scene.isEmpty else {
             completion(.failure(NSError(
                 domain: "Weave",
                 code: 1,
-                userInfo: [NSLocalizedDescriptionKey: "No words to build a passage from."]
+                userInfo: [NSLocalizedDescriptionKey: "No words or scenario to build a passage from."]
             )))
             return RequestHandle()
         }
         return request(
-            cleaned.joined(separator: ", "),
-            mode: .weave(words: cleaned, sourceLang: sourceLang, targetLang: targetLang),
+            cleaned.isEmpty ? scene : cleaned.joined(separator: ", "),
+            mode: .weave(words: cleaned, sourceLang: sourceLang, targetLang: targetLang, scenario: scene),
             onPartial: onPartial,
             completion: completion
         )

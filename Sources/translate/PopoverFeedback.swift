@@ -71,9 +71,11 @@ enum PopoverFeedback {
             case NSURLErrorTimedOut:
                 return "The request timed out. Check your connection and try again."
             case NSURLErrorNotConnectedToInternet, NSURLErrorNetworkConnectionLost:
-                return "Network error. Check your connection and try again."
+                return "Network error (\(ns.code)). Check your connection and try again."
             default:
-                return "Network error. Check your connection and try again."
+                // The bare wording hid which failure it was, which made a one-off host or TLS
+                // problem indistinguishable from a real outage.
+                return "Network error (\(ns.code)): \(ns.localizedDescription)"
             }
         }
         if ns.domain == "HTTP" {
