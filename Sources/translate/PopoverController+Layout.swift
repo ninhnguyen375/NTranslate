@@ -216,7 +216,8 @@ extension PopoverController {
             textView: textView,
             trailingIcons: [speakResultButton, speakResultSlowButton, retryButton, copyButton, saveWordButton],
             paneWidth: panes.right,
-            bodyHeight: bodyHeight
+            bodyHeight: bodyHeight,
+            badgeView: learnBadgeView
         )
         layoutSetupActions(in: resultCard)
 
@@ -421,7 +422,8 @@ extension PopoverController {
         textView: NSTextView,
         trailingIcons: [NSButton],
         paneWidth: CGFloat,
-        bodyHeight: CGFloat
+        bodyHeight: CGFloat,
+        badgeView: LearnBadgeView? = nil
     ) {
         let L = ChromeLayout.self
         let icon = L.iconButtonSize
@@ -434,10 +436,14 @@ extension PopoverController {
                 textView: textView,
                 trailingIcons: trailingIcons,
                 paneWidth: paneWidth,
-                bodyHeight: bodyHeight
+                bodyHeight: bodyHeight,
+                badgeView: badgeView
             )
         } else {
             textView.textContainer?.exclusionPaths = []
+            if badgeView != nil {
+                textView.textContainerInset = NSSize(width: 12, height: 10)
+            }
             headerBar.isHidden = false
             headerLabel.isHidden = false
             headerBar.layer?.backgroundColor = NSColor.clear.cgColor
@@ -460,6 +466,15 @@ extension PopoverController {
                 button.isHidden = false
                 button.frame = NSRect(x: iconX, y: headerIconY, width: icon, height: icon)
                 iconX -= icon + 10
+            }
+            if let badge = badgeView, !badge.isHidden {
+                headerLabel.isHidden = true
+                let badgeH = LearnBadgeView.height
+                let badgeY = max(0, ((L.paneHeaderHeight - badgeH) / 2 - topInset).rounded(.towardZero))
+                let availableW = max(0, iconX - sideInset - 6)
+                badge.frame = NSRect(x: sideInset, y: badgeY, width: availableW, height: badgeH)
+            } else if let badge = badgeView {
+                badge.isHidden = true
             }
         }
         if textView === inputTextView && !inputContextLabel.isHidden {
@@ -487,7 +502,8 @@ extension PopoverController {
         textView: NSTextView,
         trailingIcons: [NSButton],
         paneWidth: CGFloat,
-        bodyHeight: CGFloat
+        bodyHeight: CGFloat,
+        badgeView: LearnBadgeView? = nil
     ) {
         let L = ChromeLayout.self
         let icon = L.iconButtonSize
@@ -495,11 +511,22 @@ extension PopoverController {
         let inset: CGFloat = 5
         headerLabel.isHidden = true
         let visible = trailingIcons
-        let pillW = CGFloat(visible.count) * icon + CGFloat(max(0, visible.count - 1)) * gap + inset * 2
+        // Horizontal breathing room inside the pill; the vertical inset stays tighter so the pill
+        // keeps hugging the icon height.
+        let hInset: CGFloat = 10
+        let hasBadge = badgeView != nil && !badgeView!.isHidden
+        let pillW: CGFloat
+        let pillX: CGFloat
+        if hasBadge {
+            pillX = inset
+            pillW = max(0, paneWidth - inset * 2)
+        } else {
+            pillW = CGFloat(visible.count) * icon + CGFloat(max(0, visible.count - 1)) * gap + hInset * 2
+            pillX = max(0, paneWidth - inset - pillW)
+        }
         let pillH = icon + inset * 2
-        let pillX = max(0, paneWidth - inset - pillW)
         let pillY = max(0, bodyHeight - inset - pillH)
-        headerBar.isHidden = visible.isEmpty
+        headerBar.isHidden = visible.isEmpty && !hasBadge
         headerBar.wantsLayer = true
         headerBar.layer?.backgroundColor = Palette.cg(Palette.opaquePaneFill, in: headerBar)
         headerBar.layer?.borderWidth = 1
@@ -511,12 +538,26 @@ extension PopoverController {
         if let card = headerBar.superview, card.subviews.last !== headerBar {
             card.addSubview(headerBar, positioned: .above, relativeTo: nil)
         }
-        var iconX = pillW - inset - icon
+        var iconX = pillW - hInset - icon
         for button in visible.reversed() {
             button.frame = NSRect(x: iconX, y: inset, width: icon, height: icon)
             iconX -= icon + gap
         }
-        applyPaneIconExclusion(textView: textView, pill: headerBar.frame, paneWidth: paneWidth, bodyHeight: bodyHeight)
+        if let badge = badgeView, hasBadge {
+            badge.isHidden = false
+            let badgeH = LearnBadgeView.height
+            let badgeY = (pillH - badgeH) / 2
+            let maxBadgeW = max(0, iconX - hInset)
+            badge.frame = NSRect(x: hInset, y: badgeY, width: maxBadgeW, height: badgeH)
+            textView.textContainer?.exclusionPaths = []
+            textView.textContainerInset = NSSize(width: 12, height: pillH + inset + 6)
+        } else {
+            if let badge = badgeView {
+                badge.isHidden = true
+                textView.textContainerInset = NSSize(width: 12, height: 10)
+            }
+            applyPaneIconExclusion(textView: textView, pill: headerBar.frame, paneWidth: paneWidth, bodyHeight: bodyHeight)
+        }
     }
 
     /// Text flows around the floating pill instead of running under it. TextKit measures the

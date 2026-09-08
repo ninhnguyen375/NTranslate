@@ -110,6 +110,7 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     let resultCard = NSView(frame: .zero)
     let resultHeaderBar = NSView(frame: .zero)
     let resultHeaderLabel = NSTextField(labelWithString: "Translation")
+    let learnBadgeView = LearnBadgeView()
     let sourceLanguageButton = NSButton(frame: .zero)
     let targetLanguageButton = NSButton(frame: .zero)
     var sourceLanguageSelection = ""

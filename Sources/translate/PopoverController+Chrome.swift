@@ -191,6 +191,8 @@ extension PopoverController {
         sourceCard.addSubview(imagePlaceholderLabel)
 
         resultHeaderBar.addSubview(resultHeaderLabel)
+        resultHeaderBar.addSubview(learnBadgeView)
+        learnBadgeView.isHidden = true
         resultHeaderBar.addSubview(speakResultButton)
         resultHeaderBar.addSubview(speakResultSlowButton)
         resultHeaderBar.addSubview(retryButton)

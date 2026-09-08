@@ -14,6 +14,7 @@ final class SubtranslateSection {
     let resultCard = NSView(frame: .zero)
     let resultHeaderBar = NSView(frame: .zero)
     let resultHeaderLabel = NSTextField(labelWithString: "VI")
+    let learnBadgeView = LearnBadgeView()
     let sourceTextView = SelectableTextView(frame: .zero)
     let sourceScrollView = NSScrollView(frame: .zero)
     let resultTextView = SelectableTextView(frame: .zero)

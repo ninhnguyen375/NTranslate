@@ -22,6 +22,8 @@ final class NewWordsView: NSView {
     private let levelPopup = NSPopUpButton()
     private let progressLabel = NSTextField(labelWithString: "")
     private let wordLabel = NSTextField(labelWithString: "")
+    /// CEFR / frequency / register pulled out of the entry's "Mức dùng:" line.
+    private let learnBadgeView = LearnBadgeView()
     private let detailView = NSTextView()
     private let detailScroll = NSScrollView()
     private let emptyLabel = NSTextField(wrappingLabelWithString: "")
@@ -71,7 +73,7 @@ final class NewWordsView: NSView {
         actionRow.isHidden = false
         emptyLabel.isHidden = true
         wordLabel.stringValue = word
-        detailView.string = detail
+        detailView.string = learnBadgeView.apply(to: detail, live: true)
         detailView.scrollRangeToVisible(NSRange(location: 0, length: 0))
         if isKnownMode {
             progressLabel.stringValue = "Đang xem từ đã biết · còn \(remaining) từ"
@@ -81,6 +83,7 @@ final class NewWordsView: NSView {
     }
 
     func showEmpty(message: String) {
+        learnBadgeView.clear()
         bodyStack.isHidden = true
         actionRow.isHidden = true
         emptyLabel.isHidden = false
@@ -149,7 +152,10 @@ final class NewWordsView: NSView {
         bodyStack.spacing = 12
         bodyStack.alignment = .centerX
         bodyStack.translatesAutoresizingMaskIntoConstraints = false
+        learnBadgeView.translatesAutoresizingMaskIntoConstraints = false
+        learnBadgeView.isHidden = true
         bodyStack.addArrangedSubview(wordRow)
+        bodyStack.addArrangedSubview(learnBadgeView)
         bodyStack.addArrangedSubview(detailScroll)
 
         ReviewControls.actionButton(knownButton, title: "Đã biết (1)", symbol: "checkmark.circle", target: self, action: #selector(tapKnown))

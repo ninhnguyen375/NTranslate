@@ -15,11 +15,16 @@ extension PopoverController {
             color = .systemRed
         }
         let font = NSFont.systemFont(ofSize: ChromeLayout.bodyFontSize)
+        let wasBadgeHidden = learnBadgeView.isHidden
+        let textToDisplay = learnBadgeView.apply(to: value, live: resolved != .error)
         // Placeholder/error strings are literal; only real model output gets markdown.
         let display: NSAttributedString = resolved == .normal
-            ? .markdownDisplay(value, font: font, color: color)
-            : .plainDisplay(value, font: font, color: color)
+            ? .markdownDisplay(textToDisplay, font: font, color: color)
+            : .plainDisplay(textToDisplay, font: font, color: color)
         textView.textStorage?.setAttributedString(display)
+        if wasBadgeHidden != learnBadgeView.isHidden, panel.contentView != nil {
+            reflowLayout()
+        }
         let isError = resolved == .error
         inPaneRetryButton.isHidden = !isError
         if !isError {

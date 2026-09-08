@@ -467,7 +467,7 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
         sessionView.sourceContainer.isHidden = false
         setSourceGiveaways(hidden: false)
         sessionView.titleRefreshButton.isHidden = true
-        sessionView.resultLabel.stringValue = record.resultText
+        sessionView.resultLabel.stringValue = sessionView.learnBadgeView.apply(to: record.resultText, live: true)
         sessionView.resultLabel.isHidden = true
         hideReadingChat()
         sessionView.revealButton.isHidden = false

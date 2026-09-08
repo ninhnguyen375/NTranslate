@@ -51,6 +51,10 @@ swiftc -parse-as-library Sources/translate/VocabPack.swift Sources/translate/Wea
 
 swiftc -parse-as-library Sources/translate/WeaveCache.swift Scripts/weave-cache-check.swift \
   -o /tmp/weave-cache-check && /tmp/weave-cache-check
+
+swiftc -parse-as-library Sources/translate/VocabPack.swift Sources/translate/WeaveCache.swift \
+  Sources/translate/VocabDiscovery.swift Sources/translate/LearnBadgeView.swift \
+  Scripts/learn-badge-check.swift -o /tmp/learn-badge-check && /tmp/learn-badge-check
 ```
 
 - `double-click-selection-check` bắn chuột tổng hợp qua `CGEvent`, nên terminal đang chạy phải có quyền Accessibility. Check này fail cả khi bản có fix mất selection lẫn khi bản không fix bỗng chạy đúng (tức check hết tái hiện được bug).

@@ -66,6 +66,8 @@ extension PopoverController {
         section.sourceCard.addSubview(section.sourceScrollView)
 
         section.resultHeaderBar.addSubview(section.resultHeaderLabel)
+        section.resultHeaderBar.addSubview(section.learnBadgeView)
+        section.learnBadgeView.isHidden = true
         section.resultHeaderBar.addSubview(section.speakResultButton)
         section.resultHeaderBar.addSubview(section.speakResultSlowButton)
         section.resultHeaderBar.addSubview(section.retryButton)
@@ -128,7 +130,8 @@ extension PopoverController {
             textView: section.resultTextView,
             trailingIcons: [section.speakResultButton, section.speakResultSlowButton, section.retryButton, section.copyButton, section.saveWordButton, section.closeButton],
             paneWidth: panes.right,
-            bodyHeight: bodyHeight
+            bodyHeight: bodyHeight,
+            badgeView: section.learnBadgeView
         )
     }
 
@@ -196,13 +199,18 @@ extension PopoverController {
         case .loading: color = Palette.loadingText
         case .error: color = .systemRed
         }
+        let wasBadgeHidden = section.learnBadgeView.isHidden
+        let textToDisplay = section.learnBadgeView.apply(to: value, live: style != .error)
         section.setResult(
-            value,
+            textToDisplay,
             font: .systemFont(ofSize: ChromeLayout.bodyFontSize),
             color: color,
             markdown: style == .normal
         )
         updateSubButtons(section)
+        if wasBadgeHidden != section.learnBadgeView.isHidden, panel.contentView != nil {
+            reflowLayout()
+        }
     }
 
     func updateSubButtons(_ section: SubtranslateSection) {

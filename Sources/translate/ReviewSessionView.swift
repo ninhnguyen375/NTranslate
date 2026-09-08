@@ -35,6 +35,8 @@ final class ReviewSessionView: NSView {
     let pillRow = NSStackView()
     private let wordsDetailLabel = NSTextField(labelWithString: "")
     private let pillContainer = NSStackView()
+    /// CEFR / frequency / register pulled out of the card's "Mức dùng:" line.
+    let learnBadgeView = LearnBadgeView()
 
     // Card body
     let termLabel = NSTextField(wrappingLabelWithString: "")
@@ -106,6 +108,7 @@ final class ReviewSessionView: NSView {
     }
 
     func setReadingPills(count: Int, words: [String]) {
+        learnBadgeView.clear()
         wordsDetailLabel.stringValue = words.joined(separator: ", ")
         wordsDetailLabel.isHidden = true
         pillRow.arrangedSubviews.forEach { $0.removeFromSuperview() }
@@ -166,7 +169,10 @@ final class ReviewSessionView: NSView {
         pillContainer.spacing = 6
         pillContainer.alignment = .centerX
         pillContainer.translatesAutoresizingMaskIntoConstraints = false
+        learnBadgeView.translatesAutoresizingMaskIntoConstraints = false
+        learnBadgeView.isHidden = true
         pillContainer.addArrangedSubview(pillRow)
+        pillContainer.addArrangedSubview(learnBadgeView)
         pillContainer.addArrangedSubview(wordsDetailLabel)
 
         termLabel.font = .systemFont(ofSize: 24, weight: .bold)
