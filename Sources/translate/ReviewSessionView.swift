@@ -39,6 +39,11 @@ final class ReviewSessionView: NSView {
     let learnBadgeView = LearnBadgeView()
 
     // Card body
+    /// Unscaled sizes of the raw / translated text, so Cmd+Plus zoom stays absolute.
+    static let termBaseSize: CGFloat = 24
+    static let contextBaseSize: CGFloat = 13
+    static let resultBaseSize: CGFloat = 14
+
     let termLabel = NSTextField(wrappingLabelWithString: "")
     /// Only visible on the reading screen: asks the model to name the passage.
     let titleRefreshButton = NSButton()
@@ -107,9 +112,14 @@ final class ReviewSessionView: NSView {
         pillContainer.isHidden = pills.isEmpty
     }
 
-    func setReadingPills(count: Int, words: [String]) {
+    func setReadingPills(count: Int, words: [String], scenario: String? = nil) {
         learnBadgeView.clear()
-        wordsDetailLabel.stringValue = words.joined(separator: ", ")
+        let scene = scenario?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        // Words and the scene are the two things that made this passage, so the pill reveals both.
+        var lines: [String] = []
+        if !words.isEmpty { lines.append(words.joined(separator: ", ")) }
+        if !scene.isEmpty { lines.append("Scenario: " + scene) }
+        wordsDetailLabel.stringValue = lines.joined(separator: "\n")
         wordsDetailLabel.isHidden = true
         pillRow.arrangedSubviews.forEach { $0.removeFromSuperview() }
         pillRow.addArrangedSubview(Self.makePill("Reading"))
@@ -159,8 +169,8 @@ final class ReviewSessionView: NSView {
         wordsDetailLabel.font = .systemFont(ofSize: 11.5, weight: .regular)
         wordsDetailLabel.textColor = .secondaryLabelColor
         wordsDetailLabel.alignment = .center
-        wordsDetailLabel.lineBreakMode = .byTruncatingTail
-        wordsDetailLabel.maximumNumberOfLines = 1
+        wordsDetailLabel.lineBreakMode = .byWordWrapping
+        wordsDetailLabel.maximumNumberOfLines = 0
         wordsDetailLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         wordsDetailLabel.translatesAutoresizingMaskIntoConstraints = false
         wordsDetailLabel.isHidden = true
@@ -175,13 +185,13 @@ final class ReviewSessionView: NSView {
         pillContainer.addArrangedSubview(learnBadgeView)
         pillContainer.addArrangedSubview(wordsDetailLabel)
 
-        termLabel.font = .systemFont(ofSize: 24, weight: .bold)
+        termLabel.font = .systemFont(ofSize: TextZoom.size(Self.termBaseSize), weight: .bold)
         termLabel.alignment = .center
         termLabel.lineBreakMode = .byWordWrapping
         termLabel.setContentHuggingPriority(.defaultHigh, for: .horizontal)
         termLabel.setContentCompressionResistancePriority(.defaultHigh, for: .horizontal)
 
-        contextLabel.font = .systemFont(ofSize: 13)
+        contextLabel.font = .systemFont(ofSize: TextZoom.size(Self.contextBaseSize))
         contextLabel.textColor = .secondaryLabelColor
         contextLabel.alignment = .center
         contextLabel.lineBreakMode = .byWordWrapping
@@ -271,7 +281,7 @@ final class ReviewSessionView: NSView {
         hintLabel.alignment = .center
         hintLabel.isHidden = true
 
-        resultLabel.font = .systemFont(ofSize: 14)
+        resultLabel.font = .systemFont(ofSize: TextZoom.size(Self.resultBaseSize))
         resultLabel.alignment = .left
         resultLabel.lineBreakMode = .byWordWrapping
         // Selecting hands the text to the field editor, which drops attributes unless the field
@@ -593,5 +603,14 @@ enum ReviewControls {
         button.target = target
         button.action = action
         if let key { button.keyEquivalent = key }
+    }
+}
+
+extension ReviewSessionView {
+    /// Cmd+Plus / Cmd+Minus. Only the prompt, context and answer text moves; chrome stays put.
+    func applyTextZoom() {
+        TextZoom.apply(to: termLabel, base: Self.termBaseSize, weight: .bold)
+        TextZoom.apply(to: contextLabel, base: Self.contextBaseSize)
+        TextZoom.apply(to: resultLabel, base: Self.resultBaseSize)
     }
 }

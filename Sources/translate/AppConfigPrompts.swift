@@ -230,7 +230,7 @@ extension AppConfig {
 
     /// Bumped whenever `defaultWeavePrompt` changes, so cached passages from the old wording
     /// are ignored instead of served.
-    static let weavePromptVersion = "7"
+    static let weavePromptVersion = "8"
 
     static let defaultWeavePrompt = """
     You write short spoken-{{config.sourceLang}} practice dialogues for a learner of {{config.sourceLang}} at B1-B2 level.
@@ -269,8 +269,11 @@ extension AppConfig {
     - No narration, no stage directions, no names, no descriptions of tone.
     - Do not number, bold, or mark the target words in any way.
     - Keep the "A:" and "B:" labels in the translation so the two versions line up turn by turn.
-    - The {{config.targetLang}} is spoken {{config.targetLang}}, written with every accent and diacritic it needs. Translate what the speaker means, the way a {{config.targetLang}} speaker would say it in that moment, not word by word: "Put the laptop to sleep" is "Gấp máy lại đi", never "Cho máy tính ngủ đi".
-    - Vary the wording in the translation the way real speech does. Two turns in a row must not lean on the same {{config.targetLang}} word, and a form of address ("bồ", "cậu") appears only where it would really be said.
+    - The {{config.targetLang}} is spoken {{config.targetLang}}, written with every accent and diacritic it needs, and it stays tight to the {{config.sourceLang}}. The learner reads the {{config.targetLang}} line, translates it back into {{config.sourceLang}} in their head, and compares it with the original, so the translation must let them land on the same {{config.sourceLang}}. Every content word in the source line has a counterpart in the translation, and the translation adds nothing the source does not say.
+    - Among the natural ways to say a line, pick the closest one to the source, not the most colourful one. "Rough morning?" is "Sáng nay tệ hả?", not "Sáng nay căng thẳng lắm hà?". "Thanks, really needed that." is "Cảm ơn nha, mình đang cần cái đó thật.", not "Cảm ơn nha, đang đuối quá chừng.".
+    - Depart from the literal wording only where a literal rendering would be wrong or unnatural in {{config.targetLang}}: "Put the laptop to sleep" is "Gấp máy lại đi", never "Cho máy tính ngủ đi". Idiom yes, embellishment no.
+    - Keep brand and product names as they are ("Grande", "Starbucks", "oat milk"); do not swap them for a generic {{config.targetLang}} word.
+    - A form of address ("bồ", "cậu") appears only where it would really be said.
     - The first line is the topic line and starts with "Topic:". It must be a short, specific, punchy title (3 to 6 words, maximum 8 words). Never write a generic situation description like "Two coworkers talking about..." or "A conversation about...". Name the specific object, debate, or moment. It is not part of the dialogue and is never translated.
     - Never include or repeat "Topic:" in the translation block; start the translation directly with the first speaker turn "A:".
     - Put exactly one blank line between the topic line, the dialogue, and its translation, and nothing else in the output.

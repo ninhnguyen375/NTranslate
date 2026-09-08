@@ -76,7 +76,7 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         static let glassCornerRadius: CGFloat = 22
         static let splitCornerRadius: CGFloat = 16
         /// Source / translation body text.
-        static let bodyFontSize: CGFloat = 14
+        static var bodyFontSize: CGFloat { TextZoom.size(TextZoom.baseBodySize) }
         /// Q&A transcript text — smaller than the main panes to fit more conversation.
         static let qaFontSize: CGFloat = 12
         /// Learn / Translate labels.
@@ -196,6 +196,11 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
             self.openTranslatePanelShowingSetupStatus()
             self.learn(sentence)
         }
+        controller.onTranslateSentence = { [weak self] sentence in
+            guard let self else { return }
+            self.openTranslatePanelShowingSetupStatus()
+            self.translate(sentence)
+        }
         return controller
     }()
     var currentRecordID: UUID?
@@ -223,6 +228,8 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     /// Last style passed to `setResultText`. Callers set this explicitly for errors; do not re-infer
     /// from result text prefixes (a real translation can start with "The request…").
     var lastResultStyle: PopoverFeedback.ResultStyle = .normal
+    /// Kết quả gốc chưa bị gỡ dòng "Mức dùng:", để lưu history vẫn còn badge.
+    var lastResultRaw = ""
     var pendingRelease: ReleaseInfo?
     var didShowSubtranslateHint = false
     let setupOpenSettingsButton = NSButton(title: "Open Settings", target: nil, action: nil)
@@ -325,6 +332,10 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
             if event.keyCode == UInt16(kVK_Escape) {
                 self.restoresPreviousAppOnClose = true
                 self.closePanel()
+                return nil
+            }
+            if let delta = TextZoom.delta(for: event) {
+                self.applyTextZoom(delta)
                 return nil
             }
             let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)

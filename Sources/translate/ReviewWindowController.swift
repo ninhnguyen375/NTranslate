@@ -32,6 +32,8 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
     var onOpenTranslate: ((TranslationRecord) -> Void)?
     /// Called with a reading line to explain in the translate panel's Learn mode.
     var onLearnSentence: ((String) -> Void)?
+    /// Called with a reading line or selection to translate in the popover's translate mode.
+    var onTranslateSentence: ((String) -> Void)?
 
     private var recordsToReview: [TranslationRecord] = []
     private var currentIndex = 0
@@ -170,6 +172,11 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
             self.stopAudio()
             self.onLearnSentence?(line)
         }
+        sessionView.readingChatView.onTranslate = { [weak self] line in
+            guard let self else { return }
+            self.stopAudio()
+            self.onTranslateSentence?(line)
+        }
         // Selecting the text hands it to the field editor, which drops every attribute unless the
         // field says attributes are its own. Without this the reading underlines vanish on click.
         sessionView.resultLabel.allowsEditingTextAttributes = true
@@ -228,6 +235,9 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
 
     func showReview() {
         installKeyEventMonitorIfNeeded()
+        // Accessory app: without this the window opens behind an inactive app, so the first click
+        // on any control only activates and never reaches the button.
+        NSApp.activate(ignoringOtherApps: true)
         showWindow(nil)
         if !didShowReview {
             didShowReview = true
@@ -979,6 +989,10 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
             window?.performClose(nil)
             return nil
         }
+        if let delta = TextZoom.delta(for: event) {
+            if TextZoom.nudge(delta) { sessionView.applyTextZoom() }
+            return nil
+        }
         if event.modifierFlags.contains(.command) {
             if chars.lowercased() == "z" {
                 undoLastGrade()
@@ -1190,7 +1204,8 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
                         words: words,
                         text: text,
                         promptVersion: AppConfig.weavePromptVersion,
-                        generatedAt: Date()
+                        generatedAt: Date(),
+                        scenario: scenario?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false ? scenario : nil
                     )
                     WeaveCache.store(passage, key: key)
                     self.deliverReading(text, words: words, entry: (key, passage))
@@ -1231,7 +1246,8 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
         titleRequest = nil
         stopAudio()
         show(.session)
-        sessionView.setReadingPills(count: words.count, words: words)
+        if let stored = entry?.passage.scenario { currentScenario = stored }
+        sessionView.setReadingPills(count: words.count, words: words, scenario: currentScenario)
         sessionView.updateProgress(correct: 0, wrong: 0, remaining: 0, elapsed: 0, practice: false)
         applyReadingTitle()
         sessionView.sourceContainer.isHidden = false

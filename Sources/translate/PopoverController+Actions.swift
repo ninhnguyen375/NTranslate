@@ -23,6 +23,21 @@ extension PopoverController {
         runLearn()
     }
 
+    /// Drops a line into the input pane and translates it. Used by the reading view's per-line and
+    /// per-selection translate buttons, which want plain translation rather than a Learn card.
+    func translate(_ text: String) {
+        invalidateTranslationRequest()
+        invalidateSpeech(stopPlayback: true)
+        setPendingImage(nil)
+        inputContextLabel.stringValue = ""
+        inputContextLabel.toolTip = nil
+        inputContextLabel.isHidden = true
+        inputTextView.string = text
+        updateLanguageSelection(for: text)
+        reflowLayout()
+        runTranslate()
+    }
+
     func runLearn(bypassCache: Bool = false) {
         guard pendingImage == nil, let translator else { return }
         lastExecutionMode = .learn
@@ -272,7 +287,8 @@ extension PopoverController {
 
     @objc func toggleSaveWord() {
         let source = inputTextView.string.trimmingCharacters(in: .whitespacesAndNewlines)
-        let result = textView.string.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Lưu bản gốc để dòng "Mức dùng:" (learn badge) không mất khi mở lại từ history.
+        let result = lastResultRaw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard PopoverIntegrationPolicy.canSave(sourceText: source, resultText: result, isRequestInFlight: isRequestInFlight) else { return }
         do {
             if let recordID = currentRecordID,

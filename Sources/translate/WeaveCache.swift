@@ -18,6 +18,9 @@ struct WeavePassage: Codable, Sendable {
     var title: String?
     /// Set when the learner marks the passage as read. Absent in files written before Done existed.
     var isDone: Bool?
+    /// The scene the learner asked for, so reopening the passage can still show it and Regenerate
+    /// can ask for the same setting. Absent in files written before scenarios were kept.
+    var scenario: String?
 }
 
 @MainActor

@@ -17,9 +17,12 @@ final class ReadingChatView: NSStackView {
     var onWord: ((String) -> Void)?
     /// Called with the line to open in the translate panel's Learn mode.
     var onLearn: ((String) -> Void)?
+    /// Called with the line to open in the translate panel's Translate mode.
+    var onTranslate: ((String) -> Void)?
 
     private var bubbles: [BubbleView] = []
     private var globalMode: Mode = .both
+    private let selectionBar = ReadingSelectionBar()
 
     init() {
         super.init(frame: .zero)
@@ -27,12 +30,39 @@ final class ReadingChatView: NSStackView {
         spacing = 10
         alignment = .leading
         translatesAutoresizingMaskIntoConstraints = false
+        selectionBar.onSpeak = { [weak self] text, isSlow in self?.onSpeak?(text, isSlow) }
+        selectionBar.onLearn = { [weak self] text in self?.onLearn?(text) }
+        selectionBar.onTranslate = { [weak self] text in self?.onTranslate?(text) }
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(selectionChanged),
+            name: NSTextView.didChangeSelectionNotification,
+            object: nil
+        )
+    }
+
+    /// The bar follows the field editor rather than any one label: a selectable `NSTextField` hands
+    /// its text to the window's shared editor, which is what reports the selection.
+    @objc private func selectionChanged(_ note: Notification) {
+        guard let editor = note.object as? NSTextView,
+              let label = (editor.delegate as AnyObject?) as? LinkedLabel,
+              label.isDescendant(of: self) else { return }
+        let range = editor.selectedRange()
+        guard range.length > 0 else {
+            // Clicking the bar drops the label's selection, so a click already in flight wins.
+            if !selectionBar.isPointerInside { selectionBar.hide() }
+            return
+        }
+        let text = (editor.string as NSString).substring(with: range).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { selectionBar.hide(); return }
+        selectionBar.show(text: text, over: editor.firstRect(forCharacterRange: range, actualRange: nil), in: window)
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { nil }
 
     func show(_ dialogue: ReadingDialogue, words: [String]) {
+        selectionBar.hide()
         arrangedSubviews.forEach { $0.removeFromSuperview() }
         bubbles = []
         for turn in dialogue.turns {
@@ -83,6 +113,7 @@ final class ReadingChatView: NSStackView {
     /// Switching the whole passage also clears every per-bubble choice, so what is on screen always
     /// matches what the toolbar says.
     func setGlobalMode(_ mode: Mode) {
+        selectionBar.hide()
         globalMode = mode
         bubbles.forEach { $0.apply(global: mode, clearingOverride: true) }
     }
@@ -104,6 +135,9 @@ final class ReadingChatView: NSStackView {
         var onWord: ((String) -> Void)? {
             didSet { sourceLabel.onWord = onWord }
         }
+        /// Set while this line is pinned to both languages; clearing it hands the line back to the
+        /// toolbar's choice.
+        private var isForcedBoth = false
         let source: String
         /// The row of buttons, inside the bubble under a hairline and always visible.
         let controls = NSStackView()
@@ -123,9 +157,6 @@ final class ReadingChatView: NSStackView {
         private let slowButton: NSButton
         private let learnButton: NSButton
         private let isFirstSpeaker: Bool
-        /// Set while this line is pinned to both languages; clearing it hands the line back to the
-        /// toolbar's choice.
-        private var isForcedBoth = false
         private var globalMode: Mode = .both
 
         init(turn: ReadingDialogue.Turn, words: [String]) {
@@ -150,6 +181,7 @@ final class ReadingChatView: NSStackView {
                 linked: true
             )
             sourceLabel.allowsEditingTextAttributes = true
+            sourceLabel.isSelectable = true
             translationLabel.stringValue = turn.translation
             translationLabel.font = .systemFont(ofSize: 12.5, weight: .regular)
             translationLabel.textColor = .labelColor
