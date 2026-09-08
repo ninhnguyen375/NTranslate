@@ -161,14 +161,14 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         self.onSave = onSave
 
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 760, height: 660),
+            contentRect: NSRect(x: 0, y: 0, width: 874, height: 660),
             styleMask: [.titled, .closable, .resizable],
             backing: .buffered,
             defer: false
         )
         window.title = "NTranslate Settings"
         window.setFrameAutosaveName("NTranslateSettingsWindow")
-        window.minSize = NSSize(width: 680, height: 560)
+        window.minSize = NSSize(width: 782, height: 560)
 
         super.init(window: window)
         configureContent()

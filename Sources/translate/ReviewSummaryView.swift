@@ -74,7 +74,7 @@ final class ReviewSummaryView: NSView {
         missedHeader.isHidden = !hasMissed
         missedStack.isHidden = !hasMissed
         redrillButton.isHidden = !hasMissed
-        redrillButton.title = "  Ôn lại \(result.missed.count) thẻ vừa sai"
+        redrillButton.title = "  Ôn lại \(result.missed.count) thẻ vừa sai  "
 
         let leeches = result.missed.filter(\.isLeech).map(\.term)
         leechNote.isHidden = leeches.isEmpty
@@ -83,7 +83,7 @@ final class ReviewSummaryView: NSView {
             : "\(leeches.joined(separator: ", ")) đã sai từ \(ReviewPlanner.leechLapses) lần trở lên. Cân nhắc bỏ thẻ khỏi deck rồi học lại từ một thẻ mới."
 
         continueButton.isHidden = result.remainingToday == 0
-        continueButton.title = "  Tiếp tục \(result.remainingToday) thẻ còn lại"
+        continueButton.title = "  Tiếp tục \(result.remainingToday) thẻ còn lại  "
         readingButton.isEnabled = readingEnabled
     }
 
@@ -123,6 +123,11 @@ final class ReviewSummaryView: NSView {
         ReviewControls.actionButton(continueButton, title: "Tiếp tục", symbol: "forward.fill", target: self, action: #selector(tapContinue))
         ReviewControls.actionButton(readingButton, title: "Dệt thành đoạn đọc", symbol: "text.book.closed", target: self, action: #selector(tapReading))
         ReviewControls.actionButton(homeButton, title: "Về home", symbol: "house", target: self, action: #selector(tapHome))
+
+        for button in [redrillButton, continueButton, readingButton, homeButton] {
+            button.controlSize = .large
+            button.title += "  "
+        }
 
         let actionRow = NSStackView(views: [redrillButton, continueButton, readingButton, homeButton])
         actionRow.orientation = .horizontal

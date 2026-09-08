@@ -5,6 +5,7 @@ extension PopoverController {
     func setResultText(_ value: String, style: PopoverFeedback.ResultStyle? = nil) {
         let resolved = style ?? PopoverFeedback.resultStyle(for: value)
         lastResultStyle = resolved
+        lastResultRaw = value
         let color: NSColor
         switch resolved {
         case .normal:
@@ -268,5 +269,18 @@ extension PopoverController {
     func updateCopyButtonEnabled() {
         copyButton.isEnabled = lastResultStyle == .normal
             && PopoverFeedback.isCopyableResult(textView.string, isStreaming: isRequestInFlight)
+    }
+}
+extension PopoverController {
+    /// Cmd+Plus / Cmd+Minus / Cmd+0 on the popup. Only the source and translation body text moves.
+    func applyTextZoom(_ delta: Int) {
+        guard TextZoom.nudge(delta) else { return }
+        TextZoom.apply(to: inputTextView)
+        TextZoom.apply(to: textView)
+        if let section = subSection {
+            TextZoom.apply(to: section.sourceTextView)
+            TextZoom.apply(to: section.resultTextView)
+        }
+        reflowLayout()
     }
 }

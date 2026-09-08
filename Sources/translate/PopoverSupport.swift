@@ -109,7 +109,11 @@ enum PopoverIntegrationPolicy {
 
     static func matches(_ record: TranslationRecord, sourceText: String, resultText: String) -> Bool {
         let trim: (String) -> String = { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-        return trim(record.sourceText) == trim(sourceText) && trim(record.resultText) == trim(resultText)
+        // Popup hiển thị term không kèm " (context: …)" và bỏ dòng "Mức dùng:" khỏi kết quả,
+        // nên so sánh ở dạng đã chuẩn hóa cả hai phía.
+        let term: (String) -> String = { trim($0.components(separatedBy: " (context: ").first ?? $0) }
+        let body: (String) -> String = { trim(LearnUsageInfo.stripUsageLine(from: $0)) }
+        return term(record.sourceText) == term(sourceText) && body(record.resultText) == body(resultText)
     }
 
     static func effectiveSourceLanguage(selected: String, resolved: String?, text: String) -> String {
