@@ -167,6 +167,7 @@ final class TranslationHistoryStore {
     private(set) var records: [TranslationRecord] = []
     private var tombstonedRecords: [TranslationRecord] = []
     private(set) var loadError: String?
+    private(set) var writeError: String?
     private(set) var syncWarning: String?
     private var migrationError: String?
 
@@ -178,13 +179,16 @@ final class TranslationHistoryStore {
 
     /// Cheap change detector for one file. Size guards against two writes landing in the same
     /// mtime second; the atomic writes here always replace the whole file, so size moves too.
-    private struct FileStamp: Equatable {
+    private struct FileStamp: Equatable, Sendable {
         let modified: Date
         let size: Int
     }
 
     private var fileCache: [String: CachedFile] = [:]
     private var lastScanSignature: [String: FileStamp]?
+    /// Month files whose in-memory list is ahead of disk. Refresh must not reread these from disk.
+    private var dirtyMonthPaths: Set<String> = []
+    private let writeCoalescer = HistoryWriteCoalescer()
     /// Set when a device file could not be read; prune must not run or it would treat missing audio as orphaned.
     private var lastLoadHadUnreadableFile = false
 
@@ -224,6 +228,11 @@ final class TranslationHistoryStore {
         self.deviceID = deviceID ?? Self.defaultDeviceID()
         migrateLegacyHistoryIfNeeded()
         load(pruning: false)
+        writeCoalescer.onFinish = { [weak self] job, result, superseded in
+            Task { @MainActor in
+                self?.handleWriteFinish(job, result: result, superseded: superseded)
+            }
+        }
     }
 
     /// Tombstone/audio cleanup is safe only after a fully readable load, and does not need to finish before launch.
@@ -495,12 +504,18 @@ final class TranslationHistoryStore {
     }
 
     func audioData(for recordID: UUID, kind: TranslationAudioKind) throws -> Data? {
+        guard let url = try audioFileURL(for: recordID, kind: kind) else { return nil }
+        return try Data(contentsOf: url)
+    }
+
+    /// Path only: callers that need to read bytes off the main actor take this and open the file themselves.
+    func audioFileURL(for recordID: UUID, kind: TranslationAudioKind) throws -> URL? {
         guard let record = records.first(where: { $0.id == recordID }) else { throw StoreError.recordNotFound }
         let path = kind == .source ? record.sourceAudioPath : record.resultAudioPath
         guard let path else { return nil }
         let url = try containedAudioURL(for: path)
         guard fileManager.fileExists(atPath: url.path) else { return nil }
-        return try Data(contentsOf: url)
+        return url
     }
 
     func refresh() {
@@ -658,6 +673,13 @@ final class TranslationHistoryStore {
                 let stamp = Self.stamp(of: fileURL)
                 if let stamp { scanSignature[path] = stamp }
 
+                // In-memory list is newer than disk (write still queued). Reusing disk would drop it.
+                if dirtyMonthPaths.contains(path), let cached = fileCache[path] {
+                    groups.append((cached.records, devID))
+                    nextCache[path] = cached
+                    continue
+                }
+
                 // Unchanged since the last scan: reuse the decoded records, skip the read.
                 if let stamp, let cached = fileCache[path], cached.stamp == stamp {
                     groups.append((cached.records, devID))
@@ -688,12 +710,22 @@ final class TranslationHistoryStore {
             }
         }
 
+        // A brand-new month is dirty before its file exists, so the scan above never saw it.
+        for path in dirtyMonthPaths {
+            guard nextCache[path] == nil, let cached = fileCache[path] else { continue }
+            let url = URL(fileURLWithPath: path)
+            groups.append((cached.records, url.deletingLastPathComponent().lastPathComponent))
+            nextCache[path] = cached
+        }
+
         fileCache = nextCache
 
         // Nothing on disk moved and nothing failed to read: `records` is already correct.
         // A file that produced no stamp is excluded from the signature, so it never
-        // short-circuits the merge.
+        // short-circuits the merge. Skip this while a write is outstanding: merge must
+        // keep the dirty in-memory month, not an older scan.
         if !unreadableFile,
+           dirtyMonthPaths.isEmpty,
            scanSignature.count == groups.count,
            let lastScanSignature,
            lastScanSignature == scanSignature {
@@ -788,22 +820,67 @@ final class TranslationHistoryStore {
         try fileManager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: myDeviceDir.path)
         let monthFileURL = myDeviceDir.appendingPathComponent("\(key).json")
 
-        var list: [TranslationRecord] = []
-        if fileManager.fileExists(atPath: monthFileURL.path) {
-            let data = try Data(contentsOf: monthFileURL)
-            list = (try? decodeMonthRecords(from: data))?.records ?? []
-        }
-
+        var list = try monthRecordsForWrite(url: monthFileURL)
         list.removeAll { $0.id == record.id }
         list.append(record)
         list.sort { $0.timestamp > $1.timestamp }
 
-        let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .iso8601
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        let encoded = try encoder.encode(list)
-        try encoded.write(to: monthFileURL, options: .atomic)
-        try fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: monthFileURL.path)
+        let path = monthFileURL.path
+        let stamp = fileCache[path]?.stamp ?? FileStamp(modified: .distantPast, size: -1)
+        fileCache[path] = CachedFile(stamp: stamp, records: list)
+        dirtyMonthPaths.insert(path)
+        writeCoalescer.submit(HistoryMonthWriteJob(monthKey: key, url: monthFileURL, records: list))
+    }
+
+    /// Prefer the in-memory month list. Disk is the fallback so a cache miss cannot wipe a file.
+    private func monthRecordsForWrite(url: URL) throws -> [TranslationRecord] {
+        if let cached = fileCache[url.path] {
+            return cached.records
+        }
+        guard fileManager.fileExists(atPath: url.path) else { return [] }
+        let data = try Data(contentsOf: url)
+        let records = (try? decodeMonthRecords(from: data))?.records ?? []
+        if let stamp = Self.stamp(of: url) {
+            fileCache[url.path] = CachedFile(stamp: stamp, records: records)
+        }
+        return records
+    }
+
+    private func handleWriteFinish(
+        _ job: HistoryMonthWriteJob,
+        result: Result<HistoryFileStamp, Error>,
+        superseded: Bool
+    ) {
+        switch result {
+        case let .success(stamp):
+            // A write that lands clears the last failure; otherwise one bad write would keep
+            // nagging from the refresh timer forever.
+            writeError = nil
+            guard !superseded else { return }
+            fileCache[job.url.path] = CachedFile(
+                stamp: FileStamp(modified: stamp.modified, size: stamp.size),
+                records: fileCache[job.url.path]?.records ?? job.records
+            )
+            dirtyMonthPaths.remove(job.url.path)
+        case let .failure(error):
+            writeError = error.localizedDescription
+        }
+    }
+
+    /// Blocks until every queued month write has hit disk. Used on quit so a just-graded card is not lost.
+    func flush() {
+        for path in dirtyMonthPaths {
+            guard let cached = fileCache[path] else { continue }
+            let url = URL(fileURLWithPath: path)
+            writeCoalescer.submit(
+                HistoryMonthWriteJob(
+                    monthKey: url.deletingPathExtension().lastPathComponent,
+                    url: url,
+                    records: cached.records
+                )
+            )
+        }
+        writeCoalescer.flush()
     }
 
     private func pruneTombstones() {
@@ -969,5 +1046,86 @@ final class TranslationHistoryStore {
             try persistRecordToMonthFile(tombstone)
             applyLocally(tombstone)
         }
+    }
+}
+
+private struct HistoryMonthWriteJob: Sendable {
+    let monthKey: String
+    let url: URL
+    let records: [TranslationRecord]
+}
+
+private struct HistoryFileStamp: Equatable, Sendable {
+    let modified: Date
+    let size: Int
+}
+
+private func historyFileStamp(of fileURL: URL) -> HistoryFileStamp? {
+    guard let values = try? fileURL.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey]),
+          let modified = values.contentModificationDate,
+          let size = values.fileSize
+    else { return nil }
+    return HistoryFileStamp(modified: modified, size: size)
+}
+
+private func writeHistoryMonthFile(_ job: HistoryMonthWriteJob) -> Result<HistoryFileStamp, Error> {
+    do {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        let encoded = try encoder.encode(job.records)
+        try encoded.write(to: job.url, options: .atomic)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: job.url.path)
+        guard let stamp = historyFileStamp(of: job.url) else {
+            return .failure(
+                NSError(
+                    domain: "TranslationHistoryStore",
+                    code: 1,
+                    userInfo: [NSLocalizedDescriptionKey: "Could not read stamp after history write"]
+                )
+            )
+        }
+        return .success(stamp)
+    } catch {
+        return .failure(error)
+    }
+}
+
+/// Serial last-write-wins queue: one in-flight write per month file, newer snapshots replace queued ones.
+private final class HistoryWriteCoalescer: @unchecked Sendable {
+    private let queue = DispatchQueue(label: "local.ninh.ntranslate.history.write")
+    private let lock = NSLock()
+    private var pending: [String: HistoryMonthWriteJob] = [:]
+    private var running: Set<String> = []
+    var onFinish: (@Sendable (HistoryMonthWriteJob, Result<HistoryFileStamp, Error>, Bool) -> Void)?
+
+    func submit(_ job: HistoryMonthWriteJob) {
+        lock.lock()
+        pending[job.monthKey] = job
+        let shouldStart = running.insert(job.monthKey).inserted
+        lock.unlock()
+        guard shouldStart else { return }
+        queue.async { self.drain(job.monthKey) }
+    }
+
+    func drain(_ key: String) {
+        while true {
+            lock.lock()
+            guard let job = pending.removeValue(forKey: key) else {
+                running.remove(key)
+                lock.unlock()
+                return
+            }
+            lock.unlock()
+            let result = writeHistoryMonthFile(job)
+            lock.lock()
+            let superseded = pending[key] != nil
+            lock.unlock()
+            onFinish?(job, result, superseded)
+        }
+    }
+
+    func flush() {
+        queue.sync {}
     }
 }

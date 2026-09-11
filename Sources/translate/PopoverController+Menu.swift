@@ -418,6 +418,7 @@ extension PopoverController {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        historyStore.flush()
         refreshTimer?.invalidate()
         refreshTimer = nil
         if let hotKeyEventHandlerRef { RemoveEventHandler(hotKeyEventHandlerRef) }
@@ -461,6 +462,8 @@ extension PopoverController {
         }
         if let loadError = historyStore.loadError {
             setStatus(loadError, autoClearAfter: 12)
+        } else if let writeError = historyStore.writeError {
+            setStatus("History failed: \(writeError)", autoClearAfter: 12)
         } else if let syncWarning = historyStore.syncWarning {
             setStatus(syncWarning, autoClearAfter: 12)
         }

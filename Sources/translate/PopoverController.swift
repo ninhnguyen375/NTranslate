@@ -331,10 +331,18 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
             try? await Task.sleep(nanoseconds: 250_000_000)
             self?.historyStore.prunePendingIfNeeded()
         }
+        Task(priority: .utility) { @MainActor in
+            await VocabPack.shared.warm()
+            VocabProgressStore.shared.load()
+            await WeaveCache.warm()
+        }
         refreshTimer = Timer.scheduledTimer(withTimeInterval: 900, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 guard let self else { return }
                 self.historyStore.refresh()
+                if let writeError = self.historyStore.writeError {
+                    self.setStatus("History failed: \(writeError)", autoClearAfter: 12)
+                }
                 if self._historyWindowController?.window?.isVisible == true {
                     self._historyWindowController?.reloadHistory()
                 }

@@ -241,14 +241,18 @@ extension PopoverController {
         }
         setResultText(record.resultText)
         currentRecordID = record.id
-        hydrateStoredAudio(for: record)
         let sourceIdentity = sourceSpeechIdentity(recordID: record.id)
         let resultIdentity = resultSpeechIdentity(recordID: record.id)
-        if sourceIdentity.map({ speechCache[$0] == nil }) == true {
-            prefetchSpeech(sourceIdentity, translationGeneration: generation)
-        }
-        if resultIdentity.map({ speechCache[$0] == nil }) == true {
-            prefetchSpeech(resultIdentity, translationGeneration: nil)
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            await self.hydrateStoredAudio(for: record)
+            guard generation == self.requestGeneration else { return }
+            if sourceIdentity.map({ self.speechCache[$0] == nil }) == true {
+                self.prefetchSpeech(sourceIdentity, translationGeneration: generation)
+            }
+            if resultIdentity.map({ self.speechCache[$0] == nil }) == true {
+                self.prefetchSpeech(resultIdentity, translationGeneration: nil)
+            }
         }
         updatePaneLanguageLabels()
         updateSaveWordButton()
