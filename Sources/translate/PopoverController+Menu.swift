@@ -442,6 +442,13 @@ extension PopoverController {
         config = outcome.config
         applyTheme()
         registerHotKey()
+        historyStore = TranslationHistoryStore(config: config)
+        WeaveCache.prepare(historyDirectory: config.historyDirectoryURL)
+        if _historyWindowController != nil {
+            let controller = makeHistoryWindowController()
+            controller.window?.appearance = config.theme.nsAppearance
+            _historyWindowController = controller
+        }
         do {
             apiKey = try APIKeyStore.shared.load() ?? ""
             speechAPIKey = try APIKeyStore.speech.load() ?? ""
@@ -451,13 +458,6 @@ extension PopoverController {
             translator = nil
             setResultText("Error: \(error.localizedDescription)", style: .error)
             return outcome
-        }
-        historyStore = TranslationHistoryStore(config: config)
-        WeaveCache.prepare(historyDirectory: config.historyDirectoryURL)
-        historyWindowController = HistoryWindowController(store: historyStore) { [weak self] record in
-            guard let self else { return }
-            self.openTranslatePanelShowingSetupStatus()
-            self.openHistoryRecord(record)
         }
         if let loadError = historyStore.loadError {
             setStatus(loadError, autoClearAfter: 12)
@@ -471,7 +471,7 @@ extension PopoverController {
         } else {
             translator = Translator(config: config, apiKey: trimmedAPIKey, speechAPIKey: speechAPIKey)
         }
-        reviewWindowController.updateDependencies(store: historyStore, translator: translator, config: config)
+        _reviewWindowController?.updateDependencies(store: historyStore, translator: translator, config: config)
         guard !trimmedAPIKey.isEmpty else {
             setResultText("Error: API key is empty — open Settings… and enter your 9router API key.", style: .error)
             return outcome

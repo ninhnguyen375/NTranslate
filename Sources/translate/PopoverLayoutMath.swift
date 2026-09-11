@@ -1,16 +1,62 @@
 import AppKit
 
 enum PopoverLayoutMath {
+    /// `NSAttributedString.hash` ignores font, so the key must carry size (and face) itself.
+    private struct MeasureKey: Hashable {
+        let length: Int
+        let stringHash: Int
+        let width: Int
+        let fontSizeBits: Int
+        let fontName: String
+    }
+
+    static let measureCacheLimit = 32
+
+    /// Standalone checks read this; not part of the layout API.
+    @MainActor
+    static var measureCacheCount: Int { measureCache.count }
+
+    @MainActor
+    private static var measureCache: [MeasureKey: CGFloat] = [:]
+    @MainActor
+    private static var measureCacheOrder: [MeasureKey] = []
+
+    @MainActor
     static func measuredTextHeight(_ text: NSAttributedString, width: CGFloat) -> CGFloat {
         let contentWidth = max(100, width)
-        let storage = NSTextStorage(attributedString: text.length == 0 ? NSAttributedString(string: " ") : text)
+        let sample = text.length == 0 ? NSAttributedString(string: " ") : text
+        let font = sample.attribute(.font, at: 0, effectiveRange: nil) as? NSFont
+        let key = MeasureKey(
+            length: sample.length,
+            stringHash: sample.string.hashValue,
+            width: Int((contentWidth * 100).rounded()),
+            fontSizeBits: Int(((font?.pointSize ?? 0) * 100).rounded()),
+            fontName: font?.fontName ?? ""
+        )
+        if let cached = measureCache[key] {
+            return cached
+        }
+        let storage = NSTextStorage(attributedString: sample)
         let container = NSTextContainer(size: NSSize(width: contentWidth, height: .greatestFiniteMagnitude))
         container.lineFragmentPadding = 0
         let layoutManager = NSLayoutManager()
         layoutManager.addTextContainer(container)
         storage.addLayoutManager(layoutManager)
         layoutManager.ensureLayout(for: container)
-        return ceil(layoutManager.usedRect(for: container).height)
+        let height = ceil(layoutManager.usedRect(for: container).height)
+        rememberMeasure(key, height)
+        return height
+    }
+
+    @MainActor
+    private static func rememberMeasure(_ key: MeasureKey, _ height: CGFloat) {
+        if measureCache[key] != nil { return }
+        if measureCacheOrder.count >= measureCacheLimit, let oldest = measureCacheOrder.first {
+            measureCacheOrder.removeFirst()
+            measureCache.removeValue(forKey: oldest)
+        }
+        measureCache[key] = height
+        measureCacheOrder.append(key)
     }
 
     static func clickIsInsidePanel(click: NSPoint, panelFrame: NSRect, padding: CGFloat = 2) -> Bool {

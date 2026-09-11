@@ -143,7 +143,9 @@ extension PopoverController {
 extension PopoverController: NSMenuItemValidation {
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         guard let command = StudyMenuCommand(rawValue: menuItem.tag) else { return true }
-        guard reviewWindowController.window?.isVisible == true else { return command == .start || command == .newWords }
-        return reviewWindowController.canRunStudyCommand(command.controllerCommand)
+        guard let review = _reviewWindowController, review.window?.isVisible == true else {
+            return command == .start || command == .newWords
+        }
+        return review.canRunStudyCommand(command.controllerCommand)
     }
 }

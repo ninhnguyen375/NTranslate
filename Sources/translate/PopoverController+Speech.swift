@@ -291,7 +291,7 @@ extension PopoverController {
         guard let recordID else { return }
         do {
             try historyStore.removeAudio(recordID: recordID)
-            historyWindowController.reloadHistory()
+            _historyWindowController?.reloadHistory()
         } catch {
             setStatus("Could not clear stored audio: \(error.localizedDescription)", autoClearAfter: 12)
         }
@@ -320,7 +320,7 @@ extension PopoverController {
         else { return }
         do {
             try historyStore.attachAudio(data, kind: identity.kind == .source ? .source : .result, recordID: recordID)
-            historyWindowController.reloadHistory()
+            _historyWindowController?.reloadHistory()
         } catch {
             setStatus("History audio failed: \(error.localizedDescription)", autoClearAfter: 12)
         }

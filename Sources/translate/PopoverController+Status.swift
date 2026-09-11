@@ -160,11 +160,13 @@ extension PopoverController {
         }
         let last = scope == .main ? lastStreamedHeightMain : lastStreamedHeightSub
         let heightChanged = abs(measured - last) >= 1
-        if heightChanged || now.timeIntervalSince(lastStreamReflow) >= 0.1 {
-            lastStreamReflow = now
+        let lastReflow = scope == .main ? lastStreamReflowMain : lastStreamReflowSub
+        if heightChanged || now.timeIntervalSince(lastReflow) >= 0.1 {
             if scope == .main {
+                lastStreamReflowMain = now
                 lastStreamedHeightMain = measured
             } else {
+                lastStreamReflowSub = now
                 lastStreamedHeightSub = measured
             }
             reflowLayout()
@@ -179,8 +181,8 @@ extension PopoverController {
             ? 0
             : PopoverLayoutMath.measuredTextHeight(attr, width: max(100, section.textView.bounds.width))
         let heightChanged = abs(measured - lastStreamedHeightQA) >= 1
-        if heightChanged || now.timeIntervalSince(lastStreamReflow) >= 0.1 {
-            lastStreamReflow = now
+        if heightChanged || now.timeIntervalSince(lastStreamReflowQA) >= 0.1 {
+            lastStreamReflowQA = now
             lastStreamedHeightQA = measured
             reflowLayout()
         }

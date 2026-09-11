@@ -185,6 +185,8 @@ final class TranslationHistoryStore {
 
     private var fileCache: [String: CachedFile] = [:]
     private var lastScanSignature: [String: FileStamp]?
+    /// Set when a device file could not be read; prune must not run or it would treat missing audio as orphaned.
+    private var lastLoadHadUnreadableFile = false
 
     static func defaultDeviceID() -> String {
         let key = "syncDeviceID"
@@ -221,7 +223,14 @@ final class TranslationHistoryStore {
         self.audioDirectoryURL = self.directoryURL.appendingPathComponent("audio", isDirectory: true)
         self.deviceID = deviceID ?? Self.defaultDeviceID()
         migrateLegacyHistoryIfNeeded()
-        load(pruning: true)
+        load(pruning: false)
+    }
+
+    /// Tombstone/audio cleanup is safe only after a fully readable load, and does not need to finish before launch.
+    func prunePendingIfNeeded() {
+        guard !lastLoadHadUnreadableFile else { return }
+        pruneTombstones()
+        pruneOrphanAudio()
     }
 
     func append(_ record: TranslationRecord) throws {
@@ -592,6 +601,7 @@ final class TranslationHistoryStore {
             try fileManager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: deviceFolder.path)
         } catch {
             loadError = "Could not initialize directory: \(error.localizedDescription)"
+            lastLoadHadUnreadableFile = true
             return
         }
 
@@ -601,6 +611,7 @@ final class TranslationHistoryStore {
 
         guard let deviceDirs = try? fileManager.contentsOfDirectory(at: devicesDirectoryURL, includingPropertiesForKeys: nil) else {
             loadError = "Could not read history devices folder at \(devicesDirectoryURL.path)"
+            lastLoadHadUnreadableFile = true
             return
         }
 
@@ -688,6 +699,7 @@ final class TranslationHistoryStore {
            lastScanSignature == scanSignature {
             loadError = nil
             syncWarning = migrationError
+            lastLoadHadUnreadableFile = false
             return
         }
         lastScanSignature = unreadableFile ? nil : scanSignature
@@ -706,6 +718,7 @@ final class TranslationHistoryStore {
         // Migration failure is not a lock: history.json is left untouched for recovery and
         // new records still land safely in this device's month files.
         syncWarning = migrationError ?? detectedWarning
+        lastLoadHadUnreadableFile = unreadableFile
 
         // Never destroy data while any device file is unreadable: the records it holds
         // are missing from `records`, so their audio would look orphaned.
