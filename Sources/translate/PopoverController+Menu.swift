@@ -137,7 +137,7 @@ extension PopoverController {
         let stats = historyStore.computeStats()
         // Cards due can exceed the daily limit; show what this session will actually contain.
         let sessionCount = min(stats.dueCount, max(1, config.learning.dailyReviewLimit))
-        let reviewTitle = sessionCount > 0 ? "Spaced Repetition (\(sessionCount) cards)" : "Spaced Repetition"
+        let reviewTitle = sessionCount > 0 ? "Spaced Repetition (\(Plural.count(sessionCount, "card")))" : "Spaced Repetition"
         reviewButton.toolTip = reviewTitle
         reviewButton.setAccessibilityLabel(reviewTitle)
         reviewBadgeLabel.stringValue = "!"
@@ -268,7 +268,7 @@ extension PopoverController {
         let stats = historyStore.computeStats()
         let alert = NSAlert()
         alert.messageText = "Learning Progress"
-        alert.informativeText = "• Saved words: \(stats.totalSaved)\n• Mastered (interval >= 21 days): \(stats.totalMastered)\n• Daily streak: \(stats.dayStreak) days\n• Cards due today: \(stats.dueCount) cards (session limit: \(config.learning.dailyReviewLimit))"
+        alert.informativeText = "• Saved words: \(stats.totalSaved)\n• Mastered (interval >= 21 days): \(stats.totalMastered)\n• Daily streak: \(Plural.count(stats.dayStreak, "day"))\n• Cards due today: \(Plural.count(stats.dueCount, "card")) (session limit: \(config.learning.dailyReviewLimit))"
         alert.alertStyle = .informational
         alert.addButton(withTitle: "OK")
         alert.runModal()
@@ -473,7 +473,7 @@ extension PopoverController {
         }
         _reviewWindowController?.updateDependencies(store: historyStore, translator: translator, config: config)
         guard !trimmedAPIKey.isEmpty else {
-            setResultText("Error: API key is empty — open Settings… and enter your 9router API key.", style: .error)
+            setResultText("Error: API key is empty - open Settings… and enter your 9router API key.", style: .error)
             return outcome
         }
         configureLanguageControls()

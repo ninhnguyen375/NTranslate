@@ -55,11 +55,11 @@ final class NewWordsView: NSView {
         for filter in filterOrder {
             switch filter {
             case .all:
-                levelPopup.addItem(withTitle: "Tất cả (\(total))")
+                levelPopup.addItem(withTitle: "All (\(total))")
             case .level(let level):
                 levelPopup.addItem(withTitle: "\(level.label) (\(counts[level] ?? 0))")
             case .known:
-                levelPopup.addItem(withTitle: "Đã biết (\(knownCount))")
+                levelPopup.addItem(withTitle: "Known (\(knownCount))")
             }
         }
         if let index = filterOrder.firstIndex(of: selected) {
@@ -76,9 +76,9 @@ final class NewWordsView: NSView {
         detailView.string = learnBadgeView.apply(to: detail, live: true)
         detailView.scrollRangeToVisible(NSRange(location: 0, length: 0))
         if isKnownMode {
-            progressLabel.stringValue = "Đang xem từ đã biết · còn \(remaining) từ"
+            progressLabel.stringValue = "Browsing known words · \(remaining) left"
         } else {
-            progressLabel.stringValue = "\(learned) đã học · \(known) đã biết · \(skipped) bỏ qua · còn \(remaining) từ"
+            progressLabel.stringValue = "\(learned) learned · \(known) known · \(skipped) skipped · \(remaining) left"
         }
     }
 
@@ -101,7 +101,7 @@ final class NewWordsView: NSView {
 
         levelPopup.target = self
         levelPopup.action = #selector(levelChanged)
-        levelPopup.toolTip = "Chọn cấp độ từ vựng muốn duyệt"
+        levelPopup.toolTip = "Choose a vocabulary level to browse"
 
         progressLabel.font = .systemFont(ofSize: 11)
         progressLabel.textColor = .tertiaryLabelColor
@@ -116,8 +116,8 @@ final class NewWordsView: NSView {
         wordLabel.font = .systemFont(ofSize: 30, weight: .bold)
         wordLabel.alignment = .center
 
-        ReviewControls.iconButton(speakButton, symbol: "speaker.wave.2", label: "Đọc từ (4)", target: self, action: #selector(tapSpeak))
-        ReviewControls.iconButton(speakSlowButton, symbol: "tortoise", label: "Đọc chậm (5)", target: self, action: #selector(tapSpeakSlow))
+        ReviewControls.iconButton(speakButton, symbol: "speaker.wave.2", label: "Speak word (4)", target: self, action: #selector(tapSpeak))
+        ReviewControls.iconButton(speakSlowButton, symbol: "tortoise", label: "Speak slowly (5)", target: self, action: #selector(tapSpeakSlow))
 
         let wordRow = NSStackView(views: [wordLabel, speakButton, speakSlowButton])
         wordRow.orientation = .horizontal
@@ -158,9 +158,9 @@ final class NewWordsView: NSView {
         bodyStack.addArrangedSubview(learnBadgeView)
         bodyStack.addArrangedSubview(detailScroll)
 
-        ReviewControls.actionButton(knownButton, title: "Đã biết (1)", symbol: "checkmark.circle", target: self, action: #selector(tapKnown))
-        ReviewControls.actionButton(learnButton, title: "Học (2)", symbol: "plus.circle.fill", target: self, action: #selector(tapLearn))
-        ReviewControls.actionButton(skipButton, title: "Bỏ qua (3)", symbol: "arrow.uturn.forward", target: self, action: #selector(tapSkip))
+        ReviewControls.actionButton(knownButton, title: "Known (1)", symbol: "checkmark.circle", target: self, action: #selector(tapKnown))
+        ReviewControls.actionButton(learnButton, title: "Learn (2)", symbol: "plus.circle.fill", target: self, action: #selector(tapLearn))
+        ReviewControls.actionButton(skipButton, title: "Skip (3)", symbol: "arrow.uturn.forward", target: self, action: #selector(tapSkip))
         // Only the first button used to carry a height, which left the row visibly uneven.
         for button in [knownButton, learnButton, skipButton] {
             button.translatesAutoresizingMaskIntoConstraints = false
@@ -168,9 +168,9 @@ final class NewWordsView: NSView {
             button.setContentHuggingPriority(.defaultLow, for: .horizontal)
             button.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         }
-        knownButton.toolTip = "Bỏ hẳn từ này khỏi danh sách gợi ý"
-        learnButton.toolTip = "Thêm vào deck và ôn ngay hôm nay"
-        skipButton.toolTip = "Để lại cuối hàng, ưu tiên từ chưa gặp trước"
+        knownButton.toolTip = "Remove this word from suggestions"
+        learnButton.toolTip = "Add to the deck and review today"
+        skipButton.toolTip = "Move to the end of the queue, unseen words first"
 
         actionRow.orientation = .horizontal
         actionRow.spacing = 10
@@ -233,13 +233,13 @@ final class NewWordsView: NSView {
     private func updateActionButtons(isKnown: Bool) {
         isKnownMode = isKnown
         if isKnown {
-            setButton(knownButton, title: "Bỏ đã biết (1)", symbol: "arrow.uturn.backward", toolTip: "Xóa khỏi danh sách đã biết để quay lại gợi ý học từ mới")
-            setButton(learnButton, title: "Học (2)", symbol: "plus.circle.fill", toolTip: "Thêm vào deck và ôn ngay hôm nay")
-            setButton(skipButton, title: "Tiếp tục (3)", symbol: "arrow.forward", toolTip: "Xem từ đã biết tiếp theo")
+            setButton(knownButton, title: "Unmark known (1)", symbol: "arrow.uturn.backward", toolTip: "Remove from known so it can appear in new-word suggestions again")
+            setButton(learnButton, title: "Learn (2)", symbol: "plus.circle.fill", toolTip: "Add to the deck and review today")
+            setButton(skipButton, title: "Next (3)", symbol: "arrow.forward", toolTip: "Show the next known word")
         } else {
-            setButton(knownButton, title: "Đã biết (1)", symbol: "checkmark.circle", toolTip: "Bỏ hẳn từ này khỏi danh sách gợi ý")
-            setButton(learnButton, title: "Học (2)", symbol: "plus.circle.fill", toolTip: "Thêm vào deck và ôn ngay hôm nay")
-            setButton(skipButton, title: "Bỏ qua (3)", symbol: "arrow.uturn.forward", toolTip: "Để lại cuối hàng, ưu tiên từ chưa gặp trước")
+            setButton(knownButton, title: "Known (1)", symbol: "checkmark.circle", toolTip: "Remove this word from suggestions")
+            setButton(learnButton, title: "Learn (2)", symbol: "plus.circle.fill", toolTip: "Add to the deck and review today")
+            setButton(skipButton, title: "Skip (3)", symbol: "arrow.uturn.forward", toolTip: "Move to the end of the queue, unseen words first")
         }
     }
 

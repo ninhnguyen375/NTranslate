@@ -49,7 +49,7 @@ enum LearnBadgeCheckMain {
         expect(usage.cefr == "C1", "CEFR is C1: \(String(describing: usage.cefr))")
         expect(usage.cefrLevel == .c1, "cefrLevel is .c1")
         expect(usage.frequencyLevel == 1, "frequencyLevel is 1 (low): \(usage.frequencyLevel)")
-        expect(usage.frequency == "Ít gặp", "frequency is 'Ít gặp'")
+        expect(usage.frequency == "Rare", "frequency is 'Rare'")
         expect(usage.register == "formal", "register is 'formal'")
     }
 
@@ -59,7 +59,7 @@ enum LearnBadgeCheckMain {
         expect(usage.cefr == "A1", "CEFR is A1")
         expect(usage.cefrLevel == .a1, "cefrLevel is .a1")
         expect(usage.frequencyLevel == 3, "frequencyLevel is 3 (high)")
-        expect(usage.frequency == "Rất phổ biến", "frequency is 'Rất phổ biến'")
+        expect(usage.frequency == "Very common", "frequency is 'Very common'")
         expect(usage.register == "neutral", "register is 'neutral'")
     }
 
@@ -69,7 +69,7 @@ enum LearnBadgeCheckMain {
         expect(usage.cefr == "B2", "CEFR is B2")
         expect(usage.cefrLevel == .b2, "cefrLevel is .b2")
         expect(usage.frequencyLevel == 2, "frequencyLevel is 2 (medium)")
-        expect(usage.frequency == "Phổ biến", "frequency is 'Phổ biến'")
+        expect(usage.frequency == "Common", "frequency is 'Common'")
         expect(usage.register == "thân mật", "register is 'thân mật'")
     }
 

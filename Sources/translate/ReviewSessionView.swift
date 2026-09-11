@@ -105,7 +105,7 @@ final class ReviewSessionView: NSView {
         let seconds = Int(elapsed) % 60
         let clock = String(format: "%d:%02d", minutes, seconds)
         let prefix = practice ? "Practice  ·  " : ""
-        countsLabel.stringValue = "\(prefix)✓ \(correct)   ✗ \(wrong)   còn \(remaining)   \(clock)"
+        countsLabel.stringValue = "\(prefix)✓ \(correct)   ✗ \(wrong)   \(remaining) left   \(clock)"
     }
 
     func setPills(_ pills: [String]) {
