@@ -155,7 +155,7 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     var registeredHotKeys: [EventHotKeyRef] = []
     var hotKeyEventHandlerRef: EventHandlerRef?
     var ocrPollTimer: Timer?
-    var config = AppConfig.load() {
+    var config = AppConfig.default {
         didSet { applyDensity() }
     }
     var apiKey = ""
@@ -171,16 +171,18 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     var prefetchingSpeech: Set<SpeechIdentity> = []
     var pendingSourceSpeech: [Int: PendingSourceSpeech] = [:]
     var pendingImage: Data?
-    var historyStore: TranslationHistoryStore = TranslationHistoryStore(config: AppConfig.load())
-    lazy var historyWindowController: HistoryWindowController = {
-        let controller = HistoryWindowController(store: historyStore) { [weak self] record in
-            guard let self else { return }
-            self.openTranslatePanelShowingSetupStatus()
-            self.openHistoryRecord(record)
-        }
+    var historyStore: TranslationHistoryStore!
+    var _historyWindowController: HistoryWindowController?
+    var historyWindowController: HistoryWindowController {
+        if let existing = _historyWindowController { return existing }
+        let controller = makeHistoryWindowController()
+        controller.window?.appearance = config.theme.nsAppearance
+        _historyWindowController = controller
         return controller
-    }()
-    lazy var reviewWindowController: ReviewWindowController = {
+    }
+    var _reviewWindowController: ReviewWindowController?
+    var reviewWindowController: ReviewWindowController {
+        if let existing = _reviewWindowController { return existing }
         let controller = ReviewWindowController(store: historyStore, translator: translator, config: config)
         controller.onReviewsCompleted = { [weak self] in
             self?.updateReviewBadge()
@@ -200,8 +202,10 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
             self.openTranslatePanelShowingSetupStatus()
             self.translate(sentence)
         }
+        controller.window?.appearance = config.theme.nsAppearance
+        _reviewWindowController = controller
         return controller
-    }()
+    }
     var currentRecordID: UUID?
     var lastExecutionMode: TranslationMode = .translate
     enum RequestScope {
@@ -218,7 +222,9 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     /// Set once an image request has streamed its transcription into the input pane; the pane is no
     /// longer in image mode, but the in-flight image response still belongs to it.
     var imageStreamAdoptedSource = false
-    var lastStreamReflow = Date.distantPast
+    var lastStreamReflowMain = Date.distantPast
+    var lastStreamReflowSub = Date.distantPast
+    var lastStreamReflowQA = Date.distantPast
     var lastStreamedHeightMain: CGFloat = 0
     var lastStreamedHeightSub: CGFloat = 0
     var lastStreamedHeightQA: CGFloat = 0
@@ -287,9 +293,22 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         ChromeLayout.density = ChromeDensity(rawValue: config.ui.density) ?? .normal
     }
 
+    func makeHistoryWindowController() -> HistoryWindowController {
+        HistoryWindowController(store: historyStore) { [weak self] record in
+            guard let self else { return }
+            self.openTranslatePanelShowingSetupStatus()
+            self.openHistoryRecord(record)
+        }
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
-        WeaveCache.prepare(historyDirectory: config.historyDirectoryURL)
-        applyDensity()
+        do {
+            try AppConfig.migrateLegacyAPIKey()
+        } catch {
+            setResultText("Error: Could not migrate API key to Keychain: \(error.localizedDescription)", style: .error)
+        }
+        installHotKeyEventHandler()
+        reloadConfig()
         statusItem.button?.action = #selector(manualToggle)
         statusItem.button?.target = self
         CrashRecovery.presentCrashAlertIfNeeded()
@@ -306,22 +325,18 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         panel.delegate = self
         buildPopover()
         buildMenu()
-        installHotKeyEventHandler()
-        do {
-            try AppConfig.migrateLegacyAPIKey()
-        } catch {
-            setResultText("Error: Could not migrate API key to Keychain: \(error.localizedDescription)", style: .error)
-        }
-        reloadConfig()
         updateReviewBadge()
         performUpdateCheck(silent: true)
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 250_000_000)
+            self?.historyStore.prunePendingIfNeeded()
+        }
         refreshTimer = Timer.scheduledTimer(withTimeInterval: 900, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 guard let self else { return }
                 self.historyStore.refresh()
-                // Touching the lazy controller would build a window the user never opened.
-                if self.historyWindowController.window?.isVisible == true {
-                    self.historyWindowController.reloadHistory()
+                if self._historyWindowController?.window?.isVisible == true {
+                    self._historyWindowController?.reloadHistory()
                 }
                 self.updateReviewBadge()
             }
@@ -379,7 +394,7 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         NSApp.appearance = appearance
         panel.appearance = appearance
         settingsWindowController?.window?.appearance = appearance
-        historyWindowController.window?.appearance = appearance
-        reviewWindowController.window?.appearance = appearance
+        _historyWindowController?.window?.appearance = appearance
+        _reviewWindowController?.window?.appearance = appearance
     }
 }

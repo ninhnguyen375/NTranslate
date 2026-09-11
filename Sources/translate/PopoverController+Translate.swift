@@ -330,7 +330,7 @@ extension PopoverController {
                 } else {
                     currentRecordID = stored.id
                     attachPendingSourceSpeech(for: generation, recordID: stored.id)
-                    historyWindowController.reloadHistory()
+                    _historyWindowController?.reloadHistory()
                     prefetchSpeech(sourceSpeechIdentity(recordID: stored.id), translationGeneration: generation)
                     prefetchSpeech(resultSpeechIdentity(recordID: stored.id), translationGeneration: nil)
                     updatePaneLanguageLabels()
