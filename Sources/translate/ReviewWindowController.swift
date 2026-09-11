@@ -1108,6 +1108,13 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
             handleSpaceKey()
             return nil
         }
+        // Return / keypad Enter confirm the auto-grade Continue button.
+        if chars == "\r" || chars == "\n" {
+            if isAnswerRevealed, let auto = pendingAutoGrade {
+                applyGrade(auto)
+                return nil
+            }
+        }
         if isAnswerRevealed {
             if chars == "1" { applyGrade(.again); return nil }
             if chars == "2" { applyGrade(.hard); return nil }
@@ -1122,11 +1129,6 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
     private func handleSpaceKey() {
         if !isAnswerRevealed {
             revealAnswer()
-            return
-        }
-        // A question that graded itself only needs "next"; Space is that key.
-        if let auto = pendingAutoGrade {
-            applyGrade(auto)
             return
         }
         let clipView = sessionView.scrollView.contentView

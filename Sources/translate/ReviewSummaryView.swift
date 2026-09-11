@@ -74,7 +74,7 @@ final class ReviewSummaryView: NSView {
         missedHeader.isHidden = !hasMissed
         missedStack.isHidden = !hasMissed
         redrillButton.isHidden = !hasMissed
-        redrillButton.title = "  Ôn lại \(result.missed.count) thẻ vừa sai  "
+        setActionTitle(redrillButton, "Ôn lại \(result.missed.count) thẻ vừa sai")
 
         let leeches = result.missed.filter(\.isLeech).map(\.term)
         leechNote.isHidden = leeches.isEmpty
@@ -83,7 +83,7 @@ final class ReviewSummaryView: NSView {
             : "\(leeches.joined(separator: ", ")) đã sai từ \(ReviewPlanner.leechLapses) lần trở lên. Cân nhắc bỏ thẻ khỏi deck rồi học lại từ một thẻ mới."
 
         continueButton.isHidden = result.remainingToday == 0
-        continueButton.title = "  Tiếp tục \(result.remainingToday) thẻ còn lại  "
+        setActionTitle(continueButton, "Tiếp tục \(result.remainingToday) thẻ còn lại")
         readingButton.isEnabled = readingEnabled
     }
 
@@ -126,16 +126,25 @@ final class ReviewSummaryView: NSView {
 
         for button in [redrillButton, continueButton, readingButton, homeButton] {
             button.controlSize = .large
-            button.title += "  "
+            button.imageHugsTitle = true
+            button.translatesAutoresizingMaskIntoConstraints = false
+            button.heightAnchor.constraint(equalToConstant: 44).isActive = true
+            setActionTitle(button, button.title)
+            button.widthAnchor.constraint(greaterThanOrEqualToConstant: button.fittingSize.width + 36).isActive = true
         }
 
         let actionRow = NSStackView(views: [redrillButton, continueButton, readingButton, homeButton])
         actionRow.orientation = .horizontal
         actionRow.spacing = 8
+        actionRow.translatesAutoresizingMaskIntoConstraints = false
+
+        let actionWrap = NSView()
+        actionWrap.translatesAutoresizingMaskIntoConstraints = false
+        actionWrap.addSubview(actionRow)
 
         let stack = NSStackView(views: [
             seal, titleLabel, subtitleLabel, tileRow,
-            missedHeader, missedStack, leechNote, actionRow
+            missedHeader, missedStack, leechNote, actionWrap
         ])
         stack.orientation = .vertical
         stack.spacing = 12
@@ -171,10 +180,16 @@ final class ReviewSummaryView: NSView {
             stack.centerXAnchor.constraint(equalTo: document.centerXAnchor),
             stack.leadingAnchor.constraint(equalTo: document.leadingAnchor, constant: 22),
             stack.trailingAnchor.constraint(equalTo: document.trailingAnchor, constant: -22),
-            stack.bottomAnchor.constraint(lessThanOrEqualTo: document.bottomAnchor, constant: -20),
+            stack.bottomAnchor.constraint(lessThanOrEqualTo: document.bottomAnchor, constant: -28),
             tileRow.widthAnchor.constraint(equalTo: stack.widthAnchor),
             missedStack.widthAnchor.constraint(equalTo: stack.widthAnchor),
-            leechNote.widthAnchor.constraint(equalTo: stack.widthAnchor)
+            leechNote.widthAnchor.constraint(equalTo: stack.widthAnchor),
+            actionWrap.widthAnchor.constraint(equalTo: stack.widthAnchor),
+            actionRow.centerXAnchor.constraint(equalTo: actionWrap.centerXAnchor),
+            actionRow.leadingAnchor.constraint(greaterThanOrEqualTo: actionWrap.leadingAnchor, constant: 8),
+            actionRow.trailingAnchor.constraint(lessThanOrEqualTo: actionWrap.trailingAnchor, constant: -8),
+            actionRow.topAnchor.constraint(equalTo: actionWrap.topAnchor, constant: 20),
+            actionRow.bottomAnchor.constraint(equalTo: actionWrap.bottomAnchor, constant: -8)
         ])
     }
 
@@ -229,6 +244,10 @@ final class ReviewSummaryView: NSView {
     static func clock(_ elapsed: TimeInterval) -> String {
         let seconds = max(0, Int(elapsed))
         return String(format: "%d:%02d", seconds / 60, seconds % 60)
+    }
+
+    private func setActionTitle(_ button: NSButton, _ title: String) {
+        button.title = "  " + title.trimmingCharacters(in: .whitespaces)
     }
 
     @objc private func tapRedrill() { delegate?.summaryViewDidRequestRedrill(self) }

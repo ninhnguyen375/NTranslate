@@ -23,7 +23,7 @@ extension PopoverController {
 
         var title: String {
             switch self {
-            case .start: return "Start Review"
+            case .start: return "Start Learning"
             case .newWords: return "Học từ mới"
             case .showAnswer: return "Show Answer"
             case .gradeAgain: return "Grade: Again"
@@ -105,7 +105,8 @@ extension PopoverController {
         alert.messageText = "Keyboard shortcuts"
         alert.informativeText = """
         Study window
-        • Space — show the answer, then move to the next card
+        • Space — show the answer, then cycle-scroll the card
+        • Enter — continue after an auto-graded answer
         • 1 / 2 / 3 — Again / Hard / Easy, or pick between two words
         • 4 / 5 — speak the term, speak it slowly
         • 6 — open the card in the translate panel

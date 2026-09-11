@@ -156,7 +156,7 @@ final class ReviewSessionView: NSView {
         paragraph.alignment = .center
         let suffix = interval.isEmpty ? "" : "  ·  \(interval)"
         continueButton.attributedTitle = NSAttributedString(
-            string: "Continue  ·  \(name)\(suffix)  (Space)",
+            string: "Continue  ·  \(name)\(suffix)  (Enter)",
             attributes: [
                 .font: NSFont.systemFont(ofSize: 13, weight: .semibold),
                 .foregroundColor: NSColor.white,
