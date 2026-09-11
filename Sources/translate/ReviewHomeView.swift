@@ -73,7 +73,7 @@ final class ReviewHomeView: NSView {
             (NSColor.tertiaryLabelColor, stats.count(.mastered))
         ]
         ring.headline = "\(stats.dueToday)"
-        ring.caption = "due hôm nay"
+        ring.caption = "due today"
         for (bucket, row) in legendTiles {
             row.count = stats.count(bucket)
             row.isSelected = selectedBucket == bucket
@@ -85,13 +85,13 @@ final class ReviewHomeView: NSView {
         for (index, cell) in heatRow.arrangedSubviews.enumerated() {
             guard let cell = cell as? HeatCell else { continue }
             cell.level = index < week.count ? Double(week[index]) / Double(peak) : 0
-            cell.toolTip = index < week.count ? "\(week[index]) thẻ" : nil
+            cell.toolTip = index < week.count ? Plural.count(week[index], "card") : nil
         }
         let total = week.reduce(0, +)
-        heatCaption.stringValue = "7 ngày gần nhất: \(total) thẻ · ngày mai: \(stats.dueTomorrow) thẻ"
+        heatCaption.stringValue = "Last 7 days: \(Plural.count(total, "card")) · tomorrow: \(Plural.count(stats.dueTomorrow, "card"))"
 
         emptyLabel.isHidden = hasSavedCards
-        emptyLabel.stringValue = "Chưa có thẻ nào được lưu. Bấm Học từ mới để lấy thẻ từ kho có sẵn, hoặc lưu từ trong popup dịch."
+        emptyLabel.stringValue = "No cards saved yet. Tap Learn New Words to get cards from the built-in pack, or save a word from the translate popup."
         startButton.isHidden = !hasSavedCards
         practiceButton.isHidden = !hasSavedCards
         shuffleButton.isHidden = !hasSavedCards
@@ -114,9 +114,9 @@ final class ReviewHomeView: NSView {
 
     private func selectionHint() -> String {
         var parts: [String] = []
-        if let selectedBucket { parts.append("Lọc: \(selectedBucket.label)") }
-        parts.append(sessionLimit.map { "Tối đa \($0) thẻ" } ?? "Không giới hạn")
-        parts.append("Kiểu hỏi: \(requestedKind?.label ?? "Auto")")
+        if let selectedBucket { parts.append("Filter: \(selectedBucket.label)") }
+        parts.append(sessionLimit.map { "Up to \(Plural.count($0, "card"))" } ?? "No limit")
+        parts.append("Question type: \(requestedKind?.label ?? "Auto")")
         return parts.joined(separator: "   ·   ")
     }
 
@@ -141,7 +141,7 @@ final class ReviewHomeView: NSView {
         }
 
         streakLabel.font = .systemFont(ofSize: 20, weight: .bold)
-        let streakCaption = NSTextField(labelWithString: "ngày liên tiếp")
+        let streakCaption = NSTextField(labelWithString: "day streak")
         streakCaption.font = .systemFont(ofSize: 11)
         streakCaption.textColor = .secondaryLabelColor
 
@@ -191,7 +191,7 @@ final class ReviewHomeView: NSView {
         limitRow.spacing = 8
         limitRow.distribution = .fillEqually
         for limit in Self.limits {
-            let tile = ReviewTile(title: limit.map { "\($0) thẻ" } ?? "Tất cả", detail: nil, compact: true)
+            let tile = ReviewTile(title: limit.map { Plural.count($0, "card") } ?? "All", detail: nil, compact: true)
             tile.isSelected = limit == sessionLimit
             tile.onClick = { [weak self] in self?.selectLimit(limit) }
             limitTiles.append(tile)
@@ -228,13 +228,13 @@ final class ReviewHomeView: NSView {
         }
 
         ReviewControls.actionButton(startButton, title: "Start Review", symbol: "play.fill", target: self, action: #selector(tapStart))
-        ReviewControls.actionButton(newWordsButton, title: "Học từ mới", symbol: "sparkles", target: self, action: #selector(tapNewWords))
+        ReviewControls.actionButton(newWordsButton, title: "Learn New Words", symbol: "sparkles", target: self, action: #selector(tapNewWords))
         ReviewControls.actionButton(readingButton, title: "Reading Passage", symbol: "text.book.closed", target: self, action: #selector(tapReading))
         ReviewControls.actionButton(passagesButton, title: "Saved Passages", symbol: "list.bullet.rectangle", target: self, action: #selector(tapPassages))
         ReviewControls.actionButton(practiceButton, title: "Review All", symbol: "arrow.clockwise", target: self, action: #selector(tapPractice))
         ReviewControls.actionButton(shuffleButton, title: "Review All (Shuffled)", symbol: "shuffle", target: self, action: #selector(tapShuffle))
-        practiceButton.toolTip = "Practice only — does not change due dates"
-        shuffleButton.toolTip = "Practice only — does not change due dates"
+        practiceButton.toolTip = "Practice only - does not change due dates"
+        shuffleButton.toolTip = "Practice only - does not change due dates"
 
         // One accented primary, the rest tinted by role so the block is scannable.
         let tints: [(NSButton, NSColor)] = [
@@ -279,8 +279,8 @@ final class ReviewHomeView: NSView {
             row.distribution = .fillEqually
         }
 
-        let limitHeader = Self.sectionHeader("Mục tiêu phiên")
-        let modeHeader = Self.sectionHeader("Kiểu hỏi")
+        let limitHeader = Self.sectionHeader("Session goal")
+        let modeHeader = Self.sectionHeader("Question type")
         let stack = NSStackView(views: [
             hero,
             emptyLabel,
@@ -352,12 +352,12 @@ final class ReviewHomeView: NSView {
     }
 
     private static let modeOptions: [ModeOption] = [
-        ModeOption(kind: nil, title: "Auto", detail: "Thẻ mới thì nhận mặt, thẻ cũ thì bắt tự nhớ."),
-        ModeOption(kind: .flip, title: "Flip", detail: "Xem từ, tự đánh giá rồi lật đáp án."),
-        ModeOption(kind: .cloze, title: "Cloze", detail: "Điền từ bị khuyết trong câu ví dụ."),
-        ModeOption(kind: .recall, title: "Recall", detail: "Thấy nghĩa, gõ lại từ gốc."),
-        ModeOption(kind: .listen, title: "Listen", detail: "Nghe phát âm rồi gõ lại từ."),
-        ModeOption(kind: .contrast, title: "Contrast", detail: "Chọn đúng giữa hai từ dễ nhầm."),
+        ModeOption(kind: nil, title: "Auto", detail: "New cards start with recognition; older cards ask you to recall."),
+        ModeOption(kind: .flip, title: "Flip", detail: "See the word, grade yourself, then flip the answer."),
+        ModeOption(kind: .cloze, title: "Cloze", detail: "Fill in the missing word in an example sentence."),
+        ModeOption(kind: .recall, title: "Recall", detail: "See the meaning, type the original word."),
+        ModeOption(kind: .listen, title: "Listen", detail: "Hear the word, then type it."),
+        ModeOption(kind: .contrast, title: "Contrast", detail: "Pick the right word between two lookalikes."),
         ModeOption(kind: .collocation, title: "Collocation", detail: "Type the common pairing from its meaning."),
         ModeOption(kind: .family, title: "Family", detail: "Type a related form from its gloss.")
     ]
@@ -512,12 +512,12 @@ final class LegendRow: NSView {
     private let countLabel = NSTextField(labelWithString: "0")
 
     init(bucket: DeckStats.Bucket, color: NSColor) {
-        nameLabel = NSTextField(labelWithString: "\(bucket.label) — \(bucket.detail)")
+        nameLabel = NSTextField(labelWithString: "\(bucket.label) - \(bucket.detail)")
         super.init(frame: .zero)
         translatesAutoresizingMaskIntoConstraints = false
         wantsLayer = true
         layer?.cornerRadius = 7
-        toolTip = "Chỉ học nhóm \(bucket.label)"
+        toolTip = "Study only the \(bucket.label) group"
 
         swatch.wantsLayer = true
         swatch.layer?.backgroundColor = color.cgColor

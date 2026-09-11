@@ -33,7 +33,7 @@ final class ReviewSummaryView: NSView {
     private let titleLabel = NSTextField(labelWithString: "")
     private let subtitleLabel = NSTextField(labelWithString: "")
     private let tileRow = NSStackView()
-    private let missedHeader = NSTextField(labelWithString: "THẺ CẦN CHÚ Ý")
+    private let missedHeader = NSTextField(labelWithString: "CARDS TO WATCH")
     private let missedStack = NSStackView()
     private let leechNote = NSTextField(wrappingLabelWithString: "")
     private let redrillButton = NSButton()
@@ -50,20 +50,20 @@ final class ReviewSummaryView: NSView {
     required init?(coder: NSCoder) { nil }
 
     func update(_ result: Result, readingEnabled: Bool) {
-        titleLabel.stringValue = result.isPractice ? "Xong lượt luyện tập" : "Xong phiên hôm nay"
+        titleLabel.stringValue = result.isPractice ? "Practice round done" : "Today's session done"
         let accuracy = result.answered > 0
             ? Int((Double(result.correct) / Double(result.answered) * 100).rounded())
             : 0
         let perCard = result.answered > 0 ? Int(result.elapsed) / result.answered : 0
         subtitleLabel.stringValue = result.answered == 0
-            ? "Chưa có thẻ nào được chấm trong phiên này."
-            : "\(result.answered) thẻ đã chấm"
+            ? "No cards were graded in this session."
+            : "\(Plural.count(result.answered, "card")) graded"
 
         setTiles([
-            ("\(accuracy)%", "Chính xác", accuracy >= 80 ? NSColor.systemGreen : NSColor.labelColor),
-            (Self.clock(result.elapsed), "Thời gian", .labelColor),
-            ("\(perCard)s", "Trung bình/thẻ", .labelColor),
-            ("\(result.remainingToday)", "Còn lại hôm nay", .labelColor)
+            ("\(accuracy)%", "Accuracy", accuracy >= 80 ? NSColor.systemGreen : NSColor.labelColor),
+            (Self.clock(result.elapsed), "Time", .labelColor),
+            ("\(perCard)s", "Average/card", .labelColor),
+            ("\(result.remainingToday)", "Left today", .labelColor)
         ])
 
         missedStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
@@ -74,16 +74,16 @@ final class ReviewSummaryView: NSView {
         missedHeader.isHidden = !hasMissed
         missedStack.isHidden = !hasMissed
         redrillButton.isHidden = !hasMissed
-        redrillButton.title = "  Ôn lại \(result.missed.count) thẻ vừa sai  "
+        redrillButton.title = "  Redrill \(Plural.count(result.missed.count, "missed card"))  "
 
         let leeches = result.missed.filter(\.isLeech).map(\.term)
         leechNote.isHidden = leeches.isEmpty
         leechNote.stringValue = leeches.isEmpty
             ? ""
-            : "\(leeches.joined(separator: ", ")) đã sai từ \(ReviewPlanner.leechLapses) lần trở lên. Cân nhắc bỏ thẻ khỏi deck rồi học lại từ một thẻ mới."
+            : "\(leeches.joined(separator: ", ")) missed \(ReviewPlanner.leechLapses) or more times. Consider removing the card from the deck and learning it again from a new card."
 
         continueButton.isHidden = result.remainingToday == 0
-        continueButton.title = "  Tiếp tục \(result.remainingToday) thẻ còn lại  "
+        continueButton.title = "  Continue \(Plural.count(result.remainingToday, "remaining card"))  "
         readingButton.isEnabled = readingEnabled
     }
 
@@ -119,10 +119,10 @@ final class ReviewSummaryView: NSView {
         leechNote.textColor = .systemOrange
         leechNote.isHidden = true
 
-        ReviewControls.actionButton(redrillButton, title: "Ôn lại thẻ vừa sai", symbol: "arrow.clockwise", target: self, action: #selector(tapRedrill))
-        ReviewControls.actionButton(continueButton, title: "Tiếp tục", symbol: "forward.fill", target: self, action: #selector(tapContinue))
-        ReviewControls.actionButton(readingButton, title: "Dệt thành đoạn đọc", symbol: "text.book.closed", target: self, action: #selector(tapReading))
-        ReviewControls.actionButton(homeButton, title: "Về home", symbol: "house", target: self, action: #selector(tapHome))
+        ReviewControls.actionButton(redrillButton, title: "Redrill missed cards", symbol: "arrow.clockwise", target: self, action: #selector(tapRedrill))
+        ReviewControls.actionButton(continueButton, title: "Continue", symbol: "forward.fill", target: self, action: #selector(tapContinue))
+        ReviewControls.actionButton(readingButton, title: "Weave into a passage", symbol: "text.book.closed", target: self, action: #selector(tapReading))
+        ReviewControls.actionButton(homeButton, title: "Back to home", symbol: "house", target: self, action: #selector(tapHome))
 
         for button in [redrillButton, continueButton, readingButton, homeButton] {
             button.controlSize = .large
@@ -208,7 +208,7 @@ final class ReviewSummaryView: NSView {
         meaning.font = .systemFont(ofSize: 12)
         meaning.textColor = .secondaryLabelColor
         meaning.lineBreakMode = .byTruncatingTail
-        let tag = NSTextField(labelWithString: missed.isLeech ? "leech · \(missed.lapses) lần" : "sai \(missed.lapses) lần")
+        let tag = NSTextField(labelWithString: missed.isLeech ? "leech · \(Plural.count(missed.lapses, "time"))" : "missed \(Plural.count(missed.lapses, "time"))")
         tag.font = .systemFont(ofSize: 11, weight: .medium)
         tag.textColor = missed.isLeech ? .systemOrange : .systemRed
         tag.alignment = .right

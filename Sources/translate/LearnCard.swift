@@ -97,7 +97,7 @@ struct LearnCard: Equatable, Sendable {
     /// Gloss → one derived form. The prompt names the relationship so the blank is not a guess.
     var familyQuiz: ClozeQuestion? {
         familyForms.first { !$0.form.isEmpty && !$0.gloss.isEmpty }
-            .map { ClozeQuestion(prompt: "Related form — \($0.gloss)", answer: $0.form) }
+            .map { ClozeQuestion(prompt: "Related form - \($0.gloss)", answer: $0.form) }
     }
 
     /// Blanks the headword in the sentence the learner actually met, not a model-written example.
