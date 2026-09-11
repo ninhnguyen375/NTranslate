@@ -105,7 +105,7 @@ final class ReviewSessionView: NSView {
         let seconds = Int(elapsed) % 60
         let clock = String(format: "%d:%02d", minutes, seconds)
         let prefix = practice ? "Practice  ·  " : ""
-        countsLabel.stringValue = "\(prefix)✓ \(correct)   ✗ \(wrong)   còn \(remaining)   \(clock)"
+        countsLabel.stringValue = "\(prefix)✓ \(correct)   ✗ \(wrong)   \(remaining) left   \(clock)"
     }
 
     func setPills(_ pills: [String]) {
@@ -156,7 +156,7 @@ final class ReviewSessionView: NSView {
         paragraph.alignment = .center
         let suffix = interval.isEmpty ? "" : "  ·  \(interval)"
         continueButton.attributedTitle = NSAttributedString(
-            string: "Continue  ·  \(name)\(suffix)  (Space)",
+            string: "Continue  ·  \(name)\(suffix)  (Enter)",
             attributes: [
                 .font: NSFont.systemFont(ofSize: 13, weight: .semibold),
                 .foregroundColor: NSColor.white,

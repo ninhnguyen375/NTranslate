@@ -90,17 +90,26 @@ enum WeaveCache {
     /// Every passage still on disk, newest first, so a learner can reopen one instead of paying for
     /// a new one. Files that no longer decode are simply left out.
     static func all() -> [WeavePassage] {
-        let urls = (try? FileManager.default.contentsOfDirectory(at: directory(), includingPropertiesForKeys: nil)) ?? []
-        return urls
-            .filter { $0.pathExtension == "json" }
-            .compactMap { try? JSONDecoder().decode(WeavePassage.self, from: Data(contentsOf: $0)) }
-            .sorted { $0.generatedAt > $1.generatedAt }
+        readEntries(from: directory()).map(\.passage)
     }
 
     /// Same as `all()`, but paired with the key each passage is filed under, so a row in the
     /// list can be deleted or retitled.
     static func entries() -> [(key: String, passage: WeavePassage)] {
-        let urls = (try? FileManager.default.contentsOfDirectory(at: directory(), includingPropertiesForKeys: nil)) ?? []
+        readEntries(from: directory())
+    }
+
+    /// Warms the OS page cache for the passage files. The decode itself is thrown away, so
+    /// opening Passages still decodes, it just does not wait on the disk.
+    static func warm() async {
+        let dir = directory()
+        await Task.detached(priority: .utility) {
+            _ = readEntries(from: dir)
+        }.value
+    }
+
+    nonisolated static func readEntries(from directory: URL) -> [(key: String, passage: WeavePassage)] {
+        let urls = (try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)) ?? []
         return urls
             .filter { $0.pathExtension == "json" }
             .compactMap { url in

@@ -317,12 +317,9 @@ final class Translator: @unchecked Sendable {
     ) -> RequestHandle {
         let handle = RequestHandle()
         let collector = StreamCollector()
-        // The session retains its delegate and the completion closure retains the session, so the
-        // pair stays alive for the life of this one request without any shared state.
-        let session = URLSession(configuration: .default, delegate: collector, delegateQueue: nil)
-        let task = session.dataTask(with: req)
+        let task = StreamingHTTP.session.dataTask(with: req)
+        StreamingHTTP.router.register(collector, for: task.taskIdentifier)
         collector.onComplete = { data, response, error in
-            session.finishTasksAndInvalidate()
             handle.clear()
             if let error {
                 completion(.failure(error))
@@ -405,13 +402,7 @@ final class Translator: @unchecked Sendable {
     }
 
     static func sseDeltaContent(from jsonLine: String) -> String? {
-        guard let data = jsonLine.data(using: .utf8),
-              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let choices = object["choices"] as? [[String: Any]],
-              let delta = choices.first?["delta"] as? [String: Any],
-              let content = delta["content"] as? String
-        else { return nil }
-        return content
+        StreamCollector.sseDeltaContent(from: jsonLine)
     }
 
     /// Image mode has its own prompt (`config.imagePrompt`): `config.systemPrompt` ends with "return
@@ -860,96 +851,5 @@ final class Translator: @unchecked Sendable {
         handle.adopt(task)
         task.resume()
         return handle
-    }
-}
-
-/// Incremental SSE collector. Kept as a named type so the session delegate outlives the request.
-private final class StreamCollector: NSObject, URLSessionDataDelegate, @unchecked Sendable {
-    var onPartial: (@Sendable (String) -> Void)?
-    var onComplete: (@Sendable (Data, URLResponse?, Error?) -> Void)?
-    private(set) var accumulated = ""
-    private(set) var sawSSE = false
-    private var buffer = Data()
-    private var pendingBytes = Data()
-    private var lineRemainder = ""
-    private var response: URLResponse?
-    private let lock = NSLock()
-
-    func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive response: URLResponse, completionHandler: @escaping (URLSession.ResponseDisposition) -> Void) {
-        lock.lock()
-        self.response = response
-        lock.unlock()
-        completionHandler(.allow)
-    }
-
-    func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
-        lock.lock()
-        buffer.append(data)
-        pendingBytes.append(data)
-        let partial = consumePendingBytes(flushIncompleteLine: false)
-        let callback = onPartial
-        lock.unlock()
-        if let partial { callback?(partial) }
-    }
-
-    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
-        lock.lock()
-        consumePendingBytes(flushIncompleteLine: true)
-        let complete = onComplete
-        let body = buffer
-        let captured = response ?? task.response
-        lock.unlock()
-        complete?(body, captured, error)
-    }
-
-    /// Decode a UTF-8 prefix, leaving an incomplete trailing sequence in `pendingBytes` so a
-    /// multi-byte character split across TCP chunks is not dropped.
-    /// Caller must hold `lock`. Returns the latest accumulated text when a new SSE delta arrived.
-    @discardableResult
-    private func consumePendingBytes(flushIncompleteLine: Bool) -> String? {
-        let decoded: String
-        if let whole = String(data: pendingBytes, encoding: .utf8) {
-            decoded = whole
-            pendingBytes = Data()
-        } else {
-            var prefix: String?
-            var remainder = Data()
-            for drop in 1...min(3, pendingBytes.count) {
-                let head = pendingBytes.dropLast(drop)
-                if let text = String(data: head, encoding: .utf8) {
-                    prefix = text
-                    remainder = Data(pendingBytes.suffix(drop))
-                    break
-                }
-            }
-            guard let text = prefix else { return nil }
-            decoded = text
-            pendingBytes = remainder
-        }
-        guard !decoded.isEmpty || flushIncompleteLine else { return nil }
-        lineRemainder += decoded
-        let lines = lineRemainder.split(separator: "\n", omittingEmptySubsequences: false)
-        let endsWithNewline = lineRemainder.hasSuffix("\n")
-        if flushIncompleteLine || endsWithNewline {
-            lineRemainder = ""
-        } else if let last = lines.last {
-            lineRemainder = String(last)
-        } else {
-            lineRemainder = ""
-        }
-        let complete = (flushIncompleteLine || endsWithNewline) ? lines : lines.dropLast()
-        var latest: String?
-        for raw in complete {
-            let line = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard line.hasPrefix("data:") else { continue }
-            sawSSE = true
-            let payload = line.dropFirst(5).trimmingCharacters(in: .whitespaces)
-            if payload == "[DONE]" { continue }
-            if let delta = Translator.sseDeltaContent(from: payload) {
-                accumulated += delta
-                latest = accumulated
-            }
-        }
-        return latest
     }
 }

@@ -9,7 +9,7 @@ enum VocabDiscovery {
     enum Level: String, CaseIterable, Sendable {
         case a1, a2, b1, b2, c1, c2, unranked
 
-        var label: String { self == .unranked ? "Chưa gắn" : rawValue.uppercased() }
+        var label: String { self == .unranked ? "Unranked" : rawValue.uppercased() }
     }
 
     enum Filter: Equatable, Sendable {

@@ -103,16 +103,24 @@ extension PopoverController {
         SpeechModelResolver.model(for: effectiveSourceLanguage(for: text), config: config)
     }
 
-    func hydrateStoredAudio(for record: TranslationRecord) {
-        let identities: [(TranslationAudioKind, SpeechIdentity?)] = [
+    func hydrateStoredAudio(for record: TranslationRecord) async {
+        let jobs: [(SpeechIdentity, URL)] = [
             (.source, sourceSpeechIdentity(recordID: record.id)),
             (.result, resultSpeechIdentity(recordID: record.id))
-        ]
-        for (kind, identity) in identities {
+        ].compactMap { kind, identity in
             guard let identity,
-                  let data = try? historyStore.audioData(for: record.id, kind: kind),
-                  SpeechAudioPolicy.isValid(data)
-            else { continue }
+                  let url = try? historyStore.audioFileURL(for: record.id, kind: kind)
+            else { return nil }
+            return (identity, url)
+        }
+        guard !jobs.isEmpty else { return }
+        let loaded = await Task.detached(priority: .utility) {
+            jobs.compactMap { identity, url -> (SpeechIdentity, Data)? in
+                guard let data = try? Data(contentsOf: url), SpeechAudioPolicy.isValid(data) else { return nil }
+                return (identity, data)
+            }
+        }.value
+        for (identity, data) in loaded {
             speechCache[identity] = data
             cacheSpeechTrim(data, identity: identity)
         }
@@ -291,7 +299,7 @@ extension PopoverController {
         guard let recordID else { return }
         do {
             try historyStore.removeAudio(recordID: recordID)
-            historyWindowController.reloadHistory()
+            _historyWindowController?.reloadHistory()
         } catch {
             setStatus("Could not clear stored audio: \(error.localizedDescription)", autoClearAfter: 12)
         }
@@ -320,7 +328,7 @@ extension PopoverController {
         else { return }
         do {
             try historyStore.attachAudio(data, kind: identity.kind == .source ? .source : .result, recordID: recordID)
-            historyWindowController.reloadHistory()
+            _historyWindowController?.reloadHistory()
         } catch {
             setStatus("History audio failed: \(error.localizedDescription)", autoClearAfter: 12)
         }

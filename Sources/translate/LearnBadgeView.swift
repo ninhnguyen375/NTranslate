@@ -91,13 +91,13 @@ struct LearnUsageInfo: Equatable, Sendable {
             if foundLevel { continue }
 
             if lower.contains("rất phổ biến") || lower.contains("very common") {
-                frequency = "Rất phổ biến"
+                frequency = "Very common"
                 frequencyLevel = 3
             } else if lower.contains("phổ biến") || lower.contains("common") {
-                frequency = "Phổ biến"
+                frequency = "Common"
                 frequencyLevel = 2
             } else if lower.contains("ít gặp") || lower.contains("hiếm") || lower.contains("rare") {
-                frequency = "Ít gặp"
+                frequency = "Rare"
                 frequencyLevel = 1
             } else {
                 if register == nil {

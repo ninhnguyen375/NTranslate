@@ -79,7 +79,7 @@ extension PopoverController {
             )
             do {
                 let stored = try historyStore.appendIfAbsent(record)
-                historyWindowController.reloadHistory()
+                _historyWindowController?.reloadHistory()
                 applyReusableRecord(stored, mode: .learn, generation: generation)
                 finishRequest(generation: generation)
                 return
@@ -119,7 +119,7 @@ extension PopoverController {
                             self.applyReusableRecord(stored, mode: .learn, generation: generation)
                         } else {
                             self.currentRecordID = stored.id
-                            self.historyWindowController.reloadHistory()
+                            self._historyWindowController?.reloadHistory()
                             self.prefetchSpeech(self.sourceSpeechIdentity(recordID: stored.id), translationGeneration: generation)
                             self.prefetchSpeech(self.resultSpeechIdentity(recordID: stored.id), translationGeneration: nil)
                         }
@@ -198,7 +198,7 @@ extension PopoverController {
                             self.applyReusableRecord(stored, mode: .proofread, generation: generation)
                         } else {
                             self.currentRecordID = stored.id
-                            self.historyWindowController.reloadHistory()
+                            self._historyWindowController?.reloadHistory()
                         }
                     } catch {
                         self.currentRecordID = nil
@@ -241,14 +241,18 @@ extension PopoverController {
         }
         setResultText(record.resultText)
         currentRecordID = record.id
-        hydrateStoredAudio(for: record)
         let sourceIdentity = sourceSpeechIdentity(recordID: record.id)
         let resultIdentity = resultSpeechIdentity(recordID: record.id)
-        if sourceIdentity.map({ speechCache[$0] == nil }) == true {
-            prefetchSpeech(sourceIdentity, translationGeneration: generation)
-        }
-        if resultIdentity.map({ speechCache[$0] == nil }) == true {
-            prefetchSpeech(resultIdentity, translationGeneration: nil)
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            await self.hydrateStoredAudio(for: record)
+            guard generation == self.requestGeneration else { return }
+            if sourceIdentity.map({ self.speechCache[$0] == nil }) == true {
+                self.prefetchSpeech(sourceIdentity, translationGeneration: generation)
+            }
+            if resultIdentity.map({ self.speechCache[$0] == nil }) == true {
+                self.prefetchSpeech(resultIdentity, translationGeneration: nil)
+            }
         }
         updatePaneLanguageLabels()
         updateSaveWordButton()
@@ -309,7 +313,7 @@ extension PopoverController {
                 try historyStore.append(record)
                 currentRecordID = record.id
             }
-            historyWindowController.reloadHistory()
+            _historyWindowController?.reloadHistory()
             updateSaveWordButton()
         } catch {
             setStatus("Save Word failed: \(error.localizedDescription)", autoClearAfter: 12)

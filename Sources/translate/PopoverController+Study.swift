@@ -23,8 +23,8 @@ extension PopoverController {
 
         var title: String {
             switch self {
-            case .start: return "Start Review"
-            case .newWords: return "Học từ mới"
+            case .start: return "Start Learning"
+            case .newWords: return "Learn New Words"
             case .showAnswer: return "Show Answer"
             case .gradeAgain: return "Grade: Again"
             case .gradeHard: return "Grade: Hard"
@@ -105,16 +105,17 @@ extension PopoverController {
         alert.messageText = "Keyboard shortcuts"
         alert.informativeText = """
         Study window
-        • Space — show the answer, then move to the next card
-        • 1 / 2 / 3 — Again / Hard / Easy, or pick between two words
-        • 4 / 5 — speak the term, speak it slowly
-        • 6 — open the card in the translate panel
-        • Cmd+Z — undo the last grade
-        • Esc — leave the current screen, then close the window
+        • Space - show the answer, then cycle-scroll the card
+        • Enter - continue after an auto-graded answer
+        • 1 / 2 / 3 - Again / Hard / Easy, or pick between two words
+        • 4 / 5 - speak the term, speak it slowly
+        • 6 - open the card in the translate panel
+        • Cmd+Z - undo the last grade
+        • Esc - leave the current screen, then close the window
 
-        Học từ mới
-        • 1 / 2 / 3 — Đã biết / Học / Bỏ qua
-        • 4 / 5 — đọc từ, đọc chậm
+        Learn New Words
+        • 1 / 2 / 3 - Known / Learn / Skip
+        • 4 / 5 - speak the word, speak it slowly
         """
         alert.alertStyle = .informational
         alert.addButton(withTitle: "OK")
@@ -142,7 +143,9 @@ extension PopoverController {
 extension PopoverController: NSMenuItemValidation {
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         guard let command = StudyMenuCommand(rawValue: menuItem.tag) else { return true }
-        guard reviewWindowController.window?.isVisible == true else { return command == .start || command == .newWords }
-        return reviewWindowController.canRunStudyCommand(command.controllerCommand)
+        guard let review = _reviewWindowController, review.window?.isVisible == true else {
+            return command == .start || command == .newWords
+        }
+        return review.canRunStudyCommand(command.controllerCommand)
     }
 }

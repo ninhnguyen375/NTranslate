@@ -442,7 +442,7 @@ extension PopoverController {
                 )
                 do {
                     section.recordID = try historyStore.appendIfAbsent(record).id
-                    historyWindowController.reloadHistory()
+                    _historyWindowController?.reloadHistory()
                 } catch {
                     setStatus("History failed: \(error.localizedDescription)", autoClearAfter: 12)
                 }
@@ -504,7 +504,7 @@ extension PopoverController {
         else { return }
         do {
             try historyStore.setSaved(!record.isSaved, recordID: recordID)
-            historyWindowController.reloadHistory()
+            _historyWindowController?.reloadHistory()
             updateSubButtons(section)
         } catch {
             setStatus("Save Word failed: \(error.localizedDescription)", autoClearAfter: 12)

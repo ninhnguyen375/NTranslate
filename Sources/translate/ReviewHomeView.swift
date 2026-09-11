@@ -73,7 +73,7 @@ final class ReviewHomeView: NSView {
             (NSColor.tertiaryLabelColor, stats.count(.mastered))
         ]
         ring.headline = "\(stats.dueToday)"
-        ring.caption = "due hôm nay"
+        ring.caption = "due today"
         for (bucket, row) in legendTiles {
             row.count = stats.count(bucket)
             row.isSelected = selectedBucket == bucket
@@ -85,13 +85,13 @@ final class ReviewHomeView: NSView {
         for (index, cell) in heatRow.arrangedSubviews.enumerated() {
             guard let cell = cell as? HeatCell else { continue }
             cell.level = index < week.count ? Double(week[index]) / Double(peak) : 0
-            cell.toolTip = index < week.count ? "\(week[index]) thẻ" : nil
+            cell.toolTip = index < week.count ? Plural.count(week[index], "card") : nil
         }
         let total = week.reduce(0, +)
-        heatCaption.stringValue = "7 ngày gần nhất: \(total) thẻ · ngày mai: \(stats.dueTomorrow) thẻ"
+        heatCaption.stringValue = "Last 7 days: \(Plural.count(total, "card")) · tomorrow: \(Plural.count(stats.dueTomorrow, "card"))"
 
         emptyLabel.isHidden = hasSavedCards
-        emptyLabel.stringValue = "Chưa có thẻ nào được lưu. Bấm Học từ mới để lấy thẻ từ kho có sẵn, hoặc lưu từ trong popup dịch."
+        emptyLabel.stringValue = "No cards saved yet. Tap Learn New Words to get cards from the built-in pack, or save a word from the translate popup."
         startButton.isHidden = !hasSavedCards
         practiceButton.isHidden = !hasSavedCards
         shuffleButton.isHidden = !hasSavedCards
@@ -100,8 +100,7 @@ final class ReviewHomeView: NSView {
         passagesButton.isHidden = !hasSavedCards
         readingButton.title = missedCount == 0 ? "  Reading Passage" : "  Reading Passage (\(missedCount))"
 
-        let count = plannedCount()
-        setStartTitle(count > 0 ? "  Start Review (\(count))" : "  Review Anyway")
+        refreshStartButton()
         hintLabel.stringValue = selectionHint()
     }
 
@@ -114,9 +113,9 @@ final class ReviewHomeView: NSView {
 
     private func selectionHint() -> String {
         var parts: [String] = []
-        if let selectedBucket { parts.append("Lọc: \(selectedBucket.label)") }
-        parts.append(sessionLimit.map { "Tối đa \($0) thẻ" } ?? "Không giới hạn")
-        parts.append("Kiểu hỏi: \(requestedKind?.label ?? "Auto")")
+        if let selectedBucket { parts.append("Filter: \(selectedBucket.label)") }
+        parts.append(sessionLimit.map { "Up to \(Plural.count($0, "card"))" } ?? "No limit")
+        parts.append("Question type: \(requestedKind?.label ?? "Auto")")
         return parts.joined(separator: "   ·   ")
     }
 
@@ -135,13 +134,14 @@ final class ReviewHomeView: NSView {
         for bucket in [DeckStats.Bucket.learning, .due, .new, .mastered, .leech] {
             let row = LegendRow(bucket: bucket, color: Self.color(for: bucket))
             row.onClick = { [weak self] in self?.toggleBucket(bucket) }
+            row.onClear = { [weak self] in self?.clearBucketFilter() }
             legendTiles[bucket] = row
             legendStack.addArrangedSubview(row)
             row.widthAnchor.constraint(equalTo: legendStack.widthAnchor).isActive = true
         }
 
         streakLabel.font = .systemFont(ofSize: 20, weight: .bold)
-        let streakCaption = NSTextField(labelWithString: "ngày liên tiếp")
+        let streakCaption = NSTextField(labelWithString: "day streak")
         streakCaption.font = .systemFont(ofSize: 11)
         streakCaption.textColor = .secondaryLabelColor
 
@@ -191,7 +191,7 @@ final class ReviewHomeView: NSView {
         limitRow.spacing = 8
         limitRow.distribution = .fillEqually
         for limit in Self.limits {
-            let tile = ReviewTile(title: limit.map { "\($0) thẻ" } ?? "Tất cả", detail: nil, compact: true)
+            let tile = ReviewTile(title: limit.map { Plural.count($0, "card") } ?? "All", detail: nil, compact: true)
             tile.isSelected = limit == sessionLimit
             tile.onClick = { [weak self] in self?.selectLimit(limit) }
             limitTiles.append(tile)
@@ -227,14 +227,14 @@ final class ReviewHomeView: NSView {
             tile.heightAnchor.constraint(equalTo: tiles[0].heightAnchor).isActive = true
         }
 
-        ReviewControls.actionButton(startButton, title: "Start Review", symbol: "play.fill", target: self, action: #selector(tapStart))
-        ReviewControls.actionButton(newWordsButton, title: "Học từ mới", symbol: "sparkles", target: self, action: #selector(tapNewWords))
+        ReviewControls.actionButton(startButton, title: "Start Learning", symbol: "play.fill", target: self, action: #selector(tapStart))
+        ReviewControls.actionButton(newWordsButton, title: "Learn New Words", symbol: "sparkles", target: self, action: #selector(tapNewWords))
         ReviewControls.actionButton(readingButton, title: "Reading Passage", symbol: "text.book.closed", target: self, action: #selector(tapReading))
         ReviewControls.actionButton(passagesButton, title: "Saved Passages", symbol: "list.bullet.rectangle", target: self, action: #selector(tapPassages))
         ReviewControls.actionButton(practiceButton, title: "Review All", symbol: "arrow.clockwise", target: self, action: #selector(tapPractice))
         ReviewControls.actionButton(shuffleButton, title: "Review All (Shuffled)", symbol: "shuffle", target: self, action: #selector(tapShuffle))
-        practiceButton.toolTip = "Practice only — does not change due dates"
-        shuffleButton.toolTip = "Practice only — does not change due dates"
+        practiceButton.toolTip = "Practice only - does not change due dates"
+        shuffleButton.toolTip = "Practice only - does not change due dates"
 
         // One accented primary, the rest tinted by role so the block is scannable.
         let tints: [(NSButton, NSColor)] = [
@@ -245,7 +245,6 @@ final class ReviewHomeView: NSView {
             (shuffleButton, .systemPink)
         ]
         for (button, color) in tints { button.contentTintColor = color }
-        startButton.bezelColor = .controlAccentColor
         startButton.contentTintColor = .white
         // The glass bezel ignores contentTintColor for the symbol, so paint it into the image.
         startButton.image = startButton.image?.withSymbolConfiguration(
@@ -254,10 +253,10 @@ final class ReviewHomeView: NSView {
         startButton.keyEquivalent = "\r"
         for button in [startButton, newWordsButton, readingButton, passagesButton, practiceButton, shuffleButton] {
             button.translatesAutoresizingMaskIntoConstraints = false
-            button.heightAnchor.constraint(equalToConstant: 54).isActive = true
+            button.heightAnchor.constraint(equalToConstant: 40).isActive = true
             applyControlCornerRadius(button)
         }
-        setStartTitle(startButton.title)
+        refreshStartButton()
 
         emptyLabel.font = .systemFont(ofSize: 13)
         emptyLabel.textColor = .secondaryLabelColor
@@ -279,8 +278,8 @@ final class ReviewHomeView: NSView {
             row.distribution = .fillEqually
         }
 
-        let limitHeader = Self.sectionHeader("Mục tiêu phiên")
-        let modeHeader = Self.sectionHeader("Kiểu hỏi")
+        let limitHeader = Self.sectionHeader("Session goal")
+        let modeHeader = Self.sectionHeader("Question type")
         let stack = NSStackView(views: [
             hero,
             emptyLabel,
@@ -329,11 +328,11 @@ final class ReviewHomeView: NSView {
             document.topAnchor.constraint(equalTo: scroll.topAnchor),
             document.widthAnchor.constraint(equalTo: scroll.widthAnchor),
             document.heightAnchor.constraint(greaterThanOrEqualTo: scroll.heightAnchor),
-            stack.topAnchor.constraint(equalTo: document.topAnchor, constant: 24),
+            stack.topAnchor.constraint(equalTo: document.topAnchor, constant: 12),
             stack.centerXAnchor.constraint(equalTo: document.centerXAnchor),
             stack.leadingAnchor.constraint(greaterThanOrEqualTo: document.leadingAnchor, constant: 18),
             stack.trailingAnchor.constraint(lessThanOrEqualTo: document.trailingAnchor, constant: -18),
-            stack.bottomAnchor.constraint(lessThanOrEqualTo: document.bottomAnchor, constant: -24),
+            stack.bottomAnchor.constraint(lessThanOrEqualTo: document.bottomAnchor, constant: -12),
             stack.widthAnchor.constraint(equalToConstant: Self.contentWidth),
             hero.widthAnchor.constraint(equalTo: stack.widthAnchor),
             emptyLabel.widthAnchor.constraint(equalTo: stack.widthAnchor),
@@ -352,12 +351,12 @@ final class ReviewHomeView: NSView {
     }
 
     private static let modeOptions: [ModeOption] = [
-        ModeOption(kind: nil, title: "Auto", detail: "Thẻ mới thì nhận mặt, thẻ cũ thì bắt tự nhớ."),
-        ModeOption(kind: .flip, title: "Flip", detail: "Xem từ, tự đánh giá rồi lật đáp án."),
-        ModeOption(kind: .cloze, title: "Cloze", detail: "Điền từ bị khuyết trong câu ví dụ."),
-        ModeOption(kind: .recall, title: "Recall", detail: "Thấy nghĩa, gõ lại từ gốc."),
-        ModeOption(kind: .listen, title: "Listen", detail: "Nghe phát âm rồi gõ lại từ."),
-        ModeOption(kind: .contrast, title: "Contrast", detail: "Chọn đúng giữa hai từ dễ nhầm."),
+        ModeOption(kind: nil, title: "Auto", detail: "New cards start with recognition; older cards ask you to recall."),
+        ModeOption(kind: .flip, title: "Flip", detail: "See the word, grade yourself, then flip the answer."),
+        ModeOption(kind: .cloze, title: "Cloze", detail: "Fill in the missing word in an example sentence."),
+        ModeOption(kind: .recall, title: "Recall", detail: "See the meaning, type the original word."),
+        ModeOption(kind: .listen, title: "Listen", detail: "Hear the word, then type it."),
+        ModeOption(kind: .contrast, title: "Contrast", detail: "Pick the right word between two lookalikes."),
         ModeOption(kind: .collocation, title: "Collocation", detail: "Type the common pairing from its meaning."),
         ModeOption(kind: .family, title: "Family", detail: "Type a related form from its gloss.")
     ]
@@ -386,12 +385,26 @@ final class ReviewHomeView: NSView {
         view.layer?.masksToBounds = true
     }
 
-    /// The accented primary needs its title drawn white; contentTintColor only tints the symbol.
-    private func setStartTitle(_ title: String) {
+    /// No filter keeps the accented Start Learning look; a selected bucket tints the button
+    /// and names the queue (Start Mastered, Start Due, …).
+    private func refreshStartButton() {
+        let count = plannedCount()
+        let title: String
+        if let bucket = selectedBucket {
+            title = count > 0 ? "  Start \(bucket.label) (\(count))" : "  Start \(bucket.label)"
+        } else {
+            title = count > 0 ? "  Start Learning (\(count))" : "  Review Anyway"
+        }
+        startButton.bezelColor = selectedBucket.map(Self.startBezelColor(for:)) ?? .controlAccentColor
         startButton.attributedTitle = NSAttributedString(string: title, attributes: [
             .font: startButton.font ?? .systemFont(ofSize: 13, weight: .medium),
             .foregroundColor: NSColor.white
         ])
+    }
+
+    /// Mastered's dashboard tint is a translucent label color; a filled bezel needs solid gray.
+    private static func startBezelColor(for bucket: DeckStats.Bucket) -> NSColor {
+        bucket == .mastered ? .systemGray : color(for: bucket)
     }
 
     private static func sectionHeader(_ text: String) -> NSTextField {
@@ -408,7 +421,16 @@ final class ReviewHomeView: NSView {
         selectedBucket = selectedBucket == bucket ? nil : bucket
         for (key, row) in legendTiles { row.isSelected = key == selectedBucket }
         hintLabel.stringValue = selectionHint()
-        setStartTitle(plannedCount() > 0 ? "  Start Review (\(plannedCount()))" : "  Review Anyway")
+        refreshStartButton()
+        delegate?.homeViewDidChangeOptions(self)
+    }
+
+    private func clearBucketFilter() {
+        guard selectedBucket != nil else { return }
+        selectedBucket = nil
+        for (_, row) in legendTiles { row.isSelected = false }
+        hintLabel.stringValue = selectionHint()
+        refreshStartButton()
         delegate?.homeViewDidChangeOptions(self)
     }
 
@@ -418,7 +440,7 @@ final class ReviewHomeView: NSView {
             tile.isSelected = Self.limits[index] == limit
         }
         hintLabel.stringValue = selectionHint()
-        setStartTitle(plannedCount() > 0 ? "  Start Review (\(plannedCount()))" : "  Review Anyway")
+        refreshStartButton()
         delegate?.homeViewDidChangeOptions(self)
     }
 
@@ -503,21 +525,27 @@ final class DeckRingView: NSView {
 @MainActor
 final class LegendRow: NSView {
     var onClick: (() -> Void)?
+    var onClear: (() -> Void)?
     var isSelected = false { didSet { refresh() } }
     var isEnabled = true { didSet { refresh() } }
     var count = 0 { didSet { countLabel.stringValue = "\(count)" } }
 
+    private let bucket: DeckStats.Bucket
+    private let tint: NSColor
     private let swatch = NSView()
     private let nameLabel: NSTextField
     private let countLabel = NSTextField(labelWithString: "0")
+    private let clearButton = NSButton()
 
     init(bucket: DeckStats.Bucket, color: NSColor) {
-        nameLabel = NSTextField(labelWithString: "\(bucket.label) — \(bucket.detail)")
+        self.bucket = bucket
+        self.tint = color
+        nameLabel = NSTextField(labelWithString: "\(bucket.label) - \(bucket.detail)")
         super.init(frame: .zero)
         translatesAutoresizingMaskIntoConstraints = false
         wantsLayer = true
         layer?.cornerRadius = 7
-        toolTip = "Chỉ học nhóm \(bucket.label)"
+        layer?.cornerCurve = .continuous
 
         swatch.wantsLayer = true
         swatch.layer?.backgroundColor = color.cgColor
@@ -528,7 +556,18 @@ final class LegendRow: NSView {
         countLabel.font = .monospacedDigitSystemFont(ofSize: 12, weight: .semibold)
         countLabel.alignment = .right
 
-        let stack = NSStackView(views: [swatch, nameLabel, NSView(), countLabel])
+        clearButton.isBordered = false
+        clearButton.image = NSImage(systemSymbolName: "xmark", accessibilityDescription: "Clear filter")?
+            .withSymbolConfiguration(.init(pointSize: 9, weight: .bold))
+        clearButton.imagePosition = .imageOnly
+        clearButton.contentTintColor = .secondaryLabelColor
+        clearButton.toolTip = "Clear filter"
+        clearButton.setAccessibilityLabel("Clear filter")
+        clearButton.target = self
+        clearButton.action = #selector(tapClear)
+        clearButton.translatesAutoresizingMaskIntoConstraints = false
+
+        let stack = NSStackView(views: [swatch, nameLabel, NSView(), countLabel, clearButton])
         stack.orientation = .horizontal
         stack.spacing = 8
         stack.alignment = .centerY
@@ -538,6 +577,8 @@ final class LegendRow: NSView {
         NSLayoutConstraint.activate([
             swatch.widthAnchor.constraint(equalToConstant: 10),
             swatch.heightAnchor.constraint(equalToConstant: 10),
+            clearButton.widthAnchor.constraint(equalToConstant: 16),
+            clearButton.heightAnchor.constraint(equalToConstant: 16),
             stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 6),
             stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -6),
             stack.topAnchor.constraint(equalTo: topAnchor, constant: 3),
@@ -549,16 +590,34 @@ final class LegendRow: NSView {
     @available(*, unavailable)
     required init?(coder: NSCoder) { nil }
 
+    override func resetCursorRects() {
+        if isEnabled { addCursorRect(bounds, cursor: .pointingHand) }
+    }
+
     override func mouseDown(with event: NSEvent) {
         guard isEnabled else { return }
         onClick?()
     }
 
+    @objc private func tapClear() { onClear?() }
+
     private func refresh() {
-        layer?.backgroundColor = isSelected
-            ? NSColor.controlAccentColor.withAlphaComponent(0.18).cgColor
-            : NSColor.clear.cgColor
+        if isSelected {
+            layer?.backgroundColor = tint.withAlphaComponent(0.28).cgColor
+            layer?.borderWidth = 1.5
+            layer?.borderColor = tint.cgColor
+            nameLabel.font = .systemFont(ofSize: 12, weight: .semibold)
+            toolTip = "Filtered to \(bucket.label)"
+        } else {
+            layer?.backgroundColor = NSColor.clear.cgColor
+            layer?.borderWidth = 0
+            layer?.borderColor = NSColor.clear.cgColor
+            nameLabel.font = .systemFont(ofSize: 12, weight: .regular)
+            toolTip = "Filter session to \(bucket.label)"
+        }
+        clearButton.isHidden = !isSelected
         alphaValue = isEnabled ? 1 : 0.45
+        window?.invalidateCursorRects(for: self)
     }
 }
 
@@ -621,10 +680,10 @@ final class ReviewTile: NSView {
         stack.translatesAutoresizingMaskIntoConstraints = false
         addSubview(stack)
         NSLayoutConstraint.activate([
-            stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: compact ? 13 : 10),
-            stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: compact ? -13 : -10),
-            stack.topAnchor.constraint(equalTo: topAnchor, constant: compact ? 18 : 17),
-            stack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: compact ? -18 : -17)
+            stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10),
+            stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -10),
+            stack.topAnchor.constraint(equalTo: topAnchor, constant: compact ? 10 : 8),
+            stack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: compact ? -10 : -8)
         ])
         refresh()
     }

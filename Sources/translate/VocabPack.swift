@@ -80,23 +80,54 @@ final class VocabPack {
         return sourceIsAutoDetect || requestedSource == packSource
     }
 
+    private struct Snapshot: Sendable {
+        var sourceLanguage = ""
+        var targetLanguage = ""
+        var index: [String: String] = [:]
+        var entries: [VocabPackEntry] = []
+    }
+
+    /// Decode + index off the main thread so the first Learn click is not paying 46 ms.
+    func warm() async {
+        guard !loaded else { return }
+        let urls = Self.packURLs()
+        let snapshot = await Task.detached(priority: .utility) {
+            Self.readFromDisk(urls: urls)
+        }.value
+        applyIfNeeded(snapshot)
+    }
+
     private func loadIfNeeded() {
         guard !loaded else { return }
+        applyIfNeeded(Self.readFromDisk(urls: Self.packURLs()))
+    }
+
+    private func applyIfNeeded(_ snapshot: Snapshot) {
+        guard !loaded else { return }
         loaded = true
-        for url in Self.packURLs() {
+        sourceLanguage = snapshot.sourceLanguage
+        targetLanguage = snapshot.targetLanguage
+        index = snapshot.index
+        entries = snapshot.entries
+    }
+
+    nonisolated private static func readFromDisk(urls: [URL]) -> Snapshot {
+        for url in urls {
             guard let data = try? Data(contentsOf: url) else { continue }
             do {
-                let file = try Self.decode(data)
-                sourceLanguage = file.sourceLanguage
-                targetLanguage = file.targetLanguage
-                index = Self.buildIndex(file)
-                entries = file.entries
-                return
+                let file = try decode(data)
+                return Snapshot(
+                    sourceLanguage: file.sourceLanguage,
+                    targetLanguage: file.targetLanguage,
+                    index: buildIndex(file),
+                    entries: file.entries
+                )
             } catch {
                 // A corrupt pack must never break Learn: fall through and let the API answer.
                 FileHandle.standardError.write(Data("VocabPack: ignoring \(url.lastPathComponent): \(error)\n".utf8))
             }
         }
+        return Snapshot()
     }
 
     /// The pre-generated Learn card for `text`, or nil when the pack has no answer for this

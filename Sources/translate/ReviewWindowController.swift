@@ -538,14 +538,14 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
 
     private func setPills(for record: TranslationRecord, kind: ReviewPlanner.QuestionKind) {
         var pills = [kind.label, DeckStats.bucket(for: record).label]
-        pills.append("lần \(record.repetitions + 1)")
+        pills.append("rep \(record.repetitions + 1)")
         if let last = record.lastReviewedAt {
             let days = Calendar.current.dateComponents(
                 [.day],
                 from: Calendar.current.startOfDay(for: last),
                 to: Calendar.current.startOfDay(for: Date())
             ).day ?? 0
-            pills.append(days <= 0 ? "ôn hôm nay" : "ôn \(days) ngày trước")
+            pills.append(days <= 0 ? "reviewed today" : "reviewed \(Plural.count(days, "day")) ago")
         }
         if (relearnCounts[record.id] ?? 0) > 0 { pills.append("relearning") }
         pills.append("\(record.sourceLanguage) → \(record.targetLanguage)")
@@ -578,11 +578,11 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
 
     static func intervalText(_ days: Int) -> String {
         switch days {
-        case ..<1: return "hôm nay"
-        case 1: return "1 ngày"
-        case 2..<30: return "\(days) ngày"
-        case 30..<365: return "\(days / 30) tháng"
-        default: return "\(max(1, days / 365)) năm"
+        case ..<1: return "today"
+        case 1: return "1 day"
+        case 2..<30: return Plural.count(days, "day")
+        case 30..<365: return Plural.count(days / 30, "month")
+        default: return Plural.count(max(1, days / 365), "year")
         }
     }
 
@@ -761,7 +761,7 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
     /// again tomorrow.
     private func leechNote(for record: TranslationRecord) -> String? {
         guard ReviewPlanner.isLeech(lapses: record.lapses) else { return nil }
-        return "Missed \(record.lapses) times. Consider removing it and learning it from a fresh card."
+        return "Missed \(Plural.count(record.lapses, "time")). Consider removing it and learning it from a fresh card."
     }
 
     /// The question knew whether the answer was right, so it grades itself instead of asking the
@@ -909,11 +909,11 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
         guard newWordsIndex < newWordsQueue.count else {
             let emptyMessage: String
             if VocabPack.shared.isEmpty {
-                emptyMessage = "Không tìm thấy kho từ vựng. Kiểm tra tệp vocab-en-vi.json trong Application Support."
+                emptyMessage = "Vocabulary pack not found. Check vocab-en-vi.json in Application Support."
             } else if newWordsFilter == .known {
-                emptyMessage = "Chưa có từ nào trong danh sách Đã biết."
+                emptyMessage = "No words in the Known list yet."
             } else {
-                emptyMessage = "Hết từ ở mức này. Chọn cấp độ khác ở góc trên bên trái."
+                emptyMessage = "No more words at this level. Choose another level in the top-left."
             }
             newWordsView.showEmpty(message: emptyMessage)
             stopAudio()
@@ -1108,6 +1108,13 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
             handleSpaceKey()
             return nil
         }
+        // Return / keypad Enter confirm the auto-grade Continue button.
+        if chars == "\r" || chars == "\n" {
+            if isAnswerRevealed, let auto = pendingAutoGrade {
+                applyGrade(auto)
+                return nil
+            }
+        }
         if isAnswerRevealed {
             if chars == "1" { applyGrade(.again); return nil }
             if chars == "2" { applyGrade(.hard); return nil }
@@ -1122,11 +1129,6 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
     private func handleSpaceKey() {
         if !isAnswerRevealed {
             revealAnswer()
-            return
-        }
-        // A question that graded itself only needs "next"; Space is that key.
-        if let auto = pendingAutoGrade {
-            applyGrade(auto)
             return
         }
         let clipView = sessionView.scrollView.contentView

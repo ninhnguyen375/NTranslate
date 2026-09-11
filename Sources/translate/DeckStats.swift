@@ -21,11 +21,11 @@ struct DeckStats: Equatable, Sendable {
 
         var detail: String {
             switch self {
-            case .due: return "tới hạn ôn"
-            case .learning: return "đang thuộc dần"
-            case .new: return "chưa học lần nào"
-            case .mastered: return "đã thuộc"
-            case .leech: return "sai quá nhiều"
+            case .due: return "due for review"
+            case .learning: return "still learning"
+            case .new: return "never reviewed"
+            case .mastered: return "already known"
+            case .leech: return "missed too often"
             }
         }
     }
