@@ -25,6 +25,7 @@ struct ReviewPlannerCheck {
         checkResolve()
         checkGrading()
         checkSchedule()
+        checkPractice()
         checkSession()
         checkInflection()
 
@@ -53,6 +54,10 @@ struct ReviewPlannerCheck {
                "the ladder skips what the card cannot ask")
         expect(ReviewPlanner.autoKind(interval: 40, repetitions: 8, available: [.flip]) == .flip,
                "a card with no data still flips")
+        expect(ReviewPlanner.autoKind(interval: 2, repetitions: 1, available: [.collocation, .flip]) == .collocation,
+               "a young card with no cloze still practises the pairing")
+        expect(ReviewPlanner.autoKind(interval: 14, repetitions: 5, available: [.family, .flip]) == .family,
+               "a mature card with no recall still produces a related form")
     }
 
     static func checkResolve() {
@@ -117,6 +122,19 @@ struct ReviewPlannerCheck {
 
         expect(ReviewPlanner.isLeech(lapses: 8) && !ReviewPlanner.isLeech(lapses: 7),
                "a leech is flagged at eight lapses")
+    }
+
+    // MARK: - Practice
+
+    static func checkPractice() {
+        expect(ReviewPlanner.writesSchedule(isPractice: true) == false,
+               "Review All does not move the SM-2 schedule")
+        expect(ReviewPlanner.writesSchedule(isPractice: false),
+               "Start Review writes the schedule")
+        expect(ReviewPlanner.gradeIntervalCaption(isPractice: true, scheduled: "2 days").isEmpty,
+               "practice grade buttons do not promise a due date")
+        expect(ReviewPlanner.gradeIntervalCaption(isPractice: false, scheduled: "2 days") == "2 days",
+               "a real review still shows the interval the grade would schedule")
     }
 
     // MARK: - Session order

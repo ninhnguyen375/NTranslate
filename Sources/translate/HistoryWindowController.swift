@@ -446,7 +446,8 @@ final class HistoryWindowController: NSWindowController, NSWindowDelegate, NSTab
                 presentAudioError("The local audio file is missing.")
                 return
             }
-            audioPlayer = try AVAudioPlayer(data: data)
+            let volume = AppConfig.load().speechVolume
+            audioPlayer = try AVAudioPlayer(data: SpeechGain.boosted(data, volume: volume))
             audioPlayer?.delegate = self
             guard audioPlayer?.play() == true else { presentAudioError("The local audio file could not be played."); return }
         } catch {

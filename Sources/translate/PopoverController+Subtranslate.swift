@@ -398,7 +398,7 @@ extension PopoverController {
         guard !parent.isEmpty, parent != text else { return nil }
         return historyStore.reusableRecord(
             mode: mode,
-            sourceText: "\(text) (context: \(parent))",
+            sourceText: LearnCard.Encounter.encode(term: text, context: parent),
             sourceLanguage: sourceLanguage,
             targetLanguage: targetLanguage,
             sourceIsAutoDetect: autoDetect
@@ -432,7 +432,7 @@ extension PopoverController {
                 let parent = self.inputTextView.string.trimmingCharacters(in: .whitespacesAndNewlines)
                 let recordedSource: String
                 if mode == .learn && !parent.isEmpty && parent != text {
-                    recordedSource = "\(text) (context: \(parent))"
+                    recordedSource = LearnCard.Encounter.encode(term: text, context: parent)
                 } else {
                     recordedSource = text
                 }
@@ -522,19 +522,14 @@ extension PopoverController {
         styleLanguageButtonTitle(sourceLanguageButton, language: sourceLanguageSelection)
         styleLanguageButtonTitle(targetLanguageButton, language: targetLanguageSelection)
 
-        let sourceText = record.sourceText
-        if let range = sourceText.range(of: " (context: ") {
-            let term = String(sourceText[..<range.lowerBound])
-            var context = String(sourceText[range.upperBound...])
-            if context.hasSuffix(")") {
-                context = String(context.dropLast())
-            }
-            inputTextView.string = term
+        let encounter = LearnCard.Encounter.split(record.sourceText)
+        if let context = encounter.context {
+            inputTextView.string = encounter.term
             inputContextLabel.stringValue = "Context: \(context)"
             inputContextLabel.toolTip = context
             inputContextLabel.isHidden = false
         } else {
-            inputTextView.string = sourceText
+            inputTextView.string = encounter.term
             inputContextLabel.stringValue = ""
             inputContextLabel.toolTip = nil
             inputContextLabel.isHidden = true

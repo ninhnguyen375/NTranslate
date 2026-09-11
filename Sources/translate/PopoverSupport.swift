@@ -111,9 +111,14 @@ enum PopoverIntegrationPolicy {
         let trim: (String) -> String = { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
         // Popup hiển thị term không kèm " (context: …)" và bỏ dòng "Mức dùng:" khỏi kết quả,
         // nên so sánh ở dạng đã chuẩn hóa cả hai phía.
-        let term: (String) -> String = { trim($0.components(separatedBy: " (context: ").first ?? $0) }
+        let rec = LearnCard.Encounter.split(trim(record.sourceText))
+        let input = LearnCard.Encounter.split(trim(sourceText))
+        let sourceOK = rec.term == input.term
+            || rec.context == input.term
+            || input.context == rec.term
+            || LearnCard.Encounter.matches(record.sourceText, selection: sourceText)
         let body: (String) -> String = { trim(LearnUsageInfo.stripUsageLine(from: $0)) }
-        return term(record.sourceText) == term(sourceText) && body(record.resultText) == body(resultText)
+        return sourceOK && body(record.resultText) == body(resultText)
     }
 
     static func effectiveSourceLanguage(selected: String, resolved: String?, text: String) -> String {

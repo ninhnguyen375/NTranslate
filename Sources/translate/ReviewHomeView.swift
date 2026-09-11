@@ -47,6 +47,8 @@ final class ReviewHomeView: NSView {
     private static let limits: [Int?] = [10, 20, nil]
     /// Every section lines up on this width: 3 mode columns + 2 gaps.
     private static let contentWidth: CGFloat = 526
+    /// Limit chips, mode tiles, and action buttons share this so the left edge is one curve.
+    fileprivate static let controlCornerRadius: CGFloat = 12
 
     init(limit: Int?, kind: ReviewPlanner.QuestionKind?, bucket: DeckStats.Bucket?) {
         sessionLimit = limit
@@ -209,8 +211,10 @@ final class ReviewHomeView: NSView {
         modeGrid.orientation = .vertical
         modeGrid.spacing = 8
         modeGrid.distribution = .fillEqually
-        for row in 0..<2 {
-            let slice = Array(tiles[(row * 3)..<min(tiles.count, row * 3 + 3)])
+        let columns = 3
+        let rows = (tiles.count + columns - 1) / columns
+        for row in 0..<rows {
+            let slice = Array(tiles[(row * columns)..<min(tiles.count, row * columns + columns)])
             let rowStack = NSStackView(views: slice)
             rowStack.orientation = .horizontal
             rowStack.spacing = 8
@@ -229,6 +233,8 @@ final class ReviewHomeView: NSView {
         ReviewControls.actionButton(passagesButton, title: "Saved Passages", symbol: "list.bullet.rectangle", target: self, action: #selector(tapPassages))
         ReviewControls.actionButton(practiceButton, title: "Review All", symbol: "arrow.clockwise", target: self, action: #selector(tapPractice))
         ReviewControls.actionButton(shuffleButton, title: "Review All (Shuffled)", symbol: "shuffle", target: self, action: #selector(tapShuffle))
+        practiceButton.toolTip = "Practice only — does not change due dates"
+        shuffleButton.toolTip = "Practice only — does not change due dates"
 
         // One accented primary, the rest tinted by role so the block is scannable.
         let tints: [(NSButton, NSColor)] = [
@@ -247,10 +253,9 @@ final class ReviewHomeView: NSView {
         )
         startButton.keyEquivalent = "\r"
         for button in [startButton, newWordsButton, readingButton, passagesButton, practiceButton, shuffleButton] {
-            button.controlSize = .large
-            button.font = .systemFont(ofSize: 14, weight: .semibold)
             button.translatesAutoresizingMaskIntoConstraints = false
             button.heightAnchor.constraint(equalToConstant: 54).isActive = true
+            applyControlCornerRadius(button)
         }
         setStartTitle(startButton.title)
 
@@ -352,7 +357,9 @@ final class ReviewHomeView: NSView {
         ModeOption(kind: .cloze, title: "Cloze", detail: "Điền từ bị khuyết trong câu ví dụ."),
         ModeOption(kind: .recall, title: "Recall", detail: "Thấy nghĩa, gõ lại từ gốc."),
         ModeOption(kind: .listen, title: "Listen", detail: "Nghe phát âm rồi gõ lại từ."),
-        ModeOption(kind: .contrast, title: "Contrast", detail: "Chọn đúng giữa hai từ dễ nhầm.")
+        ModeOption(kind: .contrast, title: "Contrast", detail: "Chọn đúng giữa hai từ dễ nhầm."),
+        ModeOption(kind: .collocation, title: "Collocation", detail: "Type the common pairing from its meaning."),
+        ModeOption(kind: .family, title: "Family", detail: "Type a related form from its gloss.")
     ]
 
     private static func color(for bucket: DeckStats.Bucket) -> NSColor {
@@ -365,11 +372,24 @@ final class ReviewHomeView: NSView {
         }
     }
 
+    override func layout() {
+        super.layout()
+        for button in [startButton, newWordsButton, readingButton, passagesButton, practiceButton, shuffleButton] {
+            applyControlCornerRadius(button)
+        }
+    }
+
+    private func applyControlCornerRadius(_ view: NSView) {
+        view.wantsLayer = true
+        view.layer?.cornerRadius = Self.controlCornerRadius
+        view.layer?.cornerCurve = .continuous
+        view.layer?.masksToBounds = true
+    }
+
     /// The accented primary needs its title drawn white; contentTintColor only tints the symbol.
     private func setStartTitle(_ title: String) {
-        // Same font the other buttons get from controlSize .large, so the row reads as one set.
         startButton.attributedTitle = NSAttributedString(string: title, attributes: [
-            .font: startButton.font ?? .systemFont(ofSize: 14, weight: .semibold),
+            .font: startButton.font ?? .systemFont(ofSize: 13, weight: .medium),
             .foregroundColor: NSColor.white
         ])
     }
@@ -583,7 +603,8 @@ final class ReviewTile: NSView {
         super.init(frame: .zero)
         translatesAutoresizingMaskIntoConstraints = false
         wantsLayer = true
-        layer?.cornerRadius = compact ? 16 : 9
+        layer?.cornerRadius = ReviewHomeView.controlCornerRadius
+        layer?.cornerCurve = .continuous
         layer?.borderWidth = 1.5
 
         titleLabel.font = .systemFont(ofSize: compact ? 12 : 13, weight: .semibold)

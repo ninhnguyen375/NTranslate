@@ -377,10 +377,12 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
         guard currentIndex < recordsToReview.count else { return }
         let record = recordsToReview[currentIndex]
         undoSnapshot = (store.records.first(where: { $0.id == record.id }) ?? record, currentIndex)
-        do {
-            try store.updateSRS(recordID: record.id, grade: grade)
-        } catch {
-            NSLog("[NTranslate] Failed to update SRS: \(error.localizedDescription)")
+        if ReviewPlanner.writesSchedule(isPractice: isPracticeMode) {
+            do {
+                try store.updateSRS(recordID: record.id, grade: grade)
+            } catch {
+                NSLog("[NTranslate] Failed to update SRS: \(error.localizedDescription)")
+            }
         }
 
         answeredCount += 1
@@ -407,11 +409,13 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
 
     private func undoLastGrade() {
         guard let snapshot = undoSnapshot else { return }
-        do {
-            try store.restoreSRS(from: snapshot.record)
-        } catch {
-            NSLog("[NTranslate] Failed to undo grade: \(error.localizedDescription)")
-            return
+        if ReviewPlanner.writesSchedule(isPractice: isPracticeMode) {
+            do {
+                try store.restoreSRS(from: snapshot.record)
+            } catch {
+                NSLog("[NTranslate] Failed to undo grade: \(error.localizedDescription)")
+                return
+            }
         }
         // The relearning copy that grade may have queued is no longer wanted.
         if let queued = recordsToReview.dropFirst(snapshot.index + 1).firstIndex(where: { $0.id == snapshot.record.id }) {
@@ -430,6 +434,23 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
     private func hideCurrentCard() {
         guard currentIndex < recordsToReview.count else { return }
         let record = recordsToReview[currentIndex]
+        let alert = NSAlert()
+        alert.messageText = "Remove this card from the deck?"
+        alert.informativeText = "The translation stays in History. You can add it back with the star button there."
+        alert.addButton(withTitle: "Remove")
+        alert.addButton(withTitle: "Cancel")
+        alert.alertStyle = .warning
+        if let window = window {
+            alert.beginSheetModal(for: window) { [weak self] response in
+                guard response == .alertFirstButtonReturn else { return }
+                self?.commitHideCard(record)
+            }
+        } else if alert.runModal() == .alertFirstButtonReturn {
+            commitHideCard(record)
+        }
+    }
+
+    private func commitHideCard(_ record: TranslationRecord) {
         do {
             try store.setSaved(false, recordID: record.id)
         } catch {
@@ -461,20 +482,15 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
         sessionView.undoButton.isEnabled = undoSnapshot != nil
         sessionView.hideButton.isEnabled = !isPracticeMode
 
-        let sourceText = record.sourceText
-        if let range = sourceText.range(of: " (context: ") {
-            var context = String(sourceText[range.upperBound...])
-            if context.hasSuffix(")") { context = String(context.dropLast()) }
-            sessionView.termLabel.stringValue = String(sourceText[..<range.lowerBound])
-            currentContext = context
-        } else {
-            sessionView.termLabel.stringValue = sourceText
-            currentContext = nil
-        }
+        let encounter = LearnCard.Encounter.split(record.sourceText)
+        sessionView.termLabel.stringValue = encounter.term
+        currentContext = encounter.context
         isContextExpanded = false
         updateContextDisplay()
 
         sessionView.sourceContainer.isHidden = false
+        // The reading screen can leave the term hidden; a card always shows its question.
+        sessionView.termLabel.isHidden = false
         setSourceGiveaways(hidden: false)
         sessionView.titleRefreshButton.isHidden = true
         sessionView.resultLabel.stringValue = sessionView.learnBadgeView.apply(to: record.resultText, live: true)
@@ -485,6 +501,7 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
         sessionView.markDoneButton.isHidden = true
         sessionView.regenerateButton.isHidden = true
         sessionView.gradeStack.isHidden = true
+        sessionView.autoGradeStack.isHidden = true
         isAnswerRevealed = false
         stopAudio()
         updateSpeakButtonUI()
@@ -536,18 +553,27 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
     }
 
     /// Fuzz is pinned to 1.0 here: this is a preview, and a preview that moves every render would
-    /// read as a bug. The real grade still schedules with `ReviewPlanner.randomFuzz()`.
+    /// read as a bug. A real Start Review grade still schedules with `ReviewPlanner.randomFuzz()`.
+    /// Practice captions stay empty so the buttons do not promise a due date.
+    private func gradePreview(_ grade: SRSGrade, for record: TranslationRecord) -> String {
+        let next = ReviewPlanner.nextSchedule(
+            grade: grade,
+            interval: record.interval,
+            ease: record.ease,
+            fuzz: 1.0
+        )
+        return ReviewPlanner.gradeIntervalCaption(
+            isPractice: isPracticeMode,
+            scheduled: Self.intervalText(next.interval)
+        )
+    }
+
     private func updateGradeIntervals(for record: TranslationRecord) {
-        func preview(_ grade: SRSGrade) -> String {
-            let next = ReviewPlanner.nextSchedule(
-                grade: grade,
-                interval: record.interval,
-                ease: record.ease,
-                fuzz: 1.0
-            )
-            return Self.intervalText(next.interval)
-        }
-        sessionView.setGradeIntervals(again: preview(.again), hard: preview(.hard), easy: preview(.easy))
+        sessionView.setGradeIntervals(
+            again: gradePreview(.again, for: record),
+            hard: gradePreview(.hard, for: record),
+            easy: gradePreview(.easy, for: record)
+        )
     }
 
     static func intervalText(_ days: Int) -> String {
@@ -588,7 +614,10 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
     private func availableKinds(for record: TranslationRecord, card: LearnCard) -> Set<ReviewPlanner.QuestionKind> {
         guard record.mode == .learn else { return [.flip] }
         var kinds: Set<ReviewPlanner.QuestionKind> = [.flip]
-        if card.cloze != nil { kinds.insert(.cloze) }
+        let encounter = LearnCard.Encounter.split(record.sourceText).context
+        if card.preferredCloze(encounterSentence: encounter) != nil { kinds.insert(.cloze) }
+        if card.collocationQuiz != nil { kinds.insert(.collocation) }
+        if card.familyQuiz != nil { kinds.insert(.family) }
         if ConfusableDrillItem.build(from: [card]).first != nil { kinds.insert(.contrast) }
         if card.recall != nil { kinds.insert(.recall) }
         // Listening needs a word to pronounce and a voice to pronounce it with.
@@ -607,12 +636,19 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
             repetitions: record.repetitions,
             available: availableKinds(for: record, card: card)
         )
+        let encounter = LearnCard.Encounter.split(record.sourceText).context
         switch resolved.kind {
         case .flip:
             return (.none, .flip, resolved.note)
         case .cloze:
-            guard let cloze = card.cloze else { return (.none, .flip, resolved.note) }
+            guard let cloze = card.preferredCloze(encounterSentence: encounter) else { return (.none, .flip, resolved.note) }
             return (.typed(cloze, kind: .cloze), .cloze, resolved.note)
+        case .collocation:
+            guard let quiz = card.collocationQuiz else { return (.none, .flip, resolved.note) }
+            return (.typed(quiz, kind: .collocation), .collocation, resolved.note)
+        case .family:
+            guard let quiz = card.familyQuiz else { return (.none, .flip, resolved.note) }
+            return (.typed(quiz, kind: .family), .family, resolved.note)
         case .recall:
             guard let recall = card.recall else { return (.none, .flip, resolved.note) }
             return (.typed(recall, kind: .recall), .recall, resolved.note)
@@ -636,12 +672,17 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
             sessionView.choiceStack.isHidden = true
             sessionView.termLabel.font = .systemFont(ofSize: 24, weight: .bold)
         case let .typed(question, kind):
-            sessionView.termLabel.stringValue = question.prompt
+            sessionView.termLabel.stringValue = question.hintedPrompt
             sessionView.termLabel.font = .systemFont(ofSize: 17, weight: .regular)
             sessionView.answerField.isHidden = false
-            sessionView.answerField.placeholderString = kind == .cloze
-                ? "Type the missing word, then press Return"
-                : "Type the word, then press Return"
+            sessionView.answerField.placeholderString = {
+                switch kind {
+                case .cloze: return "Type the missing word, then press Return"
+                case .collocation: return "Type the phrase, then press Return"
+                case .family: return "Type the related form, then press Return"
+                default: return "Type the word, then press Return"
+                }
+            }()
             sessionView.choiceStack.isHidden = true
             setSourceGiveaways(hidden: true)
             if kind == .listen {
@@ -695,14 +736,14 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
         }
         sessionView.resultLabel.isHidden = false
         sessionView.revealButton.isHidden = true
-        sessionView.gradeStack.isHidden = false
+        // A self-graded card already picked; `showAutoGrade` put the Continue button up instead.
+        sessionView.gradeStack.isHidden = pendingAutoGrade != nil
         adjustWindowHeightForContentIfNeeded()
     }
 
     /// The stored source text can carry an appended context sentence; only the term is the answer.
     private func displayTerm(of record: TranslationRecord) -> String {
-        guard let range = record.sourceText.range(of: " (context: ") else { return record.sourceText }
-        return String(record.sourceText[..<range.lowerBound])
+        return LearnCard.Encounter.split(record.sourceText).term
     }
 
     private func showAnswerFeedback(correct: Bool, note: String) {
@@ -730,7 +771,10 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
         let grade = ReviewPlanner.autoGrade(correct: correct, nearMiss: nearMiss, elapsed: elapsed)
         pendingAutoGrade = grade
         let name = ["Again", "Hard", "Easy"][grade.rawValue]
-        showHint("Graded \(name) automatically. Space to continue, or pick another grade.")
+        let interval = currentIndex < recordsToReview.count
+            ? gradePreview(grade, for: recordsToReview[currentIndex])
+            : ""
+        sessionView.showAutoGrade(grade, name: name, interval: interval)
     }
 
     private func submitTypedAnswer() {
@@ -739,7 +783,16 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
         guard !typed.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         let correct = question.matches(typed)
         let nearMiss = !correct && ReviewPlanner.isNearMiss(typed: typed, answer: question.answer)
-        let note = nearMiss ? "Just a typo: \(question.answer)" : "Answer: \(question.answer)"
+        // Seeing the wrong attempt next to the answer is where the mistake is actually learnt.
+        let typedBack = typed.trimmingCharacters(in: .whitespacesAndNewlines)
+        let note: String
+        if nearMiss {
+            note = "Just a typo: \(question.answer) (you typed \"\(typedBack)\")"
+        } else if correct {
+            note = "Answer: \(question.answer)"
+        } else {
+            note = "You typed \"\(typedBack)\". Answer: \(question.answer)"
+        }
         showAnswerFeedback(correct: correct || nearMiss, note: note)
         autoGrade(correct: correct || nearMiss, nearMiss: nearMiss)
         if kind == .listen { stopAudio() }
@@ -1027,6 +1080,12 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
         if !sessionView.answerField.isHidden,
            let editor = window?.firstResponder as? NSText,
            editor.delegate === sessionView.answerField {
+            // Space on an empty field still means "show answer": a typed answer never starts with
+            // a space, so the key is free until the user has typed something.
+            if chars == " ", editor.string.isEmpty {
+                handleSpaceKey()
+                return nil
+            }
             return event
         }
         if isReadingMode {
@@ -1269,6 +1328,7 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
         }
         sessionView.revealButton.isHidden = true
         sessionView.gradeStack.isHidden = true
+        sessionView.autoGradeStack.isHidden = true
         sessionView.hintLabel.isHidden = true
         sessionView.undoButton.isEnabled = false
         sessionView.hideButton.isEnabled = false
@@ -1647,7 +1707,8 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
             _ = speechState.finishLoading(generation: loadingGeneration, identity: identity)
         }
         audioPlayer?.stop()
-        guard let player = try? AVAudioPlayer(data: data) else {
+        let volume = config?.speechVolume ?? AppConfig.default.speechVolume
+        guard let player = try? AVAudioPlayer(data: SpeechGain.boosted(data, volume: volume)) else {
             stopAudio()
             return
         }

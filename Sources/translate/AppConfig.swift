@@ -157,6 +157,8 @@ struct AppConfig: Codable {
     var speechPrefetchMaxLength: Int
     /// Playback rate used by the "speak slowly" buttons.
     var speechSlowRate: Float
+    /// Linear gain after peak-normalization. 1.0 is full scale; values above 1 add extra loudness.
+    var speechVolume: Float
     var theme: AppTheme
     /// Speech model per language name, e.g. ["English": "edge-tts/en-US-AvaMultilingualNeural"].
     var speechModels: [String: String]
@@ -215,6 +217,7 @@ struct AppConfig: Codable {
         autoPrefetchSpeech: true,
         speechPrefetchMaxLength: 300,
         speechSlowRate: 0.4,
+        speechVolume: 1.5,
         theme: .system,
         speechModels: [
             "English": "edge-tts/en-US-AvaMultilingualNeural",
@@ -252,6 +255,7 @@ struct AppConfig: Codable {
         autoPrefetchSpeech: Bool,
         speechPrefetchMaxLength: Int = 300,
         speechSlowRate: Float = 0.4,
+        speechVolume: Float = 1.5,
         theme: AppTheme = .system,
         speechModels: [String: String],
         speechFallbackModel: String,
@@ -284,6 +288,7 @@ struct AppConfig: Codable {
         self.autoPrefetchSpeech = autoPrefetchSpeech
         self.speechPrefetchMaxLength = speechPrefetchMaxLength
         self.speechSlowRate = speechSlowRate
+        self.speechVolume = speechVolume
         self.theme = theme
         self.speechModels = speechModels
         self.speechFallbackModel = speechFallbackModel
@@ -326,6 +331,7 @@ struct AppConfig: Codable {
         autoPrefetchSpeech = try container.decodeIfPresent(Bool.self, forKey: .autoPrefetchSpeech) ?? true
         speechPrefetchMaxLength = try container.decodeIfPresent(Int.self, forKey: .speechPrefetchMaxLength) ?? 300
         speechSlowRate = min(max(try container.decodeIfPresent(Float.self, forKey: .speechSlowRate) ?? 0.4, 0.25), 1.0)
+        speechVolume = min(max(try container.decodeIfPresent(Float.self, forKey: .speechVolume) ?? 1.5, 0.5), 3.0)
         theme = try container.decodeIfPresent(AppTheme.self, forKey: .theme) ?? .system
         historyDirectory = try container.decodeIfPresent(String.self, forKey: .historyDirectory)
         hotkey = try container.decode(Hotkey.self, forKey: .hotkey)

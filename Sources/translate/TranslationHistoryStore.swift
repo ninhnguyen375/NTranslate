@@ -244,7 +244,7 @@ final class TranslationHistoryStore {
         let sourceText = Self.trim(sourceText)
         return records.first {
             $0.mode == mode
-                && Self.trim($0.sourceText) == sourceText
+                && Self.sourceMatches($0.sourceText, sourceText, mode: mode)
                 && $0.targetLanguage == targetLanguage
                 && (sourceIsAutoDetect || $0.sourceLanguage == sourceLanguage)
         }
@@ -915,6 +915,16 @@ final class TranslationHistoryStore {
 
     private static func trim(_ text: String) -> String {
         text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Learn cards may store `term (context: sentence)`. Looking up the sentence must find that
+    /// card; looking up a different word must not.
+    private static func sourceMatches(_ stored: String, _ requested: String, mode: TranslationMode) -> Bool {
+        let stored = trim(stored)
+        let requested = trim(requested)
+        if stored == requested { return true }
+        guard mode == .learn else { return false }
+        return LearnCard.Encounter.matches(stored, selection: requested)
     }
 
     private static func hasContent(_ text: String) -> Bool {

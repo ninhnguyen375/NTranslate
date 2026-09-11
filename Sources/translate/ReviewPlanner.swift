@@ -18,6 +18,8 @@ enum ReviewPlanner {
         case contrast = 2
         case recall = 3
         case listen = 4
+        case collocation = 5
+        case family = 6
 
         var label: String {
             switch self {
@@ -26,6 +28,8 @@ enum ReviewPlanner {
             case .contrast: return "Contrast"
             case .recall: return "Recall"
             case .listen: return "Listen"
+            case .collocation: return "Collocation"
+            case .family: return "Family"
             }
         }
     }
@@ -40,13 +44,13 @@ enum ReviewPlanner {
         case let (i, r) where i == 0 || r == 0:
             ladder = [.flip]
         case let (i, _) where i < 4:
-            ladder = [.cloze, .flip]
+            ladder = [.cloze, .collocation, .flip]
         case let (i, _) where i < 10:
-            ladder = [.contrast, .cloze, .flip]
+            ladder = [.contrast, .collocation, .cloze, .flip]
         case let (i, _) where i < 21:
-            ladder = [.recall, .contrast, .cloze, .flip]
+            ladder = [.recall, .family, .contrast, .cloze, .flip]
         default:
-            ladder = [.listen, .recall, .contrast, .cloze, .flip]
+            ladder = [.listen, .recall, .family, .contrast, .cloze, .flip]
         }
         return ladder.first(where: available.contains) ?? .flip
     }
@@ -155,6 +159,15 @@ enum ReviewPlanner {
     }
 
     static func randomFuzz() -> Double { Double.random(in: 0.85...1.15) }
+
+    /// Review All / Shuffle drill the deck. Only Start Review writes the SM-2 schedule, so a
+    /// same-day extra pass cannot inflate the next due date.
+    static func writesSchedule(isPractice: Bool) -> Bool { !isPractice }
+
+    /// Practice buttons must not promise a due date the tap will not write.
+    static func gradeIntervalCaption(isPractice: Bool, scheduled: String) -> String {
+        writesSchedule(isPractice: isPractice) ? scheduled : ""
+    }
 
     // MARK: - Session order
 

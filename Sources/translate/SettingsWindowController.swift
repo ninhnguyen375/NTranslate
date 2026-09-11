@@ -107,6 +107,9 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
     private let speechSlowRatePopup = NSPopUpButton()
     /// Rates offered by the "Slow speed" popup, matching the tortoise buttons.
     private static let speechSlowRates: [Float] = [0.25, 0.3, 0.4, 0.5, 0.6, 0.75]
+    private let speechVolumePopup = NSPopUpButton()
+    /// Playback gain after peak-normalization. 1.0 is full scale; higher values add extra loudness.
+    private static let speechVolumes: [Float] = [1.0, 1.25, 1.5, 2.0, 2.5, 3.0]
 
     private let autoPrefetchSpeechCheckbox = NSButton(
         checkboxWithTitle: "Prefetch speech automatically",
@@ -474,6 +477,9 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         speechSlowRatePopup.removeAllItems()
         Self.speechSlowRates.forEach { speechSlowRatePopup.addItem(withTitle: String(format: "%.2gx", $0)) }
         addFormRow(grid, "Slow speed", speechSlowRatePopup)
+        speechVolumePopup.removeAllItems()
+        Self.speechVolumes.forEach { speechVolumePopup.addItem(withTitle: String(format: "%.0f%%", $0 * 100)) }
+        addFormRow(grid, "Volume", speechVolumePopup)
         addFormRow(grid, "Prefetch speech", autoPrefetchSpeechCheckbox)
         speechAPIRows = [speechURLRow, speechAPIKeyRow, speechFallbackModelRow]
         return wrapFormGrid(grid)
@@ -741,6 +747,8 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         refreshPromptSyncButtons()
         let slowIndex = Self.speechSlowRates.firstIndex(of: config.speechSlowRate) ?? Self.speechSlowRates.firstIndex(of: 0.4) ?? 0
         speechSlowRatePopup.selectItem(at: slowIndex)
+        let volumeIndex = Self.speechVolumes.firstIndex(of: config.speechVolume) ?? Self.speechVolumes.firstIndex(of: 1.5) ?? 0
+        speechVolumePopup.selectItem(at: volumeIndex)
         autoPrefetchSpeechCheckbox.state = config.autoPrefetchSpeech ? .on : .off
         speechModelFields.removeAll()
         rebuildSpeechModelRows()
@@ -883,6 +891,8 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         config.weavePrompt = weavePromptView.string
         let slowRateIndex = speechSlowRatePopup.indexOfSelectedItem
         config.speechSlowRate = Self.speechSlowRates.indices.contains(slowRateIndex) ? Self.speechSlowRates[slowRateIndex] : 0.4
+        let volumeIndex = speechVolumePopup.indexOfSelectedItem
+        config.speechVolume = Self.speechVolumes.indices.contains(volumeIndex) ? Self.speechVolumes[volumeIndex] : 1.5
         config.autoPrefetchSpeech = autoPrefetchSpeechCheckbox.state == .on
         config.speechModels = speechModelFields.reduce(into: [:]) { result, entry in
             let value = entry.value.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)

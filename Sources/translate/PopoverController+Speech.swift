@@ -240,7 +240,7 @@ extension PopoverController {
         do {
             audioPlayer?.stop()
             audioPlayer = nil
-            let player = try AVAudioPlayer(data: data)
+            let player = try AVAudioPlayer(data: SpeechGain.boosted(data, volume: config.speechVolume))
             player.delegate = self
             player.enableRate = true
             player.rate = speed

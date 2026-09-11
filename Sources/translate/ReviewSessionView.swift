@@ -77,6 +77,13 @@ final class ReviewSessionView: NSView {
     private let hardButton = NSButton()
     private let easyButton = NSButton()
     let gradeStack = NSStackView()
+    /// Shown instead of `gradeStack` when the question graded itself: one wide "next" button plus
+    /// a quiet override row.
+    let autoGradeStack = NSStackView()
+    private let continueButton = NSButton()
+    private let overrideAgain = NSButton()
+    private let overrideHard = NSButton()
+    private let overrideEasy = NSButton()
     private let actionStack = NSStackView()
 
     override init(frame frameRect: NSRect) {
@@ -137,6 +144,56 @@ final class ReviewSessionView: NSView {
         styleGrade(againButton, title: "Again (1)", detail: again, color: .systemRed)
         styleGrade(hardButton, title: "Hard (2)", detail: hard, color: .systemOrange)
         styleGrade(easyButton, title: "Easy (3)", detail: easy, color: .systemGreen)
+    }
+
+    /// The card already knows the grade, so the only real action is moving on. The three grades
+    /// stay reachable underneath in case the learner disagrees.
+    func showAutoGrade(_ grade: SRSGrade, name: String, interval: String) {
+        let color = Self.gradeColor(grade)
+        continueButton.tag = grade.rawValue
+        continueButton.bezelColor = color
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.alignment = .center
+        let suffix = interval.isEmpty ? "" : "  ·  \(interval)"
+        continueButton.attributedTitle = NSAttributedString(
+            string: "Continue  ·  \(name)\(suffix)  (Space)",
+            attributes: [
+                .font: NSFont.systemFont(ofSize: 13, weight: .semibold),
+                .foregroundColor: NSColor.white,
+                .paragraphStyle: paragraph
+            ]
+        )
+        for button in [overrideAgain, overrideHard, overrideEasy] {
+            let isPicked = button.tag == grade.rawValue
+            styleOverride(button, dimmed: isPicked)
+        }
+        gradeStack.isHidden = true
+        autoGradeStack.isHidden = false
+    }
+
+    private static func gradeColor(_ grade: SRSGrade) -> NSColor {
+        switch grade {
+        case .again: return .systemRed
+        case .hard: return .systemOrange
+        case .easy: return .systemGreen
+        }
+    }
+
+    /// The grade the model already picked is spelled out on the big button, so its override reads
+    /// as redundant and steps back.
+    private func styleOverride(_ button: NSButton, dimmed: Bool) {
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.alignment = .center
+        let grade = SRSGrade(rawValue: button.tag) ?? .hard
+        let color = dimmed ? NSColor.tertiaryLabelColor : Self.gradeColor(grade)
+        button.attributedTitle = NSAttributedString(
+            string: button.identifier?.rawValue ?? "",
+            attributes: [
+                .font: NSFont.systemFont(ofSize: 11, weight: .medium),
+                .foregroundColor: color,
+                .paragraphStyle: paragraph
+            ]
+        )
     }
 
     // MARK: - Build
@@ -345,12 +402,49 @@ final class ReviewSessionView: NSView {
         gradeStack.isHidden = true
         gradeStack.translatesAutoresizingMaskIntoConstraints = false
 
+        continueButton.bezelStyle = .flexiblePush
+        continueButton.controlSize = .regular
+        continueButton.target = self
+        continueButton.action = #selector(gradeClicked(_:))
+        continueButton.translatesAutoresizingMaskIntoConstraints = false
+        continueButton.heightAnchor.constraint(equalToConstant: 34).isActive = true
+
+        let overrideLabel = NSTextField(labelWithString: "Override:")
+        overrideLabel.font = .systemFont(ofSize: 11)
+        overrideLabel.textColor = .tertiaryLabelColor
+        for (button, tag, title) in [
+            (overrideAgain, SRSGrade.again.rawValue, "Again (1)"),
+            (overrideHard, SRSGrade.hard.rawValue, "Hard (2)"),
+            (overrideEasy, SRSGrade.easy.rawValue, "Easy (3)")
+        ] {
+            button.bezelStyle = .inline
+            button.isBordered = false
+            button.tag = tag
+            button.identifier = NSUserInterfaceItemIdentifier(title)
+            button.target = self
+            button.action = #selector(gradeClicked(_:))
+            styleOverride(button, dimmed: false)
+        }
+        let overrideRow = NSStackView(views: [overrideLabel, overrideAgain, overrideHard, overrideEasy])
+        overrideRow.orientation = .horizontal
+        overrideRow.spacing = 10
+        overrideRow.alignment = .centerY
+
+        autoGradeStack.orientation = .vertical
+        autoGradeStack.spacing = 8
+        autoGradeStack.alignment = .centerX
+        autoGradeStack.addArrangedSubview(continueButton)
+        autoGradeStack.addArrangedSubview(overrideRow)
+        autoGradeStack.isHidden = true
+        autoGradeStack.translatesAutoresizingMaskIntoConstraints = false
+
         actionStack.orientation = .vertical
         actionStack.spacing = 10
         actionStack.alignment = .centerX
         actionStack.translatesAutoresizingMaskIntoConstraints = false
         actionStack.addArrangedSubview(revealButton)
         actionStack.addArrangedSubview(gradeStack)
+        actionStack.addArrangedSubview(autoGradeStack)
         // Back and Done sit side by side under the passage; Done is the green half.
         let readingRow = NSStackView(views: [backButton, regenerateButton, markDoneButton])
         readingRow.orientation = .horizontal
@@ -398,6 +492,9 @@ final class ReviewSessionView: NSView {
             actionStack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -20),
 
             gradeStack.widthAnchor.constraint(equalTo: actionStack.widthAnchor),
+            autoGradeStack.widthAnchor.constraint(equalTo: actionStack.widthAnchor),
+            continueButton.widthAnchor.constraint(lessThanOrEqualTo: autoGradeStack.widthAnchor),
+            continueButton.widthAnchor.constraint(greaterThanOrEqualToConstant: 340),
             revealButton.widthAnchor.constraint(greaterThanOrEqualToConstant: 220),
             revealButton.heightAnchor.constraint(equalToConstant: 38),
             backButton.heightAnchor.constraint(equalToConstant: 38),

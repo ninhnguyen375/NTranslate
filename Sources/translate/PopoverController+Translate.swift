@@ -29,6 +29,22 @@ extension PopoverController {
     ) {
         // Without Accessibility both paths are dead (no AXSelectedText, no synthetic Command+C),
         // so prompt and stop instead of silently translating stale clipboard content.
+        // A selection inside one of our own windows (Study, New words) has to be read before the
+        // panel opens: the panel becoming key clears the text view's selection, so both the
+        // accessibility probe and the simulated Command+C would come back empty.
+        if let text = ownWindowSelection() {
+            previousApp = NSWorkspace.shared.frontmostApplication
+            let resolved = TranslatableInputResolution(input: .text(text), source: .selection, accessibilityError: nil)
+            if !panel.isVisible {
+                invalidateTranslationRequest()
+                invalidateSpeech(stopPlayback: true)
+                setPendingImage(nil)
+                clearStatus()
+                setResultText(loading)
+            }
+            handler(resolved)
+            return
+        }
         guard AXIsProcessTrusted() else {
             requestAccessibilityPermissionIfNeeded(forcePrompt: true)
             showEmptySelectionPanel(message: PopoverFeedback.accessibilityRequired)
@@ -82,6 +98,18 @@ extension PopoverController {
                 }
             }
         }
+    }
+
+    /// Selected text in one of our own key windows, excluding the translate panel itself so a
+    /// selection inside the panel's own input doesn't hijack the hotkey.
+    private func ownWindowSelection() -> String? {
+        guard let key = NSApp.keyWindow, key !== panel else { return nil }
+        guard let textView = key.firstResponder as? NSTextView else { return nil }
+        let range = textView.selectedRange()
+        guard range.length > 0 else { return nil }
+        let text = (textView.string as NSString).substring(with: range)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return text.isEmpty ? nil : text
     }
 
     /// Loads an already-read selection into the main input pane. Returns false when it handled the

@@ -90,15 +90,38 @@ struct LearnCardCheck {
         expect(card.confusables[0].other == "desert", "confusable word parsed")
         expect(card.confusables[0].contrastSentence == "They abandon the plan quickly.", "contrast sentence attached")
         expect(card.wordFamily == ["abandonment", "abandoned"], "word family drops the headword itself")
+        expect(card.familyForms.map(\.gloss) == ["n. sự bỏ rơi", "adj. bị bỏ rơi"],
+               "word family keeps the gloss the review question will show")
+        expect(card.collocations.count == 1, "one collocation, got \(card.collocations.count)")
+        expect(card.collocations.first?.phrase == "abandon ship", "collocation phrase parsed")
+        expect(card.collocations.first?.meaning == "bỏ tàu", "collocation meaning parsed")
+        expect(card.collocationQuiz?.answer == "abandon ship", "collocation quiz asks for the whole pairing")
+        expect(card.collocationQuiz?.prompt == "bỏ tàu", "collocation quiz shows the meaning, not the phrase")
+        expect(card.familyQuiz?.answer == "abandonment", "family quiz asks for the derived form")
+        expect(card.familyQuiz?.prompt.contains("n. sự bỏ rơi") == true, "family quiz shows the gloss")
         expect(card.cloze?.answer == "abandon", "cloze answer parsed")
         expect(card.cloze?.prompt.contains("___") == true, "cloze prompt keeps its blank")
+        expect(card.cloze?.hintedPrompt.contains("a _ _ _ _ _ _") == true,
+               "cloze blank becomes a first letter plus one underscore per remaining character")
+        expect(LearnCard.ClozeQuestion.hint(for: "give up") == "g _ _ _   u _", "multi-word hint keeps word boundaries")
+        expect(LearnCard.ClozeQuestion.hint(for: "well-known") == "w _ _ _ - _ _ _ _ _", "punctuation stays visible")
 
         let legacy = LearnCard.parse(legacyCard)
         expect(legacy.examples.count == 2, "pre-change card still yields examples")
         expect(legacy.examples.allSatisfy { $0.level == .unspecified }, "untagged examples are unspecified")
         expect(legacy.confusables.isEmpty, "(không có) yields no confusable")
         expect(legacy.wordFamily.isEmpty, "(không có) yields no word family")
+        expect(legacy.collocations.isEmpty, "a card with no collocation section yields none")
         expect(legacy.cloze?.answer == "a", "legacy cloze still parses")
+
+        let emptyCollocation = LearnCard.parse("""
+        Từ gốc: solo
+        Đi kèm thường gặp: (không có)
+        Họ từ: (không có)
+        """)
+        expect(emptyCollocation.collocations.isEmpty, "(không có) yields no collocation")
+        expect(emptyCollocation.collocationQuiz == nil, "no pairing means no collocation quiz")
+        expect(emptyCollocation.familyQuiz == nil, "no family means no family quiz")
 
         let indentedAnswer = LearnCard.parse("""
         Từ gốc: ability
@@ -135,6 +158,41 @@ struct LearnCardCheck {
 
         expect(ConfusableDrillItem.blankOut("band", in: "The abandoned band played.") == "The abandoned ___ played.",
                "blank lands on the whole word, not inside a longer one")
+
+        let mined = card.minedCloze(from: "The crew had to abandon ship.")
+        expect(mined?.prompt == "The crew had to ___ ship.", "the encounter sentence is blanked on the headword")
+        expect(mined?.answer == "abandon", "the mined cloze answer is the form the sentence used")
+        expect(card.preferredCloze(encounterSentence: "The crew had to abandon ship.")?.prompt
+                == "The crew had to ___ ship.",
+               "a mined sentence wins over the model's tự kiểm tra cloze")
+        expect(card.preferredCloze(encounterSentence: nil)?.answer == "abandon",
+               "without an encounter sentence the model's cloze is still used")
+        expect(card.minedCloze(from: "Nothing to see here.") == nil,
+               "a sentence without the headword cannot be mined")
+
+        let encoded = LearnCard.Encounter.encode(term: "abandon", context: "The crew had to abandon ship.")
+        expect(encoded == "abandon (context: The crew had to abandon ship.)", "term plus sentence encode in the stored shape")
+        expect(LearnCard.Encounter.encode(term: "abandon", context: "abandon") == "abandon",
+               "a context that is just the term is not stored twice")
+        expect(LearnCard.Encounter.encode(term: "abandon", context: "  ") == "abandon",
+               "blank context is omitted")
+        let parts = LearnCard.Encounter.split(encoded)
+        expect(parts.term == "abandon" && parts.context == "The crew had to abandon ship.",
+               "the stored shape splits back into term and sentence")
+        expect(LearnCard.Encounter.split("abandon").context == nil, "a bare term has no encounter sentence")
+        expect(LearnCard.Encounter.storedSource(selection: "The crew had to abandon ship.", headword: "abandon")
+                == encoded,
+               "learning a sentence stores the headword and keeps the sentence as context")
+        expect(LearnCard.Encounter.storedSource(selection: "abandon", headword: "abandon") == "abandon",
+               "learning the word alone stays a bare term")
+        expect(LearnCard.Encounter.matches(encoded, selection: "The crew had to abandon ship."),
+               "looking up the original sentence finds the encoded card")
+        expect(LearnCard.Encounter.matches(encoded, selection: encoded),
+               "looking up the stored source finds the same card")
+        expect(LearnCard.Encounter.matches("abandon", selection: "abandon"),
+               "a bare term still matches itself")
+        expect(!LearnCard.Encounter.matches(encoded, selection: "desert"),
+               "a different word does not match an encoded card")
 
         if failures > 0 {
             print("\n\(failures) check(s) failed")

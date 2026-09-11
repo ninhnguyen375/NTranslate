@@ -175,7 +175,6 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     lazy var historyWindowController: HistoryWindowController = {
         let controller = HistoryWindowController(store: historyStore) { [weak self] record in
             guard let self else { return }
-            self.historyWindowController.close()
             self.openTranslatePanelShowingSetupStatus()
             self.openHistoryRecord(record)
         }

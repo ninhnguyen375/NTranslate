@@ -104,8 +104,12 @@ extension PopoverController {
                 switch result {
                 case let .success(value):
                     self.setResultText(value)
+                    let recordedSource = LearnCard.Encounter.storedSource(
+                        selection: text,
+                        headword: LearnCard.parse(value).headword
+                    )
                     let record = TranslationRecord(
-                        id: UUID(), timestamp: Date(), mode: .learn, sourceText: text, resultText: value,
+                        id: UUID(), timestamp: Date(), mode: .learn, sourceText: recordedSource, resultText: value,
                         sourceLanguage: self.effectiveSourceLanguage(for: text), targetLanguage: pair.target,
                         isSaved: false
                     )

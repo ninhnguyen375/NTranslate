@@ -31,6 +31,16 @@ struct LearnCard: Equatable, Sendable {
         var contrastSentence: String
     }
 
+    struct Collocation: Equatable, Sendable {
+        var phrase: String
+        var meaning: String
+    }
+
+    struct FamilyForm: Equatable, Sendable {
+        var form: String
+        var gloss: String
+    }
+
     struct ClozeQuestion: Equatable, Sendable {
         var prompt: String
         var answer: String
@@ -39,21 +49,113 @@ struct LearnCard: Equatable, Sendable {
         func matches(_ input: String) -> Bool {
             LearnCard.normalizeAnswer(input) == LearnCard.normalizeAnswer(answer)
         }
+
+        /// The prompt with the bare "___" replaced by the answer's shape: first letter, then one
+        /// underscore per remaining character. A blank of unknown length is a guessing game.
+        var hintedPrompt: String {
+            guard prompt.contains("___"), !answer.isEmpty else { return prompt }
+            return prompt.replacingOccurrences(of: "___", with: Self.hint(for: answer))
+        }
+
+        static func hint(for answer: String) -> String {
+            answer.split(separator: " ").map { word -> String in
+                guard let first = word.first else { return "" }
+                let rest = word.dropFirst().map { $0.isLetter || $0.isNumber ? "_" : String($0) }
+                return ([String(first)] + rest).joined(separator: " ")
+            }.joined(separator: "   ")
+        }
     }
 
     var headword: String = ""
     var pronunciation: String = ""
     var examples: [LeveledExample] = []
     var confusables: [Confusable] = []
-    var wordFamily: [String] = []
+    var familyForms: [FamilyForm] = []
+    var collocations: [Collocation] = []
     var cloze: ClozeQuestion?
     /// The "n. ..." / "v. ..." lines, i.e. what the word means without naming it.
     var meanings: [String] = []
+
+    /// Derived forms only, so existing call sites that just need the spelling keep working.
+    var wordFamily: [String] { familyForms.map(\.form) }
 
     /// The reverse question: the meaning is shown and the headword itself is the answer.
     var recall: ClozeQuestion? {
         guard !headword.isEmpty, !meanings.isEmpty else { return nil }
         return ClozeQuestion(prompt: meanings.joined(separator: "\n"), answer: headword)
+    }
+
+    /// Meaning → the whole pairing. A collocation that is just the headword is not a pairing.
+    var collocationQuiz: ClozeQuestion? {
+        collocations.first { pair in
+            !pair.phrase.isEmpty
+                && !pair.meaning.isEmpty
+                && Self.normalizeAnswer(pair.phrase) != Self.normalizeAnswer(headword)
+        }.map { ClozeQuestion(prompt: $0.meaning, answer: $0.phrase) }
+    }
+
+    /// Gloss → one derived form. The prompt names the relationship so the blank is not a guess.
+    var familyQuiz: ClozeQuestion? {
+        familyForms.first { !$0.form.isEmpty && !$0.gloss.isEmpty }
+            .map { ClozeQuestion(prompt: "Related form — \($0.gloss)", answer: $0.form) }
+    }
+
+    /// Blanks the headword in the sentence the learner actually met, not a model-written example.
+    func minedCloze(from sentence: String) -> ClozeQuestion? {
+        let trimmed = sentence.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !headword.isEmpty, !trimmed.isEmpty,
+              let hit = ConfusableDrillItem.blankOutInflected(headword, in: trimmed)
+        else { return nil }
+        return ClozeQuestion(prompt: hit.blanked, answer: hit.form)
+    }
+
+    /// An encounter sentence is better practice than the card's generated cloze, when it can be blanked.
+    func preferredCloze(encounterSentence: String?) -> ClozeQuestion? {
+        if let sentence = encounterSentence, let mined = minedCloze(from: sentence) {
+            return mined
+        }
+        return cloze
+    }
+
+    /// How a Learn record keeps the term and the sentence it was taken from, without a new field.
+    enum Encounter {
+        static let marker = " (context: "
+
+        static func encode(term: String, context: String?) -> String {
+            let term = term.trimmingCharacters(in: .whitespacesAndNewlines)
+            let context = context?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            guard !term.isEmpty else { return context }
+            guard !context.isEmpty, LearnCard.normalizeAnswer(context) != LearnCard.normalizeAnswer(term) else { return term }
+            return "\(term)\(marker)\(context))"
+        }
+
+        static func split(_ sourceText: String) -> (term: String, context: String?) {
+            let sourceText = sourceText.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard let range = sourceText.range(of: marker) else { return (sourceText, nil) }
+            var context = String(sourceText[range.upperBound...])
+            if context.hasSuffix(")") { context = String(context.dropLast()) }
+            let term = String(sourceText[..<range.lowerBound])
+            return (term, context.isEmpty ? nil : context)
+        }
+
+        /// When Learn ran on a sentence, the card's headword is the term and the sentence is context.
+        static func storedSource(selection: String, headword: String) -> String {
+            let selection = selection.trimmingCharacters(in: .whitespacesAndNewlines)
+            let headword = headword.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !headword.isEmpty else { return selection }
+            guard !selection.isEmpty else { return headword }
+            if LearnCard.normalizeAnswer(selection) == LearnCard.normalizeAnswer(headword) { return selection }
+            return encode(term: headword, context: selection)
+        }
+
+        static func matches(_ stored: String, selection: String) -> Bool {
+            let stored = stored.trimmingCharacters(in: .whitespacesAndNewlines)
+            let selection = selection.trimmingCharacters(in: .whitespacesAndNewlines)
+            if stored == selection { return true }
+            // The original sentence looks up the encoded card. The bare term does not, so two
+            // encounters of the same word stay two cards.
+            return split(stored).context == selection
+        }
     }
 
     /// Same rule the pack lookup uses, so an answer typed with odd spacing still matches.
@@ -65,15 +167,15 @@ struct LearnCard: Equatable, Sendable {
     }
 
     private enum Section {
-        case none, examples, confusables, family, cloze, ignored
+        case none, examples, confusables, family, collocations, cloze, ignored
     }
 
     private static let headings: [String: Section] = [
         "Ví dụ": .examples,
         "Dễ nhầm với": .confusables,
         "Họ từ": .family,
+        "Đi kèm thường gặp": .collocations,
         "Tự kiểm tra": .cloze,
-        "Đi kèm thường gặp": .ignored,
         "Nhớ nhanh": .ignored,
     ]
 
@@ -101,7 +203,9 @@ struct LearnCard: Equatable, Sendable {
                 case .confusables:
                     if let confusable = parseConfusable(item) { card.confusables.append(confusable) }
                 case .family:
-                    if let form = parseFamilyForm(item) { card.wordFamily.append(form) }
+                    if let form = parseFamilyForm(item) { card.familyForms.append(form) }
+                case .collocations:
+                    if let pair = parseCollocation(item) { card.collocations.append(pair) }
                 case .cloze:
                     if let answer = value(of: "Đáp án", in: item) {
                         clozeAnswer = answer
@@ -146,7 +250,7 @@ struct LearnCard: Equatable, Sendable {
             card.cloze = ClozeQuestion(prompt: prompt, answer: answer)
         }
         // Word family that just echoes the headword teaches nothing.
-        card.wordFamily.removeAll { normalizeAnswer($0) == normalizeAnswer(card.headword) }
+        card.familyForms.removeAll { normalizeAnswer($0.form) == normalizeAnswer(card.headword) }
         return card
     }
 
@@ -208,11 +312,22 @@ struct LearnCard: Equatable, Sendable {
         return Confusable(other: other, difference: difference, contrastSentence: "")
     }
 
-    private static func parseFamilyForm(_ item: String) -> String? {
+    private static func parseFamilyForm(_ item: String) -> FamilyForm? {
         guard !isEmptyMarker(item) else { return nil }
-        let form = item.split(separator: ":", maxSplits: 1).first.map(String.init) ?? item
-        let trimmed = form.trimmingCharacters(in: .whitespaces)
-        return trimmed.isEmpty ? nil : trimmed
+        let parts = item.split(separator: ":", maxSplits: 1)
+        let form = parts.first.map { $0.trimmingCharacters(in: .whitespaces) } ?? ""
+        guard !form.isEmpty else { return nil }
+        let gloss = parts.count > 1 ? parts[1].trimmingCharacters(in: .whitespaces) : ""
+        return FamilyForm(form: form, gloss: isEmptyMarker(gloss) ? "" : gloss)
+    }
+
+    private static func parseCollocation(_ item: String) -> Collocation? {
+        guard !isEmptyMarker(item) else { return nil }
+        guard let colon = item.firstIndex(of: ":") else { return nil }
+        let phrase = String(item[item.startIndex..<colon]).trimmingCharacters(in: .whitespaces)
+        let meaning = String(item[item.index(after: colon)...]).trimmingCharacters(in: .whitespaces)
+        guard !phrase.isEmpty, !isEmptyMarker(meaning) else { return nil }
+        return Collocation(phrase: phrase, meaning: meaning)
     }
 }
 

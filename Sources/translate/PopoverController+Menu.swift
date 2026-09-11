@@ -456,7 +456,6 @@ extension PopoverController {
         WeaveCache.prepare(historyDirectory: config.historyDirectoryURL)
         historyWindowController = HistoryWindowController(store: historyStore) { [weak self] record in
             guard let self else { return }
-            self.historyWindowController.close()
             self.openTranslatePanelShowingSetupStatus()
             self.openHistoryRecord(record)
         }
