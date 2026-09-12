@@ -4,8 +4,10 @@ import AVFoundation
 
 extension PopoverController {
     func updateSpeakButtons() {
-        updateSpeechButton(speakSourceButton, identity: sourceSpeechIdentity(), baseLabel: "source", speed: 1.0, idleSymbol: "speaker.wave.2")
-        updateSpeechButton(speakSourceSlowButton, identity: sourceSpeechIdentity(), baseLabel: "source slowly", speed: config.speechSlowRate, idleSymbol: "tortoise")
+        let source = sourceSpeechIdentity()
+        updateSpeechButton(speakSourceButton, identity: source, baseLabel: "source", speed: 1.0, idleSymbol: "speaker.wave.2")
+        updateSpeechButton(speakSourceSlowButton, identity: source, baseLabel: "source slowly", speed: config.speechSlowRate, idleSymbol: "tortoise")
+        updateSpeechButton(learnCardView.speakButton, identity: source, baseLabel: "source", speed: 1.0, idleSymbol: "speaker.wave.2")
         updateSpeechButton(speakResultButton, identity: resultSpeechIdentity(), baseLabel: "translation", speed: 1.0, idleSymbol: "speaker.wave.2")
         updateSpeechButton(speakResultSlowButton, identity: resultSpeechIdentity(), baseLabel: "translation slowly", speed: config.speechSlowRate, idleSymbol: "tortoise")
         if let section = subSection {
@@ -22,6 +24,7 @@ extension PopoverController {
         updateSpeechButton(section.speakSourceSlowButton, identity: subSpeechIdentity(kind: .source), baseLabel: "subtranslate source slowly", speed: config.speechSlowRate, idleSymbol: "tortoise")
         updateSpeechButton(section.speakResultButton, identity: subSpeechIdentity(kind: .result), baseLabel: "subtranslate translation", speed: 1.0, idleSymbol: "speaker.wave.2")
         updateSpeechButton(section.speakResultSlowButton, identity: subSpeechIdentity(kind: .result), baseLabel: "subtranslate translation slowly", speed: config.speechSlowRate, idleSymbol: "tortoise")
+        updateSpeechButton(section.learnCardView.speakButton, identity: subSpeechIdentity(kind: .source), baseLabel: "subtranslate source", speed: 1.0, idleSymbol: "speaker.wave.2")
     }
 
     func updateSpeechButton(

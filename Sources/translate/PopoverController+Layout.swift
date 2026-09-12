@@ -219,6 +219,8 @@ extension PopoverController {
             bodyHeight: bodyHeight,
             badgeView: learnBadgeView
         )
+        layoutLearnCardScroll()
+        layoutLearnRelatedImage(paneWidth: panes.left, bodyHeight: bodyHeight, showing: isShowingStructuredLearnCard, strip: learnRelatedImageStrip, scrollView: inputScrollView, textView: inputTextView)
         layoutSetupActions(in: resultCard)
 
         if !mergeQA {
@@ -232,6 +234,40 @@ extension PopoverController {
         applyQAInputChrome()
     }
 
+    func layoutLearnRelatedImage(
+        paneWidth: CGFloat,
+        bodyHeight: CGFloat,
+        showing: Bool,
+        strip: LearnRelatedImageStrip,
+        scrollView: NSScrollView,
+        textView: NSTextView
+    ) {
+        guard showing else {
+            strip.isHidden = true
+            return
+        }
+        strip.layoutInSourcePane(paneWidth: paneWidth, bodyHeight: bodyHeight, scrollView: scrollView, textView: textView)
+    }
+
+    func layoutLearnCardScroll() {
+        let frame = textScrollView.frame
+        learnCardScrollView.frame = frame
+        let reserve = LearnStructuredCardView.headerReserve(
+            hidesPaneHeader: ChromeLayout.density.hidesPaneHeader,
+            iconButtonSize: ChromeLayout.iconButtonSize
+        )
+        learnCardView.applyChromeReserve(reserve)
+        learnCardScrollView.automaticallyAdjustsContentInsets = false
+        learnCardScrollView.contentInsets = NSEdgeInsets(top: 0, left: 0, bottom: 0, right: 0)
+        guard isShowingStructuredLearnCard else { return }
+        let width = max(120, frame.width)
+        let height = learnCardView.preferredHeight(fittingWidth: width)
+        learnCardView.frame = NSRect(x: 0, y: 0, width: width, height: max(height, frame.height))
+        if pinLearnCardToTop {
+            scrollLearnCardToTop(learnCardScrollView)
+        }
+    }
+
     func layoutSetupActions(in resultCard: NSView) {
         let buttons = [setupOpenSettingsButton, setupGrantAccessButton, inPaneRetryButton].filter { !$0.isHidden }
         let barH: CGFloat = buttons.isEmpty ? 0 : ChromeLayout.controlHeight + 2
@@ -240,6 +276,10 @@ extension PopoverController {
             let newH = max(0, scroll.height - barH)
             textScrollView.frame = NSRect(x: scroll.minX, y: scroll.minY + barH, width: scroll.width, height: newH)
             textView.minSize = NSSize(width: 0, height: newH)
+            if isShowingStructuredLearnCard {
+                let card = learnCardScrollView.frame
+                learnCardScrollView.frame = NSRect(x: card.minX, y: card.minY + barH, width: card.width, height: max(0, card.height - barH))
+            }
         }
         guard !buttons.isEmpty else { return }
         var x: CGFloat = 12
@@ -600,6 +640,17 @@ extension PopoverController {
     }
 
     func measuredPrimaryPaneHeight(paneWidth: CGFloat) -> CGFloat {
+        if isShowingStructuredLearnCard {
+            let L = ChromeLayout.self
+            let measureWidth = max(80, paneWidth - L.textSideInset)
+            return PopoverLayoutMath.splitPaneHeight(
+                sourceMeasured: measuredTextHeight(inputTextView.attributedString(), width: measureWidth) + L.textInset,
+                resultMeasured: measuredStructuredLearnCardHeight(),
+                paneHeaderHeight: L.paneHeaderHeight,
+                minPaneHeight: stackedMinPaneHeight,
+                maxPaneHeight: maxSectionHeight
+            )
+        }
         return paneHeight(
             source: inputTextView.attributedString(),
             result: textView.attributedString(),
@@ -608,11 +659,41 @@ extension PopoverController {
     }
 
     func measuredSubPaneHeight(_ section: SubtranslateSection, paneWidth: CGFloat) -> CGFloat {
+        if section.isShowingStructuredLearnCard {
+            let L = ChromeLayout.self
+            let measureWidth = max(80, paneWidth - L.textSideInset)
+            return PopoverLayoutMath.splitPaneHeight(
+                sourceMeasured: measuredTextHeight(section.sourceTextView.attributedString(), width: measureWidth) + L.textInset,
+                resultMeasured: measuredStructuredSubLearnCardHeight(section),
+                paneHeaderHeight: L.paneHeaderHeight,
+                minPaneHeight: stackedMinPaneHeight,
+                maxPaneHeight: maxSectionHeight
+            )
+        }
         return paneHeight(
             source: section.sourceTextView.attributedString(),
             result: section.resultTextView.attributedString(),
             paneWidth: paneWidth
         )
+    }
+
+    func layoutSubLearnCardScroll(_ section: SubtranslateSection) {
+        let frame = section.resultScrollView.frame
+        section.learnCardScrollView.frame = frame
+        let reserve = LearnStructuredCardView.headerReserve(
+            hidesPaneHeader: ChromeLayout.density.hidesPaneHeader,
+            iconButtonSize: ChromeLayout.iconButtonSize
+        )
+        section.learnCardView.applyChromeReserve(reserve)
+        section.learnCardScrollView.automaticallyAdjustsContentInsets = false
+        section.learnCardScrollView.contentInsets = NSEdgeInsets(top: 0, left: 0, bottom: 0, right: 0)
+        guard section.isShowingStructuredLearnCard else { return }
+        let width = max(120, frame.width)
+        let height = section.learnCardView.preferredHeight(fittingWidth: width)
+        section.learnCardView.frame = NSRect(x: 0, y: 0, width: width, height: max(height, frame.height))
+        if pinSubLearnCardToTop {
+            scrollLearnCardToTop(section.learnCardScrollView)
+        }
     }
 
     func measuredQAPaneHeight(_ section: QAPaneSection, paneWidth: CGFloat) -> CGFloat {

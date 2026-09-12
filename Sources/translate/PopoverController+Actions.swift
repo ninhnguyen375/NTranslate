@@ -139,7 +139,7 @@ extension PopoverController {
                     }
                 }
                 self.reflowLayout()
-                self.textView.scrollToBeginningOfDocument(nil)
+                self.scrollResultToStart()
                 self.updateBusyState()
             }
         }
@@ -262,8 +262,16 @@ extension PopoverController {
             flashCopied()
         }
         reflowLayout()
-        textView.scrollToBeginningOfDocument(nil)
+        scrollResultToStart()
         updateBusyState()
+    }
+
+    func scrollResultToStart() {
+        textView.scrollToBeginningOfDocument(nil)
+        if isShowingStructuredLearnCard {
+            learnCardScrollView.contentView.scroll(to: .zero)
+            learnCardScrollView.reflectScrolledClipView(learnCardScrollView.contentView)
+        }
     }
 
     func invalidateCurrentRecord() {
@@ -273,13 +281,14 @@ extension PopoverController {
 
     func updateSaveWordButton() {
         let reqInFlight = isRequestInFlight
+        let result = lastResultRaw
         let canSave = lastResultStyle == .normal && PopoverIntegrationPolicy.canSave(
             sourceText: inputTextView.string,
-            resultText: textView.string,
+            resultText: result,
             isRequestInFlight: reqInFlight
         )
         let isSaved = currentRecordID.flatMap { id in historyStore.records.first { $0.id == id } }
-            .map { PopoverIntegrationPolicy.matches($0, sourceText: inputTextView.string, resultText: textView.string) && $0.isSaved } == true
+            .map { PopoverIntegrationPolicy.matches($0, sourceText: inputTextView.string, resultText: result) && $0.isSaved } == true
 
         saveWordButton.isHidden = !canSave
         saveWordButton.isEnabled = canSave && historyStore.loadError == nil && !isRequestInFlight
@@ -346,7 +355,7 @@ extension PopoverController {
     }
 
     func copyValue() -> String? {
-        let value = textView.string.trimmingCharacters(in: .whitespacesAndNewlines)
+        let value = lastResultRaw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard PopoverFeedback.isCopyableResult(value) else { return nil }
         return value
     }

@@ -34,7 +34,7 @@ final class QAPaneSection {
 
     /// Whole transcript in plain text, for history/context and for copy-all.
     var transcriptText: String {
-        turns.map { "ME: \($0.question)\n\nAI: \($0.answer)" }.joined(separator: "\n\n")
+        turns.map { "You: \($0.question)\n\nNTranslate: \($0.answer)" }.joined(separator: "\n\n")
     }
 
     /// Prior turns handed to the model so follow-ups ("còn câu kia thì sao?") resolve.
@@ -59,23 +59,48 @@ final class QAPaneSection {
     }
 
     func render(font: NSFont, questionColor: NSColor, answerColor: NSColor, pendingColor: NSColor, errorColor: NSColor) {
-        let body = NSMutableAttributedString()
+        var body = NSMutableAttributedString()
         let questionFont = NSFont.systemFont(ofSize: font.pointSize, weight: .semibold)
-        let prefixFont = NSFont.systemFont(ofSize: font.pointSize, weight: .bold)
+        let roleFont = NSFont.systemFont(ofSize: max(10, font.pointSize - 1), weight: .bold)
+        let youColor = NSColor.controlAccentColor
+        let assistantColor = NSColor.systemTeal
         for (index, turn) in turns.enumerated() {
             if index > 0 { body.append(.plainDisplay("\n\n", font: font, color: answerColor)) }
-            body.append(.plainDisplay("ME: ", font: prefixFont, color: Palette.paneLabel))
-            body.append(.plainDisplay("\(turn.question)\n\n", font: questionFont, color: questionColor))
-            body.append(.plainDisplay("AI: ", font: prefixFont, color: Palette.paneLabel))
+            appendRole(&body, title: "You", color: youColor, font: roleFont)
+            body.append(Self.tinted(
+                .plainDisplay(turn.question, font: questionFont, color: questionColor),
+                background: youColor.withAlphaComponent(0.12)
+            ))
+            body.append(.plainDisplay("\n\n", font: font, color: answerColor))
+            appendRole(&body, title: "NTranslate", color: assistantColor, font: roleFont)
+            let reply: NSAttributedString
             if turn.isPending {
-                body.append(.plainDisplay(turn.answer, font: font, color: pendingColor))
+                reply = .plainDisplay(turn.answer, font: font, color: pendingColor)
             } else if turn.failed || turn.answer.hasPrefix("Error:") || turn.answer.hasPrefix("Lỗi:") {
-                body.append(.plainDisplay(turn.answer, font: font, color: errorColor))
+                reply = .plainDisplay(turn.answer, font: font, color: errorColor)
             } else {
-                body.append(.markdownDisplay(turn.answer, font: font, color: answerColor))
+                reply = .markdownDisplay(turn.answer, font: font, color: answerColor)
             }
+            body.append(Self.tinted(reply, background: assistantColor.withAlphaComponent(0.10)))
         }
         textView.textStorage?.setAttributedString(body)
+    }
+
+    private func appendRole(_ body: inout NSMutableAttributedString, title: String, color: NSColor, font: NSFont) {
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.paragraphSpacing = 3
+        body.append(NSAttributedString(string: "\(title)\n", attributes: [
+            .font: font,
+            .foregroundColor: color,
+            .kern: 0.4,
+            .paragraphStyle: paragraph,
+        ]))
+    }
+
+    private static func tinted(_ text: NSAttributedString, background: NSColor) -> NSAttributedString {
+        let painted = NSMutableAttributedString(attributedString: text)
+        painted.addAttribute(.backgroundColor, value: background, range: NSRange(location: 0, length: painted.length))
+        return painted
     }
 
     func removeFromSuperview() {

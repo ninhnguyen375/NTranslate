@@ -94,10 +94,18 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     )
     let textView = SelectableTextView(frame: .zero)
     let textScrollView = NSScrollView(frame: .zero)
+    let learnCardView = LearnStructuredCardView()
+    let learnCardScrollView = NSScrollView(frame: .zero)
+    var isShowingStructuredLearnCard = false
+    /// Pin the Learn card to y=0 after generate/stream; layout can otherwise leave it scrolled
+    /// under the toolbar. Cleared when the request finishes so the user can scroll.
+    var pinLearnCardToTop = false
+    var pinSubLearnCardToTop = false
     let inputTextView = InputTextView(frame: .zero)
     let inputScrollView = NSScrollView(frame: .zero)
     let inputContextLabel = NSTextField(labelWithString: "")
     let imagePlaceholderLabel = NSTextField(labelWithString: "[Image from clipboard]")
+    let learnRelatedImageStrip = LearnRelatedImageStrip()
     /// Official Liquid Glass container — merges nearby glass views.
     let glassContainer = NSGlassEffectContainerView(frame: .zero)
     let shellGlass = NSGlassEffectView(frame: .zero)

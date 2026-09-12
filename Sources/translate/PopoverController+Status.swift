@@ -23,6 +23,7 @@ extension PopoverController {
             ? .markdownDisplay(textToDisplay, font: font, color: color)
             : .plainDisplay(textToDisplay, font: font, color: color)
         textView.textStorage?.setAttributedString(display)
+        applyStructuredLearnCard(raw: value, style: resolved)
         if wasBadgeHidden != learnBadgeView.isHidden, panel.contentView != nil {
             reflowLayout()
         }
@@ -35,6 +36,85 @@ extension PopoverController {
         if isError {
             announceAccessibility(value)
         }
+    }
+
+    /// Hiện thẻ có cấu trúc khi parse đủ phiên âm cùng một dòng nghĩa, mọi mode.
+    func applyStructuredLearnCard(raw: String, style: PopoverFeedback.ResultStyle) {
+        let show = LearnCard.shouldPresentStructured(raw, isError: style == .error)
+        pinLearnCardToTop = show
+        if show {
+            let card = LearnCard.parse(raw)
+            learnCardView.applyUsage(from: raw, live: false)
+            learnCardView.display(card)
+            let imageTerm = LearnRelatedImage.searchTerm(from: card)
+            let seed = imageTerm.isEmpty ? inputTextView.string : imageTerm
+            learnRelatedImageStrip.refresh(term: seed, rewriteSource: inputTextView.string)
+        } else if isShowingStructuredLearnCard {
+            learnCardView.resetScrollState()
+            learnCardView.applyUsage(from: "", live: false)
+            learnRelatedImageStrip.clear()
+        }
+        if isShowingStructuredLearnCard != show {
+            isShowingStructuredLearnCard = show
+            textScrollView.isHidden = show
+            learnCardScrollView.isHidden = !show
+        }
+        if show, panel.contentView != nil {
+            reflowLayout()
+            scrollLearnCardToTop(learnCardScrollView)
+        }
+    }
+
+    func scrollLearnCardToTop(_ scrollView: NSScrollView) {
+        scrollView.layoutSubtreeIfNeeded()
+        guard let document = scrollView.documentView else {
+            scrollView.contentView.scroll(to: .zero)
+            scrollView.reflectScrolledClipView(scrollView.contentView)
+            return
+        }
+        let point = NSPoint(
+            x: 0,
+            y: document.isFlipped ? 0 : max(0, document.frame.height - scrollView.contentView.bounds.height)
+        )
+        document.scroll(point)
+        scrollView.reflectScrolledClipView(scrollView.contentView)
+    }
+
+    func measuredStructuredLearnCardHeight() -> CGFloat {
+        let width = structuredLearnCardMeasureWidth()
+        let reserve = LearnStructuredCardView.headerReserve(
+            hidesPaneHeader: ChromeLayout.density.hidesPaneHeader,
+            iconButtonSize: ChromeLayout.iconButtonSize
+        )
+        learnCardView.applyChromeReserve(reserve)
+        return learnCardView.preferredHeight(fittingWidth: max(120, width))
+    }
+
+    func structuredLearnCardMeasureWidth() -> CGFloat {
+        let L = ChromeLayout.self
+        let contentWidth = max(0, CGFloat(config.ui.width) - L.padding * 2)
+        let panes = PopoverLayoutMath.splitPaneWidth(
+            contentWidth: contentWidth,
+            divider: L.dividerWidth,
+            ratio: mainSplitRatio
+        )
+        return panes.right
+    }
+
+    func measuredStructuredSubLearnCardHeight(_ section: SubtranslateSection) -> CGFloat {
+        let width = structuredSubLearnCardMeasureWidth(mode: section.mode)
+        let reserve = LearnStructuredCardView.headerReserve(
+            hidesPaneHeader: ChromeLayout.density.hidesPaneHeader,
+            iconButtonSize: ChromeLayout.iconButtonSize
+        )
+        section.learnCardView.applyChromeReserve(reserve)
+        return section.learnCardView.preferredHeight(fittingWidth: max(120, width))
+    }
+
+    func structuredSubLearnCardMeasureWidth(mode: TranslationMode) -> CGFloat {
+        let L = ChromeLayout.self
+        let contentWidth = max(0, CGFloat(config.ui.width) - L.padding * 2)
+        return subSectionPanes(contentWidth: contentWidth, mode: mode).right
     }
 
     func announceAccessibility(_ message: String) {
@@ -88,6 +168,9 @@ extension PopoverController {
         isRequestInFlight = false
         mainRequest = nil
         updateBusyState()
+        DispatchQueue.main.async { [weak self] in
+            self?.pinLearnCardToTop = false
+        }
         if lastResultStyle == .normal {
             announceAccessibility("Translation finished")
         }
@@ -148,15 +231,23 @@ extension PopoverController {
         let measured: CGFloat
         switch scope {
         case .main:
-            measured = textView.attributedString().length == 0
-                ? 0
-                : PopoverLayoutMath.measuredTextHeight(textView.attributedString(), width: max(100, textView.bounds.width))
+            if isShowingStructuredLearnCard {
+                measured = measuredStructuredLearnCardHeight()
+            } else {
+                measured = textView.attributedString().length == 0
+                    ? 0
+                    : PopoverLayoutMath.measuredTextHeight(textView.attributedString(), width: max(100, textView.bounds.width))
+            }
         case .sub:
             guard let section = subSection else { return }
-            let attr = section.resultTextView.attributedString()
-            measured = attr.length == 0
-                ? 0
-                : PopoverLayoutMath.measuredTextHeight(attr, width: max(100, section.resultTextView.bounds.width))
+            if section.isShowingStructuredLearnCard {
+                measured = measuredStructuredSubLearnCardHeight(section)
+            } else {
+                let attr = section.resultTextView.attributedString()
+                measured = attr.length == 0
+                    ? 0
+                    : PopoverLayoutMath.measuredTextHeight(attr, width: max(100, section.resultTextView.bounds.width))
+            }
         }
         let last = scope == .main ? lastStreamedHeightMain : lastStreamedHeightSub
         let heightChanged = abs(measured - last) >= 1
@@ -223,7 +314,7 @@ extension PopoverController {
 
     func updateBusyState() {
         let copyable = lastResultStyle == .normal
-            && PopoverFeedback.isCopyableResult(textView.string, isStreaming: isRequestInFlight)
+            && PopoverFeedback.isCopyableResult(lastResultRaw, isStreaming: isRequestInFlight)
         mainActionRow.applyEnabled(
             canRun: !isRequestInFlight,
             copyable: copyable,
@@ -270,7 +361,7 @@ extension PopoverController {
 
     func updateCopyButtonEnabled() {
         copyButton.isEnabled = lastResultStyle == .normal
-            && PopoverFeedback.isCopyableResult(textView.string, isStreaming: isRequestInFlight)
+            && PopoverFeedback.isCopyableResult(lastResultRaw, isStreaming: isRequestInFlight)
     }
 }
 extension PopoverController {
@@ -282,7 +373,22 @@ extension PopoverController {
         if let section = subSection {
             TextZoom.apply(to: section.sourceTextView)
             TextZoom.apply(to: section.resultTextView)
+            if section.isShowingStructuredLearnCard {
+                section.learnCardView.applyZoom()
+            }
+        }
+        if isShowingStructuredLearnCard {
+            learnCardView.applyZoom()
         }
         reflowLayout()
+    }
+
+    @objc func openLearnRelatedImage() {
+        openLearnRelatedImage(strip: learnRelatedImageStrip)
+    }
+
+    func openLearnRelatedImage(strip: LearnRelatedImageStrip) {
+        guard let url = strip.pageURL else { return }
+        NSWorkspace.shared.open(url)
     }
 }

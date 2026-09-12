@@ -175,7 +175,8 @@ final class FrequencySignalView: NSView {
     }
 }
 
-/// Capsule pill row component for displaying word frequency, CEFR band, and register in Popover result header.
+/// Capsule pill row showing word frequency, CEFR band, and register. Lives in the result pane
+/// toolbar, including when the structured Learn card is showing.
 final class LearnBadgeView: NSView {
     private let stack = NSStackView()
     private let cefrPill = BadgePillView()
@@ -312,8 +313,27 @@ final class LearnBadgeView: NSView {
             registerPill.isHidden = true
         }
 
+        cefrPill.toolTip = usage.cefr.map(Self.cefrTooltip(for:))
+        cefrLabel.toolTip = cefrPill.toolTip
+        freqPill.toolTip = usage.frequency == nil ? nil : "How often this word appears in real text"
+        freqLabel.toolTip = freqPill.toolTip
+        registerPill.toolTip = usage.register == nil ? nil : "Typical tone of use"
+        registerLabel.toolTip = registerPill.toolTip
+
         isHidden = false
         needsLayout = true
+    }
+
+    private static func cefrTooltip(for band: String) -> String {
+        switch band.uppercased() {
+        case "A1": return "A1: beginner, the most common everyday words"
+        case "A2": return "A2: elementary, simple conversation"
+        case "B1": return "B1: intermediate, familiar topics"
+        case "B2": return "B2: upper intermediate, general news and articles"
+        case "C1": return "C1: advanced, complex or specialist texts"
+        case "C2": return "C2: proficient, near-native range"
+        default: return "CEFR level \(band)"
+        }
     }
 
     func clear() {

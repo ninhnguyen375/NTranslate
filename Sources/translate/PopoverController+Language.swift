@@ -201,9 +201,11 @@ extension PopoverController {
     }
 
     func textViewDidChangeSelection(_ notification: Notification) {
-        guard let obj = notification.object as? NSTextView,
-              floatingSelectionCandidates().contains(where: { $0.textView === obj }) else { return }
-        updateFloatingSelectionBar()
+        guard let obj = notification.object as? NSTextView else { return }
+        if floatingSelectionCandidates().contains(where: { $0.textView === obj })
+            || (obj.isFieldEditor && floatingLearnCardHost(for: obj) != nil) {
+            updateFloatingSelectionBar()
+        }
     }
 
     @objc func languageSelectionChanged() {

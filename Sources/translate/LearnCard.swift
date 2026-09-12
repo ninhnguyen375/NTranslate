@@ -17,6 +17,15 @@ struct LearnCard: Equatable, Sendable {
         case hard = "khó"
         /// Cards generated before levelled examples existed still have usable sentences.
         case unspecified
+
+        var displayLabel: String {
+            switch self {
+            case .easy: return "Easy"
+            case .medium: return "Medium"
+            case .hard: return "Hard"
+            case .unspecified: return ""
+            }
+        }
     }
 
     struct LeveledExample: Equatable, Sendable {
@@ -61,8 +70,8 @@ struct LearnCard: Equatable, Sendable {
             answer.split(separator: " ").map { word -> String in
                 guard let first = word.first else { return "" }
                 let rest = word.dropFirst().map { $0.isLetter || $0.isNumber ? "_" : String($0) }
-                return ([String(first)] + rest).joined(separator: " ")
-            }.joined(separator: "   ")
+                return ([String(first)] + rest).joined()
+            }.joined(separator: " ")
         }
     }
 
@@ -75,6 +84,11 @@ struct LearnCard: Equatable, Sendable {
     var cloze: ClozeQuestion?
     /// The "n. ..." / "v. ..." lines, i.e. what the word means without naming it.
     var meanings: [String] = []
+    /// "Nhớ nhanh": gốc từ, hình ảnh, móc tiếng Việt. Thiếu thì rỗng, không báo lỗi.
+    var mnemonic: String = ""
+    /// "Từ đồng nghĩa" / "Từ trái nghĩa" — comma-separated on one line, optional Vietnamese gloss.
+    var synonyms: [FamilyForm] = []
+    var antonyms: [FamilyForm] = []
 
     /// Derived forms only, so existing call sites that just need the spelling keep working.
     var wordFamily: [String] { familyForms.map(\.form) }
@@ -166,8 +180,33 @@ struct LearnCard: Equatable, Sendable {
             .joined(separator: " ")
     }
 
+    /// A Learn card is ready for the structured popup once the parser has a headword, a
+    /// pronunciation, and at least one meaning line. A lone `Từ gốc:` in a translation or a
+    /// half-streamed card stays on the flat text path.
+    static func shouldDisplayStructured(_ text: String) -> Bool {
+        let card = parse(text)
+        let head = card.headword.trimmingCharacters(in: .whitespacesAndNewlines)
+        let ipa = card.pronunciation.trimmingCharacters(in: .whitespacesAndNewlines)
+        return !head.isEmpty && !ipa.isEmpty && !card.meanings.isEmpty
+    }
+
+    /// Structured card is the result UI whenever the text parses — Translate, Learn, or a
+    /// reused history record. Errors stay on the flat path.
+    static func shouldPresentStructured(_ text: String, isError: Bool) -> Bool {
+        !isError && shouldDisplayStructured(text)
+    }
+
+    /// Splits "n. thiết bị phát ra chùm tia sáng" into the part-of-speech tag and the gloss.
+    static func splitMeaning(_ line: String) -> (pos: String, gloss: String) {
+        let trimmed = line.trimmingCharacters(in: .whitespaces)
+        guard let space = trimmed.firstIndex(of: " ") else { return ("", trimmed) }
+        let head = String(trimmed[trimmed.startIndex..<space]).lowercased()
+        guard partsOfSpeech.contains(head) else { return ("", trimmed) }
+        return (head, trimmed[space...].trimmingCharacters(in: .whitespaces))
+    }
+
     private enum Section {
-        case none, examples, confusables, family, collocations, cloze, ignored
+        case none, examples, confusables, family, collocations, cloze, mnemonic
     }
 
     private static let headings: [String: Section] = [
@@ -176,7 +215,7 @@ struct LearnCard: Equatable, Sendable {
         "Họ từ": .family,
         "Đi kèm thường gặp": .collocations,
         "Tự kiểm tra": .cloze,
-        "Nhớ nhanh": .ignored,
+        "Nhớ nhanh": .mnemonic,
     ]
 
     static func parse(_ text: String) -> LearnCard {
@@ -191,6 +230,12 @@ struct LearnCard: Equatable, Sendable {
 
             if let (name, inlineValue) = headingParts(line), let next = headings[name] {
                 // "Dễ nhầm với: (không có)" is a heading and its own empty content on one line.
+                // "Nhớ nhanh: gốc re + salire" keeps the inline value instead of dropping it.
+                if next == .mnemonic, let inlineValue {
+                    if !isEmptyMarker(inlineValue) { card.mnemonic = inlineValue }
+                    section = .none
+                    continue
+                }
                 section = (inlineValue == nil) ? next : .none
                 continue
             }
@@ -212,7 +257,9 @@ struct LearnCard: Equatable, Sendable {
                     } else if item.contains("___") {
                         clozePrompt = item
                     }
-                case .none, .ignored:
+                case .mnemonic:
+                    appendMnemonic(&card, item)
+                case .none:
                     break
                 }
                 continue
@@ -234,6 +281,11 @@ struct LearnCard: Equatable, Sendable {
                 continue
             }
 
+            if section == .mnemonic {
+                appendMnemonic(&card, line)
+                continue
+            }
+
             if section == .none, isMeaningLine(line) {
                 card.meanings.append(line)
                 continue
@@ -243,6 +295,10 @@ struct LearnCard: Equatable, Sendable {
                 card.headword = value
             } else if card.pronunciation.isEmpty, let value = value(of: "Phiên âm", in: line) {
                 card.pronunciation = value
+            } else if card.synonyms.isEmpty, let value = value(of: "Từ đồng nghĩa", in: line) {
+                card.synonyms = parseGlossedList(value)
+            } else if card.antonyms.isEmpty, let value = value(of: "Từ trái nghĩa", in: line) {
+                card.antonyms = parseGlossedList(value)
             }
         }
 
@@ -264,6 +320,16 @@ struct LearnCard: Equatable, Sendable {
         return line[space...].trimmingCharacters(in: .whitespaces).count > 1
     }
 
+    private static func appendMnemonic(_ card: inout LearnCard, _ line: String) {
+        let trimmed = line.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty, !isEmptyMarker(trimmed) else { return }
+        if card.mnemonic.isEmpty {
+            card.mnemonic = trimmed
+        } else {
+            card.mnemonic += "\n" + trimmed
+        }
+    }
+
     /// The model writes "(không có)" wherever a section has nothing to say.
     private static func isEmptyMarker(_ text: String) -> Bool {
         let stripped = text.trimmingCharacters(in: CharacterSet(charactersIn: "()").union(.whitespaces)).lowercased()
@@ -278,6 +344,48 @@ struct LearnCard: Equatable, Sendable {
         guard headings[name] != nil else { return nil }
         let value = String(line[line.index(after: colon)...]).trimmingCharacters(in: .whitespaces)
         return (name, value.isEmpty ? nil : value)
+    }
+
+    private static func splitCommaList(_ value: String) -> [String] {
+        parseGlossedList(value).map(\.form)
+    }
+
+    /// "departure (chuyến khởi hành), launch" or "landing: hạ cánh".
+    private static func parseGlossedList(_ value: String) -> [FamilyForm] {
+        guard !isEmptyMarker(value) else { return [] }
+        return value
+            .split(whereSeparator: { $0 == "," || $0 == ";" || $0 == "·" })
+            .compactMap { parseGlossedItem(String($0)) }
+    }
+
+    private static func parseGlossedItem(_ raw: String) -> FamilyForm? {
+        let item = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !item.isEmpty, !isEmptyMarker(item) else { return nil }
+        if let open = item.lastIndex(of: "("),
+           let close = item.lastIndex(of: ")"),
+           open < close,
+           item[item.index(after: close)...].allSatisfy(\.isWhitespace) {
+            let term = item[..<open].trimmingCharacters(in: .whitespaces)
+            let gloss = item[item.index(after: open)..<close].trimmingCharacters(in: .whitespaces)
+            if !term.isEmpty {
+                return FamilyForm(form: term, gloss: isEmptyMarker(gloss) ? "" : gloss)
+            }
+        }
+        if let sep = item.firstIndex(where: { $0 == ":" || $0 == "–" || $0 == "—" }) {
+            let term = item[..<sep].trimmingCharacters(in: .whitespaces)
+            let gloss = item[item.index(after: sep)...].trimmingCharacters(in: .whitespaces)
+            if !term.isEmpty, !gloss.isEmpty, !isEmptyMarker(gloss) {
+                return FamilyForm(form: term, gloss: gloss)
+            }
+        }
+        if let range = item.range(of: " - ") {
+            let term = item[..<range.lowerBound].trimmingCharacters(in: .whitespaces)
+            let gloss = item[range.upperBound...].trimmingCharacters(in: .whitespaces)
+            if !term.isEmpty, !gloss.isEmpty, !isEmptyMarker(gloss) {
+                return FamilyForm(form: term, gloss: gloss)
+            }
+        }
+        return FamilyForm(form: item, gloss: "")
     }
 
     private static func value(of key: String, in line: String) -> String? {
@@ -448,19 +556,53 @@ struct ConfusableDrillItem: Equatable, Sendable {
     /// Replaces the first whole-word occurrence of `word` with a blank, or returns nil when the
     /// word only appears inside a longer word (or not at all).
     static func blankOut(_ word: String, in sentence: String) -> String? {
+        guard let bounds = firstWholeWordBounds(word, in: sentence) else { return nil }
+        let characters = Array(sentence)
+        return String(characters[0..<bounds.start]) + "___" + String(characters[bounds.end...])
+    }
+
+    /// Same inflection walk as `blankOutInflected`, but keeps the matched spans so the popup can
+    /// highlight the headword instead of punching a blank.
+    static func highlightRanges(of word: String, in sentence: String) -> [Range<String.Index>] {
+        guard !word.trimmingCharacters(in: .whitespaces).isEmpty, !sentence.isEmpty else { return [] }
+        var consumed = Array(repeating: false, count: sentence.count)
+        var ranges: [Range<String.Index>] = []
+        for form in inflections(of: word).sorted(by: { $0.count > $1.count }) {
+            for bounds in wholeWordBounds(form, in: sentence) {
+                guard !(bounds.start..<bounds.end).contains(where: { consumed[$0] }) else { continue }
+                for index in bounds.start..<bounds.end { consumed[index] = true }
+                let start = sentence.index(sentence.startIndex, offsetBy: bounds.start)
+                let end = sentence.index(sentence.startIndex, offsetBy: bounds.end)
+                ranges.append(start..<end)
+            }
+        }
+        return ranges.sorted { $0.lowerBound < $1.lowerBound }
+    }
+
+    private static func firstWholeWordBounds(_ word: String, in sentence: String) -> (start: Int, end: Int)? {
+        wholeWordBounds(word, in: sentence).first
+    }
+
+    private static func wholeWordBounds(_ word: String, in sentence: String) -> [(start: Int, end: Int)] {
         let lowerSentence = Array(sentence.lowercased())
         let lowerWord = Array(word.lowercased())
-        guard !lowerWord.isEmpty, lowerSentence.count >= lowerWord.count else { return nil }
-        let characters = Array(sentence)
-        for start in 0...(lowerSentence.count - lowerWord.count) {
+        guard !lowerWord.isEmpty, lowerSentence.count >= lowerWord.count else { return [] }
+        var hits: [(start: Int, end: Int)] = []
+        var start = 0
+        while start <= lowerSentence.count - lowerWord.count {
             let end = start + lowerWord.count
-            guard Array(lowerSentence[start..<end]) == lowerWord else { continue }
-            let beforeOK = start == 0 || !isWordCharacter(lowerSentence[start - 1])
-            let afterOK = end == lowerSentence.count || !isWordCharacter(lowerSentence[end])
-            guard beforeOK, afterOK else { continue }
-            return String(characters[0..<start]) + "___" + String(characters[end...])
+            if Array(lowerSentence[start..<end]) == lowerWord {
+                let beforeOK = start == 0 || !isWordCharacter(lowerSentence[start - 1])
+                let afterOK = end == lowerSentence.count || !isWordCharacter(lowerSentence[end])
+                if beforeOK, afterOK {
+                    hits.append((start, end))
+                    start = end
+                    continue
+                }
+            }
+            start += 1
         }
-        return nil
+        return hits
     }
 
     private static func isWordCharacter(_ character: Character) -> Bool {
