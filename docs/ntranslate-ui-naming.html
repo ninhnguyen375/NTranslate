@@ -19,12 +19,14 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;ba
 td:first-child{width:26%}
 .f{color:var(--mut);font-size:12px}
 .note{background:var(--card);border:1px solid var(--line);border-left:3px solid var(--acc);border-radius:8px;padding:12px 14px;margin:14px 0}
+.note a{white-space:nowrap}
 </style></head><body>
 
 <h1>NTranslate — cách gọi đúng từng phần UI</h1>
 <p class="sub"><a href="ntranslate-ui-annotated.html">Xem sơ đồ chú thích trên ảnh thật</a> · Tên biến, tên chức năng và selector thực tế trong <code>Sources/translate/</code>. Dùng đúng tên này khi mô tả bug hoặc yêu cầu sửa.</p>
 
-<div class="note">Cấu trúc dọc của popup: <b>Title bar (chrome)</b> → <b>Main pane</b> (split source/result) → <b>Main action row</b> → <b>Subtranslate section</b> (split + action row riêng) → <b>Q&amp;A section</b>. Ô nhập câu hỏi <code>qaInputField</code> nằm cạnh action row của pane đang được hỏi.</div>
+<div class="note">Cấu trúc dọc của popup dịch: <b>Title bar (chrome)</b> → <b>Main pane</b> (split source/result) → <b>Main action row</b> → <b>Subtranslate section</b> (split + action row riêng) → <b>Q&amp;A section</b>. Ô nhập câu hỏi <code>qaInputField</code> nằm cạnh action row của pane đang được hỏi.</div>
+<div class="note">Cửa sổ Study là cửa sổ riêng (<code>NSWindow</code> tiêu đề "Study"), không phải popup dịch. Mở bằng <code>reviewButton</code> / <code>openReviewWindow</code>. Bên trong, <code>ReviewWindowController</code> chỉ hiện một <code>Screen</code> tại một thời điểm: <code>home</code> → <code>session</code> / <code>newWords</code> / <code>passages</code> → <code>summary</code>. Gọi đúng tên màn hình, đừng gọi cả cửa sổ là "popup Learn".</div>
 
 <h2>0. Cách gọi cụm icon trên header pane</h2>
 <p class="sub">Code gọi chúng là <code>trailingIcons</code> — tham số của <code>layoutPaneChrome</code> (<code>PopoverController+Layout.swift:421</code>), đặt trên <code>sourceHeaderBar</code> / <code>resultHeaderBar</code>. Dùng đúng tên này, đừng đặt tên mới kiểu "toolbar" hay "action group".</p>
@@ -122,5 +124,253 @@ td:first-child{width:26%}
 <tr><td>Nút trong pane khi lỗi/chưa cấu hình</td><td><code>setupOpenSettingsButton</code>, <code>setupGrantAccessButton</code>, <code>inPaneRetryButton</code></td><td><code>openSettingsMenu</code>, <code>requestAccessibilityPermissionMenu</code>, <code>retryRequest</code></td></tr>
 </table>
 
-<p class="f">Nguồn: PopoverController.swift, +Chrome, +Layout, +QA, +Subtranslate, +Language, ActionRowSection.swift, SubtranslateSection.swift, QAPaneSection.swift.</p>
+<div class="note">
+<b>Study, từ đây trở xuống.</b>
+<a href="#study-window">7. Cửa sổ</a> ·
+<a href="#study-home">8. Home</a> ·
+<a href="#study-buckets">9. Bucket</a> ·
+<a href="#study-limit">10. Session goal</a> ·
+<a href="#study-kinds">11. Question type</a> ·
+<a href="#study-entries">12. Lối vào phiên</a> ·
+<a href="#study-session">13. Session</a> ·
+<a href="#study-grade">14. Chấm điểm</a> ·
+<a href="#study-card">15. Thẻ cấu trúc</a> ·
+<a href="#study-reading">16. Reading</a> ·
+<a href="#study-passages">17. Passages</a> ·
+<a href="#study-dialogue">18. Create Dialogue</a> ·
+<a href="#study-newwords">19. New Words</a> ·
+<a href="#study-summary">20. Summary</a> ·
+<a href="#study-menu">21. Menu / phím tắt</a>
+</div>
+
+<h2 id="study-window">7. Cửa sổ Study — <code>ReviewWindowController</code></h2>
+<p class="sub">Cửa sổ thật (<code>window.title = "Study"</code>), kích thước mặc định <code>ReviewLayout.windowWidth</code> = 510. Mọi màn hình nằm trong <code>cardView</code> (<code>NSVisualEffectView</code>). Controller giữ trạng thái phiên: <code>isPracticeMode</code>, <code>isReadingMode</code>, <code>requestedKind</code>, <code>sessionLimit</code>, <code>selectedBucket</code>.</p>
+<table>
+<tr><th>Phần</th><th>Biến</th><th>Chức năng / selector</th></tr>
+<tr><td>Cửa sổ Study</td><td><code>window</code></td><td><code>showReview()</code> — kích hoạt app rồi <code>showHome()</code></td></tr>
+<tr><td>Thẻ kính chứa nội dung</td><td><code>cardView</code></td><td>Bo góc 16; mọi screen là subview, ẩn/hiện theo <code>show(_:)</code></td></tr>
+<tr><td>Màn hình đang mở</td><td><code>screen</code> (<code>Screen</code>)</td><td><code>home</code>, <code>session</code>, <code>summary</code>, <code>newWords</code>, <code>passages</code></td></tr>
+<tr><td>Dashboard</td><td><code>homeView</code> (<code>ReviewHomeView</code>)</td><td><code>showHome()</code> / <code>refreshHome()</code></td></tr>
+<tr><td>Phiên ôn / đọc</td><td><code>sessionView</code> (<code>ReviewSessionView</code>)</td><td>Dùng chung cho review card và reading passage</td></tr>
+<tr><td>Kết thúc phiên</td><td><code>summaryView</code> (<code>ReviewSummaryView</code>)</td><td>Hiện khi hết hàng đợi</td></tr>
+<tr><td>Học từ mới</td><td><code>newWordsView</code> (<code>NewWordsView</code>)</td><td><code>showNewWords()</code></td></tr>
+<tr><td>Danh sách đoạn đã lưu</td><td><code>passagesView</code> (<code>PassagesView</code>)</td><td><code>showPassages()</code></td></tr>
+<tr><td>Phiên luyện, không ghi lịch</td><td><code>isPracticeMode</code></td><td><code>ReviewPlanner.writesSchedule(isPractice:)</code> = false</td></tr>
+<tr><td>Đang đọc đoạn</td><td><code>isReadingMode</code></td><td>Cùng <code>sessionView</code> nhưng ẩn grade, hiện chat</td></tr>
+<tr><td>Loại câu hỏi đã chọn</td><td><code>requestedKind</code></td><td><code>nil</code> = Auto; lưu <code>learning.reviewQuestionKind</code></td></tr>
+<tr><td>Giới hạn số thẻ</td><td><code>sessionLimit</code></td><td><code>nil</code> = không giới hạn; lưu <code>learning.reviewSessionLimit</code></td></tr>
+<tr><td>Bộ lọc bucket</td><td><code>selectedBucket</code></td><td><code>nil</code> = mọi bucket; lưu <code>learning.reviewFilter</code></td></tr>
+</table>
+
+<h2 id="study-home">8. Màn hình Home — <code>ReviewHomeView</code></h2>
+<p class="sub">Màn hình mặc định khi mở Study. Code gọi đây là home, không phải "dashboard" hay "study popup". Mọi lựa chọn (bucket, limit, question type) gọi <code>homeViewDidChangeOptions</code> rồi <code>persistOptions()</code>.</p>
+<table>
+<tr><th>Phần trong hình</th><th>Biến</th><th>Chức năng / selector</th></tr>
+<tr><td>Vòng donut giữa các bucket</td><td><code>ring</code> (<code>DeckRingView</code>)</td><td>Headline <code>stats.dueToday</code>, caption "due today"</td></tr>
+<tr><td>Cột chú thích cạnh vòng</td><td><code>legendStack</code> / <code>legendTiles</code></td><td>Mỗi hàng là <code>LegendRow</code>; click = <code>toggleBucket</code></td></tr>
+<tr><td>Số chuỗi ngày</td><td><code>streakLabel</code></td><td><code>stats.dayStreak</code>; nhãn phụ "day streak"</td></tr>
+<tr><td>7 ô heatmap</td><td><code>heatRow</code> (7 × <code>HeatCell</code>)</td><td><code>stats.last7Days</code>; phần tử cuối = hôm nay</td></tr>
+<tr><td>Dòng "Last 7 days…"</td><td><code>heatCaption</code></td><td>Tổng tuần + <code>stats.dueTomorrow</code></td></tr>
+<tr><td>Thông báo deck trống</td><td><code>emptyLabel</code></td><td>Hiện khi <code>hasSavedCards == false</code></td></tr>
+<tr><td>Hàng chip giới hạn</td><td><code>limitRow</code> / <code>limitTiles</code></td><td>Header "SESSION GOAL"; 10 / 20 / All</td></tr>
+<tr><td>Lưới loại câu hỏi</td><td><code>modeGrid</code> / <code>modeTiles</code></td><td>Header "QUESTION TYPE"; 8 ô <code>ReviewTile</code></td></tr>
+<tr><td>Dòng tóm tắt lựa chọn</td><td><code>hintLabel</code></td><td><code>selectionHint()</code>: Filter · limit · Question type</td></tr>
+<tr><td>Nút chính xanh</td><td><code>startButton</code></td><td><code>tapStart</code> → <code>startSession()</code></td></tr>
+<tr><td>Nút xanh lá</td><td><code>newWordsButton</code></td><td>"Learn New Words" → <code>showNewWords()</code></td></tr>
+<tr><td>Nút tím</td><td><code>readingButton</code></td><td>"Reading Passage" → <code>showReadingPassage()</code></td></tr>
+<tr><td>Nút teal</td><td><code>passagesButton</code></td><td>"Saved Passages" → <code>showPassages()</code></td></tr>
+<tr><td>Nút cam</td><td><code>practiceButton</code></td><td>"Review All" → <code>startPracticeReview(shuffled: false)</code></td></tr>
+<tr><td>Nút hồng</td><td><code>shuffleButton</code></td><td>"Review All (Shuffled)" → <code>startPracticeReview(shuffled: true)</code></td></tr>
+</table>
+
+<h2 id="study-buckets">9. Bộ lọc bộ bài — <code>DeckStats.Bucket</code></h2>
+<p class="sub">Mỗi thẻ đã lưu thuộc đúng một bucket. Click <code>LegendRow</code> để lọc phiên; click lại hoặc nút X (<code>clearButton</code>) để bỏ lọc. Đừng gọi chúng là "tab" hay "folder".</p>
+<table>
+<tr><th>Nhãn trên UI</th><th>Case</th><th>Quy tắc / hành động</th></tr>
+<tr><td>Learning — still learning</td><td><code>.learning</code></td><td>Đã ôn, interval &lt; 21 ngày, chưa tới hạn</td></tr>
+<tr><td>Due — due for review</td><td><code>.due</code></td><td><code>DeckStats.isDue</code>: <code>dueDate</code> ≤ hết hôm nay</td></tr>
+<tr><td>New — never reviewed</td><td><code>.new</code></td><td><code>repetitions == 0</code> và chưa có <code>lastReviewedAt</code></td></tr>
+<tr><td>Mastered — already known</td><td><code>.mastered</code></td><td>Interval ≥ <code>DeckStats.masteredInterval</code> (21)</td></tr>
+<tr><td>Leech — missed too often</td><td><code>.leech</code></td><td><code>lapses ≥ ReviewPlanner.leechLapses</code> (8); ưu tiên hơn mọi bucket khác</td></tr>
+</table>
+<p class="sub">Nút Start đổi tên theo lọc: không lọc = <b>Start Learning (n)</b> hoặc <b>Review Anyway</b> khi không có thẻ tới hạn; có lọc = <b>Start Due (n)</b>, <b>Start Mastered</b>, … Hàm: <code>refreshStartButton()</code>.</p>
+
+<h2 id="study-limit">10. Session goal — <code>limitTiles</code></h2>
+<p class="sub">Ba chip <code>ReviewTile</code> compact. <code>nil</code> nghĩa là không cắt hàng đợi. Giá trị: <code>[10, 20, nil]</code>.</p>
+<table>
+<tr><th>Nhãn</th><th>Giá trị</th><th>Ghi chú</th></tr>
+<tr><td>10 cards</td><td><code>sessionLimit = 10</code></td><td><code>selectLimit(10)</code></td></tr>
+<tr><td>20 cards</td><td><code>sessionLimit = 20</code></td><td><code>selectLimit(20)</code></td></tr>
+<tr><td>All</td><td><code>sessionLimit = nil</code></td><td>Không giới hạn; hint viết "No limit"</td></tr>
+</table>
+
+<h2 id="study-kinds">11. Question type — <code>ReviewPlanner.QuestionKind</code></h2>
+<p class="sub">Tám ô trên <code>modeGrid</code>. Ô đầu là Auto (<code>requestedKind == nil</code>), không phải một case của enum. Mỗi thẻ trong phiên gọi <code>ReviewPlanner.resolve(requested:interval:repetitions:available:)</code>; mode không có dữ liệu trên thẻ rơi về Flip kèm ghi chú trên <code>hintLabel</code>.</p>
+<table>
+<tr><th>Ô trên Home</th><th>Kind</th><th>Cách hỏi trong session</th></tr>
+<tr><td>Auto — New cards start with recognition…</td><td><code>nil</code> → <code>autoKind</code></td><td>Thẻ mới: Flip. Interval tăng dần: Cloze → Contrast → Recall → Listen</td></tr>
+<tr><td>Flip — See the word, grade yourself…</td><td><code>.flip</code></td><td><code>ActiveQuestion.none</code>. Hiện từ, bấm Show Answer, tự chấm Again/Hard/Easy</td></tr>
+<tr><td>Cloze — Fill in the missing word…</td><td><code>.cloze</code></td><td><code>ActiveQuestion.typed</code>. Ô <code>answerField</code>, Return = <code>submitTypedAnswer()</code></td></tr>
+<tr><td>Recall — See the meaning, type the word</td><td><code>.recall</code></td><td>Cùng typed; prompt là nghĩa, đáp án là từ gốc</td></tr>
+<tr><td>Listen — Hear the word, then type it</td><td><code>.listen</code></td><td>Cùng typed; đọc audio rồi gõ từ</td></tr>
+<tr><td>Contrast — Pick the right word…</td><td><code>.contrast</code></td><td><code>ActiveQuestion.contrast</code>. Hai nút <code>firstChoiceButton</code> / <code>secondChoiceButton</code></td></tr>
+<tr><td>Collocation — Type the common pairing…</td><td><code>.collocation</code></td><td>Typed: gõ cụm đi kèm từ nghĩa</td></tr>
+<tr><td>Family — Type a related form…</td><td><code>.family</code></td><td>Typed: gõ dạng cùng họ từ gloss</td></tr>
+</table>
+<p class="sub">Typed / Contrast tự chấm bằng <code>ReviewPlanner.autoGrade</code> (đúng nhanh ≤ 6s = Easy; gần đúng 1 ký tự = Hard). Flip luôn tự chấm tay. Gọi đúng <b>question type</b> / <code>modeTiles</code>, đừng gọi "chế độ học" — tên đó dành cho lối vào phiên ở mục 12.</p>
+
+<h2 id="study-entries">12. Các lối vào phiên trên Home</h2>
+<p class="sub">Sáu nút dưới cùng là lối vào, không phải question type. Practice không ghi SM-2 (<code>writesSchedule(isPractice:) == false</code>).</p>
+<table>
+<tr><th>Nút</th><th>Lối vào</th><th>Hàng đợi / ghi chú</th></tr>
+<tr><td>Start Learning / Start &lt;Bucket&gt;</td><td><code>startSession()</code></td><td>Thẻ tới hạn hoặc bucket đã lọc, cắt theo <code>sessionLimit</code>. Ghi lịch SRS</td></tr>
+<tr><td>Review Anyway</td><td>cùng <code>startSession()</code></td><td>Không có thẻ tới hạn → rơi xuống <code>startPracticeReview(shuffled: false)</code></td></tr>
+<tr><td>Learn New Words</td><td><code>showNewWords()</code></td><td>Màn <code>.newWords</code>, không phải phiên SRS</td></tr>
+<tr><td>Reading Passage</td><td><code>showReadingPassage()</code></td><td>Dệt đoạn từ từ đang học; số trên nút = <code>missedCount</code></td></tr>
+<tr><td>Saved Passages</td><td><code>showPassages()</code></td><td>Danh sách <code>WeaveCache.entries()</code></td></tr>
+<tr><td>Review All</td><td><code>startPracticeReview(shuffled: false)</code></td><td>Mọi thẻ đã lưu, xen kẽ họ từ; tooltip "Practice only"</td></tr>
+<tr><td>Review All (Shuffled)</td><td><code>startPracticeReview(shuffled: true)</code></td><td>Xáo rồi xen kẽ; cũng practice only</td></tr>
+</table>
+
+<h2 id="study-session">13. Màn hình Session — <code>ReviewSessionView</code></h2>
+<p class="sub">Màn hình thẻ. Cùng view này cũng vẽ reading passage khi <code>isReadingMode</code>. Chrome trên cùng không zoom; chỉ <code>termLabel</code> / <code>contextLabel</code> / <code>resultLabel</code> / thẻ cấu trúc nhận Cmd+Plus.</p>
+<table>
+<tr><th>Phần trong hình</th><th>Biến</th><th>Chức năng / selector</th></tr>
+<tr><td>Icon nhà</td><td><code>homeButton</code></td><td><code>sessionViewDidTapHome</code> → <code>goHome()</code> (Esc)</td></tr>
+<tr><td>Icon hoàn tác</td><td><code>undoButton</code></td><td><code>undoLastGrade</code> (⌘Z)</td></tr>
+<tr><td>Icon gạch mắt</td><td><code>hideButton</code></td><td><code>hideCurrentCard()</code> — gỡ thẻ khỏi deck</td></tr>
+<tr><td>Thanh xanh/đỏ</td><td><code>progressBar</code> (<code>SessionProgressBar</code>)</td><td><code>correctFraction</code> / <code>wrongFraction</code></td></tr>
+<tr><td>Số đúng / sai / còn lại</td><td><code>countsLabel</code></td><td><code>updateProgress(correct:wrong:remaining:elapsed:practice:)</code></td></tr>
+<tr><td>Hàng pill (Flip · Due · rep 2)</td><td><code>pillRow</code></td><td><code>setPills(for:kind:)</code> — kind, bucket, repetitions</td></tr>
+<tr><td>Badge CEFR / tần suất</td><td><code>learnBadgeView</code></td><td>Cùng lớp với Learn trên popup dịch</td></tr>
+<tr><td>Từ / prompt lớn</td><td><code>termLabel</code></td><td>Từ nguồn, hoặc prompt cloze/recall</td></tr>
+<tr><td>Câu ngữ cảnh</td><td><code>contextLabel</code></td><td>Cắt ở <code>ReviewLayout.contextTruncateLimit</code> (100)</td></tr>
+<tr><td>Link "Read more"</td><td><code>readMoreButton</code></td><td><code>sessionViewDidToggleContext</code></td></tr>
+<tr><td>Loa / rùa / dịch</td><td><code>speakSourceButton</code>, <code>speakSlowSourceButton</code>, <code>openTranslateButton</code></td><td>Phím 4 / 5 / 6</td></tr>
+<tr><td>Ô gõ đáp án</td><td><code>answerField</code></td><td>Cloze, Recall, Listen, Collocation, Family</td></tr>
+<tr><td>Hai nút chọn</td><td><code>choiceStack</code></td><td>Contrast, hoặc chọn ngôn ngữ lúc đang weave</td></tr>
+<tr><td>Dòng "Correct / Not quite"</td><td><code>feedbackLabel</code></td><td><code>showAnswerFeedback</code></td></tr>
+<tr><td>Gợi ý mode không đủ data</td><td><code>hintLabel</code></td><td>Ví dụ "This card has no cloze data, showing Flip."</td></tr>
+<tr><td>Đáp án markdown thô</td><td><code>resultLabel</code></td><td>Khi thẻ không parse được dạng structured</td></tr>
+<tr><td>Thẻ học có cấu trúc</td><td><code>learnCardView</code></td><td><code>showStructuredAnswer(_:)</code> sau khi lật</td></tr>
+<tr><td>Nút "Show Answer (Space)"</td><td><code>revealButton</code></td><td><code>revealAnswer()</code></td></tr>
+</table>
+
+<h2 id="study-grade">14. Chấm điểm — <code>SRSGrade</code></h2>
+<p class="sub">Ba nút lớn hiện sau khi lật Flip. Typed/Contrast thay bằng một nút Continue + hàng Override. Gọi <b>grade buttons</b> / <code>gradeStack</code>, không gọi "difficulty chips".</p>
+<table>
+<tr><th>Nút</th><th>Biến</th><th>Grade / selector</th></tr>
+<tr><td>Again (1) đỏ</td><td><code>againButton</code></td><td><code>SRSGrade.again</code> → interval về 1 ngày</td></tr>
+<tr><td>Hard (2) cam</td><td><code>hardButton</code></td><td><code>SRSGrade.hard</code> → interval × 1.2</td></tr>
+<tr><td>Easy (3) xanh</td><td><code>easyButton</code></td><td><code>SRSGrade.easy</code> → interval × ease</td></tr>
+<tr><td>Hàng ba nút</td><td><code>gradeStack</code></td><td>Ẩn khi có <code>pendingAutoGrade</code></td></tr>
+<tr><td>Nút Continue rộng</td><td><code>continueButton</code> trong <code>autoGradeStack</code></td><td>Nhận grade model đã chọn; Enter</td></tr>
+<tr><td>Override: Again / Hard / Easy</td><td><code>overrideAgain</code>, <code>overrideHard</code>, <code>overrideEasy</code></td><td>Ghi đè auto-grade</td></tr>
+</table>
+<p class="sub">Thẻ sai được xếp lại trong cùng phiên tối đa 2 lần, cách <code>ReviewPlanner.relearnGap</code> = 10 thẻ (<code>requeueForRelearning</code>).</p>
+
+<h2 id="study-card">15. Thẻ đáp án có cấu trúc — <code>LearnStructuredCardView</code></h2>
+<p class="sub">Hiện sau Show Answer khi <code>LearnCard.shouldDisplayStructured</code>. Trong Study: <code>showsHero = false</code>, <code>showsSelfCheck = true</code>. Đừng gọi đây là "Learn popup" — đó là cùng view nhưng trên popup dịch thì <code>showsHero = true</code>.</p>
+<table>
+<tr><th>Section trên thẻ</th><th>Hàm dựng</th><th>Nguồn dữ liệu</th></tr>
+<tr><td>Phiên âm (không có hero)</td><td><code>makePronunciationOnly()</code></td><td><code>card.pronunciation</code></td></tr>
+<tr><td>Nghĩa</td><td><code>makeMeanings()</code></td><td><code>card.meanings</code></td></tr>
+<tr><td>SYNONYMS / ANTONYMS</td><td><code>makeWordList</code></td><td><code>card.synonyms</code> / <code>card.antonyms</code></td></tr>
+<tr><td>Ví dụ + pill lọc level</td><td><code>makeExamples()</code></td><td><code>card.examples</code>, <code>exampleFilter</code></td></tr>
+<tr><td>Từ dễ nhầm</td><td><code>makeConfusables()</code></td><td><code>card.confusables</code></td></tr>
+<tr><td>Họ từ</td><td><code>makeFamily()</code></td><td><code>card.familyForms</code></td></tr>
+<tr><td>Cụm đi kèm</td><td><code>makeCollocations()</code></td><td><code>card.collocations</code></td></tr>
+<tr><td>Gợi nhớ</td><td><code>makeMnemonic()</code></td><td><code>card.mnemonic</code></td></tr>
+<tr><td>SELF-CHECK</td><td><code>makeCloze()</code></td><td><code>answerField</code> + <code>checkButton</code> trên chính thẻ</td></tr>
+</table>
+
+<h2 id="study-reading">16. Reading Passage — <code>isReadingMode</code></h2>
+<p class="sub">Vẫn là <code>sessionView</code>, không phải màn <code>Screen</code> riêng. Đoạn do model dệt (<code>requestReadingPassage</code>), lưu <code>WeaveCache</code>. Trong lúc chờ, hai nút Contrast tạm dùng để chọn ngôn ngữ mở đoạn.</p>
+<table>
+<tr><th>Phần trong hình</th><th>Biến</th><th>Chức năng / selector</th></tr>
+<tr><td>Tiêu đề đoạn + nút xoay</td><td><code>termLabel</code> + <code>titleRefreshButton</code></td><td><code>regeneratePassageTitle()</code></td></tr>
+<tr><td>Danh sách từ đang luyện</td><td><code>wordsDetailLabel</code></td><td>Hiện dưới <code>pillContainer</code> khi đọc</td></tr>
+<tr><td>English / Vietnamese / Both</td><td><code>readingModeControl</code></td><td><code>ReadingChatView.Mode</code>: <code>source</code> / <code>translation</code> / <code>both</code></td></tr>
+<tr><td>Bong bóng hội thoại</td><td><code>readingChatView</code></td><td><code>onSpeak</code>, <code>onWord</code>, <code>onLearn</code>, <code>onTranslate</code></td></tr>
+<tr><td>Thanh chọn chữ trong đoạn</td><td><code>ReadingSelectionBar</code></td><td>Nằm trong <code>readingChatView</code></td></tr>
+<tr><td>Nút Back</td><td><code>backButton</code></td><td><code>leaveReading()</code> → <code>readingReturnScreen</code></td></tr>
+<tr><td>Nút Regenerate</td><td><code>regenerateButton</code></td><td><code>regeneratePassage()</code> — cùng từ + <code>currentScenario</code></td></tr>
+<tr><td>Nút Mark Done</td><td><code>markDoneButton</code></td><td><code>togglePassageDone()</code></td></tr>
+</table>
+
+<h2 id="study-passages">17. Saved Passages — <code>PassagesView</code></h2>
+<p class="sub">Màn <code>.passages</code>. Mỗi hàng là passage đã cache, không phải thẻ SRS.</p>
+<table>
+<tr><th>Phần trong hình</th><th>Biến</th><th>Chức năng / selector</th></tr>
+<tr><td>Nút back trên header</td><td><code>backButton</code></td><td><code>passagesViewDidTapBack</code> → <code>goHome()</code></td></tr>
+<tr><td>Chữ "Saved Passages"</td><td><code>titleLabel</code></td><td></td></tr>
+<tr><td>Số "n passages"</td><td><code>countLabel</code></td><td></td></tr>
+<tr><td>Nút "Create Dialogue"</td><td><code>createButton</code></td><td><code>CustomDialogueDialog.present</code></td></tr>
+<tr><td>Bảng danh sách</td><td><code>table</code> (<code>NSTableView</code>)</td><td>Double-click = mở đoạn</td></tr>
+<tr><td>Trống</td><td><code>emptyLabel</code></td><td>"No saved passages yet."</td></tr>
+<tr><td>Nút tick trên hàng</td><td><code>doneButton</code> trong row</td><td><code>didToggleDone</code> — <code>WeavePassage.isDone</code></td></tr>
+<tr><td>Nút thùng rác</td><td><code>deleteButton</code></td><td><code>WeaveCache.delete</code></td></tr>
+<tr><td>Chevron mở</td><td><code>openButton</code></td><td><code>presentReading(..., returnScreen: .passages)</code></td></tr>
+</table>
+
+<h2 id="study-dialogue">18. Hộp thoại Create Dialogue — <code>CustomDialogueDialog</code></h2>
+<p class="sub">Sheet trên cửa sổ Study, không phải màn <code>Screen</code>. Chỉ cần từ hoặc scenario, không bắt buộc cả hai.</p>
+<table>
+<tr><th>Phần</th><th>Biến / control</th><th>Ghi chú</th></tr>
+<tr><td>Tiêu đề alert</td><td><code>messageText</code></td><td>"Create Custom Dialogue"</td></tr>
+<tr><td>Ô từ mục tiêu</td><td>NSTextView words</td><td><code>parseWords</code>, tối đa 15 từ</td></tr>
+<tr><td>Nút "Random words I'm studying"</td><td><code>WordShuffler</code></td><td><code>randomStudyWords()</code> từ thẻ Learn đã lưu</td></tr>
+<tr><td>Popup scenario có sẵn</td><td><code>PresetPicker</code> / <code>scenarioPresets</code></td><td>Mục đầu: "Custom scenario…"</td></tr>
+<tr><td>Ô mô tả cảnh</td><td>NSTextView scenario</td><td>Gửi vào <code>requestReadingPassage(..., scenario:)</code></td></tr>
+<tr><td>Generate / Cancel</td><td>nút alert</td><td>Generate → dệt đoạn, <code>readingReturnScreen = .passages</code></td></tr>
+</table>
+
+<h2 id="study-newwords">19. Learn New Words — <code>NewWordsView</code></h2>
+<p class="sub">Duyệt gói từ vựng có sẵn, từng từ một. Quyết định qua <code>NewWordsView.Decision</code>. Không ghi SRS cho tới khi bấm Learn.</p>
+<table>
+<tr><th>Phần trong hình</th><th>Biến</th><th>Chức năng / selector</th></tr>
+<tr><td>Icon nhà</td><td>home button trong top bar</td><td><code>newWordsViewDidRequestHome</code></td></tr>
+<tr><td>Popup level</td><td><code>levelPopup</code></td><td><code>VocabDiscovery.Filter</code>: All / CEFR / Known</td></tr>
+<tr><td>Dòng tiến độ</td><td><code>progressLabel</code></td><td>"n learned · n known · n skipped · n left"</td></tr>
+<tr><td>Từ lớn</td><td><code>wordLabel</code></td><td></td></tr>
+<tr><td>Loa / rùa</td><td><code>speakButton</code>, <code>speakSlowButton</code></td><td>Phím 4 / 5</td></tr>
+<tr><td>Badge mức dùng</td><td><code>learnBadgeView</code></td><td></td></tr>
+<tr><td>Nội dung giải thích</td><td><code>detailView</code> trong <code>detailScroll</code></td><td></td></tr>
+<tr><td>Known (1)</td><td><code>knownButton</code></td><td><code>.known</code> hoặc <code>.unmarkKnown</code> khi đang xem Known</td></tr>
+<tr><td>Learn (2)</td><td><code>learnButton</code></td><td><code>.learn</code> — thêm vào deck, ôn hôm nay</td></tr>
+<tr><td>Skip (3) / Next (3)</td><td><code>skipButton</code></td><td><code>.skip</code> hoặc <code>.next</code> trong Known mode</td></tr>
+</table>
+
+<h2 id="study-summary">20. Màn hình Summary — <code>ReviewSummaryView</code></h2>
+<p class="sub">Hiện khi hết hàng đợi. Tiêu đề đổi: phiên thật = "Today's session done"; practice = "Practice round done".</p>
+<table>
+<tr><th>Phần trong hình</th><th>Biến</th><th>Chức năng / selector</th></tr>
+<tr><td>Icon dấu niêm xanh</td><td>seal <code>checkmark.seal.fill</code></td><td></td></tr>
+<tr><td>Tiêu đề / phụ đề</td><td><code>titleLabel</code>, <code>subtitleLabel</code></td><td>"n cards graded"</td></tr>
+<tr><td>Bốn ô số</td><td><code>tileRow</code></td><td>Accuracy · Time · Average/card · Left today</td></tr>
+<tr><td>Mục "CARDS TO WATCH"</td><td><code>missedHeader</code> + <code>missedStack</code></td><td>Danh sách <code>Result.missed</code></td></tr>
+<tr><td>Cảnh báo leech cam</td><td><code>leechNote</code></td><td>Hiện khi một từ trong missed là leech</td></tr>
+<tr><td>Redrill missed cards</td><td><code>redrillButton</code></td><td><code>redrillMissed()</code> — practice các thẻ vừa sai</td></tr>
+<tr><td>Continue remaining</td><td><code>continueButton</code></td><td><code>startSession()</code> nếu còn due hôm nay</td></tr>
+<tr><td>Weave into a passage</td><td><code>readingButton</code></td><td><code>showReadingPassage()</code></td></tr>
+<tr><td>Back to home</td><td><code>homeButton</code></td><td><code>goHome()</code></td></tr>
+</table>
+
+<h2 id="study-menu">21. Menu Study và phím tắt — <code>StudyMenuCommand</code></h2>
+<p class="sub">Menu bar "Study" (<code>buildStudyMenu</code>) gọi cùng path với nút. Tag bắt đầu <code>studyMenuTagBase</code> = 9100. Phím ⌘ ở menu để khỏi đụng 1/2/3 trần trên thẻ.</p>
+<table>
+<tr><th>Mục menu</th><th>Case</th><th>Phím / lệnh controller</th></tr>
+<tr><td>Start Learning</td><td><code>.start</code></td><td>⌘↩ → <code>StudyCommand.start</code></td></tr>
+<tr><td>Learn New Words</td><td><code>.newWords</code></td><td>⌘N</td></tr>
+<tr><td>Show Answer</td><td><code>.showAnswer</code></td><td>Space trên cửa sổ (không gán ⌘)</td></tr>
+<tr><td>Grade: Again / Hard / Easy</td><td><code>.gradeAgain</code> …</td><td>⌘1 / ⌘2 / ⌘3</td></tr>
+<tr><td>Undo Grade</td><td><code>.undo</code></td><td>⌘Z</td></tr>
+<tr><td>Remove Card from Deck</td><td><code>.skip</code></td><td>⌘⌫ → <code>hideCurrentCard()</code></td></tr>
+<tr><td>Reading Passage</td><td><code>.reading</code></td><td>⌘R</td></tr>
+<tr><td>Saved Passages</td><td><code>.passages</code></td><td>⇧⌘R</td></tr>
+<tr><td>Back to Home</td><td><code>.home</code></td><td>⌘0</td></tr>
+</table>
+<p class="sub">Phím trên thẻ (không phải menu): Space lật đáp án rồi cycle-scroll; Enter tiếp tục sau auto-grade; 1/2/3 chấm hoặc chọn Contrast; 4/5 đọc; 6 mở Translate; Esc về home rồi đóng cửa sổ. Học từ mới: 1/2/3 = Known/Learn/Skip. Danh sách đầy đủ: <code>showKeyboardShortcuts()</code>.</p>
+
+<p class="f">Nguồn: PopoverController.swift, +Chrome, +Layout, +QA, +Subtranslate, +Language, +Menu, +Study, ActionRowSection.swift, SubtranslateSection.swift, QAPaneSection.swift, ReviewWindowController.swift, ReviewHomeView.swift, ReviewSessionView.swift, ReviewSummaryView.swift, ReviewPlanner.swift, DeckStats.swift, NewWordsView.swift, PassagesView.swift, LearnStructuredCardView.swift, ReadingChatView.swift, CustomDialogueDialog.swift.</p>
 </body></html>

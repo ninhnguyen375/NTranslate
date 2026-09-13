@@ -101,10 +101,30 @@ struct LearnCardCheck {
         expect(card.familyQuiz?.prompt.contains("n. sự bỏ rơi") == true, "family quiz shows the gloss")
         expect(card.cloze?.answer == "abandon", "cloze answer parsed")
         expect(card.cloze?.prompt.contains("___") == true, "cloze prompt keeps its blank")
-        expect(card.cloze?.hintedPrompt.contains("a _ _ _ _ _ _") == true,
+        expect(card.minedCloze(from: "They abandon the ___ quickly.") == nil, "a sentence that already has a blank is not mined")
+expect(card.cloze?.hintedPrompt.contains("a______") == true,
                "cloze blank becomes a first letter plus one underscore per remaining character")
-        expect(LearnCard.ClozeQuestion.hint(for: "give up") == "g _ _ _   u _", "multi-word hint keeps word boundaries")
-        expect(LearnCard.ClozeQuestion.hint(for: "well-known") == "w _ _ _ - _ _ _ _ _", "punctuation stays visible")
+        expect(card.synonyms.map(\.form) == ["desert", "leave"], "synonyms parsed from Từ đồng nghĩa")
+        expect(card.antonyms.map(\.form) == ["keep"], "antonyms parsed from Từ trái nghĩa")
+        expect(card.synonyms.allSatisfy { $0.gloss.isEmpty }, "plain synonyms have no gloss")
+
+        let glossedRelated = LearnCard.parse("""
+        Từ gốc: takeoff
+        Phiên âm: /ˈteɪkɒf/
+        n. sự cất cánh
+        Từ đồng nghĩa: departure (chuyến khởi hành), launch (sự phóng)
+        Từ trái nghĩa: landing: hạ cánh
+        """)
+        expect(glossedRelated.synonyms.map(\.form) == ["departure", "launch"],
+               "glossed synonyms keep the English word")
+        expect(glossedRelated.synonyms.map(\.gloss) == ["chuyến khởi hành", "sự phóng"],
+               "parenthetical synonym gloss is kept")
+        expect(glossedRelated.antonyms.first?.form == "landing", "colon antonym keeps the word")
+        expect(glossedRelated.antonyms.first?.gloss == "hạ cánh", "colon antonym keeps the gloss")
+        expect(card.mnemonic.contains("a ban donner"),
+               "Nhớ nhanh is kept as mnemonic, got \(card.mnemonic)")
+        expect(LearnCard.ClozeQuestion.hint(for: "give up") == "g___ u_", "multi-word hint keeps word boundaries")
+        expect(LearnCard.ClozeQuestion.hint(for: "well-known") == "w___-_____", "punctuation stays visible")
 
         let legacy = LearnCard.parse(legacyCard)
         expect(legacy.examples.count == 2, "pre-change card still yields examples")
@@ -113,6 +133,24 @@ struct LearnCardCheck {
         expect(legacy.wordFamily.isEmpty, "(không có) yields no word family")
         expect(legacy.collocations.isEmpty, "a card with no collocation section yields none")
         expect(legacy.cloze?.answer == "a", "legacy cloze still parses")
+        expect(legacy.mnemonic.isEmpty, "a card without Nhớ nhanh yields an empty mnemonic")
+
+        let emptyMnemonic = LearnCard.parse("""
+        Từ gốc: solo
+        Phiên âm: /ˈsəʊləʊ/
+        n. độc tấu
+        Nhớ nhanh: (không có)
+        """)
+        expect(emptyMnemonic.mnemonic.isEmpty, "Nhớ nhanh: (không có) yields an empty mnemonic")
+
+        let inlineMnemonic = LearnCard.parse("""
+        Từ gốc: resilient
+        Phiên âm: /rɪˈzɪliənt/
+        adj. kiên cường
+        Nhớ nhanh: gốc re + salire, nhảy lại
+        """)
+        expect(inlineMnemonic.mnemonic == "gốc re + salire, nhảy lại",
+               "an inline Nhớ nhanh value is kept, got \(inlineMnemonic.mnemonic)")
 
         let emptyCollocation = LearnCard.parse("""
         Từ gốc: solo
@@ -122,6 +160,16 @@ struct LearnCardCheck {
         expect(emptyCollocation.collocations.isEmpty, "(không có) yields no collocation")
         expect(emptyCollocation.collocationQuiz == nil, "no pairing means no collocation quiz")
         expect(emptyCollocation.familyQuiz == nil, "no family means no family quiz")
+
+        let emptyRelated = LearnCard.parse("""
+        Từ gốc: solo
+        Phiên âm: /ˈsəʊləʊ/
+        n. độc tấu
+        Từ đồng nghĩa: (không có)
+        Từ trái nghĩa: (không có)
+        """)
+        expect(emptyRelated.synonyms.isEmpty, "(không có) yields no synonyms")
+        expect(emptyRelated.antonyms.isEmpty, "(không có) yields no antonyms")
 
         let indentedAnswer = LearnCard.parse("""
         Từ gốc: ability

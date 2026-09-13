@@ -45,6 +45,12 @@ swiftc -parse-as-library Sources/translate/TranslationHistoryStore.swift Sources
   Sources/translate/LearnCard.swift Sources/translate/DeckStats.swift Scripts/deck-stats-check.swift \
   -o /tmp/deck-stats-check && /tmp/deck-stats-check
 
+swiftc -parse-as-library Sources/translate/TranslationHistoryStore.swift \
+  Sources/translate/ReviewPlanner.swift Sources/translate/LearnCard.swift \
+  Sources/translate/DeckStats.swift Sources/translate/Plural.swift \
+  Sources/translate/ReviewHomeView.swift Scripts/study-window-size-check.swift \
+  -o /tmp/study-window-size-check && /tmp/study-window-size-check
+
 swiftc -parse-as-library Sources/translate/VocabPack.swift Sources/translate/WeaveCache.swift \
   Sources/translate/VocabDiscovery.swift Scripts/vocab-discovery-check.swift \
   -o /tmp/vocab-discovery-check && /tmp/vocab-discovery-check

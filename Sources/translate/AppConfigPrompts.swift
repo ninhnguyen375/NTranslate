@@ -163,8 +163,8 @@ extension AppConfig {
     v. ...
     adj. ...
 
-    Từ đồng nghĩa: ..., ...
-    Từ trái nghĩa: ..., ...
+    Từ đồng nghĩa: word (nghĩa tiếng Việt), word (nghĩa tiếng Việt)
+    Từ trái nghĩa: word (nghĩa tiếng Việt)
 
     Đi kèm thường gặp
     - <collocation nguyên gốc>: <nghĩa ngắn tiếng Việt>
@@ -217,8 +217,8 @@ extension AppConfig {
     - Each Vietnamese translation MUST be on the next line and start with "  → ".
     - Put exactly one blank line between sections.
     - "Từ đồng nghĩa" and "Từ trái nghĩa" must each be on their own line, formatted exactly as:
-      Từ đồng nghĩa: word1, word2
-      Từ trái nghĩa: word1, word2
+      Từ đồng nghĩa: word1 (Vietnamese gloss), word2 (Vietnamese gloss)
+      Từ trái nghĩa: word1 (Vietnamese gloss)
     - List 2-4 common synonyms and 1-3 common antonyms when they exist.
     - If no natural antonym exists, write: Từ trái nghĩa: (không có)
     - If no useful synonym exists, write: Từ đồng nghĩa: (không có)

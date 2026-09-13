@@ -152,6 +152,13 @@ extension PopoverController {
     }
 
     func performTranslate(generation existingGeneration: Int?, bypassCache: Bool = false) {
+        if pendingImage == nil {
+            let text = inputTextView.string.trimmingCharacters(in: .whitespacesAndNewlines)
+            if Translator.isDictionaryTerm(text) {
+                runLearn(bypassCache: bypassCache)
+                return
+            }
+        }
         invalidateCurrentRecord()
         removeQASection()
         qaInputField.stringValue = ""

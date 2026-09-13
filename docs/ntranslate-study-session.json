@@ -1,0 +1,18 @@
+{
+  "image": "ntranslate-study-session.jpg",
+  "out": "/Volumes/ESSD/Code/MacOS/NTranslate/docs/_tmp-study-session.html",
+  "title": "Study Session — câu hỏi Flip",
+  "intro": "ReviewSessionView trước khi lật. Cùng view này cũng vẽ Reading khi isReadingMode.",
+  "items": [
+    {"x": 55, "y": 130, "code": "homeButton", "desc": "goHome — Esc", "side": "L"},
+    {"x": 115, "y": 130, "code": "undoButton", "desc": "undoLastGrade — ⌘Z", "side": "L"},
+    {"x": 175, "y": 130, "code": "hideButton", "desc": "hideCurrentCard — gỡ khỏi deck", "side": "L"},
+    {"x": 400, "y": 130, "code": "progressBar", "desc": "SessionProgressBar — đúng / sai", "side": "L"},
+    {"x": 880, "y": 130, "code": "countsLabel", "desc": "updateProgress — còn lại + đồng hồ", "side": "R"},
+    {"x": 500, "y": 195, "code": "pillRow", "desc": "setPills — kind · bucket · rep", "side": "R"},
+    {"x": 500, "y": 245, "code": "learnBadgeView", "desc": "CEFR / tần suất / register", "side": "R"},
+    {"x": 480, "y": 760, "code": "termLabel", "desc": "Từ nguồn / prompt câu hỏi", "side": "L"},
+    {"x": 750, "y": 760, "code": "speak / translate icons", "desc": "speakSource · speakSlow · openTranslate — 4 / 5 / 6", "side": "R"},
+    {"x": 510, "y": 1290, "code": "revealButton", "desc": "revealAnswer — Space", "side": "L"}
+  ]
+}

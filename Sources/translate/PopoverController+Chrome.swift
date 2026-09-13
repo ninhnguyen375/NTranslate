@@ -161,6 +161,19 @@ extension PopoverController {
         textScrollView.scrollerStyle = .overlay
         textScrollView.documentView = textView
 
+        learnCardView.onSpeak = { [weak self] in self?.speakInput() }
+        learnCardView.onLearnWord = { [weak self] word in self?.learn(word) }
+        learnCardView.onOpenSubtranslate = { [weak self] word in self?.openWordInSubtranslate(word) }
+        learnCardView.onNeedsReflow = { [weak self] in self?.reflowLayout() }
+        learnCardScrollView.borderType = .noBorder
+        learnCardScrollView.drawsBackground = false
+        learnCardScrollView.hasVerticalScroller = true
+        learnCardScrollView.hasHorizontalScroller = false
+        learnCardScrollView.autohidesScrollers = true
+        learnCardScrollView.scrollerStyle = .overlay
+        learnCardScrollView.documentView = learnCardView
+        learnCardScrollView.isHidden = true
+
         configureActionRow(mainActionRow, isSub: false)
         updateShortcutLabels()
         configureIconButton(speakSourceButton, symbol: "speaker.wave.2", action: #selector(speakInput), label: "Speak source")
@@ -189,6 +202,8 @@ extension PopoverController {
         sourceCard.addSubview(inputContextLabel)
         sourceCard.addSubview(inputScrollView)
         sourceCard.addSubview(imagePlaceholderLabel)
+        configureLearnRelatedImageStrip()
+        sourceCard.addSubview(learnRelatedImageStrip)
 
         resultHeaderBar.addSubview(resultHeaderLabel)
         resultHeaderBar.addSubview(learnBadgeView)
@@ -200,6 +215,7 @@ extension PopoverController {
         resultHeaderBar.addSubview(saveWordButton)
         resultCard.addSubview(resultHeaderBar)
         resultCard.addSubview(textScrollView)
+        resultCard.addSubview(learnCardScrollView)
         resultCard.addSubview(setupOpenSettingsButton)
         resultCard.addSubview(setupGrantAccessButton)
         resultCard.addSubview(inPaneRetryButton)
@@ -663,6 +679,22 @@ extension PopoverController {
         button.toolTip = label
         button.setAccessibilityLabel(label)
         button.contentTintColor = Palette.iconTint
+    }
+
+    func configureLearnRelatedImageStrip() {
+        learnRelatedImageStrip.onOpen = { [weak self] in self?.openLearnRelatedImage() }
+        learnRelatedImageStrip.onImagesChanged = { [weak self] in
+            guard let self, self.panel.contentView != nil else { return }
+            self.reflowLayout()
+        }
+        bindImageQueryRewrite(learnRelatedImageStrip)
+    }
+
+    func bindImageQueryRewrite(_ strip: LearnRelatedImageStrip) {
+        strip.onResolveQuery = { [weak self] text, done in
+            let handle = self?.translator?.imageSearchQuery(text, completion: done)
+            return { handle?.cancel() }
+        }
     }
 
     func resetCopyButtonAppearance() {

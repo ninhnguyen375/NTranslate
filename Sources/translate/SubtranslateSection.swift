@@ -15,6 +15,12 @@ final class SubtranslateSection {
     let resultHeaderBar = NSView(frame: .zero)
     let resultHeaderLabel = NSTextField(labelWithString: "VI")
     let learnBadgeView = LearnBadgeView()
+    let learnCardView = LearnStructuredCardView()
+    let learnCardScrollView = NSScrollView(frame: .zero)
+    let relatedImageStrip = LearnRelatedImageStrip()
+    var isShowingStructuredLearnCard = false
+    /// Kết quả gốc, gồm cả dòng Mức dùng, dùng cho Copy / kiểm tra copyable.
+    var lastResultRaw = ""
     let sourceTextView = SelectableTextView(frame: .zero)
     let sourceScrollView = NSScrollView(frame: .zero)
     let resultTextView = SelectableTextView(frame: .zero)

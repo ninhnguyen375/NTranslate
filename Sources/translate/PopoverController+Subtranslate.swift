@@ -64,10 +64,36 @@ extension PopoverController {
         section.sourceHeaderBar.addSubview(section.speakSourceSlowButton)
         section.sourceCard.addSubview(section.sourceHeaderBar)
         section.sourceCard.addSubview(section.sourceScrollView)
+        section.relatedImageStrip.onOpen = { [weak self, weak section] in
+            guard let section else { return }
+            self?.openLearnRelatedImage(strip: section.relatedImageStrip)
+        }
+        section.relatedImageStrip.onImagesChanged = { [weak self] in
+            guard let self, self.panel.contentView != nil else { return }
+            self.reflowLayout()
+        }
+        bindImageQueryRewrite(section.relatedImageStrip)
+        section.sourceCard.addSubview(section.relatedImageStrip)
 
         section.resultHeaderBar.addSubview(section.resultHeaderLabel)
         section.resultHeaderBar.addSubview(section.learnBadgeView)
         section.learnBadgeView.isHidden = true
+        section.learnCardView.onSpeak = { [weak self] in self?.speakSubSource() }
+        section.learnCardView.onLearnWord = { [weak self] word in
+            self?.runSubRequest(text: word, mode: .learn, bypassCache: true)
+        }
+        section.learnCardView.onOpenSubtranslate = { [weak self] word in
+            self?.openWordInSubtranslate(word)
+        }
+        section.learnCardView.onNeedsReflow = { [weak self] in self?.reflowLayout() }
+        section.learnCardScrollView.borderType = .noBorder
+        section.learnCardScrollView.drawsBackground = false
+        section.learnCardScrollView.hasVerticalScroller = true
+        section.learnCardScrollView.hasHorizontalScroller = false
+        section.learnCardScrollView.autohidesScrollers = true
+        section.learnCardScrollView.scrollerStyle = .overlay
+        section.learnCardScrollView.documentView = section.learnCardView
+        section.learnCardScrollView.isHidden = true
         section.resultHeaderBar.addSubview(section.speakResultButton)
         section.resultHeaderBar.addSubview(section.speakResultSlowButton)
         section.resultHeaderBar.addSubview(section.retryButton)
@@ -76,6 +102,7 @@ extension PopoverController {
         section.resultHeaderBar.addSubview(section.closeButton)
         section.resultCard.addSubview(section.resultHeaderBar)
         section.resultCard.addSubview(section.resultScrollView)
+        section.resultCard.addSubview(section.learnCardScrollView)
 
         for textView in [section.sourceTextView, section.resultTextView] {
             textView.delegate = self
@@ -133,6 +160,15 @@ extension PopoverController {
             bodyHeight: bodyHeight,
             badgeView: section.learnBadgeView
         )
+        layoutSubLearnCardScroll(section)
+        layoutLearnRelatedImage(
+            paneWidth: panes.left,
+            bodyHeight: bodyHeight,
+            showing: section.isShowingStructuredLearnCard,
+            strip: section.relatedImageStrip,
+            scrollView: section.sourceScrollView,
+            textView: section.sourceTextView
+        )
     }
 
     func configureSectionDivider(_ section: SubtranslateSection) {
@@ -182,6 +218,7 @@ extension PopoverController {
             qaInputField.placeholderString = "Ask follow-up questions about translation..."
         }
         if currentFloatingIsSub { hideFloatingSelectionBar() }
+        subSection?.relatedImageStrip.clear()
         subSection?.removeFromSuperview()
         subSection = nil
     }
@@ -199,6 +236,7 @@ extension PopoverController {
         case .loading: color = Palette.loadingText
         case .error: color = .systemRed
         }
+        section.lastResultRaw = value
         let wasBadgeHidden = section.learnBadgeView.isHidden
         let textToDisplay = section.learnBadgeView.apply(to: value, live: style != .error)
         section.setResult(
@@ -207,14 +245,46 @@ extension PopoverController {
             color: color,
             markdown: style == .normal
         )
+        applyStructuredSubLearnCard(section, raw: value, style: style)
         updateSubButtons(section)
         if wasBadgeHidden != section.learnBadgeView.isHidden, panel.contentView != nil {
             reflowLayout()
         }
     }
 
+    /// Cùng điều kiện với pane chính: parse đủ headword, phiên âm, một dòng nghĩa.
+    func applyStructuredSubLearnCard(
+        _ section: SubtranslateSection,
+        raw: String,
+        style: PopoverFeedback.ResultStyle
+    ) {
+        let show = LearnCard.shouldPresentStructured(raw, isError: style == .error)
+        pinSubLearnCardToTop = show
+        if show {
+            let card = LearnCard.parse(raw)
+            section.learnCardView.applyUsage(from: raw, live: true)
+            section.learnCardView.display(card)
+            let imageTerm = LearnRelatedImage.searchTerm(from: card)
+            let seed = imageTerm.isEmpty ? section.sourceText : imageTerm
+            section.relatedImageStrip.refresh(term: seed, rewriteSource: section.sourceText)
+        } else if section.isShowingStructuredLearnCard {
+            section.learnCardView.resetScrollState()
+            section.learnCardView.applyUsage(from: "", live: false)
+            section.relatedImageStrip.clear()
+        }
+        if section.isShowingStructuredLearnCard != show {
+            section.isShowingStructuredLearnCard = show
+            section.resultScrollView.isHidden = show
+            section.learnCardScrollView.isHidden = !show
+        }
+        if show, panel.contentView != nil {
+            reflowLayout()
+            scrollLearnCardToTop(section.learnCardScrollView)
+        }
+    }
+
     func updateSubButtons(_ section: SubtranslateSection) {
-        let copyable = PopoverFeedback.isCopyableResult(section.resultText, isStreaming: section.requestInFlight)
+        let copyable = PopoverFeedback.isCopyableResult(section.lastResultRaw, isStreaming: section.requestInFlight)
         section.copyButton.isEnabled = copyable
         updateSubSpeakButtons(section)
         section.saveWordButton.isHidden = !copyable
@@ -244,12 +314,23 @@ extension PopoverController {
     /// overwrite the sub pane in place — they never spawn a third pane.
     func runSubMode(_ mode: TranslationMode) {
         guard let section = subSection, !section.sourceText.isEmpty, !section.requestInFlight else { return }
-        runSubRequest(text: section.sourceText, mode: mode, bypassCache: true)
+        let resolved = (mode == .translate && Translator.isDictionaryTerm(section.sourceText))
+            ? TranslationMode.learn
+            : mode
+        runSubRequest(text: section.sourceText, mode: resolved, bypassCache: true)
     }
 
     @objc func runSubTranslate() { runSubMode(.translate) }
     @objc func runSubLearn() { runSubMode(.learn) }
     @objc func runSubProofread() { runSubMode(.proofread) }
+
+    /// Synonym / antonym chips open the secondary pane instead of replacing the main card.
+    func openWordInSubtranslate(_ word: String) {
+        let trimmed = word.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        let mode: TranslationMode = Translator.isDictionaryTerm(trimmed) ? .learn : .translate
+        runSubRequest(text: trimmed, mode: mode)
+    }
 
     /// Runs Translate or Learn for a freshly selected phrase into the secondary pane, leaving the
     /// main pane untouched.
@@ -422,6 +503,9 @@ extension PopoverController {
         guard let section = subSection, section.generation == generation, generation == subGeneration else { return }
         section.requestInFlight = false
         subRequest = nil
+        DispatchQueue.main.async { [weak self] in
+            self?.pinSubLearnCardToTop = false
+        }
         switch result {
         case let .success(value):
             lastStreamedSub = ""
@@ -490,8 +574,8 @@ extension PopoverController {
     @objc func speakSubResultSlow() { playSpeech(subSpeechIdentity(kind: .result), speed: config.speechSlowRate) }
 
     @objc func copySubResult() {
-        guard let section = subSection, PopoverFeedback.isCopyableResult(section.resultText) else { return }
-        guard writePasteboard(section.resultText) else {
+        guard let section = subSection, PopoverFeedback.isCopyableResult(section.lastResultRaw) else { return }
+        guard writePasteboard(section.lastResultRaw) else {
             setStatus("Copy failed")
             return
         }
@@ -590,6 +674,18 @@ extension PopoverController {
             stack.topAnchor.constraint(equalTo: selectionFloatingBar.topAnchor),
             stack.bottomAnchor.constraint(equalTo: selectionFloatingBar.bottomAnchor),
         ])
+
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(learnCardFieldEditorSelectionChanged(_:)),
+            name: NSTextView.didChangeSelectionNotification,
+            object: nil
+        )
+    }
+
+    @objc func learnCardFieldEditorSelectionChanged(_ notification: Notification) {
+        guard let editor = notification.object as? NSTextView, editor.isFieldEditor else { return }
+        textViewDidChangeSelection(notification)
     }
 
     func configureFloatingButton(_ button: NSButton, symbol: String, action: Selector, label: String) {
@@ -626,6 +722,18 @@ extension PopoverController {
     }
 
     func updateFloatingSelectionBar() {
+        if let editor = panel.firstResponder as? NSTextView,
+           editor.isFieldEditor,
+           let host = floatingLearnCardHost(for: editor) {
+            presentFloatingSelectionBar(
+                textView: editor,
+                scrollView: host.scrollView,
+                isResult: true,
+                isSub: host.isSub
+            )
+            return
+        }
+
         let candidates = floatingSelectionCandidates()
         let firstResponder = panel.firstResponder as? NSTextView
         let selected = candidates.filter { $0.textView.selectedRange().length > 0 }
@@ -636,9 +744,34 @@ extension PopoverController {
             hideFloatingSelectionBar()
             return
         }
-        let activeTextView = active.textView
-        let activeScrollView = active.scrollView
+        presentFloatingSelectionBar(
+            textView: active.textView,
+            scrollView: active.scrollView,
+            isResult: active.isResult,
+            isSub: active.isSub
+        )
+    }
 
+    /// Structured Learn cards use selectable labels, so the shared field editor is the NSTextView.
+    func floatingLearnCardHost(for editor: NSTextView) -> (scrollView: NSScrollView, isSub: Bool)? {
+        let field = (editor.delegate as? NSView) ?? editor.superview
+        if isShowingStructuredLearnCard,
+           field?.isDescendant(of: learnCardView) == true || editor.isDescendant(of: learnCardView) {
+            return (learnCardScrollView, false)
+        }
+        if let sub = subSection, sub.isShowingStructuredLearnCard,
+           field?.isDescendant(of: sub.learnCardView) == true || editor.isDescendant(of: sub.learnCardView) {
+            return (sub.learnCardScrollView, true)
+        }
+        return nil
+    }
+
+    func presentFloatingSelectionBar(
+        textView activeTextView: NSTextView,
+        scrollView activeScrollView: NSScrollView,
+        isResult: Bool,
+        isSub: Bool
+    ) {
         let range = activeTextView.selectedRange()
         guard let bounds = Range(range, in: activeTextView.string) else {
             hideFloatingSelectionBar()
@@ -651,8 +784,8 @@ extension PopoverController {
         }
         if text != floatingResultForText { applyFloatingResultLabel(nil) }
         currentFloatingSelectedText = text
-        currentFloatingIsResult = active.isResult
-        currentFloatingIsSub = active.isSub
+        currentFloatingIsResult = isResult
+        currentFloatingIsSub = isSub
 
         guard let layoutManager = activeTextView.layoutManager,
               let textContainer = activeTextView.textContainer
