@@ -162,6 +162,7 @@ extension PopoverController {
         textScrollView.documentView = textView
 
         learnCardView.onSpeak = { [weak self] in self?.speakInput() }
+        learnCardView.onSpeakSlow = { [weak self] in self?.speakInputSlow() }
         learnCardView.onLearnWord = { [weak self] word in self?.learn(word) }
         learnCardView.onOpenSubtranslate = { [weak self] word in self?.openWordInSubtranslate(word) }
         learnCardView.onNeedsReflow = { [weak self] in self?.reflowLayout() }

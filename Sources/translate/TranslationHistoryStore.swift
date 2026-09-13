@@ -347,6 +347,34 @@ final class TranslationHistoryStore {
         return record
     }
 
+    /// Replaces the stored answer in place; id, schedule and audio stay with the card.
+    @discardableResult
+    func replaceResultText(_ text: String, recordID: UUID) throws -> TranslationRecord? {
+        try update(recordID: recordID) { rec in
+            rec = TranslationRecord(
+                id: rec.id,
+                timestamp: rec.timestamp,
+                updatedAt: Date(),
+                deletedAt: rec.deletedAt,
+                mode: rec.mode,
+                sourceText: rec.sourceText,
+                resultText: text,
+                sourceLanguage: rec.sourceLanguage,
+                targetLanguage: rec.targetLanguage,
+                sourceAudioPath: rec.sourceAudioPath,
+                resultAudioPath: rec.resultAudioPath,
+                isSaved: rec.isSaved,
+                dueDate: rec.dueDate,
+                interval: rec.interval,
+                ease: rec.ease,
+                repetitions: rec.repetitions,
+                lapses: rec.lapses,
+                lastReviewedAt: rec.lastReviewedAt
+            )
+        }
+        return records.first(where: { $0.id == recordID })
+    }
+
     func setSaved(_ isSaved: Bool, recordID: UUID) throws {
         try update(recordID: recordID) { record in
             record.isSaved = isSaved

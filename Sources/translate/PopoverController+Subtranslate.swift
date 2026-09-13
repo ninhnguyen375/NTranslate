@@ -79,6 +79,7 @@ extension PopoverController {
         section.resultHeaderBar.addSubview(section.learnBadgeView)
         section.learnBadgeView.isHidden = true
         section.learnCardView.onSpeak = { [weak self] in self?.speakSubSource() }
+        section.learnCardView.onSpeakSlow = { [weak self] in self?.speakSubSourceSlow() }
         section.learnCardView.onLearnWord = { [weak self] word in
             self?.runSubRequest(text: word, mode: .learn, bypassCache: true)
         }
@@ -607,17 +608,11 @@ extension PopoverController {
         styleLanguageButtonTitle(targetLanguageButton, language: targetLanguageSelection)
 
         let encounter = LearnCard.Encounter.split(record.sourceText)
-        if let context = encounter.context {
-            inputTextView.string = encounter.term
-            inputContextLabel.stringValue = "Context: \(context)"
-            inputContextLabel.toolTip = context
-            inputContextLabel.isHidden = false
-        } else {
-            inputTextView.string = encounter.term
-            inputContextLabel.stringValue = ""
-            inputContextLabel.toolTip = nil
-            inputContextLabel.isHidden = true
-        }
+        // The context still rides along in the stored source text; the UI only shows the term.
+        inputTextView.string = encounter.term
+        inputContextLabel.stringValue = ""
+        inputContextLabel.toolTip = nil
+        inputContextLabel.isHidden = true
         setResultText(record.resultText)
 
         currentRecordID = record.id

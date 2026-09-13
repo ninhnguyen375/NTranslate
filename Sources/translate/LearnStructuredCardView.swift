@@ -5,9 +5,19 @@ import AppKit
 @MainActor
 final class LearnStructuredCardView: NSView {
     var onSpeak: (() -> Void)?
+    var onSpeakSlow: (() -> Void)?
     var onLearnWord: ((String) -> Void)?
     var onOpenSubtranslate: ((String) -> Void)?
     var onNeedsReflow: (() -> Void)?
+    /// Study hands in its own speak / slow / translate / regenerate bar so the button states stay
+    /// in one place. Nil in the popup, which uses `speakButton`.
+    var heroAccessory: NSView? {
+        didSet { if heroAccessory != nil, heroAccessory !== oldValue { rebuild() } }
+    }
+
+    /// Study splits one card into a short block beside the images and a full-width block below.
+    enum Scope { case all, summary, details }
+    var scope = Scope.all
 
     private(set) var card = LearnCard()
     private var exampleFilter: LearnCard.Level?
@@ -26,7 +36,8 @@ final class LearnStructuredCardView: NSView {
     private var stackTopConstraint: NSLayoutConstraint!
     private let badgeView = LearnBadgeView()
     private let badgeRow = NSStackView()
-    let speakButton = HitFillButton(title: "", target: nil, action: nil)
+    let speakButton = SquareToolButton()
+    let speakSlowButton = SquareToolButton()
     private let answerField = NSTextField(string: "")
     private let checkButton = NSButton(title: "Check", target: nil, action: nil)
     private let feedbackLabel = NSTextField(labelWithString: "")
@@ -71,21 +82,8 @@ final class LearnStructuredCardView: NSView {
             stackTopConstraint,
         ])
 
-        speakButton.target = self
-        speakButton.action = #selector(speakClicked)
-        speakButton.isBordered = false
-        speakButton.image = NSImage(systemSymbolName: "speaker.wave.2", accessibilityDescription: "Speak source")?
-            .withSymbolConfiguration(.init(pointSize: 13, weight: .medium))
-        speakButton.imagePosition = .imageOnly
-        speakButton.contentTintColor = .secondaryLabelColor
-        speakButton.toolTip = "Speak source"
-        speakButton.setAccessibilityLabel("Speak source")
-        speakButton.wantsLayer = true
-        speakButton.layer?.cornerRadius = 7
-        speakButton.layer?.borderWidth = 1
-        speakButton.translatesAutoresizingMaskIntoConstraints = false
-        speakButton.widthAnchor.constraint(equalToConstant: 26).isActive = true
-        speakButton.heightAnchor.constraint(equalToConstant: 26).isActive = true
+        ReviewControls.toolButton(speakButton, symbol: "speaker.wave.2", label: "Speak source", target: self, action: #selector(speakClicked))
+        ReviewControls.toolButton(speakSlowButton, symbol: "tortoise", label: "Speak source slowly", target: self, action: #selector(speakSlowClicked))
 
         answerField.placeholderString = "Type the answer"
         answerField.font = .systemFont(ofSize: scaled(13))
@@ -332,14 +330,22 @@ final class LearnStructuredCardView: NSView {
         confusablePairs = []
         wrappingStacks = []
 
-        if showsHero {
-            addSection(makeHero())
-        } else if !card.pronunciation.isEmpty {
-            addSection(makePronunciationOnly())
+        let summary = scope != .details
+        let details = scope != .summary
+        if summary {
+            if showsHero {
+                addSection(makeHero())
+            } else if !card.pronunciation.isEmpty {
+                addSection(makePronunciationOnly())
+            }
+            if !card.meanings.isEmpty { addSection(makeMeanings()) }
+            if !card.synonyms.isEmpty { addSection(makeWordList(title: "SYNONYMS", words: card.synonyms)) }
+            if !card.antonyms.isEmpty { addSection(makeWordList(title: "ANTONYMS", words: card.antonyms)) }
         }
-        if !card.meanings.isEmpty { addSection(makeMeanings()) }
-        if !card.synonyms.isEmpty { addSection(makeWordList(title: "SYNONYMS", words: card.synonyms)) }
-        if !card.antonyms.isEmpty { addSection(makeWordList(title: "ANTONYMS", words: card.antonyms)) }
+        guard details else {
+            applyExampleFilter()
+            return
+        }
         if !card.examples.isEmpty { addSection(makeExamples()) }
         if !card.confusables.isEmpty { addSection(makeConfusables()) }
         if !card.familyForms.isEmpty { addSection(makeFamily()) }
@@ -391,8 +397,19 @@ final class LearnStructuredCardView: NSView {
         }
 
         speakButton.setContentHuggingPriority(.required, for: .horizontal)
+        speakSlowButton.setContentHuggingPriority(.required, for: .horizontal)
         row.addArrangedSubview(speakButton)
+        row.addArrangedSubview(speakSlowButton)
         speakButton.isHidden = onSpeak == nil
+        speakSlowButton.isHidden = onSpeakSlow == nil
+        if let heroAccessory {
+            speakButton.isHidden = true
+            speakSlowButton.isHidden = true
+            let spacer = NSView()
+            spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+            row.addArrangedSubview(spacer)
+            row.addArrangedSubview(heroAccessory)
+        }
 
         column.addArrangedSubview(row)
         row.translatesAutoresizingMaskIntoConstraints = false
@@ -707,6 +724,7 @@ final class LearnStructuredCardView: NSView {
     private func refreshChromeColors() {
         effectiveAppearance.performAsCurrentDrawingAppearance {
             speakButton.layer?.borderColor = NSColor.separatorColor.cgColor
+            speakSlowButton.layer?.borderColor = NSColor.separatorColor.cgColor
             paintCheckButton()
             for pill in filterPills {
                 let selected = (exampleFilter == nil && pill.levelRaw == "all")
@@ -744,6 +762,10 @@ final class LearnStructuredCardView: NSView {
         } else {
             feedbackLabel.isHidden = true
         }
+    }
+
+    @objc private func speakSlowClicked() {
+        onSpeakSlow?()
     }
 
     @objc private func speakClicked() {

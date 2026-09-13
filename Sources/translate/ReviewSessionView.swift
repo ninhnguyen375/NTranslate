@@ -49,9 +49,16 @@ final class ReviewSessionView: NSView {
     let titleRefreshButton = NSButton()
     let contextLabel = NSTextField(wrappingLabelWithString: "")
     let readMoreButton = NSButton()
-    let speakSourceButton = NSButton()
-    let speakSlowSourceButton = NSButton()
-    let openTranslateButton = NSButton()
+    let speakSourceButton = SquareToolButton()
+    let speakSlowSourceButton = SquareToolButton()
+    let openTranslateButton = SquareToolButton()
+    let regenerateCardButton = SquareToolButton()
+    let pronunciationLabel = NSTextField(labelWithString: "")
+    var onRegenerateCard: (() -> Void)?
+    /// Speak, slow, translate, regenerate. Sits beside the term on the front and moves into the
+    /// card's headword row on the back, so one set of buttons keeps the speech state.
+    let audioStack = NSStackView()
+    private let termStack = NSStackView()
     let speakShortcutLabel = NSTextField(labelWithString: "(4)")
     let speakSlowShortcutLabel = NSTextField(labelWithString: "(5)")
     let openTranslateShortcutLabel = NSTextField(labelWithString: "(6)")
@@ -59,7 +66,17 @@ final class ReviewSessionView: NSView {
     let feedbackLabel = NSTextField(labelWithString: "")
     let hintLabel = NSTextField(wrappingLabelWithString: "")
     let resultLabel = NSTextField(wrappingLabelWithString: "")
+    /// Flipped card, top half: headword, meanings, synonyms, antonyms beside `backImages`.
     let learnCardView = LearnStructuredCardView()
+    /// Flipped card, bottom half: examples and everything longer, full width.
+    let learnDetailView = LearnStructuredCardView()
+    let frontImages = ReviewImageColumn(width: 160)
+    let backImages = ReviewImageColumn(width: 110)
+    /// Controller decides: a question that asks for the term hides the pictures on the front.
+    var showsFrontImages = false { didSet { refreshImageVisibility() } }
+    private let answerRow = NSStackView()
+    private var frontRow = NSStackView()
+    private var learnDetailHeight: NSLayoutConstraint!
     let readingChatView = ReadingChatView()
     let readingModeControl = NSSegmentedControl()
     let choiceStack = NSStackView()
@@ -264,9 +281,12 @@ final class ReviewSessionView: NSView {
         readMoreButton.action = #selector(tapReadMore)
         readMoreButton.isHidden = true
 
-        ReviewControls.iconButton(speakSourceButton, symbol: "speaker.wave.2", label: "Speak source (4 / 1.0x)", target: self, action: #selector(tapSpeak))
-        ReviewControls.iconButton(speakSlowSourceButton, symbol: "tortoise", label: "Speak source slowly (5)", target: self, action: #selector(tapSpeakSlow))
-        ReviewControls.iconButton(openTranslateButton, symbol: "character.bubble", label: "Open this card in Translate (6)", target: self, action: #selector(tapTranslate))
+        ReviewControls.toolButton(speakSourceButton, symbol: "speaker.wave.2", label: "Speak source (4 / 1.0x)", target: self, action: #selector(tapSpeak))
+        ReviewControls.toolButton(speakSlowSourceButton, symbol: "tortoise", label: "Speak source slowly (5)", target: self, action: #selector(tapSpeakSlow))
+        ReviewControls.toolButton(openTranslateButton, symbol: "character.bubble", label: "Open this card in Translate (6)", target: self, action: #selector(tapTranslate))
+        ReviewControls.toolButton(regenerateCardButton, symbol: "arrow.clockwise", label: "Regenerate this card with the current Learn prompt", target: self, action: #selector(tapRegenerateCard))
+        regenerateCardButton.contentTintColor = .controlAccentColor
+        regenerateCardButton.isHidden = true
 
         for label in [speakShortcutLabel, speakSlowShortcutLabel, openTranslateShortcutLabel] {
             label.font = .systemFont(ofSize: 10, weight: .bold)
@@ -274,13 +294,16 @@ final class ReviewSessionView: NSView {
             label.alignment = .center
         }
 
-        let audioStack = NSStackView(views: [
+        for view in [
             Self.pair(speakSourceButton, speakShortcutLabel),
             Self.pair(speakSlowSourceButton, speakSlowShortcutLabel),
-            Self.pair(openTranslateButton, openTranslateShortcutLabel)
-        ])
+            Self.pair(openTranslateButton, openTranslateShortcutLabel),
+            regenerateCardButton
+        ] {
+            audioStack.addArrangedSubview(view)
+        }
         audioStack.orientation = .horizontal
-        audioStack.spacing = 6
+        audioStack.spacing = 8
         audioStack.alignment = .centerY
 
         // The buttons sit to the right of the term, so a spacer of the same width on the left
@@ -294,13 +317,14 @@ final class ReviewSessionView: NSView {
         )
         titleRefreshButton.isHidden = true
 
-        let leadingSpacer = NSView()
-        leadingSpacer.translatesAutoresizingMaskIntoConstraints = false
-        let termStack = NSStackView(views: [leadingSpacer, termLabel, titleRefreshButton, audioStack])
+        pronunciationLabel.font = .monospacedSystemFont(ofSize: 15, weight: .regular)
+        pronunciationLabel.textColor = .secondaryLabelColor
+        pronunciationLabel.alignment = .center
+        pronunciationLabel.isHidden = true
+        for view in [termLabel, titleRefreshButton] { termStack.addArrangedSubview(view) }
         termStack.orientation = .horizontal
         termStack.spacing = 8
         termStack.alignment = .centerY
-        leadingSpacer.widthAnchor.constraint(equalTo: audioStack.widthAnchor).isActive = true
 
         answerField.placeholderString = "Type the missing word, then press Return"
         answerField.font = .systemFont(ofSize: 15)
@@ -337,11 +361,15 @@ final class ReviewSessionView: NSView {
         sourceContainer.spacing = 6
         sourceContainer.alignment = .centerX
         sourceContainer.addArrangedSubview(termStack)
+        sourceContainer.addArrangedSubview(pronunciationLabel)
+        sourceContainer.setCustomSpacing(14, after: pronunciationLabel)
         sourceContainer.addArrangedSubview(contextLabel)
         sourceContainer.addArrangedSubview(readMoreButton)
         sourceContainer.addArrangedSubview(answerField)
         sourceContainer.addArrangedSubview(choiceStack)
         sourceContainer.addArrangedSubview(feedbackLabel)
+        // Needs termStack and pronunciationLabel arranged first: it inserts at index 2.
+        restoreAudioStack()
 
         hintLabel.font = .systemFont(ofSize: 11)
         hintLabel.textColor = .tertiaryLabelColor
@@ -367,18 +395,46 @@ final class ReviewSessionView: NSView {
         readingChatView.isHidden = true
 
         learnCardView.translatesAutoresizingMaskIntoConstraints = false
-        learnCardView.isHidden = true
-        learnCardView.showsHero = false
+        learnCardView.scope = .summary
         learnCardHeight = learnCardView.heightAnchor.constraint(equalToConstant: 1)
         learnCardHeight.isActive = true
+        learnDetailView.translatesAutoresizingMaskIntoConstraints = false
+        learnDetailView.isHidden = true
+        learnDetailView.scope = .details
+        learnDetailView.showsHero = false
+        learnDetailHeight = learnDetailView.heightAnchor.constraint(equalToConstant: 1)
+        learnDetailHeight.isActive = true
+
+        answerRow.orientation = .horizontal
+        answerRow.alignment = .top
+        answerRow.spacing = 14
+        answerRow.isHidden = true
+        answerRow.translatesAutoresizingMaskIntoConstraints = false
+        answerRow.addArrangedSubview(learnCardView)
+        answerRow.addArrangedSubview(backImages)
+
+        frontRow = NSStackView(views: [frontImages, sourceContainer])
+        frontRow.orientation = .horizontal
+        frontRow.alignment = .centerY
+        frontRow.spacing = 90
+        // The image column sets the row height; without hugging, the wrapping labels stretch to
+        // fill it and push the term, pronunciation and buttons apart.
+        // NSStackView hugs through its own setHuggingPriority, not the content-hugging one.
+        sourceContainer.setHuggingPriority(.required, for: .vertical)
+        termStack.setHuggingPriority(.required, for: .vertical)
+        for view in [termLabel, contextLabel] {
+            view.setContentHuggingPriority(.defaultHigh, for: .vertical)
+        }
 
         innerStack.orientation = .vertical
         innerStack.spacing = 16
         innerStack.alignment = .centerX
         innerStack.translatesAutoresizingMaskIntoConstraints = false
-        for view in [sourceContainer, hintLabel, readingModeControl, readingChatView, resultLabel, learnCardView] {
+        for view in [frontRow, hintLabel, readingModeControl, readingChatView, resultLabel, answerRow, learnDetailView] {
             innerStack.addArrangedSubview(view)
         }
+        // Card already pads its bottom, so no extra stack gap before the details.
+        innerStack.setCustomSpacing(0, after: answerRow)
 
         scrollView.borderType = .noBorder
         scrollView.drawsBackground = false
@@ -499,7 +555,10 @@ final class ReviewSessionView: NSView {
             documentView.heightAnchor.constraint(greaterThanOrEqualTo: scrollView.heightAnchor),
 
             readingChatView.widthAnchor.constraint(equalTo: innerStack.widthAnchor),
-            learnCardView.widthAnchor.constraint(equalTo: innerStack.widthAnchor),
+            answerRow.widthAnchor.constraint(equalTo: innerStack.widthAnchor),
+            learnDetailView.widthAnchor.constraint(equalTo: innerStack.widthAnchor),
+            backImages.widthAnchor.constraint(equalToConstant: backImages.width),
+            frontImages.widthAnchor.constraint(equalToConstant: frontImages.width),
             innerStack.leadingAnchor.constraint(equalTo: documentView.leadingAnchor, constant: 24),
             innerStack.trailingAnchor.constraint(equalTo: documentView.trailingAnchor, constant: -24),
             innerStack.centerYAnchor.constraint(equalTo: documentView.centerYAnchor),
@@ -541,12 +600,31 @@ final class ReviewSessionView: NSView {
         button.attributedTitle = text
     }
 
-    private static func pair(_ button: NSButton, _ label: NSTextField) -> NSStackView {
-        let stack = NSStackView(views: [button, label])
-        stack.orientation = .horizontal
-        stack.spacing = 1
-        stack.alignment = .centerY
+    /// Button with its shortcut digit underneath, so every button in the row lines up.
+    private static func pair(_ button: NSButton, _ label: NSTextField) -> NSView {
+        label.stringValue = label.stringValue.trimmingCharacters(in: CharacterSet(charactersIn: "()"))
+        // Digit hangs below the button, outside the stack, so the button centres on the term.
+        let stack = NSView()
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        label.translatesAutoresizingMaskIntoConstraints = false
+        stack.addSubview(button)
+        stack.addSubview(label)
+        NSLayoutConstraint.activate([
+            button.topAnchor.constraint(equalTo: stack.topAnchor),
+            button.bottomAnchor.constraint(equalTo: stack.bottomAnchor),
+            button.leadingAnchor.constraint(equalTo: stack.leadingAnchor),
+            button.trailingAnchor.constraint(equalTo: stack.trailingAnchor),
+            label.topAnchor.constraint(equalTo: button.bottomAnchor, constant: 2),
+            label.centerXAnchor.constraint(equalTo: button.centerXAnchor)
+        ])
         return stack
+    }
+
+    private func restoreAudioStack() {
+        // Front face stacks term, IPA, then the buttons; shortcut digits hang below, so leave room.
+        guard audioStack.superview !== sourceContainer else { return }
+        sourceContainer.insertArrangedSubview(audioStack, at: 2)
+        sourceContainer.setCustomSpacing(22, after: audioStack)
     }
 
     private final class ClickablePill: NSView {
@@ -633,6 +711,7 @@ final class ReviewSessionView: NSView {
     @objc private func tapSpeak() { delegate?.sessionView(self, didRequestSpeechSlow: false) }
     @objc private func tapSpeakSlow() { delegate?.sessionView(self, didRequestSpeechSlow: true) }
     @objc private func tapTranslate() { delegate?.sessionViewDidRequestTranslate(self) }
+    @objc private func tapRegenerateCard() { onRegenerateCard?() }
     @objc private func submitAnswer() { delegate?.sessionViewDidSubmitAnswer(self) }
     @objc private func chooseFirst() { delegate?.sessionView(self, didChooseAt: 0) }
     @objc private func chooseSecond() { delegate?.sessionView(self, didChooseAt: 1) }
@@ -647,31 +726,70 @@ final class ReviewSessionView: NSView {
 
     // MARK: - Structured answer
 
-    var isShowingStructuredCard: Bool { !learnCardView.isHidden }
+    var isShowingStructuredCard: Bool { !answerRow.isHidden }
 
+    /// The flipped card carries its own headword, so the question row steps aside.
     func showStructuredAnswer(_ card: LearnCard) {
-        learnCardView.showsHero = false
-        learnCardView.showsSelfCheck = true
-        learnCardView.applyChromeReserve(0)
-        learnCardView.resetScrollState()
-        learnCardView.display(card)
-        learnCardView.isHidden = false
+        for view in [learnCardView, learnDetailView] {
+            view.showsSelfCheck = true
+            view.applyChromeReserve(0)
+            view.resetScrollState()
+            view.display(card)
+        }
+        // The details continue the summary card, whose bottom padding already separates them.
+        learnDetailView.applyChromeReserve(-14)
+        learnCardView.showsHero = true
+        regenerateCardButton.isHidden = onRegenerateCard == nil
+        learnCardView.heroAccessory = audioStack
+        sourceContainer.isHidden = true
+        frontRow.isHidden = true
+        answerRow.isHidden = false
+        learnDetailView.isHidden = false
         resultLabel.isHidden = true
+        refreshImageVisibility()
         relayoutStructuredCard()
     }
 
     func hideStructuredAnswer() {
-        learnCardView.isHidden = true
+        learnCardView.heroAccessory = nil
+        regenerateCardButton.isHidden = true
+        restoreAudioStack()
+        frontRow.isHidden = false
+        answerRow.isHidden = true
+        learnDetailView.isHidden = true
         learnCardView.resetScrollState()
+        learnDetailView.resetScrollState()
+        refreshImageVisibility()
+    }
+
+    func setPronunciation(_ text: String) {
+        pronunciationLabel.stringValue = text
+        pronunciationLabel.isHidden = text.isEmpty
+    }
+
+    func setImages(_ images: [NSImage]) {
+        frontImages.images = images
+        backImages.images = images
+        refreshImageVisibility()
+    }
+
+    private func refreshImageVisibility() {
+        frontImages.isHidden = !showsFrontImages || isShowingStructuredCard
     }
 
     func relayoutStructuredCard() {
-        guard !learnCardView.isHidden else { return }
+        guard isShowingStructuredCard else { return }
         let width = max(innerStack.bounds.width, bounds.width - 48)
         guard width > 40 else { return }
-        let height = learnCardView.preferredHeight(fittingWidth: width)
-        if abs(learnCardHeight.constant - height) > 0.5 {
-            learnCardHeight.constant = height
+        let summaryWidth = backImages.isHidden ? width : width - backImages.width - answerRow.spacing
+        let summary = learnCardView.preferredHeight(fittingWidth: summaryWidth)
+        if abs(learnCardHeight.constant - summary) > 0.5 {
+            learnCardHeight.constant = summary
+        }
+        let details = learnDetailView.card.isEmptyDetails ? 0 : learnDetailView.preferredHeight(fittingWidth: width)
+        learnDetailView.isHidden = details == 0
+        if abs(learnDetailHeight.constant - details) > 0.5 {
+            learnDetailHeight.constant = details
         }
     }
 
@@ -718,6 +836,31 @@ final class ReviewFlippedView: NSView {
 enum ReviewControls {
     static let iconSize: CGFloat = 20
 
+    static let toolButtonSide: CGFloat = 30
+
+    /// Shared square icon button: no fill, rounded border, symbol centred.
+    static func toolButton(_ button: SquareToolButton, symbol: String, label: String, target: AnyObject, action: Selector) {
+        button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: label)?
+            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 12, weight: .medium))
+        // smallSquare keeps alignment insets at zero, so the drawn layer matches the square frame.
+        button.bezelStyle = .smallSquare
+        button.isBordered = false
+        button.wantsLayer = true
+        button.layer?.cornerRadius = 7
+        button.layer?.borderWidth = 1
+        button.layer?.borderColor = NSColor.separatorColor.cgColor
+        button.imagePosition = .imageOnly
+        button.imageScaling = .scaleNone
+        button.target = target
+        button.action = action
+        button.toolTip = label
+        button.setAccessibilityLabel(label)
+        button.contentTintColor = .secondaryLabelColor
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.widthAnchor.constraint(equalToConstant: toolButtonSide).isActive = true
+        button.heightAnchor.constraint(equalToConstant: toolButtonSide).isActive = true
+    }
+
     static func iconButton(_ button: NSButton, symbol: String, label: String, target: AnyObject, action: Selector) {
         let configuration = NSImage.SymbolConfiguration(pointSize: 11, weight: .regular)
         button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: label)?
@@ -761,9 +904,67 @@ extension ReviewSessionView {
         TextZoom.apply(to: termLabel, base: Self.termBaseSize, weight: .bold)
         TextZoom.apply(to: contextLabel, base: Self.contextBaseSize)
         TextZoom.apply(to: resultLabel, base: Self.resultBaseSize)
-        if !learnCardView.isHidden {
+        if isShowingStructuredCard {
             learnCardView.applyZoom()
+            learnDetailView.applyZoom()
             relayoutStructuredCard()
         }
+    }
+}
+
+/// Two stacked photos for a Study card. Aspect-fill with rounded corners; click opens the search.
+@MainActor
+final class ReviewImageColumn: NSStackView {
+    let width: CGFloat
+    var onOpen: (() -> Void)?
+    var images: [NSImage] = [] {
+        didSet {
+            for (index, tile) in tiles.enumerated() {
+                // Rounded once at a fixed size; the image view then fits it whole, no crop.
+                tile.image = index < images.count
+                    ? LearnRelatedImage.fittedThumbnail(images[index], maxWidth: 480, maxHeight: 360, radius: 28)
+                    : nil
+                // Empty slot stays as a bordered placeholder while the photo loads.
+                tile.layer?.borderWidth = index < images.count ? 0 : 1
+            }
+        }
+    }
+    private let tiles: [NSImageView]
+
+    init(width: CGFloat) {
+        self.width = width
+        tiles = (0..<LearnRelatedImage.thumbnailCount).map { _ in NSImageView() }
+        super.init(frame: .zero)
+        orientation = .vertical
+        spacing = LearnRelatedImage.thumbnailSpacing
+        distribution = .fillEqually
+        translatesAutoresizingMaskIntoConstraints = false
+        for tile in tiles {
+            tile.imageScaling = .scaleProportionallyUpOrDown
+            tile.imageAlignment = .alignCenter
+            tile.wantsLayer = true
+            tile.layer?.cornerRadius = 12
+            tile.layer?.borderWidth = 1
+            tile.layer?.borderColor = NSColor.separatorColor.cgColor
+            tile.translatesAutoresizingMaskIntoConstraints = false
+            // Max box 4:3; the photo fits inside it at its own aspect.
+            tile.heightAnchor.constraint(equalTo: tile.widthAnchor, multiplier: 0.75).isActive = true
+            tile.toolTip = "Open related images"
+            tile.addGestureRecognizer(NSClickGestureRecognizer(target: self, action: #selector(openTapped)))
+            addArrangedSubview(tile)
+            tile.widthAnchor.constraint(equalTo: widthAnchor).isActive = true
+        }
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { nil }
+
+    @objc private func openTapped() { onOpen?() }
+}
+
+private extension LearnCard {
+    var isEmptyDetails: Bool {
+        examples.isEmpty && confusables.isEmpty && familyForms.isEmpty && collocations.isEmpty
+            && mnemonic.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && cloze == nil
     }
 }

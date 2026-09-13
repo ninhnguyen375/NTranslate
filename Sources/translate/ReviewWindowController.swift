@@ -66,6 +66,9 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
 
     private var currentContext: String?
     private var isContextExpanded = false
+    /// Fetches the two DuckDuckGo photos; never added to a view, only its images are used.
+    private let imageFetcher = LearnRelatedImageStrip()
+    private var regenerateRequest: RequestHandle?
     private var speechState = SpeechPlaybackState()
     private var activeSpeechIdentity: SpeechIdentity?
     private var activeSpeechRate: Float = 1.0
@@ -114,7 +117,7 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
         self.translator = translator
         self.config = config
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: ReviewLayout.windowWidth, height: 823),
+            contentRect: NSRect(x: 0, y: 0, width: ReviewLayout.windowWidth, height: 880),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false
@@ -184,7 +187,21 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
         // Selecting the text hands it to the field editor, which drops every attribute unless the
         // field says attributes are its own. Without this the reading underlines vanish on click.
         sessionView.resultLabel.allowsEditingTextAttributes = true
-        sessionView.learnCardView.onSpeak = { [weak self] in self?.speakCurrentSource() }
+        sessionView.onRegenerateCard = { [weak self] in self?.regenerateCurrentCard() }
+        imageFetcher.onImagesChanged = { [weak self] in
+            guard let self else { return }
+            self.sessionView.setImages(self.imageFetcher.loadedImages)
+            self.sessionView.relayoutStructuredCard()
+        }
+        imageFetcher.onResolveQuery = { [weak self] text, done in
+            let handle = self?.translator?.imageSearchQuery(text, completion: done)
+            return handle.map { h in { h.cancel() } }
+        }
+        let openImages: () -> Void = { [weak self] in
+            if let url = self?.imageFetcher.pageURL { NSWorkspace.shared.open(url) }
+        }
+        sessionView.frontImages.onOpen = openImages
+        sessionView.backImages.onOpen = openImages
         sessionView.learnCardView.onLearnWord = { [weak self] word in
             self?.stopAudio()
             self?.onLearnSentence?(word)
@@ -217,6 +234,10 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
         // Labels report a one-line intrinsic width; hidden screens would otherwise set the
         // window's floor at their longest sentence. They all wrap or truncate, so let them shrink.
         relaxHorizontalCompression(cardView)
+        // The term has no sibling holding its width any more, so it would wrap mid-word at 50.
+        // 250 still yields to a window drag (510); long titles wrap at the preferred width.
+        sessionView.termLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        sessionView.termLabel.preferredMaxLayoutWidth = 480
 
         // Preferred width keeps Auto Layout from growing the window past the default on open,
         // but it sits below dragThatCanResizeWindow (510) so a user drag still wins. A required
@@ -530,6 +551,7 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
 
         let encounter = LearnCard.Encounter.split(record.sourceText)
         sessionView.termLabel.stringValue = encounter.term
+        sessionView.setPronunciation(LearnCard.parse(record.resultText).pronunciation)
         currentContext = encounter.context
         isContextExpanded = false
         updateContextDisplay()
@@ -561,6 +583,7 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
         updateGradeIntervals(for: record)
         refreshSessionChrome()
         showHint(asked.note ?? leechNote(for: record))
+        loadImages(for: record)
 
         // Auto play source speech ONLY if cached locally. In a question mode the source word is
         // the answer, so speaking it would hand it over before the learner tries.
@@ -623,6 +646,8 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
         )
     }
 
+    static let showsContext = false
+
     static func intervalText(_ days: Int) -> String {
         switch days {
         case ..<1: return "today"
@@ -634,7 +659,8 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
     }
 
     private func updateContextDisplay() {
-        guard let context = currentContext, !context.isEmpty else {
+        // The context stays in the record for the model; the Study UI no longer shows it.
+        guard let context = currentContext, !context.isEmpty, Self.showsContext else {
             sessionView.contextLabel.stringValue = ""
             sessionView.contextLabel.isHidden = true
             sessionView.readMoreButton.isHidden = true
@@ -762,6 +788,7 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
         sessionView.openTranslateButton.isHidden = hidden
         sessionView.openTranslateShortcutLabel.isHidden = hidden
         if hidden {
+            sessionView.pronunciationLabel.isHidden = true
             sessionView.contextLabel.isHidden = true
             sessionView.readMoreButton.isHidden = true
         }
@@ -791,6 +818,53 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
         // A self-graded card already picked; `showAutoGrade` put the Continue button up instead.
         sessionView.gradeStack.isHidden = pendingAutoGrade != nil
         adjustWindowHeightForContentIfNeeded()
+    }
+
+    private func loadImages(for record: TranslationRecord) {
+        let term = displayTerm(of: record)
+        imageFetcher.refresh(term: term, rewriteSource: term)
+        sessionView.setImages(imageFetcher.loadedImages)
+        // A question that asks for the term would give it away with a picture of it.
+        sessionView.showsFrontImages = !hasActiveQuestion
+    }
+
+    private func regenerateCurrentCard() {
+        guard screen == .session, !isReadingMode, regenerateRequest == nil, let translator else { return }
+        guard currentIndex < recordsToReview.count else { return }
+        let record = recordsToReview[currentIndex]
+        let encounter = LearnCard.Encounter.split(record.sourceText)
+        sessionView.regenerateCardButton.isEnabled = false
+        showHint("Regenerating card…")
+        regenerateRequest = translator.learn(
+            encounter.term,
+            sourceLang: record.sourceLanguage,
+            targetLang: record.targetLanguage,
+            parentContext: encounter.context
+        ) { [weak self] result in
+            Task { @MainActor in
+                guard let self else { return }
+                self.regenerateRequest = nil
+                self.sessionView.regenerateCardButton.isEnabled = true
+                guard self.currentIndex < self.recordsToReview.count,
+                      self.recordsToReview[self.currentIndex].id == record.id else { return }
+                switch result {
+                case let .success(text):
+                    do {
+                        guard let updated = try self.store.replaceResultText(text, recordID: record.id) else { return }
+                        self.recordsToReview[self.currentIndex] = updated
+                        self.showHint(nil)
+                        self.sessionView.resultLabel.stringValue = self.sessionView.learnBadgeView.apply(to: text, live: true)
+                        if self.isAnswerRevealed {
+                            self.revealAnswer()
+                        }
+                    } catch {
+                        self.showHint("Could not save the new card: \(error.localizedDescription)")
+                    }
+                case let .failure(error):
+                    self.showHint("Could not regenerate: \(error.localizedDescription)")
+                }
+            }
+        }
     }
 
     /// The stored source text can carry an appended context sentence; only the term is the answer.
@@ -1369,6 +1443,7 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
         sessionView.choiceStack.isHidden = true
         sessionView.feedbackLabel.isHidden = true
         sessionView.hideStructuredAnswer()
+        sessionView.showsFrontImages = false
         if let dialogue = ReadingDialogue.parse(text) {
             sessionView.readingChatView.show(dialogue, words: words)
             sessionView.readingChatView.setGlobalMode(preferredReadingMode ?? .both)

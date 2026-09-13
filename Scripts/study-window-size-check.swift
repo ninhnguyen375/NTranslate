@@ -70,7 +70,7 @@ enum StudyWindowSizeCheck {
         NSApplication.shared.setActivationPolicy(.accessory)
 
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: targetWidth, height: 823),
+            contentRect: NSRect(x: 0, y: 0, width: targetWidth, height: 880),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false

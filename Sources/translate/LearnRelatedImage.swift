@@ -234,7 +234,7 @@ final class LearnRelatedImageStrip: NSView {
     var onResolveQuery: ((String, @escaping @Sendable (Result<String, Error>) -> Void) -> (() -> Void)?)?
 
     private let buttons: [NSButton]
-    private var loadedImages: [NSImage] = []
+    private(set) var loadedImages: [NSImage] = []
     private var term = ""
     private var resolvedQuery = ""
     private var seedQuery = ""
@@ -309,10 +309,26 @@ final class LearnRelatedImageStrip: NSView {
         apply(images: [])
     }
 
+    private static let rewriteCacheKey = "relatedImageQueryCache"
+
     private func startRewrite(source: String, token: Int) {
         guard let onResolveQuery else { return }
+        let cacheKey = LearnCard.normalizeAnswer(source)
+        // The model rewrite is stable per source, so later refreshes go straight to DuckDuckGo.
+        if let cached = (UserDefaults.standard.dictionary(forKey: Self.rewriteCacheKey) as? [String: String])?[cacheKey] {
+            applyRewrite(.success(cached), token: token)
+            return
+        }
         rewriteCancel = onResolveQuery(source) { [weak self] result in
             Task { @MainActor in
+                if case .success(let query) = result,
+                   !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    var cache = UserDefaults.standard.dictionary(forKey: Self.rewriteCacheKey) as? [String: String] ?? [:]
+                    // ponytail: wipe when full, LRU if hit rates ever matter.
+                    if cache.count >= 2000 { cache.removeAll() }
+                    cache[cacheKey] = query
+                    UserDefaults.standard.set(cache, forKey: Self.rewriteCacheKey)
+                }
                 self?.applyRewrite(result, token: token)
             }
         }

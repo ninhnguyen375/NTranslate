@@ -127,8 +127,8 @@ final class ReviewHomeView: NSView {
         setContentCompressionResistancePriority(.fittingSizeCompression, for: .horizontal)
 
         ring.translatesAutoresizingMaskIntoConstraints = false
-        ring.widthAnchor.constraint(equalToConstant: 118).isActive = true
-        ring.heightAnchor.constraint(equalToConstant: 118).isActive = true
+        ring.widthAnchor.constraint(equalToConstant: 150).isActive = true
+        ring.heightAnchor.constraint(equalToConstant: 150).isActive = true
 
         legendStack.orientation = .vertical
         legendStack.spacing = 6
@@ -486,7 +486,7 @@ final class DeckRingView: NSView {
         let side = min(bounds.width, bounds.height)
         let center = NSPoint(x: bounds.midX, y: bounds.midY)
         let radius = side / 2 - 8
-        let width: CGFloat = 13
+        let width: CGFloat = 16
 
         let track = NSBezierPath()
         track.appendArc(withCenter: center, radius: radius, startAngle: 0, endAngle: 360)
@@ -513,11 +513,11 @@ final class DeckRingView: NSView {
 
     private func drawText(center: NSPoint) {
         let headlineAttributes: [NSAttributedString.Key: Any] = [
-            .font: NSFont.systemFont(ofSize: 32, weight: .bold),
+            .font: NSFont.systemFont(ofSize: 40, weight: .bold),
             .foregroundColor: NSColor.labelColor
         ]
         let captionAttributes: [NSAttributedString.Key: Any] = [
-            .font: NSFont.systemFont(ofSize: 11),
+            .font: NSFont.systemFont(ofSize: 13),
             .foregroundColor: NSColor.secondaryLabelColor
         ]
         let headlineSize = headline.size(withAttributes: headlineAttributes)
@@ -564,14 +564,14 @@ final class LegendRow: NSView {
         swatch.layer?.cornerRadius = 3
         swatch.translatesAutoresizingMaskIntoConstraints = false
 
-        nameLabel.font = .systemFont(ofSize: 12)
+        nameLabel.font = .systemFont(ofSize: 14)
         nameLabel.lineBreakMode = .byTruncatingTail
         nameLabel.preferredMaxLayoutWidth = 90
         nameLabel.setContentHuggingPriority(.defaultLow, for: .horizontal)
         nameLabel.setContentCompressionResistancePriority(.fittingSizeCompression, for: .horizontal)
         setContentHuggingPriority(.defaultLow, for: .horizontal)
         setContentCompressionResistancePriority(.fittingSizeCompression, for: .horizontal)
-        countLabel.font = .monospacedDigitSystemFont(ofSize: 12, weight: .semibold)
+        countLabel.font = .monospacedDigitSystemFont(ofSize: 14, weight: .semibold)
         countLabel.alignment = .right
         countLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
 
@@ -598,10 +598,10 @@ final class LegendRow: NSView {
             swatch.heightAnchor.constraint(equalToConstant: 10),
             clearButton.widthAnchor.constraint(equalToConstant: 16),
             clearButton.heightAnchor.constraint(equalToConstant: 16),
-            stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 6),
-            stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -6),
-            stack.topAnchor.constraint(equalTo: topAnchor, constant: 3),
-            stack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -3)
+            stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10),
+            stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -10),
+            stack.topAnchor.constraint(equalTo: topAnchor, constant: 6),
+            stack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -6)
         ])
         refresh()
     }
@@ -617,7 +617,13 @@ final class LegendRow: NSView {
 
     override func layout() {
         super.layout()
-        nameLabel.preferredMaxLayoutWidth = max(60, bounds.width - 48)
+        nameLabel.preferredMaxLayoutWidth = max(60, bounds.width - 56)
+    }
+
+    // Labels swallow mouseDown, so route every hit except the clear button to the row.
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        guard let hit = super.hitTest(point) else { return nil }
+        return hit === clearButton || hit.isDescendant(of: clearButton) ? hit : self
     }
 
     override func resetCursorRects() {
