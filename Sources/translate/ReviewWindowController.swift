@@ -5,6 +5,10 @@ import AVFoundation
 
 private enum ReviewLayout {
     static let contextTruncateLimit = 100
+    static let windowWidth: CGFloat = 753
+    static let minWindowWidth: CGFloat = 330
+    static let windowInset: CGFloat = 15
+    static let cardMinWidth: CGFloat = windowWidth - windowInset * 2
     static let compactHeight: CGFloat = 520
     static let expandedHeight: CGFloat = 720
 }
@@ -110,15 +114,15 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
         self.translator = translator
         self.config = config
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 620, height: 880),
+            contentRect: NSRect(x: 0, y: 0, width: ReviewLayout.windowWidth, height: 823),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false
         )
-        window.minSize = NSSize(width: 620, height: 640)
+        // Default width is 753; the floor is lower so the window can actually be dragged narrower.
+        window.minSize = NSSize(width: ReviewLayout.minWindowWidth, height: 420)
         window.isReleasedWhenClosed = false
         window.title = "Study"
-        window.setFrameAutosaveName("ReviewSRSWindowTall2")
 
         super.init(window: window)
         window.delegate = self
@@ -180,9 +184,26 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
         // Selecting the text hands it to the field editor, which drops every attribute unless the
         // field says attributes are its own. Without this the reading underlines vanish on click.
         sessionView.resultLabel.allowsEditingTextAttributes = true
+        sessionView.learnCardView.onSpeak = { [weak self] in self?.speakCurrentSource() }
+        sessionView.learnCardView.onLearnWord = { [weak self] word in
+            self?.stopAudio()
+            self?.onLearnSentence?(word)
+        }
+        sessionView.learnCardView.onOpenSubtranslate = { [weak self] word in
+            self?.stopAudio()
+            self?.onLearnSentence?(word)
+        }
+        sessionView.learnCardView.onNeedsReflow = { [weak self] in
+            self?.sessionView.relayoutStructuredCard()
+            self?.adjustWindowHeightForContentIfNeeded()
+        }
 
+        cardView.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        cardView.setContentCompressionResistancePriority(.fittingSizeCompression, for: .horizontal)
         for screen in [homeView, sessionView, summaryView, newWordsView, passagesView] as [NSView] {
             screen.translatesAutoresizingMaskIntoConstraints = false
+            screen.setContentHuggingPriority(.defaultLow, for: .horizontal)
+            screen.setContentCompressionResistancePriority(.fittingSizeCompression, for: .horizontal)
             screen.isHidden = true
             cardView.addSubview(screen)
             NSLayoutConstraint.activate([
@@ -193,18 +214,30 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
             ])
         }
 
-        // Every screen lives inside a scroll view, so the content's fitting size is almost zero and
-        // AppKit's constraint-based layout happily shrinks the window to the titlebar. `minSize`
-        // only guards a user drag, not that path, so the floor has to be a constraint too, and it
-        // is set to the window's designed size: the mode grid alone needs about 590 points.
+        // Labels report a one-line intrinsic width; hidden screens would otherwise set the
+        // window's floor at their longest sentence. They all wrap or truncate, so let them shrink.
+        relaxHorizontalCompression(cardView)
+
+        // Preferred width keeps Auto Layout from growing the window past the default on open,
+        // but it sits below dragThatCanResizeWindow (510) so a user drag still wins. A required
+        // minimum here would pin the window instead: minSize already holds the floor.
+        let preferredCardWidth = cardView.widthAnchor.constraint(equalToConstant: ReviewLayout.cardMinWidth)
+        preferredCardWidth.priority = NSLayoutConstraint.Priority(499)
         NSLayoutConstraint.activate([
-            cardView.widthAnchor.constraint(greaterThanOrEqualToConstant: 588),
-            cardView.heightAnchor.constraint(greaterThanOrEqualToConstant: 608),
-            cardView.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 16),
-            cardView.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -16),
-            cardView.topAnchor.constraint(equalTo: content.topAnchor, constant: 16),
-            cardView.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -16)
+            preferredCardWidth,
+            cardView.heightAnchor.constraint(greaterThanOrEqualToConstant: 390),
+            cardView.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: ReviewLayout.windowInset),
+            cardView.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -ReviewLayout.windowInset),
+            cardView.topAnchor.constraint(equalTo: content.topAnchor, constant: ReviewLayout.windowInset),
+            cardView.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -ReviewLayout.windowInset)
         ])
+    }
+
+    private func relaxHorizontalCompression(_ view: NSView) {
+        if view is NSTextField || view is NSButton {
+            view.setContentCompressionResistancePriority(.fittingSizeCompression, for: .horizontal)
+        }
+        for sub in view.subviews { relaxHorizontalCompression(sub) }
     }
 
     private func show(_ screen: Screen) {
@@ -239,13 +272,26 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
         // on any control only activates and never reaches the button.
         NSApp.activate(ignoringOtherApps: true)
         showWindow(nil)
-        if !didShowReview {
-            didShowReview = true
-            // Autosave restores a saved frame before first show; only centre the constructed default.
-            if let window, window.frame.origin == .zero { window.center() }
-        }
         window?.makeKeyAndOrderFront(nil)
         showHome()
+        applyDefaultWindowWidth()
+        DispatchQueue.main.async { [weak self] in
+            self?.applyDefaultWindowWidth()
+        }
+    }
+
+    /// Pin width after layout. Autosave and tile intrinsic sizes otherwise restore a wide frame.
+    private func applyDefaultWindowWidth() {
+        guard let window else { return }
+        var frame = window.frame
+        frame.size.width = ReviewLayout.windowWidth
+        if !didShowReview {
+            didShowReview = true
+            window.setFrame(frame, display: true)
+            window.center()
+            return
+        }
+        window.setFrame(frame, display: true)
     }
 
     // MARK: - Home
@@ -495,6 +541,7 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
         sessionView.titleRefreshButton.isHidden = true
         sessionView.resultLabel.stringValue = sessionView.learnBadgeView.apply(to: record.resultText, live: true)
         sessionView.resultLabel.isHidden = true
+        sessionView.hideStructuredAnswer()
         hideReadingChat()
         sessionView.revealButton.isHidden = false
         sessionView.backButton.isHidden = true
@@ -734,7 +781,12 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
             updateContextDisplay()
             setSourceGiveaways(hidden: false)
         }
-        sessionView.resultLabel.isHidden = false
+        if LearnCard.shouldDisplayStructured(record.resultText) {
+            sessionView.showStructuredAnswer(LearnCard.parse(record.resultText))
+        } else {
+            sessionView.hideStructuredAnswer()
+            sessionView.resultLabel.isHidden = false
+        }
         sessionView.revealButton.isHidden = true
         // A self-graded card already picked; `showAutoGrade` put the Continue button up instead.
         sessionView.gradeStack.isHidden = pendingAutoGrade != nil
@@ -1316,6 +1368,7 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
         sessionView.answerField.isHidden = true
         sessionView.choiceStack.isHidden = true
         sessionView.feedbackLabel.isHidden = true
+        sessionView.hideStructuredAnswer()
         if let dialogue = ReadingDialogue.parse(text) {
             sessionView.readingChatView.show(dialogue, words: words)
             sessionView.readingChatView.setGlobalMode(preferredReadingMode ?? .both)
@@ -1536,9 +1589,12 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
     private func adjustWindowHeightForContentIfNeeded() {
         guard let window else { return }
         let resultText = sessionView.resultLabel.stringValue
-        guard !resultText.isEmpty else { return }
+        let needsRoom = sessionView.isShowingStructuredCard
+            || resultText.count > 150
+            || resultText.contains("\n\n")
+        guard needsRoom || !resultText.isEmpty else { return }
         // Expand height when the answer is long enough to need the room.
-        let targetHeight: CGFloat = (resultText.count > 150 || resultText.contains("\n\n"))
+        let targetHeight: CGFloat = needsRoom
             ? ReviewLayout.expandedHeight
             : ReviewLayout.compactHeight
         let currentFrame = window.frame

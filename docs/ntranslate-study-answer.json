@@ -1,0 +1,20 @@
+{
+  "image": "ntranslate-study-session-answer.jpg",
+  "out": "/Volumes/ESSD/Code/MacOS/NTranslate/docs/_tmp-study-answer.html",
+  "title": "Study Session — đáp án + chấm điểm",
+  "intro": "Sau Show Answer: learnCardView hiện thẻ cấu trúc, gradeStack hiện Again / Hard / Easy.",
+  "items": [
+    {"x": 880, "y": 130, "code": "countsLabel", "desc": "đúng / sai / còn lại / elapsed", "side": "R"},
+    {"x": 500, "y": 195, "code": "pillRow", "desc": "Flip · New · rep 1", "side": "R"},
+    {"x": 480, "y": 330, "code": "termLabel", "desc": "Từ nguồn sau khi lật", "side": "L"},
+    {"x": 700, "y": 330, "code": "speak / translate icons", "desc": "4 / 5 / 6", "side": "R"},
+    {"x": 120, "y": 450, "code": "learnCardView", "desc": "showStructuredAnswer — showsHero = false", "side": "L"},
+    {"x": 400, "y": 560, "code": "makeMeanings", "desc": "Section MEANING", "side": "L"},
+    {"x": 200, "y": 700, "code": "makeWordList SYNONYMS", "desc": "card.synonyms", "side": "L"},
+    {"x": 200, "y": 830, "code": "makeWordList ANTONYMS", "desc": "card.antonyms", "side": "L"},
+    {"x": 400, "y": 1080, "code": "makeExamples", "desc": "Ví dụ + pill All/Easy/Medium/Hard", "side": "R"},
+    {"x": 170, "y": 1280, "code": "againButton", "desc": "SRSGrade.again — 1", "side": "L"},
+    {"x": 510, "y": 1280, "code": "hardButton", "desc": "SRSGrade.hard — 2", "side": "L"},
+    {"x": 850, "y": 1280, "code": "easyButton", "desc": "SRSGrade.easy — 3", "side": "R"}
+  ]
+}

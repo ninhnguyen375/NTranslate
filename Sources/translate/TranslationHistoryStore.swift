@@ -133,6 +133,15 @@ struct TranslationRecord: Codable, Equatable, Identifiable, Sendable {
         self.dueDate = calendar.date(byAdding: .day, value: next.interval, to: startOfToday)
             ?? currentDate.addingTimeInterval(Double(next.interval) * 86400)
     }
+
+    /// Saving a word means the learner just met it, so the first review belongs to tomorrow
+    /// instead of the same day's Study queue.
+    mutating func startFreshSchedule(currentDate: Date = Date(), calendar: Calendar = .current) {
+        let tomorrow = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: currentDate))
+        self.dueDate = tomorrow ?? currentDate.addingTimeInterval(86400)
+        self.interval = 0
+        self.ease = 2.5
+    }
 }
 
 enum TranslationAudioKind: String, Sendable {
@@ -343,9 +352,7 @@ final class TranslationHistoryStore {
             record.isSaved = isSaved
             record.updatedAt = Date()
             if isSaved && record.dueDate == nil {
-                record.dueDate = Date()
-                record.interval = 0
-                record.ease = 2.5
+                record.startFreshSchedule()
             }
         }
     }
@@ -355,9 +362,7 @@ final class TranslationHistoryStore {
             record.isSaved.toggle()
             record.updatedAt = Date()
             if record.isSaved && record.dueDate == nil {
-                record.dueDate = Date()
-                record.interval = 0
-                record.ease = 2.5
+                record.startFreshSchedule()
             }
         }
     }

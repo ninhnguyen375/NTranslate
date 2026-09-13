@@ -1,5 +1,5 @@
-// Structured Learn result for the popup. Layout follows prototype A in
-// `.design/learn-ui-prototypes.html`: hero, then one section per parsed field.
+// Structured Learn result for the popup and the flipped Study card. Layout
+// follows prototype A in `.design/learn-ui-prototypes.html`.
 import AppKit
 
 @MainActor
@@ -36,6 +36,9 @@ final class LearnStructuredCardView: NSView {
     private var wrappingStacks: [WrappingStack] = []
     private var lastFittingWidth: CGFloat = 0
     private var isMeasuringHeight = false
+    /// Study already shows the term on the session row, so the flipped card skips the hero.
+    var showsHero = true
+    var showsSelfCheck = true
 
     override var isFlipped: Bool { true }
 
@@ -296,6 +299,23 @@ final class LearnStructuredCardView: NSView {
         selectFilter(raw)
     }
 
+    /// Section headers currently in the tree, so a Study presentation check can see what was skipped.
+    func sectionTitles() -> [String] {
+        let known: Set<String> = [
+            "MEANING", "SYNONYMS", "ANTONYMS", "EXAMPLES", "EASILY CONFUSED",
+            "WORD FAMILY", "COLLOCATIONS", "MNEMONIC", "SELF-CHECK",
+        ]
+        var titles: [String] = []
+        func walk(_ view: NSView) {
+            if let field = view as? NSTextField, known.contains(field.stringValue) {
+                titles.append(field.stringValue)
+            }
+            view.subviews.forEach(walk)
+        }
+        walk(self)
+        return titles
+    }
+
     func revealExample(at index: Int) {
         guard exampleRows.indices.contains(index) else { return }
         let row = exampleRows[index]
@@ -312,7 +332,11 @@ final class LearnStructuredCardView: NSView {
         confusablePairs = []
         wrappingStacks = []
 
-        addSection(makeHero())
+        if showsHero {
+            addSection(makeHero())
+        } else if !card.pronunciation.isEmpty {
+            addSection(makePronunciationOnly())
+        }
         if !card.meanings.isEmpty { addSection(makeMeanings()) }
         if !card.synonyms.isEmpty { addSection(makeWordList(title: "SYNONYMS", words: card.synonyms)) }
         if !card.antonyms.isEmpty { addSection(makeWordList(title: "ANTONYMS", words: card.antonyms)) }
@@ -323,7 +347,7 @@ final class LearnStructuredCardView: NSView {
         if !card.mnemonic.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             addSection(makeMnemonic())
         }
-        if card.cloze != nil { addSection(makeCloze()) }
+        if showsSelfCheck, card.cloze != nil { addSection(makeCloze()) }
         applyExampleFilter()
         restoreClozeFeedback()
     }
@@ -374,6 +398,14 @@ final class LearnStructuredCardView: NSView {
         row.translatesAutoresizingMaskIntoConstraints = false
         row.widthAnchor.constraint(equalTo: column.widthAnchor).isActive = true
         return column
+    }
+
+    private func makePronunciationOnly() -> NSView {
+        let ipa = NSTextField(labelWithString: card.pronunciation)
+        ipa.font = .monospacedSystemFont(ofSize: scaled(13), weight: .regular)
+        ipa.textColor = .secondaryLabelColor
+        enableLearnTextSelection(ipa)
+        return ipa
     }
 
     private func makeMnemonic() -> NSView {
@@ -467,6 +499,8 @@ final class LearnStructuredCardView: NSView {
         list.orientation = .vertical
         list.alignment = .width
         list.spacing = 8
+        list.userInterfaceLayoutDirection = .leftToRight
+        list.setHuggingPriority(.defaultLow, for: .horizontal)
         let leftGloss = card.meanings.first.map { LearnCard.splitMeaning($0).gloss } ?? ""
         for item in card.confusables {
             let pair = NSStackView()
@@ -474,6 +508,8 @@ final class LearnStructuredCardView: NSView {
             pair.alignment = .top
             pair.spacing = 8
             pair.distribution = .fillEqually
+            pair.userInterfaceLayoutDirection = .leftToRight
+            pair.setHuggingPriority(.defaultLow, for: .horizontal)
             // Cột phải luôn giữ câu tương phản của từ dễ nhầm. Cột trái chỉ lấy ví dụ
             // fallback khi câu đó không chứa từ gốc.
             let contrastHitsHeadword = ConfusableDrillItem.blankOutInflected(
@@ -483,20 +519,23 @@ final class LearnStructuredCardView: NSView {
                 ? item.contrastSentence
                 : (card.examples.first?.sentence ?? "")
             let rightSentence = item.contrastSentence
-            pair.addArrangedSubview(ConfusableSide(
+            let left = ConfusableSide(
                 word: card.headword,
                 detail: leftGloss,
                 sentence: leftSentence,
                 accent: .controlAccentColor
-            ))
-            pair.addArrangedSubview(ConfusableSide(
+            )
+            let right = ConfusableSide(
                 word: item.other,
                 detail: item.difference,
                 sentence: rightSentence,
                 accent: .systemRed
-            ))
+            )
+            pair.addArrangedSubview(left)
+            pair.addArrangedSubview(right)
             confusablePairs.append(pair)
             list.addArrangedSubview(pair)
+            pinWidth(pair, to: list)
         }
         section.addArrangedSubview(list)
         pinWidth(list, to: section)
@@ -1118,6 +1157,8 @@ private final class ConfusableSide: RoundedBox {
             quote.widthAnchor.constraint(equalTo: inner.widthAnchor).isActive = true
         }
         fill(inner)
+        setContentHuggingPriority(.defaultLow, for: .horizontal)
+        setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         wantsLayer = true
         layer?.borderWidth = 1
         // Viền trái màu nhấn, vẽ bằng lớp phụ vì CALayer không có border theo cạnh.

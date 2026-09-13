@@ -1,0 +1,22 @@
+{
+  "image": "ntranslate-study-home.jpg",
+  "out": "/Volumes/ESSD/Code/MacOS/NTranslate/docs/_tmp-study-home.html",
+  "title": "Study Home — ReviewHomeView",
+  "intro": "Màn hình mặc định của cửa sổ Study. Sáu nút lối vào phiên nằm dưới hintLabel, ngoài khung ảnh này.",
+  "items": [
+    {"x": 140, "y": 230, "code": "ring (DeckRingView)", "desc": "dueToday ở giữa — DeckStats.compute", "side": "L"},
+    {"x": 550, "y": 250, "code": "legendTiles", "desc": "Learning / Due / New / Mastered / Leech — toggleBucket", "side": "R"},
+    {"x": 70, "y": 460, "code": "streakLabel", "desc": "stats.dayStreak + day streak", "side": "L"},
+    {"x": 350, "y": 460, "code": "heatRow", "desc": "7 × HeatCell — last7Days", "side": "R"},
+    {"x": 510, "y": 655, "code": "limitTiles", "desc": "Session goal: 10 / 20 / All — selectLimit", "side": "L"},
+    {"x": 180, "y": 850, "code": "modeTiles Auto", "desc": "requestedKind = nil — autoKind", "side": "L"},
+    {"x": 510, "y": 850, "code": "modeTiles Flip", "desc": "QuestionKind.flip — tự chấm", "side": "R"},
+    {"x": 840, "y": 850, "code": "modeTiles Cloze", "desc": "QuestionKind.cloze — điền chỗ trống", "side": "R"},
+    {"x": 180, "y": 1020, "code": "modeTiles Recall", "desc": "QuestionKind.recall — gõ từ từ nghĩa", "side": "L"},
+    {"x": 510, "y": 1020, "code": "modeTiles Listen", "desc": "QuestionKind.listen — nghe rồi gõ", "side": "R"},
+    {"x": 840, "y": 1020, "code": "modeTiles Contrast", "desc": "QuestionKind.contrast — chọn 1 trong 2", "side": "R"},
+    {"x": 250, "y": 1180, "code": "modeTiles Collocation", "desc": "QuestionKind.collocation — gõ cụm đi kèm", "side": "L"},
+    {"x": 720, "y": 1180, "code": "modeTiles Family", "desc": "QuestionKind.family — gõ dạng cùng họ", "side": "R"},
+    {"x": 300, "y": 1310, "code": "hintLabel", "desc": "selectionHint — Filter · limit · Question type", "side": "L"}
+  ]
+}

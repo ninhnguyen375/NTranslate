@@ -26,6 +26,9 @@ final class NewWordsView: NSView {
     private let learnBadgeView = LearnBadgeView()
     private let detailView = NSTextView()
     private let detailScroll = NSScrollView()
+    /// Same structured card the Study flip uses, so both screens read identically.
+    private let cardView = LearnStructuredCardView()
+    private let cardScroll = NSScrollView()
     private let emptyLabel = NSTextField(wrappingLabelWithString: "")
     private let knownButton = NSButton()
     private let learnButton = NSButton()
@@ -73,8 +76,19 @@ final class NewWordsView: NSView {
         actionRow.isHidden = false
         emptyLabel.isHidden = true
         wordLabel.stringValue = word
-        detailView.string = learnBadgeView.apply(to: detail, live: true)
-        detailView.scrollRangeToVisible(NSRange(location: 0, length: 0))
+        let stripped = learnBadgeView.apply(to: detail, live: true)
+        let structured = LearnCard.shouldDisplayStructured(stripped)
+        cardScroll.isHidden = !structured
+        detailScroll.isHidden = structured
+        if structured {
+            cardView.resetScrollState()
+            cardView.display(LearnCard.parse(stripped))
+            layoutCard()
+            cardScroll.contentView.scroll(to: .zero)
+        } else {
+            detailView.string = stripped
+            detailView.scrollRangeToVisible(NSRange(location: 0, length: 0))
+        }
         if isKnownMode {
             progressLabel.stringValue = "Browsing known words · \(remaining) left"
         } else {
@@ -140,6 +154,25 @@ final class NewWordsView: NSView {
         detailScroll.layer?.cornerRadius = 10
         detailScroll.translatesAutoresizingMaskIntoConstraints = false
 
+        // The structured card carries its own hero in the popup; here the word row above is
+        // already the hero, so drop it and keep the self-check.
+        cardView.showsHero = false
+        cardView.showsSelfCheck = true
+        cardView.applyChromeReserve(0)
+        cardView.onSpeak = { [weak self] in self?.tapSpeak() }
+        cardView.onNeedsReflow = { [weak self] in self?.layoutCard() }
+        cardScroll.documentView = cardView
+        cardScroll.borderType = .noBorder
+        cardScroll.drawsBackground = true
+        cardScroll.backgroundColor = .textBackgroundColor
+        cardScroll.hasVerticalScroller = true
+        cardScroll.autohidesScrollers = true
+        cardScroll.scrollerStyle = .overlay
+        cardScroll.wantsLayer = true
+        cardScroll.layer?.cornerRadius = 10
+        cardScroll.isHidden = true
+        cardScroll.translatesAutoresizingMaskIntoConstraints = false
+
         // Added straight to the view rather than to a stack, so it has to opt into Auto Layout
         // itself; without this its constraints break and it lands in the bottom-left corner.
         emptyLabel.translatesAutoresizingMaskIntoConstraints = false
@@ -157,6 +190,7 @@ final class NewWordsView: NSView {
         bodyStack.addArrangedSubview(wordRow)
         bodyStack.addArrangedSubview(learnBadgeView)
         bodyStack.addArrangedSubview(detailScroll)
+        bodyStack.addArrangedSubview(cardScroll)
 
         ReviewControls.actionButton(knownButton, title: "Known (1)", symbol: "checkmark.circle", target: self, action: #selector(tapKnown))
         ReviewControls.actionButton(learnButton, title: "Learn (2)", symbol: "plus.circle.fill", target: self, action: #selector(tapLearn))
@@ -195,6 +229,7 @@ final class NewWordsView: NSView {
             bodyStack.topAnchor.constraint(equalTo: topBar.bottomAnchor, constant: 14),
             bodyStack.bottomAnchor.constraint(equalTo: actionRow.topAnchor, constant: -14),
             detailScroll.widthAnchor.constraint(equalTo: bodyStack.widthAnchor),
+            cardScroll.widthAnchor.constraint(equalTo: bodyStack.widthAnchor),
 
             emptyLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
             emptyLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 40),
@@ -204,6 +239,20 @@ final class NewWordsView: NSView {
             actionRow.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -24),
             actionRow.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -20)
         ])
+    }
+
+    override func layout() {
+        super.layout()
+        layoutCard()
+    }
+
+    /// The card is a flipped document view: it needs an explicit frame, not Auto Layout.
+    private func layoutCard() {
+        guard !cardScroll.isHidden else { return }
+        let width = max(120, cardScroll.contentSize.width)
+        let height = cardView.preferredHeight(fittingWidth: width)
+        let frame = NSRect(x: 0, y: 0, width: width, height: max(height, cardScroll.contentSize.height))
+        if cardView.frame != frame { cardView.frame = frame }
     }
 
     @objc private func tapKnown() {

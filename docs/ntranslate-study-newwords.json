@@ -1,0 +1,18 @@
+{
+  "image": "ntranslate-study-newwords.jpg",
+  "out": "/Volumes/ESSD/Code/MacOS/NTranslate/docs/_tmp-study-newwords.html",
+  "title": "Learn New Words — NewWordsView",
+  "intro": "Duyệt gói từ vựng có sẵn. Quyết định qua NewWordsView.Decision, chưa ghi SRS cho tới khi bấm Learn.",
+  "items": [
+    {"x": 55, "y": 130, "code": "homeButton", "desc": "newWordsViewDidRequestHome", "side": "L"},
+    {"x": 250, "y": 130, "code": "levelPopup", "desc": "VocabDiscovery.Filter — All / CEFR / Known", "side": "L"},
+    {"x": 800, "y": 130, "code": "progressLabel", "desc": "learned · known · skipped · left", "side": "R"},
+    {"x": 480, "y": 220, "code": "wordLabel", "desc": "Từ đang duyệt", "side": "L"},
+    {"x": 720, "y": 220, "code": "speakButton / speakSlowButton", "desc": "Phím 4 / 5", "side": "R"},
+    {"x": 500, "y": 290, "code": "learnBadgeView", "desc": "CEFR / tần suất / register", "side": "R"},
+    {"x": 400, "y": 700, "code": "detailView", "desc": "Giải thích trong detailScroll", "side": "L"},
+    {"x": 170, "y": 1320, "code": "knownButton", "desc": "Decision.known — 1", "side": "L"},
+    {"x": 510, "y": 1320, "code": "learnButton", "desc": "Decision.learn — thêm vào deck", "side": "L"},
+    {"x": 850, "y": 1320, "code": "skipButton", "desc": "Decision.skip — 3", "side": "R"}
+  ]
+}

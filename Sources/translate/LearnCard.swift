@@ -117,7 +117,8 @@ struct LearnCard: Equatable, Sendable {
     /// Blanks the headword in the sentence the learner actually met, not a model-written example.
     func minedCloze(from sentence: String) -> ClozeQuestion? {
         let trimmed = sentence.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !headword.isEmpty, !trimmed.isEmpty,
+        // A sentence that already carries a blank would end up with two, both hinted as the answer.
+        guard !headword.isEmpty, !trimmed.isEmpty, !trimmed.contains("___"),
               let hit = ConfusableDrillItem.blankOutInflected(headword, in: trimmed)
         else { return nil }
         return ClozeQuestion(prompt: hit.blanked, answer: hit.form)

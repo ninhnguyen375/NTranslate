@@ -59,6 +59,7 @@ final class ReviewSessionView: NSView {
     let feedbackLabel = NSTextField(labelWithString: "")
     let hintLabel = NSTextField(wrappingLabelWithString: "")
     let resultLabel = NSTextField(wrappingLabelWithString: "")
+    let learnCardView = LearnStructuredCardView()
     let readingChatView = ReadingChatView()
     let readingModeControl = NSSegmentedControl()
     let choiceStack = NSStackView()
@@ -67,6 +68,8 @@ final class ReviewSessionView: NSView {
     let sourceContainer = NSStackView()
     let scrollView = NSScrollView()
     let documentView = ReviewFlippedView()
+    private let innerStack = NSStackView()
+    private var learnCardHeight: NSLayoutConstraint!
 
     // Actions
     let revealButton = NSButton()
@@ -306,7 +309,11 @@ final class ReviewSessionView: NSView {
         answerField.action = #selector(submitAnswer)
         answerField.isHidden = true
         answerField.translatesAutoresizingMaskIntoConstraints = false
-        answerField.widthAnchor.constraint(equalToConstant: 300).isActive = true
+        // Preferred, not required: a required width pins the window wider than its default.
+        let answerWidth = answerField.widthAnchor.constraint(equalToConstant: 300)
+        answerWidth.priority = .defaultLow
+        answerWidth.isActive = true
+        answerField.widthAnchor.constraint(greaterThanOrEqualToConstant: 140).isActive = true
 
         feedbackLabel.font = .systemFont(ofSize: 13, weight: .semibold)
         feedbackLabel.alignment = .center
@@ -321,7 +328,10 @@ final class ReviewSessionView: NSView {
         choiceStack.addArrangedSubview(secondChoiceButton)
         choiceStack.isHidden = true
         choiceStack.translatesAutoresizingMaskIntoConstraints = false
-        choiceStack.widthAnchor.constraint(equalToConstant: 380).isActive = true
+        let choiceWidth = choiceStack.widthAnchor.constraint(equalToConstant: 380)
+        choiceWidth.priority = .defaultLow
+        choiceWidth.isActive = true
+        choiceStack.widthAnchor.constraint(greaterThanOrEqualToConstant: 140).isActive = true
 
         sourceContainer.orientation = .vertical
         sourceContainer.spacing = 6
@@ -356,11 +366,19 @@ final class ReviewSessionView: NSView {
         readingModeControl.isHidden = true
         readingChatView.isHidden = true
 
-        let innerStack = NSStackView(views: [sourceContainer, hintLabel, readingModeControl, readingChatView, resultLabel])
+        learnCardView.translatesAutoresizingMaskIntoConstraints = false
+        learnCardView.isHidden = true
+        learnCardView.showsHero = false
+        learnCardHeight = learnCardView.heightAnchor.constraint(equalToConstant: 1)
+        learnCardHeight.isActive = true
+
         innerStack.orientation = .vertical
         innerStack.spacing = 16
         innerStack.alignment = .centerX
         innerStack.translatesAutoresizingMaskIntoConstraints = false
+        for view in [sourceContainer, hintLabel, readingModeControl, readingChatView, resultLabel, learnCardView] {
+            innerStack.addArrangedSubview(view)
+        }
 
         scrollView.borderType = .noBorder
         scrollView.drawsBackground = false
@@ -481,6 +499,7 @@ final class ReviewSessionView: NSView {
             documentView.heightAnchor.constraint(greaterThanOrEqualTo: scrollView.heightAnchor),
 
             readingChatView.widthAnchor.constraint(equalTo: innerStack.widthAnchor),
+            learnCardView.widthAnchor.constraint(equalTo: innerStack.widthAnchor),
             innerStack.leadingAnchor.constraint(equalTo: documentView.leadingAnchor, constant: 24),
             innerStack.trailingAnchor.constraint(equalTo: documentView.trailingAnchor, constant: -24),
             innerStack.centerYAnchor.constraint(equalTo: documentView.centerYAnchor),
@@ -494,8 +513,6 @@ final class ReviewSessionView: NSView {
             gradeStack.widthAnchor.constraint(equalTo: actionStack.widthAnchor),
             autoGradeStack.widthAnchor.constraint(equalTo: actionStack.widthAnchor),
             continueButton.widthAnchor.constraint(lessThanOrEqualTo: autoGradeStack.widthAnchor),
-            continueButton.widthAnchor.constraint(greaterThanOrEqualToConstant: 340),
-            revealButton.widthAnchor.constraint(greaterThanOrEqualToConstant: 220),
             revealButton.heightAnchor.constraint(equalToConstant: 38),
             backButton.heightAnchor.constraint(equalToConstant: 38),
             markDoneButton.heightAnchor.constraint(equalToConstant: 38),
@@ -627,6 +644,41 @@ final class ReviewSessionView: NSView {
         guard let grade = SRSGrade(rawValue: sender.tag) else { return }
         delegate?.sessionView(self, didGrade: grade)
     }
+
+    // MARK: - Structured answer
+
+    var isShowingStructuredCard: Bool { !learnCardView.isHidden }
+
+    func showStructuredAnswer(_ card: LearnCard) {
+        learnCardView.showsHero = false
+        learnCardView.showsSelfCheck = true
+        learnCardView.applyChromeReserve(0)
+        learnCardView.resetScrollState()
+        learnCardView.display(card)
+        learnCardView.isHidden = false
+        resultLabel.isHidden = true
+        relayoutStructuredCard()
+    }
+
+    func hideStructuredAnswer() {
+        learnCardView.isHidden = true
+        learnCardView.resetScrollState()
+    }
+
+    func relayoutStructuredCard() {
+        guard !learnCardView.isHidden else { return }
+        let width = max(innerStack.bounds.width, bounds.width - 48)
+        guard width > 40 else { return }
+        let height = learnCardView.preferredHeight(fittingWidth: width)
+        if abs(learnCardHeight.constant - height) > 0.5 {
+            learnCardHeight.constant = height
+        }
+    }
+
+    override func layout() {
+        super.layout()
+        relayoutStructuredCard()
+    }
 }
 
 /// Two stacked fills: how much of the session was answered right, and how much was missed.
@@ -709,5 +761,9 @@ extension ReviewSessionView {
         TextZoom.apply(to: termLabel, base: Self.termBaseSize, weight: .bold)
         TextZoom.apply(to: contextLabel, base: Self.contextBaseSize)
         TextZoom.apply(to: resultLabel, base: Self.resultBaseSize)
+        if !learnCardView.isHidden {
+            learnCardView.applyZoom()
+            relayoutStructuredCard()
+        }
     }
 }

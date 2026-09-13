@@ -30,12 +30,12 @@ final class ReviewHomeView: NSView {
     private let heatCaption = NSTextField(labelWithString: "")
     private let limitRow = NSStackView()
     private let modeGrid = NSStackView()
-    private let startButton = NSButton()
-    private let newWordsButton = NSButton()
-    private let readingButton = NSButton()
-    private let passagesButton = NSButton()
-    private let practiceButton = NSButton()
-    private let shuffleButton = NSButton()
+    private let startButton = ReviewFlexibleButton()
+    private let newWordsButton = ReviewFlexibleButton()
+    private let readingButton = ReviewFlexibleButton()
+    private let passagesButton = ReviewFlexibleButton()
+    private let practiceButton = ReviewFlexibleButton()
+    private let shuffleButton = ReviewFlexibleButton()
     private let emptyLabel = NSTextField(wrappingLabelWithString: "")
     private let hintLabel = NSTextField(labelWithString: "")
 
@@ -45,8 +45,8 @@ final class ReviewHomeView: NSView {
     private var stats = DeckStats()
 
     private static let limits: [Int?] = [10, 20, nil]
-    /// Every section lines up on this width: 3 mode columns + 2 gaps.
-    private static let contentWidth: CGFloat = 526
+    /// Padding from the card edge to the tiles.
+    private static let contentInset: CGFloat = 15
     /// Limit chips, mode tiles, and action buttons share this so the left edge is one curve.
     fileprivate static let controlCornerRadius: CGFloat = 12
 
@@ -123,10 +123,12 @@ final class ReviewHomeView: NSView {
 
     private func build() {
         translatesAutoresizingMaskIntoConstraints = false
+        setContentHuggingPriority(.defaultLow, for: .horizontal)
+        setContentCompressionResistancePriority(.fittingSizeCompression, for: .horizontal)
 
         ring.translatesAutoresizingMaskIntoConstraints = false
-        ring.widthAnchor.constraint(equalToConstant: 132).isActive = true
-        ring.heightAnchor.constraint(equalToConstant: 132).isActive = true
+        ring.widthAnchor.constraint(equalToConstant: 118).isActive = true
+        ring.heightAnchor.constraint(equalToConstant: 118).isActive = true
 
         legendStack.orientation = .vertical
         legendStack.spacing = 6
@@ -144,6 +146,8 @@ final class ReviewHomeView: NSView {
         let streakCaption = NSTextField(labelWithString: "day streak")
         streakCaption.font = .systemFont(ofSize: 11)
         streakCaption.textColor = .secondaryLabelColor
+        streakCaption.lineBreakMode = .byTruncatingTail
+        streakCaption.setContentCompressionResistancePriority(.fittingSizeCompression, for: .horizontal)
 
         heatRow.orientation = .horizontal
         heatRow.spacing = 4
@@ -151,6 +155,8 @@ final class ReviewHomeView: NSView {
 
         heatCaption.font = .systemFont(ofSize: 11)
         heatCaption.textColor = .tertiaryLabelColor
+        heatCaption.lineBreakMode = .byTruncatingTail
+        heatCaption.setContentCompressionResistancePriority(.fittingSizeCompression, for: .horizontal)
 
         let streakRow = NSStackView(views: [streakLabel, streakCaption, heatRow])
         streakRow.orientation = .horizontal
@@ -163,12 +169,8 @@ final class ReviewHomeView: NSView {
         streakColumn.spacing = 4
         streakColumn.alignment = .leading
 
-        let statsColumn = NSStackView(views: [legendStack, streakColumn])
-        statsColumn.orientation = .vertical
-        statsColumn.spacing = 12
-        statsColumn.alignment = .leading
-
-        let heroContent = NSStackView(views: [ring, statsColumn])
+        // Ring and legend share one row; the ring is sized so the pair fits the narrow window.
+        let heroContent = NSStackView(views: [ring, legendStack])
         heroContent.orientation = .horizontal
         heroContent.spacing = 22
         heroContent.alignment = .centerY
@@ -181,8 +183,8 @@ final class ReviewHomeView: NSView {
         hero.layer?.backgroundColor = NSColor.quaternaryLabelColor.withAlphaComponent(0.12).cgColor
         hero.addSubview(heroContent)
         NSLayoutConstraint.activate([
-            heroContent.leadingAnchor.constraint(equalTo: hero.leadingAnchor, constant: 18),
-            heroContent.trailingAnchor.constraint(equalTo: hero.trailingAnchor, constant: -18),
+            heroContent.leadingAnchor.constraint(equalTo: hero.leadingAnchor, constant: 20),
+            heroContent.trailingAnchor.constraint(equalTo: hero.trailingAnchor, constant: -20),
             heroContent.topAnchor.constraint(equalTo: hero.topAnchor, constant: 18),
             heroContent.bottomAnchor.constraint(equalTo: hero.bottomAnchor, constant: -18)
         ])
@@ -254,10 +256,15 @@ final class ReviewHomeView: NSView {
         for button in [startButton, newWordsButton, readingButton, passagesButton, practiceButton, shuffleButton] {
             button.translatesAutoresizingMaskIntoConstraints = false
             button.heightAnchor.constraint(equalToConstant: 40).isActive = true
+            button.setContentHuggingPriority(.defaultLow, for: .horizontal)
+            button.setContentCompressionResistancePriority(.fittingSizeCompression, for: .horizontal)
             applyControlCornerRadius(button)
         }
         refreshStartButton()
 
+        // Hidden or not, its one-line intrinsic width would set the window's floor.
+        emptyLabel.preferredMaxLayoutWidth = 200
+        emptyLabel.setContentCompressionResistancePriority(.fittingSizeCompression, for: .horizontal)
         emptyLabel.font = .systemFont(ofSize: 13)
         emptyLabel.textColor = .secondaryLabelColor
         emptyLabel.alignment = .center
@@ -265,6 +272,8 @@ final class ReviewHomeView: NSView {
 
         hintLabel.font = .systemFont(ofSize: 11)
         hintLabel.textColor = .tertiaryLabelColor
+        hintLabel.lineBreakMode = .byTruncatingTail
+        hintLabel.setContentCompressionResistancePriority(.fittingSizeCompression, for: .horizontal)
 
         // Four buttons on one line overflow the window; two rows of two keep every label on one line.
         let buttonRows = [
@@ -282,6 +291,7 @@ final class ReviewHomeView: NSView {
         let modeHeader = Self.sectionHeader("Question type")
         let stack = NSStackView(views: [
             hero,
+            streakColumn,
             emptyLabel,
             limitHeader,
             limitRow,
@@ -294,7 +304,8 @@ final class ReviewHomeView: NSView {
         stack.alignment = .leading
         // Headers start a new section; the control they label stays tight under them.
         // A hidden empty label collapses, so the gap before the first header hangs off the hero.
-        stack.setCustomSpacing(28, after: hero)
+        stack.setCustomSpacing(12, after: hero)
+        stack.setCustomSpacing(28, after: streakColumn)
         stack.setCustomSpacing(28, after: emptyLabel)
         stack.setCustomSpacing(8, after: limitHeader)
         stack.setCustomSpacing(28, after: limitRow)
@@ -306,6 +317,8 @@ final class ReviewHomeView: NSView {
         stack.translatesAutoresizingMaskIntoConstraints = false
 
         let scroll = NSScrollView()
+        scroll.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        scroll.setContentCompressionResistancePriority(.fittingSizeCompression, for: .horizontal)
         scroll.borderType = .noBorder
         scroll.drawsBackground = false
         scroll.hasVerticalScroller = true
@@ -329,12 +342,11 @@ final class ReviewHomeView: NSView {
             document.widthAnchor.constraint(equalTo: scroll.widthAnchor),
             document.heightAnchor.constraint(greaterThanOrEqualTo: scroll.heightAnchor),
             stack.topAnchor.constraint(equalTo: document.topAnchor, constant: 12),
-            stack.centerXAnchor.constraint(equalTo: document.centerXAnchor),
-            stack.leadingAnchor.constraint(greaterThanOrEqualTo: document.leadingAnchor, constant: 18),
-            stack.trailingAnchor.constraint(lessThanOrEqualTo: document.trailingAnchor, constant: -18),
+            stack.leadingAnchor.constraint(equalTo: document.leadingAnchor, constant: Self.contentInset),
+            stack.trailingAnchor.constraint(equalTo: document.trailingAnchor, constant: -Self.contentInset),
             stack.bottomAnchor.constraint(lessThanOrEqualTo: document.bottomAnchor, constant: -12),
-            stack.widthAnchor.constraint(equalToConstant: Self.contentWidth),
             hero.widthAnchor.constraint(equalTo: stack.widthAnchor),
+            streakColumn.widthAnchor.constraint(equalTo: stack.widthAnchor),
             emptyLabel.widthAnchor.constraint(equalTo: stack.widthAnchor),
             limitRow.widthAnchor.constraint(equalTo: stack.widthAnchor),
             modeGrid.widthAnchor.constraint(equalTo: stack.widthAnchor),
@@ -540,7 +552,7 @@ final class LegendRow: NSView {
     init(bucket: DeckStats.Bucket, color: NSColor) {
         self.bucket = bucket
         self.tint = color
-        nameLabel = NSTextField(labelWithString: "\(bucket.label) - \(bucket.detail)")
+        nameLabel = NSTextField(wrappingLabelWithString: "\(bucket.label) - \(bucket.detail)")
         super.init(frame: .zero)
         translatesAutoresizingMaskIntoConstraints = false
         wantsLayer = true
@@ -553,8 +565,15 @@ final class LegendRow: NSView {
         swatch.translatesAutoresizingMaskIntoConstraints = false
 
         nameLabel.font = .systemFont(ofSize: 12)
+        nameLabel.lineBreakMode = .byTruncatingTail
+        nameLabel.preferredMaxLayoutWidth = 90
+        nameLabel.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        nameLabel.setContentCompressionResistancePriority(.fittingSizeCompression, for: .horizontal)
+        setContentHuggingPriority(.defaultLow, for: .horizontal)
+        setContentCompressionResistancePriority(.fittingSizeCompression, for: .horizontal)
         countLabel.font = .monospacedDigitSystemFont(ofSize: 12, weight: .semibold)
         countLabel.alignment = .right
+        countLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
 
         clearButton.isBordered = false
         clearButton.image = NSImage(systemSymbolName: "xmark", accessibilityDescription: "Clear filter")?
@@ -589,6 +608,17 @@ final class LegendRow: NSView {
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { nil }
+
+    override var intrinsicContentSize: NSSize {
+        var size = super.intrinsicContentSize
+        size.width = NSView.noIntrinsicMetric
+        return size
+    }
+
+    override func layout() {
+        super.layout()
+        nameLabel.preferredMaxLayoutWidth = max(60, bounds.width - 48)
+    }
 
     override func resetCursorRects() {
         if isEnabled { addCursorRect(bounds, cursor: .pointingHand) }
@@ -631,7 +661,11 @@ final class HeatCell: NSView {
         translatesAutoresizingMaskIntoConstraints = false
         wantsLayer = true
         layer?.cornerRadius = 4
-        widthAnchor.constraint(equalToConstant: 18).isActive = true
+        // The strip gives way first when the window is narrow; 8pt still reads as a cell.
+        let width = widthAnchor.constraint(equalToConstant: 18)
+        width.priority = .defaultLow
+        width.isActive = true
+        widthAnchor.constraint(greaterThanOrEqualToConstant: 8).isActive = true
         heightAnchor.constraint(equalToConstant: 18).isActive = true
         refresh()
     }
@@ -644,6 +678,17 @@ final class HeatCell: NSView {
         layer?.backgroundColor = clamped == 0
             ? NSColor.separatorColor.withAlphaComponent(0.5).cgColor
             : NSColor.systemGreen.withAlphaComponent(0.25 + 0.75 * clamped).cgColor
+    }
+}
+
+/// Glass buttons report a title-sized intrinsic width; that becomes the window's fitting
+/// size and Auto Layout grows Study past 350pt. Width comes from the stack, not the title.
+@MainActor
+final class ReviewFlexibleButton: NSButton {
+    override var intrinsicContentSize: NSSize {
+        var size = super.intrinsicContentSize
+        size.width = NSView.noIntrinsicMetric
+        return size
     }
 }
 
@@ -669,10 +714,16 @@ final class ReviewTile: NSView {
         titleLabel.font = .systemFont(ofSize: compact ? 12 : 13, weight: .semibold)
         detailLabel?.font = .systemFont(ofSize: 11)
         detailLabel?.textColor = .secondaryLabelColor
-        // Inside the grid the tile has no natural width to wrap against, so name one.
-        detailLabel?.preferredMaxLayoutWidth = 148
+        // Small enough that three columns fit a 350pt window; layout() raises this to the tile.
+        detailLabel?.preferredMaxLayoutWidth = 72
 
         titleLabel.alignment = compact ? .center : .left
+        titleLabel.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        titleLabel.setContentCompressionResistancePriority(.fittingSizeCompression, for: .horizontal)
+        detailLabel?.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        detailLabel?.setContentCompressionResistancePriority(.fittingSizeCompression, for: .horizontal)
+        setContentHuggingPriority(.defaultLow, for: .horizontal)
+        setContentCompressionResistancePriority(.fittingSizeCompression, for: .horizontal)
         let stack = NSStackView(views: [titleLabel] + (detailLabel.map { [$0] } ?? []))
         stack.orientation = .vertical
         stack.spacing = 2
@@ -690,6 +741,17 @@ final class ReviewTile: NSView {
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { nil }
+
+    override var intrinsicContentSize: NSSize {
+        var size = super.intrinsicContentSize
+        size.width = NSView.noIntrinsicMetric
+        return size
+    }
+
+    override func layout() {
+        super.layout()
+        detailLabel?.preferredMaxLayoutWidth = max(40, bounds.width - 20)
+    }
 
     override func mouseDown(with event: NSEvent) { onClick?() }
 

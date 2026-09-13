@@ -101,7 +101,8 @@ struct LearnCardCheck {
         expect(card.familyQuiz?.prompt.contains("n. sự bỏ rơi") == true, "family quiz shows the gloss")
         expect(card.cloze?.answer == "abandon", "cloze answer parsed")
         expect(card.cloze?.prompt.contains("___") == true, "cloze prompt keeps its blank")
-        expect(card.cloze?.hintedPrompt.contains("a______") == true,
+        expect(card.minedCloze(from: "They abandon the ___ quickly.") == nil, "a sentence that already has a blank is not mined")
+expect(card.cloze?.hintedPrompt.contains("a______") == true,
                "cloze blank becomes a first letter plus one underscore per remaining character")
         expect(card.synonyms.map(\.form) == ["desert", "leave"], "synonyms parsed from Từ đồng nghĩa")
         expect(card.antonyms.map(\.form) == ["keep"], "antonyms parsed from Từ trái nghĩa")

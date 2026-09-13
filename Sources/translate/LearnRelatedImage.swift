@@ -1,9 +1,9 @@
 import AppKit
 import Foundation
 
-/// Related-image lookup for the Learn source pane. DuckDuckGo starts on the headword
-/// immediately; the Images-button LLM rewrite runs in parallel and replaces the query
-/// (tiles + Google Images click) when it returns a different phrase.
+/// Related-image lookup for the Learn source pane. One DuckDuckGo fetch: the
+/// Images-button rewrite when it returns, otherwise the headword. Fetching the
+/// headword first and then replacing it flashes a second pair of tiles.
 enum LearnRelatedImage {
     static let thumbnailCount = 2
     static let thumbnailCornerRadius: CGFloat = 12
@@ -52,6 +52,16 @@ enum LearnRelatedImage {
 
     static func needsRefetch(seed: String, resolved: String) -> Bool {
         LearnCard.normalizeAnswer(seed) != LearnCard.normalizeAnswer(resolved)
+    }
+
+    /// Query for the single DuckDuckGo thumbnail fetch. `rewrite == nil` means
+    /// the model has not answered yet: wait if a rewriter is bound.
+    static func thumbnailQuery(seed: String, hasRewriter: Bool, rewrite: Result<String, Error>?) -> String? {
+        let seed = searchQuery(for: seed)
+        guard !seed.isEmpty else { return nil }
+        if !hasRewriter { return seed }
+        guard let rewrite else { return nil }
+        return displayQuery(from: rewrite, fallback: seed)
     }
 
     /// DuckDuckGo landing page used only to scrape the `vqd` token.
@@ -229,6 +239,7 @@ final class LearnRelatedImageStrip: NSView {
     private var resolvedQuery = ""
     private var seedQuery = ""
     private var generation = 0
+    private var fetchGeneration = 0
     private var task: URLSessionDataTask?
     private var rewriteCancel: (() -> Void)?
 
@@ -270,6 +281,7 @@ final class LearnRelatedImageStrip: NSView {
         }
         if key == self.term { return }
         generation += 1
+        fetchGeneration += 1
         let token = generation
         self.term = key
         seedQuery = LearnRelatedImage.searchQuery(for: term)
@@ -277,13 +289,16 @@ final class LearnRelatedImageStrip: NSView {
         task?.cancel()
         rewriteCancel?()
         apply(images: [])
-        fetchImages(query: seedQuery, token: token)
         let rewrite = LearnRelatedImage.rewriteSource(term: seedQuery, sourceText: rewriteSource ?? "")
+        if let query = LearnRelatedImage.thumbnailQuery(seed: seedQuery, hasRewriter: onResolveQuery != nil, rewrite: nil) {
+            fetchImages(query: query, token: token)
+        }
         startRewrite(source: rewrite, token: token)
     }
 
     func clear() {
         generation += 1
+        fetchGeneration += 1
         task?.cancel()
         task = nil
         rewriteCancel?()
@@ -305,14 +320,15 @@ final class LearnRelatedImageStrip: NSView {
 
     private func applyRewrite(_ result: Result<String, Error>, token: Int) {
         guard token == generation else { return }
-        let next = LearnRelatedImage.displayQuery(from: result, fallback: seedQuery)
-        resolvedQuery = next
-        guard LearnRelatedImage.needsRefetch(seed: seedQuery, resolved: next) else { return }
-        fetchImages(query: next, token: token)
+        rewriteCancel = nil
+        guard let query = LearnRelatedImage.thumbnailQuery(seed: seedQuery, hasRewriter: true, rewrite: result) else { return }
+        fetchImages(query: query, token: token)
     }
 
     private func fetchImages(query: String, token: Int) {
         guard token == generation else { return }
+        fetchGeneration += 1
+        let fetchToken = fetchGeneration
         let queryForList = LearnRelatedImage.searchQuery(for: query)
         resolvedQuery = queryForList.isEmpty ? seedQuery : queryForList
         guard let tokenURL = LearnRelatedImage.tokenPageURL(for: queryForList) else { return }
@@ -335,7 +351,7 @@ final class LearnRelatedImageStrip: NSView {
                 LearnRelatedImage.fetchImageData(from: urls) { [weak self] payloads in
                     let images = payloads
                     Task { @MainActor in
-                        guard let self, token == self.generation else { return }
+                        guard let self, token == self.generation, fetchToken == self.fetchGeneration else { return }
                         self.apply(images: images.compactMap { NSImage(data: $0) })
                         self.onImagesChanged?()
                     }

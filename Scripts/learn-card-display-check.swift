@@ -68,6 +68,7 @@ enum LearnCardDisplayCheck {
         testFamilyShowsGloss()
         testRelatedImageURL()
         testConfusableDetailFitsAboveSentence()
+        testStudyPresentation()
 
         if failures > 0 {
             print("\n\(failures) check(s) failed")
@@ -250,6 +251,16 @@ enum LearnCardDisplayCheck {
     private static func collectTextFields(in view: NSView, into fields: inout [NSTextField]) {
         if let field = view as? NSTextField { fields.append(field) }
         for child in view.subviews { collectTextFields(in: child, into: &fields) }
+    }
+
+    /// Walks up from a label to the rounded column that actually spans half the row.
+    private static func enclosingCard(of field: NSView) -> NSView? {
+        var current: NSView? = field.superview
+        while let view = current {
+            if view.bounds.width >= 160, view.bounds.height >= 40 { return view }
+            current = view.superview
+        }
+        return nil
     }
 
     private static func testHeaderReserve() {
@@ -457,8 +468,44 @@ enum LearnCardDisplayCheck {
             let x = head.convert(head.bounds, to: view).minX
             expect(x < 290, "the confusable headword stays leading in its column, minX=\(x)")
         }
+        if let leftHead = fields.first(where: { $0.stringValue == "confident" && $0.font?.pointSize ?? 0 >= 12.5 }),
+           let rightHead = fields.first(where: { $0.stringValue == "confidential" && $0.font?.pointSize ?? 0 >= 12.5 }) {
+            let left = leftHead.convert(leftHead.bounds, to: view)
+            let right = rightHead.convert(rightHead.bounds, to: view)
+            expect(left.minX < 30, "the left confusable card starts at the section leading edge, minX=\(left.minX)")
+            expect(right.minX > width * 0.4, "the right card sits in the trailing half, minX=\(right.minX)")
+            if let rightCard = enclosingCard(of: rightHead) {
+                let card = rightCard.convert(rightCard.bounds, to: view)
+                expect(card.width > 180, "each confusable column is a wide half, width=\(card.width)")
+                expect(card.maxX > width - 30, "the pair reaches the trailing edge, maxX=\(card.maxX)")
+            } else {
+                expect(false, "the right headword sits inside a card box")
+            }
+        } else {
+            expect(false, "both confusable headwords are on the card")
+        }
         window.orderOut(nil)
         window.contentView = nil
+
+        let wideView = LearnStructuredCardView()
+        wideView.display(LearnCard.parse(text))
+        let wideWidth: CGFloat = 640
+        _ = wideView.preferredHeight(fittingWidth: wideWidth)
+        let wideWindow = host(wideView, width: wideWidth, height: 700)
+        var wideFields: [NSTextField] = []
+        collectTextFields(in: wideView, into: &wideFields)
+        if let leftHead = wideFields.first(where: { $0.stringValue == "confident" && $0.font?.pointSize ?? 0 >= 12.5 }),
+           let rightHead = wideFields.first(where: { $0.stringValue == "confidential" && $0.font?.pointSize ?? 0 >= 12.5 }),
+           let rightCard = enclosingCard(of: rightHead) {
+            let left = leftHead.convert(leftHead.bounds, to: wideView)
+            let card = rightCard.convert(rightCard.bounds, to: wideView)
+            expect(left.minX < 30, "a 640pt pane still starts the pair on the left, minX=\(left.minX)")
+            expect(card.maxX > wideWidth - 30, "a 640pt pane still stretches the pair, maxX=\(card.maxX)")
+        } else {
+            expect(false, "the wide pane still shows both confusable cards")
+        }
+        wideWindow.orderOut(nil)
+        wideWindow.contentView = nil
     }
 
     private static func host(_ view: NSView, width: CGFloat, height: CGFloat) -> NSWindow {
@@ -509,19 +556,29 @@ enum LearnCardDisplayCheck {
 
     private static func testRelatedImageURL() {
         expect(LearnRelatedImage.searchQuery(for: "flour") == "flour",
-               "DuckDuckGo starts with the headword so the first tiles do not wait on the model")
+               "the headword is the fallback DuckDuckGo query")
         expect(LearnRelatedImage.displayQuery(from: .success("  bag of flour  "), fallback: "flour") == "bag of flour",
                "displayQuery still keeps a non-empty model query")
         expect(LearnRelatedImage.displayQuery(from: .success("   "), fallback: "flour") == "flour",
                "an empty model query falls back to the headword")
         expect(LearnRelatedImage.displayQuery(from: .failure(NSError(domain: "t", code: 1)), fallback: "flour") == "flour",
                "a failed query falls back to the headword")
+        expect(LearnRelatedImage.thumbnailQuery(seed: "flour", hasRewriter: false, rewrite: nil) == "flour",
+               "without a rewriter the pane fetches the headword immediately")
+        expect(LearnRelatedImage.thumbnailQuery(seed: "flour", hasRewriter: true, rewrite: nil) == nil,
+               "tiles wait for the rewrite so the pane does not flash a second pair")
+        expect(LearnRelatedImage.thumbnailQuery(seed: "flour", hasRewriter: true, rewrite: .success("bag of flour")) == "bag of flour",
+               "one fetch uses the rewritten query so the tiles match the Images button")
+        expect(LearnRelatedImage.thumbnailQuery(seed: "flour", hasRewriter: true, rewrite: .success("flour")) == "flour",
+               "an unchanged rewrite still fetches the headword once")
+        expect(LearnRelatedImage.thumbnailQuery(seed: "flour", hasRewriter: true, rewrite: .failure(NSError(domain: "t", code: 1))) == "flour",
+               "a failed rewrite falls back to one headword fetch")
         expect(LearnRelatedImage.needsRefetch(seed: "flour", resolved: "bag of flour"),
-               "a rewritten query refetches thumbnails so the tiles match the Images button")
+               "a rewritten query is a different DuckDuckGo search")
         expect(!LearnRelatedImage.needsRefetch(seed: "Flour", resolved: "flour"),
-               "case and spacing do not restart the DuckDuckGo fetch")
+               "case and spacing do not count as a different query")
         expect(!LearnRelatedImage.needsRefetch(seed: "flour", resolved: "flour"),
-               "an unchanged rewrite leaves the in-flight headword fetch alone")
+               "an unchanged rewrite is the same query")
         expect(LearnRelatedImage.rewriteSource(term: "confident", sourceText: "She gave a confident answer") == "She gave a confident answer",
                "the model sees the same source text the Images button sends")
         expect(LearnRelatedImage.rewriteSource(term: "confident", sourceText: "  ") == "confident",
@@ -624,5 +681,44 @@ enum LearnCardDisplayCheck {
         """)
         expect(LearnRelatedImage.searchTerm(from: headOnly) == "analogy",
                "without a meaning the headword is still used")
+    }
+
+    private static func testStudyPresentation() {
+        let text = """
+        Từ gốc: resilient
+        Phiên âm: /rɪˈzɪliənt/
+        adj. kiên cường, bật lại nhanh sau khó khăn
+
+        Ví dụ
+        - [dễ] She is a very resilient child.
+          → Cô bé đó rất kiên cường.
+
+        Tự kiểm tra
+        - Small businesses had to be ___ to survive the downturn.
+          → Đáp án: resilient
+        """
+        let card = LearnCard.parse(text)
+        expect(card.cloze != nil, "the study fixture parses a cloze")
+
+        let full = LearnStructuredCardView()
+        full.display(card)
+        expect(full.sectionTitles().contains("SELF-CHECK"), "the popup card keeps the self-check block")
+        expect(full.speakButton.superview != nil, "the popup card keeps the headword speak button")
+
+        let study = LearnStructuredCardView()
+        study.showsHero = false
+        study.display(card)
+        let titles = study.sectionTitles()
+        expect(titles.contains("SELF-CHECK"), "Study keeps the self-check block on the flipped card")
+        expect(titles.contains("MEANING"), "Study still shows meanings")
+        expect(titles.contains("EXAMPLES"), "Study still shows examples")
+        expect(study.speakButton.superview == nil, "Study hides the duplicate headword row")
+
+        var fields: [NSTextField] = []
+        collectTextFields(in: study, into: &fields)
+        expect(fields.contains { $0.stringValue.contains("/rɪˈzɪliənt/") },
+               "Study still shows IPA when the hero is hidden")
+        expect(!fields.contains { $0.stringValue == "resilient" && $0.font?.pointSize ?? 0 >= 20 },
+               "Study does not repeat the large headword already on the session term row")
     }
 }

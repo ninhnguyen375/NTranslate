@@ -1,0 +1,16 @@
+{
+  "image": "ntranslate-study-passages.jpg",
+  "out": "/Volumes/ESSD/Code/MacOS/NTranslate/docs/_tmp-study-passages.html",
+  "title": "Saved Passages — PassagesView",
+  "intro": "Màn .passages. Mỗi hàng là WeavePassage đã cache, không phải thẻ SRS.",
+  "items": [
+    {"x": 50, "y": 130, "code": "backButton", "desc": "passagesViewDidTapBack — goHome", "side": "L"},
+    {"x": 200, "y": 130, "code": "titleLabel", "desc": "Saved Passages", "side": "L"},
+    {"x": 420, "y": 130, "code": "countLabel", "desc": "n passages", "side": "L"},
+    {"x": 1100, "y": 130, "code": "createButton", "desc": "CustomDialogueDialog.present", "side": "R"},
+    {"x": 400, "y": 240, "code": "table", "desc": "NSTableView — double-click mở đoạn", "side": "L"},
+    {"x": 1040, "y": 240, "code": "doneButton", "desc": "didToggleDone — WeavePassage.isDone", "side": "R"},
+    {"x": 1100, "y": 240, "code": "deleteButton", "desc": "WeaveCache.delete", "side": "R"},
+    {"x": 1160, "y": 240, "code": "openButton", "desc": "presentReading — returnScreen .passages", "side": "R"}
+  ]
+}

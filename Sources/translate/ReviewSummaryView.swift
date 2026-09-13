@@ -125,12 +125,16 @@ final class ReviewSummaryView: NSView {
         ReviewControls.actionButton(homeButton, title: "Back to home", symbol: "house", target: self, action: #selector(tapHome))
 
         for button in [redrillButton, continueButton, readingButton, homeButton] {
-            button.controlSize = .large
+            button.controlSize = .regular
+            button.font = .systemFont(ofSize: 12, weight: .medium)
+            button.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 12, weight: .regular)
             button.imageHugsTitle = true
             button.translatesAutoresizingMaskIntoConstraints = false
-            button.heightAnchor.constraint(equalToConstant: 44).isActive = true
+            button.heightAnchor.constraint(equalToConstant: 32).isActive = true
             setActionTitle(button, button.title)
-            button.widthAnchor.constraint(greaterThanOrEqualToConstant: button.fittingSize.width + 36).isActive = true
+            let width = button.widthAnchor.constraint(greaterThanOrEqualToConstant: button.fittingSize.width + 24)
+            width.priority = .defaultLow
+            width.isActive = true
         }
 
         let actionRow = NSStackView(views: [redrillButton, continueButton, readingButton, homeButton])
