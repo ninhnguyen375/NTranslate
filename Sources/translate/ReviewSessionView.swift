@@ -453,6 +453,7 @@ final class ReviewSessionView: NSView {
         markDoneButton.isHidden = true
         ReviewControls.actionButton(regenerateButton, title: "Regenerate", symbol: "arrow.clockwise", target: self, action: #selector(tapRegenerate))
         regenerateButton.isHidden = true
+        ReviewControls.tint(regenerateButton, .systemBlue)
         regenerateButton.toolTip = "Ask the model for a new conversation from the same words"
 
         for button in [againButton, hardButton, easyButton] {
@@ -703,7 +704,7 @@ final class ReviewSessionView: NSView {
             systemSymbolName: isDone ? "checkmark.circle.fill" : "checkmark.circle",
             accessibilityDescription: markDoneButton.title
         )
-        markDoneButton.contentTintColor = isDone ? .systemGreen : .systemTeal
+        ReviewControls.tint(markDoneButton, .systemGreen)
     }
     @objc private func tapTitleRefresh() { delegate?.sessionViewDidRequestPassageTitle(self) }
 
@@ -875,6 +876,21 @@ enum ReviewControls {
         button.translatesAutoresizingMaskIntoConstraints = false
         button.widthAnchor.constraint(equalToConstant: iconSize).isActive = true
         button.heightAnchor.constraint(equalToConstant: iconSize).isActive = true
+    }
+
+    /// Colours only the title, icon and border; the bezel stays the same as its neighbours.
+    static func tint(_ button: NSButton, _ color: NSColor) {
+        button.contentTintColor = color
+        // The glass bezel ignores the tint for template symbols, so the colour is baked into the image.
+        button.image = button.image?.withSymbolConfiguration(.init(paletteColors: [color]))
+        button.attributedTitle = NSAttributedString(string: button.title, attributes: [
+            .foregroundColor: color,
+            .font: button.font ?? .systemFont(ofSize: 13, weight: .medium)
+        ])
+        button.wantsLayer = true
+        button.layer?.cornerRadius = 8
+        button.layer?.borderWidth = 1
+        button.layer?.borderColor = color.withAlphaComponent(0.6).cgColor
     }
 
     static func actionButton(

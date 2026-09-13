@@ -8,7 +8,8 @@ final class ReadingSelectionBar {
     var onLearn: ((String) -> Void)?
     var onTranslate: ((String) -> Void)?
 
-    private var text = ""
+    private(set) var text = ""
+    private var clickMonitor: Any?
     private let panel: NSPanel
     private let speakButton = ReadingSelectionBar.button("speaker.wave.2", "Speak selection")
     private let slowButton = ReadingSelectionBar.button("tortoise", "Speak selection slowly")
@@ -73,9 +74,48 @@ final class ReadingSelectionBar {
         panel.setFrameOrigin(origin)
         if panel.parent == nil, let parent { parent.addChildWindow(panel, ordered: .above) }
         panel.orderFront(nil)
+        // A click anywhere but the bar or the text being selected drops the selection and the bar.
+        if clickMonitor == nil {
+            clickMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { [weak self] event in
+                nonisolated(unsafe) let click = event
+                MainActor.assumeIsolated {
+                    guard let self, !self.isPointerInside else { return }
+                    if let window = click.window, window === parent,
+                       window.contentView?.hitTest(click.locationInWindow) is NSTextView { return }
+                    parent?.makeFirstResponder(nil)
+                    self.hide()
+                }
+                return event
+            }
+        }
+    }
+
+    /// Same state the bubble buttons show, for the audio of the selected text.
+    func applySpeech(_ action: SpeechButtonAction, isSlow: Bool) {
+        Self.style(speakButton, action: action.applies(whenSlow: false, activeIsSlow: isSlow), idle: "speaker.wave.2", label: "selection")
+        Self.style(slowButton, action: action.applies(whenSlow: true, activeIsSlow: isSlow), idle: "tortoise", label: "selection slowly")
+    }
+
+    static func style(_ button: NSButton, action: SpeechButtonAction, idle: String, label: String) {
+        let presentation: (symbol: String, verb: String, enabled: Bool)
+        switch action {
+        case .play: presentation = (idle, "Speak", true)
+        case .loading: presentation = ("hourglass", "Loading", false)
+        case .pause: presentation = ("pause.fill", "Pause", true)
+        case .resume: presentation = ("play.fill", "Resume", true)
+        }
+        let title = "\(presentation.verb) \(label)"
+        button.image = NSImage(systemSymbolName: presentation.symbol, accessibilityDescription: title)?
+            .withSymbolConfiguration(.init(pointSize: 11.5, weight: .regular))
+        button.imagePosition = .imageOnly
+        button.toolTip = title
+        button.setAccessibilityLabel(title)
+        button.isEnabled = presentation.enabled
     }
 
     func hide() {
+        if let clickMonitor { NSEvent.removeMonitor(clickMonitor) }
+        clickMonitor = nil
         panel.parent?.removeChildWindow(panel)
         panel.orderOut(nil)
     }

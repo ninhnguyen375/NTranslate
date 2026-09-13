@@ -125,6 +125,7 @@ final class ReadingChatView: NSStackView {
         for bubble in bubbles {
             bubble.applySpeech(bubble.source == line ? action : .play, isSlow: isSlow)
         }
+        selectionBar.applySpeech(selectionBar.text == line ? action : .play, isSlow: isSlow)
     }
 
     // MARK: - One turn
@@ -309,12 +310,39 @@ final class ReadingChatView: NSStackView {
             globalMode = mode
             if clearingOverride { isForcedBoth = false }
             let shown: Mode = isForcedBoth ? .both : mode
-            sourceLabel.isHidden = shown == .translation
-            // With no translation to show, the source stays rather than leaving an empty bubble.
-            translationLabel.isHidden = shown == .source || translationLabel.stringValue.isEmpty
-            if translationLabel.isHidden, shown == .translation { sourceLabel.isHidden = false }
-            textDivider.isHidden = sourceLabel.isHidden || translationLabel.isHidden
+            // Both languages always stay on screen; the one not chosen is blurred until clicked.
+            translationLabel.isHidden = translationLabel.stringValue.isEmpty
+            textDivider.isHidden = translationLabel.isHidden
+            setBlurred(sourceLabel, shown == .translation && !translationLabel.isHidden)
+            setBlurred(translationLabel, shown == .source)
             applyBothButton()
+        }
+
+        /// Blur lives on a layer and a click recognizer only while blurred; revealing drops both and
+        /// puts the original text back, so the label renders and selects exactly as before.
+        private func setBlurred(_ label: NSTextField, _ blurred: Bool) {
+            let isBlurred = label.layer?.filters?.isEmpty == false
+            guard blurred != isBlurred else { return }
+            let text = label.attributedStringValue
+            if blurred {
+                label.wantsLayer = true
+                label.layerUsesCoreImageFilters = true
+                label.layer?.filters = [CIFilter(name: "CIGaussianBlur", parameters: [kCIInputRadiusKey: 5])!]
+                label.addGestureRecognizer(NSClickGestureRecognizer(target: self, action: #selector(blurredClicked)))
+            } else {
+                label.layer?.filters = nil
+                label.layerUsesCoreImageFilters = false
+                label.wantsLayer = false
+                label.gestureRecognizers.forEach { label.removeGestureRecognizer($0) }
+            }
+            label.isSelectable = !blurred
+            label.toolTip = blurred ? "Click to reveal" : nil
+            label.attributedStringValue = text
+        }
+
+        @objc private func blurredClicked() {
+            isForcedBoth = true
+            apply(global: globalMode, clearingOverride: false)
         }
 
         /// The button is lit only while it overrides the toolbar, so it always reads as "this line
@@ -341,15 +369,7 @@ final class ReadingChatView: NSStackView {
         }
 
         private func style(_ button: NSButton, action: SpeechButtonAction, idle: String, label: String) {
-            let presentation: (symbol: String, verb: String, enabled: Bool)
-            switch action {
-            case .play: presentation = (idle, "Speak", true)
-            case .loading: presentation = ("hourglass", "Loading", false)
-            case .pause: presentation = ("pause.fill", "Pause", true)
-            case .resume: presentation = ("play.fill", "Resume", true)
-            }
-            symbolize(button, symbol: presentation.symbol, title: "\(presentation.verb) \(label)")
-            button.isEnabled = presentation.enabled
+            ReadingSelectionBar.style(button, action: action, idle: idle, label: label)
         }
 
         @objc private func bothClicked() {
@@ -381,7 +401,7 @@ final class ReadingChatView: NSStackView {
 
         override func mouseDown(with event: NSEvent) {
             let point = convert(event.locationInWindow, from: nil)
-            if let word = word(at: point) {
+            if isSelectable, let word = word(at: point) {
                 onWord?(word)
                 return
             }
