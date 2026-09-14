@@ -16,6 +16,7 @@
 - Chạy bản debug bằng `./Scripts/run-dev.sh`, không chạy thẳng `.build/debug/translate`: script ký binary bằng cùng identity với app đã cài nên Keychain không hỏi lại password mỗi lần build.
 - Verify code bằng `swift build`. Không chạy `swift test`: target test dùng swift-testing (`import Testing`) mà toolchain hiện tại không cung cấp, luôn fail với `no such module 'Testing'`.
 - Khi sửa giá trị mặc định trong `AppConfig.default` (width, height, hotkey...), đồng thời cập nhật field tương ứng trong `~/Library/Application Support/NTranslate/config.json` trên máy user, vì config đã tồn tại sẽ giữ giá trị cũ và không tự nhận default mới.
+- Folder lưu history chính trên máy này là `/Volumes/ESSD/MacData/NTranslateData` (file theo tháng trong `devices/<device-id>/YYYY-MM.json`), không phải `~/Library/Application Support/NTranslate`. Tra record thật thì đọc ở đây.
 
 ## Test
 

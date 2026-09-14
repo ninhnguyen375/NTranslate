@@ -555,6 +555,17 @@ enum LearnCardDisplayCheck {
     }
 
     private static func testRelatedImageURL() {
+        expect(LearnRelatedImage.senseQueries(from: " river bank \n\nbank building\nRiver Bank\nthird") == ["river bank", "bank building"],
+               "sense queries trim, drop blanks and duplicates, cap at two tiles")
+        expect(LearnRelatedImage.senseQueries(from: "   ").isEmpty, "blank model output gives no sense query")
+        expect(LearnRelatedImage.displayQuery(from: .success("river bank\nbank building"), fallback: "bank") == "river bank",
+               "a multi-line rewrite falls back to its first sense for a single query")
+        let a = URL(string: "https://x/a")!, b = URL(string: "https://x/b")!
+        expect(LearnRelatedImage.distinctPicks([[a, b], [a, b]]) == [a, b], "two senses never pick the same photo")
+        expect(LearnRelatedImage.distinctPicks([[], [a]]) == [a], "a failed sense leaves the other tile")
+        var card = LearnCard(); card.headword = "bank"; card.meanings = ["bờ sông", "ngân hàng"]
+        expect(LearnRelatedImage.senseSource(card: card, sourceText: "bank") == "bank\nMeanings:\nbờ sông\nngân hàng",
+               "rewrite input lists the card's meanings")
         expect(LearnRelatedImage.searchQuery(for: "flour") == "flour",
                "the headword is the fallback DuckDuckGo query")
         expect(LearnRelatedImage.displayQuery(from: .success("  bag of flour  "), fallback: "flour") == "bag of flour",

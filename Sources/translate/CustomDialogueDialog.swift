@@ -15,16 +15,18 @@ enum CustomDialogueDialog {
         "A traveler asking for directions in a train station"
     ]
 
-    /// Cleans and splits input string into unique words.
+    /// Cleans and splits input string into unique words or phrases.
+    /// Spaces stay inside an entry so "later on" is one phrase, not two words.
     static func parseWords(_ input: String) -> [String] {
-        let separators = CharacterSet(charactersIn: ",;\n\r\t ")
+        let separators = CharacterSet(charactersIn: ",;\n\r\t")
         let tokens = input.components(separatedBy: separators)
         var result: [String] = []
         var seen = Set<String>()
 
         for raw in tokens {
-            let cleaned = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            let cleaned = raw.split(whereSeparator: \.isWhitespace).joined(separator: " ")
                 .trimmingCharacters(in: .punctuationCharacters)
+                .trimmingCharacters(in: .whitespaces)
             guard !cleaned.isEmpty else { continue }
             let lower = cleaned.lowercased()
             if !seen.contains(lower) {

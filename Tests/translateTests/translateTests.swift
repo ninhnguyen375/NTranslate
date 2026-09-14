@@ -949,13 +949,7 @@ struct TranslateTests {
         #expect(state.accepts(generation: generation, identity: source))
         let markedPlaying = state.markPlaying(generation: generation, identity: source)
         #expect(markedPlaying)
-        #expect(state.action(for: source) == .pause)
-        let paused = state.pause(source)
-        #expect(paused)
-        #expect(state.action(for: source) == .resume)
-        let resumed = state.resume(source)
-        #expect(resumed)
-        #expect(state.action(for: source) == .pause)
+        #expect(state.action(for: source) == .play)
 
         state.invalidateRequests()
         let markedPlayingAfterInvalidate = state.markPlaying(generation: generation, identity: source)
@@ -970,16 +964,12 @@ struct TranslateTests {
         var state = SpeechPlaybackState()
 
         state.beginPlaying(source)
-        #expect(state.action(for: source) == .pause)
+        #expect(state.action(for: source) == .play)
         #expect(state.action(for: result) == .play)
-        let pausedWrongIdentity = state.pause(result)
-        #expect(!pausedWrongIdentity)
-        let resumedWhilePlaying = state.resume(source)
-        #expect(!resumedWhilePlaying)
 
         state.beginPlaying(result)
         #expect(state.action(for: source) == .play)
-        #expect(state.action(for: result) == .pause)
+        #expect(state.action(for: result) == .play)
     }
 
     @Test func speechPlaybackStateRejectsStaleLoadingCompletion() {

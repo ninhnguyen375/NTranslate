@@ -101,8 +101,6 @@ final class ReadingSelectionBar {
         switch action {
         case .play: presentation = (idle, "Speak", true)
         case .loading: presentation = ("hourglass", "Loading", false)
-        case .pause: presentation = ("pause.fill", "Pause", true)
-        case .resume: presentation = ("play.fill", "Resume", true)
         }
         let title = "\(presentation.verb) \(label)"
         button.image = NSImage(systemSymbolName: presentation.symbol, accessibilityDescription: title)?

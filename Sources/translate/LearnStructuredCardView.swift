@@ -223,6 +223,9 @@ final class LearnStructuredCardView: NSView {
             if let side = view as? ConfusableSide {
                 side.syncWrapWidth()
             }
+            if let row = view as? ExampleRow {
+                row.syncWrapWidth()
+            }
             view.subviews.forEach(walk)
         }
         walk(self)
@@ -383,11 +386,18 @@ final class LearnStructuredCardView: NSView {
         headword.textColor = .labelColor
         headword.alignment = .left
         headword.setContentHuggingPriority(.required, for: .horizontal)
-        headword.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        headword.setContentCompressionResistancePriority(.required, for: .horizontal)
         enableLearnTextSelection(headword)
         row.addArrangedSubview(headword)
 
-        if !card.pronunciation.isEmpty {
+        // ponytail: length heuristic; a long IPA (several readings) moves to its own
+        // wrapping line so it never squeezes the headword. Measure widths if 28 misfires.
+        let longIPA = card.pronunciation.count > 28
+        if longIPA {
+            let ipa = wrappingLabel(card.pronunciation, size: 13, color: .secondaryLabelColor)
+            ipa.font = .monospacedSystemFont(ofSize: scaled(13), weight: .regular)
+            column.addArrangedSubview(ipa)
+        } else if !card.pronunciation.isEmpty {
             let ipa = NSTextField(labelWithString: card.pronunciation)
             ipa.font = .monospacedSystemFont(ofSize: scaled(13), weight: .regular)
             ipa.textColor = .secondaryLabelColor
@@ -411,7 +421,7 @@ final class LearnStructuredCardView: NSView {
             row.addArrangedSubview(heroAccessory)
         }
 
-        column.addArrangedSubview(row)
+        column.insertArrangedSubview(row, at: 0)
         row.translatesAutoresizingMaskIntoConstraints = false
         row.widthAnchor.constraint(equalTo: column.widthAnchor).isActive = true
         return column
@@ -636,6 +646,11 @@ final class LearnStructuredCardView: NSView {
         box.fill(inner)
         section.addArrangedSubview(box)
         pinWidth(box, to: section)
+        // Room for the feedback line Check reveals, so it shows without scrolling further.
+        let tail = NSView()
+        tail.translatesAutoresizingMaskIntoConstraints = false
+        tail.heightAnchor.constraint(equalToConstant: scaled(28)).isActive = true
+        section.addArrangedSubview(tail)
         return section
     }
 
@@ -995,6 +1010,7 @@ private final class ExampleRow: NSView {
     }
 
     private let translation = NSTextField(wrappingLabelWithString: "")
+    private let sentence = NSTextField(wrappingLabelWithString: "")
     private let veil = SpoilerVeil()
     private var levelTag: NSTextField?
 
@@ -1003,7 +1019,6 @@ private final class ExampleRow: NSView {
         super.init(frame: .zero)
         translatesAutoresizingMaskIntoConstraints = false
 
-        let sentence = NSTextField(wrappingLabelWithString: "")
         sentence.translatesAutoresizingMaskIntoConstraints = false
         sentence.attributedStringValue = Self.highlighted(example.sentence, headword: headword)
         sentence.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
@@ -1077,6 +1092,22 @@ private final class ExampleRow: NSView {
         super.layout()
         paint()
         applyReveal()
+        syncWrapWidth()
+    }
+
+    /// The sentence sits beside the level tag, so the card-wide wrap width is too wide
+    /// and a long sentence measures as one line and clips. Wrap at the real bounds.
+    fileprivate func syncWrapWidth() {
+        // Derive from the row width, not the field's own bounds: a field squeezed
+        // mid-layout would otherwise lock in its narrow width and wrap per letter.
+        let rowWidth = bounds.width
+        guard rowWidth > 0 else { return }
+        let tagWidth = levelTag.map { $0.isHidden ? 0 : $0.fittingSize.width + 6 } ?? 0
+        for (field, width) in [(sentence, rowWidth - tagWidth), (translation, rowWidth)] {
+            guard width > 0, abs(field.preferredMaxLayoutWidth - width) > 0.5 else { continue }
+            field.preferredMaxLayoutWidth = width
+            field.invalidateIntrinsicContentSize()
+        }
     }
 
     private func paint() {

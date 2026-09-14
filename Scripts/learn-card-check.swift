@@ -210,11 +210,20 @@ expect(card.cloze?.hintedPrompt.contains("a______") == true,
         let mined = card.minedCloze(from: "The crew had to abandon ship.")
         expect(mined?.prompt == "The crew had to ___ ship.", "the encounter sentence is blanked on the headword")
         expect(mined?.answer == "abandon", "the mined cloze answer is the form the sentence used")
-        expect(card.preferredCloze(encounterSentence: "The crew had to abandon ship.")?.prompt
-                == "The crew had to ___ ship.",
-               "a mined sentence wins over the model's tự kiểm tra cloze")
-        expect(card.preferredCloze(encounterSentence: nil)?.answer == "abandon",
-               "without an encounter sentence the model's cloze is still used")
+        let pool = card.clozePool
+        expect(pool.first?.prompt == "They ___ the car.", "examples that hold the headword join the cloze pool")
+        expect(pool.last == card.cloze, "the tự kiểm tra cloze stays in the pool")
+        expect(pool.count == card.examples.filter { card.minedCloze(from: $0.sentence) != nil }.count + 1,
+               "the pool is every blankable example plus the model cloze")
+        expect(card.minedCloze(from: "It rained all week. Nobody came. The crew had to abandon ship in the storm.")?.prompt
+                == "The crew had to ___ ship in the storm.",
+               "a multi-sentence context is cut to the sentence holding the headword")
+        expect(card.minedCloze(from: "Yes. I think the crew\nhad to abandon ship just\nbecause of the storm.")?.prompt
+                == "I think the crew had to ___ ship just because of the storm.",
+               "hard line breaks inside a sentence do not cut it")
+        expect(card.minedCloze(from: "The storm hit hard. So we abandon it.")?.prompt
+                == "The storm hit hard. So we ___ it.",
+               "a very short sentence keeps the one before it")
         expect(card.minedCloze(from: "Nothing to see here.") == nil,
                "a sentence without the headword cannot be mined")
 
@@ -239,6 +248,8 @@ expect(card.cloze?.hintedPrompt.contains("a______") == true,
                "looking up the stored source finds the same card")
         expect(LearnCard.Encounter.matches("abandon", selection: "abandon"),
                "a bare term still matches itself")
+        expect(LearnCard.Encounter.matches("sewer", selection: "Sewer,"), "ignores case and edge punctuation")
+        expect(!LearnCard.Encounter.matches("sewer", selection: "sewing"), "no fuzzy match")
         expect(!LearnCard.Encounter.matches(encoded, selection: "desert"),
                "a different word does not match an encoded card")
 

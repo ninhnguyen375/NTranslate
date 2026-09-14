@@ -192,6 +192,7 @@ extension PopoverController {
         hideFloatingSelectionBar()
         // Editing the main source invalidates whatever phrase the sub pane was explaining.
         removeSubSection()
+        removeQASection()
         if pendingImage != nil { setPendingImage(nil) }
         invalidateTranslationRequest()
         invalidateSpeech(stopPlayback: true)

@@ -48,7 +48,7 @@ extension PopoverController {
             learnCardView.display(card)
             let imageTerm = LearnRelatedImage.searchTerm(from: card)
             let seed = imageTerm.isEmpty ? inputTextView.string : imageTerm
-            learnRelatedImageStrip.refresh(term: seed, rewriteSource: inputTextView.string)
+            learnRelatedImageStrip.refresh(term: seed, rewriteSource: LearnRelatedImage.senseSource(card: card, sourceText: inputTextView.string))
         } else if isShowingStructuredLearnCard {
             learnCardView.resetScrollState()
             learnCardView.applyUsage(from: "", live: false)

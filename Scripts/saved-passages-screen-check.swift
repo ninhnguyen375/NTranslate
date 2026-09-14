@@ -15,6 +15,9 @@ func run() {
 
     let input3 = (1...20).map { "word\($0)" }.joined(separator: ", ")
     let parsed3 = CustomDialogueDialog.parseWords(input3)
+    let parsed4 = CustomDialogueDialog.parseWords("later on,  look   up ; deadline")
+    assert(parsed4 == ["later on", "look up", "deadline"], "phrases must stay whole: \(parsed4)")
+
     assert(parsed3.count == 15, "words count must be capped at 15")
 
     // 2. WeavePassage mutations and round-trip

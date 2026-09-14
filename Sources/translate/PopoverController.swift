@@ -215,6 +215,8 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         return controller
     }
     var currentRecordID: UUID?
+    /// The record a Regenerate should overwrite, bound to the request generation it started.
+    var regenerateTarget: (recordID: UUID, generation: Int)?
     var lastExecutionMode: TranslationMode = .translate
     enum RequestScope {
         case main
@@ -268,6 +270,8 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     var subGeneration = 0
     var qaSection: QAPaneSection?
     var qaGeneration = 0
+    /// Source text of the last run; a different source closes the sub and Q&A panes.
+    var lastRunSource = ""
     let qaInputField: NSTextField
     let selectionFloatingBar = FloatingBarEffectView(frame: .zero)
     let floatingTranslateButton = PointerButton(frame: .zero)

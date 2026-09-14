@@ -693,7 +693,7 @@ extension PopoverController {
 
     func bindImageQueryRewrite(_ strip: LearnRelatedImageStrip) {
         strip.onResolveQuery = { [weak self] text, done in
-            let handle = self?.translator?.imageSearchQuery(text, completion: done)
+            let handle = self?.translator?.imageSenseQueries(text, completion: done)
             return { handle?.cancel() }
         }
     }

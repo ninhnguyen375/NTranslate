@@ -1,9 +1,10 @@
 import AppKit
 import Foundation
 
-/// Related-image lookup for the Learn source pane. One DuckDuckGo fetch: the
-/// Images-button rewrite when it returns, otherwise the headword. Fetching the
-/// headword first and then replacing it flashes a second pair of tiles.
+/// Related-image lookup for the Learn source pane. The model returns one query per
+/// sense and each tile gets its own DuckDuckGo fetch, so a word with two meanings
+/// shows both. One query (or no model) falls back to two hits from that query.
+/// Tiles are applied together: replacing one pair with another flashes.
 enum LearnRelatedImage {
     static let thumbnailCount = 2
     static let thumbnailCornerRadius: CGFloat = 12
@@ -36,8 +37,7 @@ enum LearnRelatedImage {
         let fallback = searchQuery(for: fallback)
         switch result {
         case let .success(query):
-            let trimmed = searchQuery(for: query)
-            return trimmed.isEmpty ? fallback : trimmed
+            return senseQueries(from: query, limit: 1).first ?? fallback
         case .failure:
             return fallback
         }
@@ -48,6 +48,36 @@ enum LearnRelatedImage {
     static func rewriteSource(term: String, sourceText: String) -> String {
         let source = searchQuery(for: sourceText)
         return source.isEmpty ? searchQuery(for: term) : source
+    }
+
+    /// Rewrite input with the card's meanings, so each query matches a sense the card shows.
+    static func senseSource(card: LearnCard, sourceText: String) -> String {
+        let base = rewriteSource(term: card.headword, sourceText: sourceText)
+        let meanings = card.meanings.map { searchQuery(for: $0) }.filter { !$0.isEmpty }
+        return meanings.isEmpty ? base : base + "\nMeanings:\n" + meanings.joined(separator: "\n")
+    }
+
+    /// One query per model line, trimmed, blank and duplicate lines dropped, capped at `limit`.
+    static func senseQueries(from text: String, limit: Int = thumbnailCount) -> [String] {
+        var queries: [String] = []
+        var seen = Set<String>()
+        for line in text.split(whereSeparator: \.isNewline) {
+            let query = searchQuery(for: String(line))
+            guard !query.isEmpty, seen.insert(LearnCard.normalizeAnswer(query)).inserted else { continue }
+            queries.append(query)
+            if queries.count == limit { break }
+        }
+        return queries
+    }
+
+    /// First URL per slot that no earlier slot took, so two senses never show the same photo.
+    static func distinctPicks(_ candidates: [[URL]]) -> [URL] {
+        var used = Set<URL>()
+        return candidates.compactMap { urls in
+            guard let pick = urls.first(where: { !used.contains($0) }) else { return nil }
+            used.insert(pick)
+            return pick
+        }
     }
 
     static func needsRefetch(seed: String, resolved: String) -> Bool {
@@ -236,15 +266,20 @@ final class LearnRelatedImageStrip: NSView {
     private let buttons: [NSButton]
     private(set) var loadedImages: [NSImage] = []
     private var term = ""
-    private var resolvedQuery = ""
+    private var resolvedQueries: [String] = []
+    private var openedIndex = 0
     private var seedQuery = ""
     private var generation = 0
     private var fetchGeneration = 0
-    private var task: URLSessionDataTask?
+    private var tasks: [URLSessionDataTask] = []
     private var rewriteCancel: (() -> Void)?
 
     var hasImages: Bool { !loadedImages.isEmpty }
-    var pageURL: URL? { LearnRelatedImage.pageURL(for: resolvedQuery.isEmpty ? term : resolvedQuery) }
+    /// Google Images for the tile last clicked, so each sense opens its own search.
+    var pageURL: URL? {
+        let query = resolvedQueries.indices.contains(openedIndex) ? resolvedQueries[openedIndex] : resolvedQueries.first
+        return LearnRelatedImage.pageURL(for: query ?? term)
+    }
 
     override init(frame frameRect: NSRect) {
         buttons = (0..<LearnRelatedImage.thumbnailCount).map { _ in NSButton(title: "", target: nil, action: nil) }
@@ -253,7 +288,7 @@ final class LearnRelatedImageStrip: NSView {
         isHidden = true
         for button in buttons {
             button.target = self
-            button.action = #selector(openPage)
+            button.action = #selector(openPage(_:))
             button.isBordered = false
             button.imagePosition = .imageOnly
             button.imageScaling = .scaleAxesIndependently
@@ -270,7 +305,7 @@ final class LearnRelatedImageStrip: NSView {
     required init?(coder: NSCoder) { nil }
 
     deinit {
-        task?.cancel()
+        tasks.forEach { $0.cancel() }
     }
 
     func refresh(term: String, rewriteSource: String? = nil) {
@@ -285,13 +320,13 @@ final class LearnRelatedImageStrip: NSView {
         let token = generation
         self.term = key
         seedQuery = LearnRelatedImage.searchQuery(for: term)
-        resolvedQuery = seedQuery
-        task?.cancel()
+        resolvedQueries = [seedQuery]
+        tasks.forEach { $0.cancel() }
         rewriteCancel?()
         apply(images: [])
         let rewrite = LearnRelatedImage.rewriteSource(term: seedQuery, sourceText: rewriteSource ?? "")
         if let query = LearnRelatedImage.thumbnailQuery(seed: seedQuery, hasRewriter: onResolveQuery != nil, rewrite: nil) {
-            fetchImages(query: query, token: token)
+            fetchImages(queries: [query], token: token)
         }
         startRewrite(source: rewrite, token: token)
     }
@@ -299,17 +334,17 @@ final class LearnRelatedImageStrip: NSView {
     func clear() {
         generation += 1
         fetchGeneration += 1
-        task?.cancel()
-        task = nil
+        tasks.forEach { $0.cancel() }
+        tasks = []
         rewriteCancel?()
         rewriteCancel = nil
         term = ""
         seedQuery = ""
-        resolvedQuery = ""
+        resolvedQueries = []
         apply(images: [])
     }
 
-    private static let rewriteCacheKey = "relatedImageQueryCache"
+    private static let rewriteCacheKey = "relatedImageSenseQueryCache"
 
     private func startRewrite(source: String, token: Int) {
         guard let onResolveQuery else { return }
@@ -337,45 +372,76 @@ final class LearnRelatedImageStrip: NSView {
     private func applyRewrite(_ result: Result<String, Error>, token: Int) {
         guard token == generation else { return }
         rewriteCancel = nil
+        if case .success(let text) = result {
+            let senses = LearnRelatedImage.senseQueries(from: text)
+            if senses.count > 1 {
+                fetchImages(queries: senses, token: token)
+                return
+            }
+        }
         guard let query = LearnRelatedImage.thumbnailQuery(seed: seedQuery, hasRewriter: true, rewrite: result) else { return }
-        fetchImages(query: query, token: token)
+        fetchImages(queries: [query], token: token)
     }
 
-    private func fetchImages(query: String, token: Int) {
+    /// One DuckDuckGo lookup per query. A single query fills every tile from its own hits.
+    private func fetchImages(queries: [String], token: Int) {
         guard token == generation else { return }
         fetchGeneration += 1
         let fetchToken = fetchGeneration
-        let queryForList = LearnRelatedImage.searchQuery(for: query)
-        resolvedQuery = queryForList.isEmpty ? seedQuery : queryForList
-        guard let tokenURL = LearnRelatedImage.tokenPageURL(for: queryForList) else { return }
-        task?.cancel()
+        let queries = queries.map { LearnRelatedImage.searchQuery(for: $0) }.filter { !$0.isEmpty }
+        guard !queries.isEmpty else { return }
+        resolvedQueries = queries
+        tasks.forEach { $0.cancel() }
+        let perQuery = queries.count == 1 ? LearnRelatedImage.thumbnailCount : 2
+        let lock = NSLock()
+        nonisolated(unsafe) var candidates = [[URL]](repeating: [], count: queries.count)
+        let group = DispatchGroup()
+        tasks = queries.enumerated().compactMap { index, query in
+            group.enter()
+            let task = Self.lookup(query: query, limit: perQuery) { urls in
+                lock.lock()
+                candidates[index] = urls
+                lock.unlock()
+                group.leave()
+            }
+            if task == nil { group.leave() }
+            return task
+        }
+        group.notify(queue: .main) { [weak self] in
+            lock.lock()
+            let picks = queries.count == 1 ? (candidates.first ?? []) : LearnRelatedImage.distinctPicks(candidates)
+            lock.unlock()
+            guard !picks.isEmpty else { return }
+            LearnRelatedImage.fetchImageData(from: picks) { [weak self] payloads in
+                Task { @MainActor in
+                    guard let self, token == self.generation, fetchToken == self.fetchGeneration else { return }
+                    self.apply(images: payloads.compactMap { NSImage(data: $0) })
+                    self.onImagesChanged?()
+                }
+            }
+        }
+    }
+
+    /// Token page, then `i.js`. Always calls `done` once; returns nil when the query has no URL.
+    private nonisolated static func lookup(query: String, limit: Int, done: @escaping @Sendable ([URL]) -> Void) -> URLSessionDataTask? {
+        guard let tokenURL = LearnRelatedImage.tokenPageURL(for: query) else { return nil }
         var request = URLRequest(url: tokenURL)
         request.timeoutInterval = 8
         request.setValue("NTranslate/1.4 (macOS; local.ninh.ntranslate)", forHTTPHeaderField: "User-Agent")
-        let pageTask = URLSession.shared.dataTask(with: request) { [weak self] data, _, _ in
+        let pageTask = URLSession.shared.dataTask(with: request) { data, _, _ in
             guard let data, let vqd = LearnRelatedImage.vqdToken(from: data),
-                  let listURL = LearnRelatedImage.imageListURL(query: queryForList, vqd: vqd)
-            else { return }
+                  let listURL = LearnRelatedImage.imageListURL(query: query, vqd: vqd)
+            else { return done([]) }
             var listRequest = URLRequest(url: listURL)
             listRequest.timeoutInterval = 8
             listRequest.setValue("NTranslate/1.4 (macOS; local.ninh.ntranslate)", forHTTPHeaderField: "User-Agent")
             listRequest.setValue("https://duckduckgo.com/", forHTTPHeaderField: "Referer")
             URLSession.shared.dataTask(with: listRequest) { data, _, _ in
-                guard let data else { return }
-                let urls = LearnRelatedImage.imageURLs(from: data)
-                guard !urls.isEmpty else { return }
-                LearnRelatedImage.fetchImageData(from: urls) { [weak self] payloads in
-                    let images = payloads
-                    Task { @MainActor in
-                        guard let self, token == self.generation, fetchToken == self.fetchGeneration else { return }
-                        self.apply(images: images.compactMap { NSImage(data: $0) })
-                        self.onImagesChanged?()
-                    }
-                }
+                done(data.map { LearnRelatedImage.imageURLs(from: $0, limit: limit) } ?? [])
             }.resume()
         }
-        task = pageTask
         pageTask.resume()
+        return pageTask
     }
 
     func layoutInSourcePane(paneWidth: CGFloat, bodyHeight: CGFloat, scrollView: NSScrollView, textView: NSTextView) {
@@ -415,7 +481,8 @@ final class LearnRelatedImageStrip: NSView {
         isHidden = !hasImages
     }
 
-    @objc private func openPage() {
+    @objc private func openPage(_ sender: NSButton) {
+        openedIndex = buttons.firstIndex(of: sender) ?? 0
         onOpen?()
     }
 }

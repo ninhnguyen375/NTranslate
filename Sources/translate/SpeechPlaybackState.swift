@@ -22,11 +22,9 @@ struct SpeechIdentity: Equatable, Hashable, Sendable {
 enum SpeechButtonAction: Equatable, Sendable {
     case play
     case loading
-    case pause
-    case resume
 
-    /// A button only shows loading/pause/resume when the audio running is its own speed; otherwise
-    /// it offers to start playback at that speed.
+    /// A button only shows loading when the audio being fetched is its own speed; otherwise it
+    /// offers to start playback at that speed.
     func applies(whenSlow buttonIsSlow: Bool, activeIsSlow: Bool) -> SpeechButtonAction {
         buttonIsSlow == activeIsSlow ? self : .play
     }
@@ -37,7 +35,6 @@ struct SpeechPlaybackState: Equatable, Sendable {
         case idle
         case loading(SpeechIdentity, generation: Int)
         case playing(SpeechIdentity)
-        case paused(SpeechIdentity)
     }
 
     private var phase: Phase = .idle
@@ -70,18 +67,6 @@ struct SpeechPlaybackState: Equatable, Sendable {
         return true
     }
 
-    mutating func pause(_ identity: SpeechIdentity) -> Bool {
-        guard phase == .playing(identity) else { return false }
-        phase = .paused(identity)
-        return true
-    }
-
-    mutating func resume(_ identity: SpeechIdentity) -> Bool {
-        guard phase == .paused(identity) else { return false }
-        phase = .playing(identity)
-        return true
-    }
-
     mutating func invalidateRequests() {
         generation += 1
         if case .loading = phase {
@@ -94,16 +79,9 @@ struct SpeechPlaybackState: Equatable, Sendable {
         phase = .idle
     }
 
+    /// Playing audio keeps the button on play: clicking it again restarts from the beginning.
     func action(for identity: SpeechIdentity) -> SpeechButtonAction {
-        switch phase {
-        case let .loading(active, _) where active == identity:
-            return .loading
-        case let .playing(active) where active == identity:
-            return .pause
-        case let .paused(active) where active == identity:
-            return .resume
-        default:
-            return .play
-        }
+        if case let .loading(active, _) = phase, active == identity { return .loading }
+        return .play
     }
 }

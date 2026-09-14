@@ -8,8 +8,9 @@ extension PopoverController {
         updateSpeechButton(speakSourceButton, identity: source, baseLabel: "source", speed: 1.0, idleSymbol: "speaker.wave.2")
         updateSpeechButton(speakSourceSlowButton, identity: source, baseLabel: "source slowly", speed: config.speechSlowRate, idleSymbol: "tortoise")
         updateSpeechButton(learnCardView.speakButton, identity: source, baseLabel: "source", speed: 1.0, idleSymbol: "speaker.wave.2")
-        updateSpeechButton(speakResultButton, identity: resultSpeechIdentity(), baseLabel: "translation", speed: 1.0, idleSymbol: "speaker.wave.2")
-        updateSpeechButton(speakResultSlowButton, identity: resultSpeechIdentity(), baseLabel: "translation slowly", speed: config.speechSlowRate, idleSymbol: "tortoise")
+        updateSpeechButton(learnCardView.speakSlowButton, identity: source, baseLabel: "source slowly", speed: config.speechSlowRate, idleSymbol: "tortoise")
+        updateSpeechButton(speakResultButton, identity: resultButtonSpeechIdentity(), baseLabel: "translation", speed: 1.0, idleSymbol: "speaker.wave.2")
+        updateSpeechButton(speakResultSlowButton, identity: resultButtonSpeechIdentity(), baseLabel: "translation slowly", speed: config.speechSlowRate, idleSymbol: "tortoise")
         if let section = subSection {
             updateSubSpeakButtons(section)
         }
@@ -18,13 +19,14 @@ extension PopoverController {
         }
     }
 
-    /// Same play/loading/pause/resume presentation as the main pane, for the subtranslate pane.
+    /// Same play/loading presentation as the main pane, for the subtranslate pane.
     func updateSubSpeakButtons(_ section: SubtranslateSection) {
         updateSpeechButton(section.speakSourceButton, identity: subSpeechIdentity(kind: .source), baseLabel: "subtranslate source", speed: 1.0, idleSymbol: "speaker.wave.2")
         updateSpeechButton(section.speakSourceSlowButton, identity: subSpeechIdentity(kind: .source), baseLabel: "subtranslate source slowly", speed: config.speechSlowRate, idleSymbol: "tortoise")
-        updateSpeechButton(section.speakResultButton, identity: subSpeechIdentity(kind: .result), baseLabel: "subtranslate translation", speed: 1.0, idleSymbol: "speaker.wave.2")
-        updateSpeechButton(section.speakResultSlowButton, identity: subSpeechIdentity(kind: .result), baseLabel: "subtranslate translation slowly", speed: config.speechSlowRate, idleSymbol: "tortoise")
+        updateSpeechButton(section.speakResultButton, identity: subSpeechIdentity(kind: section.mode == .learn ? .source : .result), baseLabel: "subtranslate translation", speed: 1.0, idleSymbol: "speaker.wave.2")
+        updateSpeechButton(section.speakResultSlowButton, identity: subSpeechIdentity(kind: section.mode == .learn ? .source : .result), baseLabel: "subtranslate translation slowly", speed: config.speechSlowRate, idleSymbol: "tortoise")
         updateSpeechButton(section.learnCardView.speakButton, identity: subSpeechIdentity(kind: .source), baseLabel: "subtranslate source", speed: 1.0, idleSymbol: "speaker.wave.2")
+        updateSpeechButton(section.learnCardView.speakSlowButton, identity: subSpeechIdentity(kind: .source), baseLabel: "subtranslate source slowly", speed: config.speechSlowRate, idleSymbol: "tortoise")
     }
 
     func updateSpeechButton(
@@ -46,8 +48,6 @@ extension PopoverController {
         switch action {
         case .play: presentation = (idleSymbol, speed < 1 ? "Speak slowly" : "Play", identity != nil)
         case .loading: presentation = ("hourglass", "Loading", false)
-        case .pause: presentation = ("pause.fill", "Pause", true)
-        case .resume: presentation = ("play.fill", "Resume", true)
         }
         let label = "\(presentation.verb) \(baseLabel)"
         button.title = ""
@@ -190,25 +190,8 @@ extension PopoverController {
         guard let identity,
               !prefetchingSpeech.contains(where: { speechMatches($0, identity) })
         else { return }
-        let sameActive = abs(activeSpeechRate - speed) < 0.01
-        if sameActive {
-            switch speechState.action(for: identity) {
-            case .pause:
-                audioPlayer?.pause()
-                _ = speechState.pause(identity)
-                updateSpeakButtons()
-                return
-            case .resume:
-                guard let player = audioPlayer, player.play() else { resetSpeechPlayback(); return }
-                _ = speechState.resume(identity)
-                updateSpeakButtons()
-                return
-            case .loading:
-                return
-            case .play:
-                break
-            }
-        }
+        // A click while this audio loads is ignored; any other click restarts from the beginning.
+        if abs(activeSpeechRate - speed) < 0.01, speechState.action(for: identity) == .loading { return }
         stopCurrentSpeech()
         activeSpeechRate = speed
         if let data = speechCache[identity] { startPlayback(data, identity: identity, speed: speed) }
@@ -350,6 +333,11 @@ extension PopoverController {
 
     @objc func speakInput() { playSpeech(sourceSpeechIdentity(), speed: 1.0) }
     @objc func speakInputSlow() { playSpeech(sourceSpeechIdentity(), speed: config.speechSlowRate) }
-    @objc func speakResult() { playSpeech(resultSpeechIdentity(), speed: 1.0) }
-    @objc func speakResultSlow() { playSpeech(resultSpeechIdentity(), speed: config.speechSlowRate) }
+    /// A learn card is far too long to read aloud, so its result buttons speak the source term.
+    func resultButtonSpeechIdentity() -> SpeechIdentity? {
+        lastExecutionMode == .learn ? sourceSpeechIdentity() : resultSpeechIdentity()
+    }
+
+    @objc func speakResult() { playSpeech(resultButtonSpeechIdentity(), speed: 1.0) }
+    @objc func speakResultSlow() { playSpeech(resultButtonSpeechIdentity(), speed: config.speechSlowRate) }
 }

@@ -71,7 +71,7 @@ final class ReviewSessionView: NSView {
     /// Flipped card, bottom half: examples and everything longer, full width.
     let learnDetailView = LearnStructuredCardView()
     let frontImages = ReviewImageColumn(width: 160)
-    let backImages = ReviewImageColumn(width: 110)
+    let backImages = ReviewImageColumn(width: 110, aspect: 1)
     /// Controller decides: a question that asks for the term hides the pictures on the front.
     var showsFrontImages = false { didSet { refreshImageVisibility() } }
     private let answerRow = NSStackView()
@@ -367,7 +367,6 @@ final class ReviewSessionView: NSView {
         sourceContainer.addArrangedSubview(readMoreButton)
         sourceContainer.addArrangedSubview(answerField)
         sourceContainer.addArrangedSubview(choiceStack)
-        sourceContainer.addArrangedSubview(feedbackLabel)
         // Needs termStack and pronunciationLabel arranged first: it inserts at index 2.
         restoreAudioStack()
 
@@ -517,6 +516,8 @@ final class ReviewSessionView: NSView {
         actionStack.spacing = 10
         actionStack.alignment = .centerX
         actionStack.translatesAutoresizingMaskIntoConstraints = false
+        // The structured back hides sourceContainer, so the typed answer and the right one live here.
+        actionStack.addArrangedSubview(feedbackLabel)
         actionStack.addArrangedSubview(revealButton)
         actionStack.addArrangedSubview(gradeStack)
         actionStack.addArrangedSubview(autoGradeStack)
@@ -947,7 +948,7 @@ final class ReviewImageColumn: NSStackView {
     }
     private let tiles: [NSImageView]
 
-    init(width: CGFloat) {
+    init(width: CGFloat, aspect: CGFloat = 0.75) {
         self.width = width
         tiles = (0..<LearnRelatedImage.thumbnailCount).map { _ in NSImageView() }
         super.init(frame: .zero)
@@ -963,8 +964,8 @@ final class ReviewImageColumn: NSStackView {
             tile.layer?.borderWidth = 1
             tile.layer?.borderColor = NSColor.separatorColor.cgColor
             tile.translatesAutoresizingMaskIntoConstraints = false
-            // Max box 4:3; the photo fits inside it at its own aspect.
-            tile.heightAnchor.constraint(equalTo: tile.widthAnchor, multiplier: 0.75).isActive = true
+            // Max box height = width * aspect; the photo fits inside it at its own aspect.
+            tile.heightAnchor.constraint(equalTo: tile.widthAnchor, multiplier: aspect).isActive = true
             tile.toolTip = "Open related images"
             tile.addGestureRecognizer(NSClickGestureRecognizer(target: self, action: #selector(openTapped)))
             addArrangedSubview(tile)

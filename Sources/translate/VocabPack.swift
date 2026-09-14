@@ -30,9 +30,9 @@ final class VocabPack {
     private var index: [String: String] = [:]
     private var entries: [VocabPackEntry] = []
 
-    /// Lowercased, whitespace-collapsed form used as the lookup key on both sides.
+    /// Lowercased, whitespace-collapsed, edge-punctuation-free form used as the lookup key on both sides.
     nonisolated static func normalize(_ text: String) -> String {
-        text.trimmingCharacters(in: .whitespacesAndNewlines)
+        text.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines.union(.punctuationCharacters))
             .lowercased()
             .split(whereSeparator: { $0.isWhitespace })
             .joined(separator: " ")

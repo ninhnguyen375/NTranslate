@@ -173,6 +173,14 @@ extension PopoverController: NSTextFieldDelegate {
         qaSection = nil
     }
 
+    /// Sub and Q&A panes explain the previous source; drop them once the source text differs.
+    func closeFollowUpPanesIfSourceChanged(_ source: String) {
+        defer { lastRunSource = source }
+        guard source != lastRunSource else { return }
+        removeSubSection()
+        removeQASection()
+    }
+
     @objc func closeQASection() {
         removeQASection()
         reflowLayout()

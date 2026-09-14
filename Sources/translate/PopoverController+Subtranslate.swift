@@ -267,7 +267,7 @@ extension PopoverController {
             section.learnCardView.display(card)
             let imageTerm = LearnRelatedImage.searchTerm(from: card)
             let seed = imageTerm.isEmpty ? section.sourceText : imageTerm
-            section.relatedImageStrip.refresh(term: seed, rewriteSource: section.sourceText)
+            section.relatedImageStrip.refresh(term: seed, rewriteSource: LearnRelatedImage.senseSource(card: card, sourceText: section.sourceText))
         } else if section.isShowingStructuredLearnCard {
             section.learnCardView.resetScrollState()
             section.learnCardView.applyUsage(from: "", live: false)
@@ -571,8 +571,8 @@ extension PopoverController {
 
     @objc func speakSubSource() { playSpeech(subSpeechIdentity(kind: .source), speed: 1.0) }
     @objc func speakSubSourceSlow() { playSpeech(subSpeechIdentity(kind: .source), speed: config.speechSlowRate) }
-    @objc func speakSubResult() { playSpeech(subSpeechIdentity(kind: .result), speed: 1.0) }
-    @objc func speakSubResultSlow() { playSpeech(subSpeechIdentity(kind: .result), speed: config.speechSlowRate) }
+    @objc func speakSubResult() { playSpeech(subSpeechIdentity(kind: subSection?.mode == .learn ? .source : .result), speed: 1.0) }
+    @objc func speakSubResultSlow() { playSpeech(subSpeechIdentity(kind: subSection?.mode == .learn ? .source : .result), speed: config.speechSlowRate) }
 
     @objc func copySubResult() {
         guard let section = subSection, PopoverFeedback.isCopyableResult(section.lastResultRaw) else { return }
@@ -749,6 +749,8 @@ extension PopoverController {
 
     /// Structured Learn cards use selectable labels, so the shared field editor is the NSTextView.
     func floatingLearnCardHost(for editor: NSTextView) -> (scrollView: NSScrollView, isSub: Bool)? {
+        // The self-check answer field is editable; Enter selects its text, which is not a reading selection.
+        guard !editor.isEditable else { return nil }
         let field = (editor.delegate as? NSView) ?? editor.superview
         if isShowingStructuredLearnCard,
            field?.isDescendant(of: learnCardView) == true || editor.isDescendant(of: learnCardView) {

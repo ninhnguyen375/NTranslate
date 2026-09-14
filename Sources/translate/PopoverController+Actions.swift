@@ -44,6 +44,7 @@ extension PopoverController {
         invalidateCurrentRecord()
         invalidateSpeech(stopPlayback: true)
         let text = inputTextView.string.trimmingCharacters(in: .whitespacesAndNewlines)
+        closeFollowUpPanesIfSourceChanged(text)
         guard !text.isEmpty else { setResultText(PopoverFeedback.emptyInputHint); reflowLayout(); updateBusyState(); return }
         guard text.count <= config.maxTranslateLength else { setResultText(PopoverFeedback.textTooLong); reflowLayout(); updateBusyState(); return }
         let sourceWasAutoDetect = selectedSourceLanguage() == LanguageDetector.autoDetect
@@ -61,10 +62,12 @@ extension PopoverController {
             finishRequest(generation: generation)
             return
         }
+        // Selections often drag in a trailing `.` or quotes; the pack only knows the bare word.
+        let term = text.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines.union(.punctuationCharacters))
         if !bypassCache,
-           Translator.isDictionaryTerm(text),
+           Translator.isDictionaryTerm(term),
            let packed = VocabPack.shared.lookup(
-               text,
+               term,
                sourceLanguage: pair.source,
                targetLanguage: pair.target,
                sourceIsAutoDetect: sourceWasAutoDetect
@@ -73,8 +76,8 @@ extension PopoverController {
             // assigns `currentRecordID`, and Save Word plus stored audio both resolve that ID
             // against the store. A pack entry that never lands there would break both.
             let record = TranslationRecord(
-                id: UUID(), timestamp: Date(), mode: .learn, sourceText: text, resultText: packed,
-                sourceLanguage: effectiveSourceLanguage(for: text), targetLanguage: pair.target,
+                id: UUID(), timestamp: Date(), mode: .learn, sourceText: term, resultText: packed,
+                sourceLanguage: effectiveSourceLanguage(for: term), targetLanguage: pair.target,
                 isSaved: false
             )
             do {
@@ -114,7 +117,7 @@ extension PopoverController {
                         isSaved: false
                     )
                     do {
-                        let stored = try (bypassCache ? self.historyStore.upsertRecord(record) : self.historyStore.appendIfAbsent(record))
+                        let stored = try self.storeResult(record, generation: generation, bypassCache: bypassCache)
                         if stored.id != record.id && !bypassCache {
                             self.applyReusableRecord(stored, mode: .learn, generation: generation)
                         } else {
@@ -193,7 +196,7 @@ extension PopoverController {
                         sourceLanguage: lang, targetLanguage: lang, isSaved: false
                     )
                     do {
-                        let stored = try (bypassCache ? self.historyStore.upsertRecord(record) : self.historyStore.appendIfAbsent(record))
+                        let stored = try self.storeResult(record, generation: generation, bypassCache: bypassCache)
                         if stored.id != record.id && !bypassCache {
                             self.applyReusableRecord(stored, mode: .proofread, generation: generation)
                         } else {
@@ -224,6 +227,14 @@ extension PopoverController {
 
     @objc func retryRequest() {
         clearAudioCache(recordID: currentRecordID)
+        // An opened card (e.g. from Study) keeps its id and schedule; the lookup by source text
+        // would miss one stored with its context and append a duplicate instead.
+        let input = inputTextView.string.trimmingCharacters(in: .whitespacesAndNewlines)
+        let target = historyStore.records.first {
+            $0.id == currentRecordID
+                && LearnCard.Encounter.split($0.sourceText).term.trimmingCharacters(in: .whitespacesAndNewlines) == input
+        }
+        defer { regenerateTarget = target.map { ($0.id, requestGeneration) } }
         switch lastExecutionMode {
         case .translate:
             performTranslate(generation: nil, bypassCache: true)
@@ -272,6 +283,16 @@ extension PopoverController {
             learnCardScrollView.contentView.scroll(to: .zero)
             learnCardScrollView.reflectScrolledClipView(learnCardScrollView.contentView)
         }
+    }
+
+    /// Saves a finished result. A Regenerate of an opened record replaces its text in place.
+    func storeResult(_ record: TranslationRecord, generation: Int, bypassCache: Bool) throws -> TranslationRecord {
+        if bypassCache, let target = regenerateTarget, target.generation == generation,
+           historyStore.records.first(where: { $0.id == target.recordID })?.mode == record.mode,
+           let replaced = try historyStore.replaceResultText(record.resultText, recordID: target.recordID) {
+            return replaced
+        }
+        return try bypassCache ? historyStore.upsertRecord(record) : historyStore.appendIfAbsent(record)
     }
 
     func invalidateCurrentRecord() {

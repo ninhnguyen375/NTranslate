@@ -118,18 +118,29 @@ struct LearnCard: Equatable, Sendable {
     func minedCloze(from sentence: String) -> ClozeQuestion? {
         let trimmed = sentence.trimmingCharacters(in: .whitespacesAndNewlines)
         // A sentence that already carries a blank would end up with two, both hinted as the answer.
-        guard !headword.isEmpty, !trimmed.isEmpty, !trimmed.contains("___"),
-              let hit = ConfusableDrillItem.blankOutInflected(headword, in: trimmed)
-        else { return nil }
-        return ClozeQuestion(prompt: hit.blanked, answer: hit.form)
+        guard !headword.isEmpty, !trimmed.isEmpty, !trimmed.contains("___") else { return nil }
+        // Transcripts wrap mid-sentence; a hard line break would otherwise end the sentence there.
+        let text = trimmed.split(whereSeparator: { $0.isWhitespace }).joined(separator: " ")
+        // A long selection holds several sentences; only the one with the word is worth reading.
+        var sentences: [String] = []
+        text.enumerateSubstrings(in: text.startIndex..., options: .bySentences) { sub, _, _, _ in
+            if let sub = sub?.trimmingCharacters(in: .whitespacesAndNewlines), !sub.isEmpty { sentences.append(sub) }
+        }
+        if sentences.isEmpty { sentences = [text] }
+        for (index, sentence) in sentences.enumerated() {
+            guard let hit = ConfusableDrillItem.blankOutInflected(headword, in: sentence) else { continue }
+            // A very short sentence gives no clue on its own, so it borrows the one before.
+            let isShort = sentence.split(whereSeparator: { $0.isWhitespace }).count < 6
+            let prompt = isShort && index > 0 ? "\(sentences[index - 1]) \(hit.blanked)" : hit.blanked
+            return ClozeQuestion(prompt: prompt, answer: hit.form)
+        }
+        return nil
     }
 
-    /// An encounter sentence is better practice than the card's generated cloze, when it can be blanked.
-    func preferredCloze(encounterSentence: String?) -> ClozeQuestion? {
-        if let sentence = encounterSentence, let mined = minedCloze(from: sentence) {
-            return mined
-        }
-        return cloze
+    /// Every cloze the card can ask: each example that blanks on the headword, plus the tự kiểm tra
+    /// cloze. Study picks one at random so the same sentence does not come back every review.
+    var clozePool: [ClozeQuestion] {
+        examples.compactMap { minedCloze(from: $0.sentence) } + (cloze.map { [$0] } ?? [])
     }
 
     /// How a Learn record keeps the term and the sentence it was taken from, without a new field.
@@ -164,13 +175,18 @@ struct LearnCard: Equatable, Sendable {
         }
 
         static func matches(_ stored: String, selection: String) -> Bool {
-            let stored = stored.trimmingCharacters(in: .whitespacesAndNewlines)
-            let selection = selection.trimmingCharacters(in: .whitespacesAndNewlines)
-            if stored == selection { return true }
+            let selection = LearnCard.lookupKey(selection)
+            if LearnCard.lookupKey(stored) == selection { return true }
             // The original sentence looks up the encoded card. The bare term does not, so two
             // encounters of the same word stay two cards.
-            return split(stored).context == selection
+            return split(stored).context.map(LearnCard.lookupKey) == selection
         }
+    }
+
+    /// Learn cache key: case-insensitive, whitespace-collapsed, edge punctuation dropped, so
+    /// `Sewer.` and `sewer` share one card. Inner punctuation (`don't`, `e.g.`) stays.
+    static func lookupKey(_ text: String) -> String {
+        normalizeAnswer(text.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines.union(.punctuationCharacters)))
     }
 
     /// Same rule the pack lookup uses, so an answer typed with odd spacing still matches.

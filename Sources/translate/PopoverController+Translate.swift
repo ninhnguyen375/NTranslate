@@ -160,6 +160,7 @@ extension PopoverController {
             }
         }
         invalidateCurrentRecord()
+        closeFollowUpPanesIfSourceChanged(inputTextView.string.trimmingCharacters(in: .whitespacesAndNewlines))
         removeQASection()
         qaInputField.stringValue = ""
         qaInputField.isHidden = true
@@ -330,7 +331,7 @@ extension PopoverController {
             )
             setResultText(value.text)
             do {
-                let stored = try (bypassCache ? historyStore.upsertRecord(record) : historyStore.appendIfAbsent(record))
+                let stored = try storeResult(record, generation: generation, bypassCache: bypassCache)
                 if stored.id != record.id && !bypassCache {
                     pendingSourceSpeech.removeValue(forKey: generation)
                     applyReusableRecord(stored, mode: .translate, generation: generation)

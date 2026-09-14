@@ -269,12 +269,18 @@ final class TranslationHistoryStore {
         sourceIsAutoDetect: Bool
     ) -> TranslationRecord? {
         let sourceText = Self.trim(sourceText)
-        return records.first {
+        let candidates = records.lazy.filter {
             $0.mode == mode
-                && Self.sourceMatches($0.sourceText, sourceText, mode: mode)
                 && $0.targetLanguage == targetLanguage
                 && (sourceIsAutoDetect || $0.sourceLanguage == sourceLanguage)
         }
+        // A card for the word itself beats a newer card that merely lists it as context, e.g. a
+        // synonym `boldly (context: courageously)` opened from the `courageously` card.
+        if mode == .learn {
+            let key = LearnCard.lookupKey(sourceText)
+            if let exact = candidates.first(where: { LearnCard.lookupKey($0.sourceText) == key }) { return exact }
+        }
+        return candidates.first { Self.sourceMatches($0.sourceText, sourceText, mode: mode) }
     }
 
     /// Recent translations for the same language pair, newest first, used as translation context.

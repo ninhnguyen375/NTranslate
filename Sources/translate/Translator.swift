@@ -76,6 +76,7 @@ final class Translator: @unchecked Sendable {
         case proofread(lang: String)
         case ask(question: String, sourceText: String, translatedText: String, sourceLang: String, targetLang: String, history: [QATurn], parentContext: String?)
         case imageSearch
+        case imageSenses
         case weave(words: [String], sourceLang: String, targetLang: String, scenario: String?)
     }
 
@@ -176,6 +177,7 @@ final class Translator: @unchecked Sendable {
     }
 
     static let imageSearchPrompt = "Return only a short, concrete English query for Google Images. No quotes, no markdown, no filler."
+    static let imageSensesPrompt = "Return exactly 2 lines. Each line is a short, concrete English query for Google Images that shows a DIFFERENT meaning of the word or phrase; follow the listed meanings when given. If it has only one meaning, return 2 queries showing different concrete uses of it. One query per line. No numbering, no quotes, no markdown, no filler."
     private static func autoDetectResponseContract(languages: [String]) -> String {
         let allowed = languages.filter { $0 != LanguageDetector.autoDetect }.joined(separator: ", ")
         return """
@@ -245,6 +247,8 @@ final class Translator: @unchecked Sendable {
                 + Self.parentContextBlock(parentContext)
         case .imageSearch:
             systemPrompt = Self.imageSearchPrompt
+        case .imageSenses:
+            systemPrompt = Self.imageSensesPrompt
         case let .weave(words, sourceLang, targetLang, scenario):
             let wordList = words.isEmpty
                 ? "(no fixed list - pick natural vocabulary that the scene itself calls for)"
@@ -740,6 +744,12 @@ final class Translator: @unchecked Sendable {
     @discardableResult
     func imageSearchQuery(_ text: String, completion: @escaping @Sendable (Result<String, Error>) -> Void) -> RequestHandle {
         request(text, mode: .imageSearch, stream: false, completion: completion)
+    }
+
+    /// One image query per line, each for a different sense. Feeds the Learn thumbnail strip.
+    @discardableResult
+    func imageSenseQueries(_ text: String, completion: @escaping @Sendable (Result<String, Error>) -> Void) -> RequestHandle {
+        request(text, mode: .imageSenses, stream: false, completion: completion)
     }
 
     func testConnection(completion: @escaping @Sendable (Result<Void, Error>) -> Void) {

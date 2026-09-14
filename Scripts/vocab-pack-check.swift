@@ -23,6 +23,8 @@ struct VocabPackCheck {
         assert(VocabPack.normalize("  Abandon ") == "abandon")
         assert(VocabPack.normalize("Look   Forward\tTo") == "look forward to", "collapses inner whitespace")
         assert(VocabPack.normalize("   ") == "")
+        assert(VocabPack.normalize("\"Sewer.\"") == "sewer", "drops edge punctuation")
+        assert(VocabPack.normalize("don't") == "don't", "keeps inner punctuation")
     }
 
     static func checkIndexBuild() {

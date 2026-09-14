@@ -194,7 +194,7 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
             self.sessionView.relayoutStructuredCard()
         }
         imageFetcher.onResolveQuery = { [weak self] text, done in
-            let handle = self?.translator?.imageSearchQuery(text, completion: done)
+            let handle = self?.translator?.imageSenseQueries(text, completion: done)
             return handle.map { h in { h.cancel() } }
         }
         let openImages: () -> Void = { [weak self] in
@@ -687,8 +687,7 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
     private func availableKinds(for record: TranslationRecord, card: LearnCard) -> Set<ReviewPlanner.QuestionKind> {
         guard record.mode == .learn else { return [.flip] }
         var kinds: Set<ReviewPlanner.QuestionKind> = [.flip]
-        let encounter = LearnCard.Encounter.split(record.sourceText).context
-        if card.preferredCloze(encounterSentence: encounter) != nil { kinds.insert(.cloze) }
+        if !card.clozePool.isEmpty { kinds.insert(.cloze) }
         if card.collocationQuiz != nil { kinds.insert(.collocation) }
         if card.familyQuiz != nil { kinds.insert(.family) }
         if ConfusableDrillItem.build(from: [card]).first != nil { kinds.insert(.contrast) }
@@ -709,12 +708,11 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
             repetitions: record.repetitions,
             available: availableKinds(for: record, card: card)
         )
-        let encounter = LearnCard.Encounter.split(record.sourceText).context
         switch resolved.kind {
         case .flip:
             return (.none, .flip, resolved.note)
         case .cloze:
-            guard let cloze = card.preferredCloze(encounterSentence: encounter) else { return (.none, .flip, resolved.note) }
+            guard let cloze = card.clozePool.randomElement() else { return (.none, .flip, resolved.note) }
             return (.typed(cloze, kind: .cloze), .cloze, resolved.note)
         case .collocation:
             guard let quiz = card.collocationQuiz else { return (.none, .flip, resolved.note) }
@@ -813,6 +811,8 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
         } else {
             sessionView.hideStructuredAnswer()
             sessionView.resultLabel.isHidden = false
+            // Old-format cards need regenerating most, so the button stays on the flat path too.
+            sessionView.regenerateCardButton.isHidden = sessionView.onRegenerateCard == nil
         }
         sessionView.revealButton.isHidden = true
         // A self-graded card already picked; `showAutoGrade` put the Continue button up instead.
@@ -823,9 +823,9 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
     private func loadImages(for record: TranslationRecord) {
         let term = displayTerm(of: record)
         imageFetcher.refresh(term: term, rewriteSource: term)
+        // Fetched while the front shows so the back has them ready; a picture on the front gives the meaning away.
         sessionView.setImages(imageFetcher.loadedImages)
-        // A question that asks for the term would give it away with a picture of it.
-        sessionView.showsFrontImages = !hasActiveQuestion
+        sessionView.showsFrontImages = false
     }
 
     private func regenerateCurrentCard() {
@@ -1735,12 +1735,7 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
     }
 
     private static func symbol(for action: SpeechButtonAction, playing idle: String) -> String {
-        switch action {
-        case .pause: return "pause.fill"
-        case .resume: return "play.fill"
-        case .loading: return "hourglass"
-        case .play: return idle
-        }
+        action == .loading ? "hourglass" : idle
     }
 
     /// In reading mode the speak buttons live in the bubbles, so the same state drives them.
@@ -1771,29 +1766,11 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
 
     private func handleSpeechPlay(speed: Float, identity providedIdentity: SpeechIdentity? = nil) {
         guard let identity = providedIdentity ?? currentSourceSpeechIdentity() else { return }
-        // Clicking the same speed while active follows the pause/resume/play cycle.
-        if activeSpeechIdentity == identity && activeSpeechRate == speed {
-            switch speechState.action(for: identity) {
-            case .pause:
-                audioPlayer?.pause()
-                _ = speechState.pause(identity)
-                updateSpeakButtonUI()
-            case .resume:
-                guard audioPlayer?.play() == true else {
-                    stopAudio()
-                    return
-                }
-                _ = speechState.resume(identity)
-                updateSpeakButtonUI()
-            case .loading:
-                break
-            case .play:
-                playSpeech(identity: identity, speed: speed)
-            }
-        } else {
-            stopAudio()
-            playSpeech(identity: identity, speed: speed)
-        }
+        // A click while this audio loads is ignored; any other click restarts from the beginning.
+        if activeSpeechIdentity == identity && activeSpeechRate == speed
+            && speechState.action(for: identity) == .loading { return }
+        stopAudio()
+        playSpeech(identity: identity, speed: speed)
     }
 
     private func playSpeech(identity: SpeechIdentity, speed: Float) {
