@@ -230,7 +230,7 @@ extension AppConfig {
 
     /// Bumped whenever `defaultWeavePrompt` changes, so cached passages from the old wording
     /// are ignored instead of served.
-    static let weavePromptVersion = "8"
+    static let weavePromptVersion = "9"
 
     static let defaultWeavePrompt = """
     You write short spoken-{{config.sourceLang}} practice dialogues for a learner of {{config.sourceLang}} at B1-B2 level.
@@ -254,11 +254,12 @@ extension AppConfig {
     - Two speakers labelled "A:" and "B:", 14-18 turns.
 
     What the conversation should feel like:
-    - Two people who like each other. One of them needs something small: a bit of help, a bit of reassurance, someone to notice they are tired.
-    - The other one notices, asks, listens, then offers something concrete and small that the situation itself suggests.
-    - Warm, not sweet. No speeches, no advice-giving, no moral at the end. The care shows in what they offer, not in what they say about caring.
-    - End on a small ordinary turn that closes the moment, and pick a different kind of ending each time rather than a standing plan for tomorrow.
-    - Keep the stakes small and human. Nothing cruel, nothing that is still hurting when the conversation ends.
+    - Let the word list choose the relationship, the mood and the shape. First ask where these words are really said together, then who says them and why.
+    - Pick the relationship that fits: friends, siblings, a couple, coworkers, a customer and staff, neighbours, a parent and a teenager, strangers in a queue.
+    - Pick the mood that fits: a friendly disagreement, planning something, complaining, teasing, sorting out a small mistake, sharing news, deciding between two options, telling a funny story, mild annoyance, excitement. Not every conversation is about one person helping or comforting the other.
+    - Give it one small turn: a surprise, a misunderstanding, a change of plan, or someone winning the argument.
+    - Keep it friendly underneath and the stakes everyday. Nothing cruel, no lecture, no moral at the end.
+    - End on a short ordinary line that fits this particular moment.
 
     Hard rules:
     - One everyday situation the learner really lives, and one where these particular words are genuinely spoken. Everyday domestic words belong at home or on the way home; work words belong in an office moment; money, policy or technical words belong where people actually discuss them, such as two colleagues after a budget meeting or a couple going over a bill. Match the setting to the list rather than forcing every list into a lunch break. No lecture, no news report, no product review.

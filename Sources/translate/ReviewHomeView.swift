@@ -180,7 +180,7 @@ final class ReviewHomeView: NSView {
         hero.translatesAutoresizingMaskIntoConstraints = false
         hero.wantsLayer = true
         hero.layer?.cornerRadius = 12
-        hero.layer?.backgroundColor = NSColor.quaternaryLabelColor.withAlphaComponent(0.12).cgColor
+        LayerAppearance.paint(hero) { $0.backgroundColor = NSColor.quaternaryLabelColor.withAlphaComponent(0.12).cgColor }
         hero.addSubview(heroContent)
         NSLayoutConstraint.activate([
             heroContent.leadingAnchor.constraint(equalTo: hero.leadingAnchor, constant: 20),
@@ -560,7 +560,7 @@ final class LegendRow: NSView {
         layer?.cornerCurve = .continuous
 
         swatch.wantsLayer = true
-        swatch.layer?.backgroundColor = color.cgColor
+        LayerAppearance.paint(swatch) { $0.backgroundColor = color.cgColor }
         swatch.layer?.cornerRadius = 3
         swatch.translatesAutoresizingMaskIntoConstraints = false
 
@@ -639,15 +639,20 @@ final class LegendRow: NSView {
 
     private func refresh() {
         if isSelected {
-            layer?.backgroundColor = tint.withAlphaComponent(0.28).cgColor
+            let tint = tint
+            LayerAppearance.paint(self) { layer in
+                layer.backgroundColor = tint.withAlphaComponent(0.28).cgColor
+                layer.borderColor = tint.cgColor
+            }
             layer?.borderWidth = 1.5
-            layer?.borderColor = tint.cgColor
             nameLabel.font = .systemFont(ofSize: 12, weight: .semibold)
             toolTip = "Filtered to \(bucket.label)"
         } else {
-            layer?.backgroundColor = NSColor.clear.cgColor
+            LayerAppearance.paint(self) { layer in
+                layer.backgroundColor = NSColor.clear.cgColor
+                layer.borderColor = NSColor.clear.cgColor
+            }
             layer?.borderWidth = 0
-            layer?.borderColor = NSColor.clear.cgColor
             nameLabel.font = .systemFont(ofSize: 12, weight: .regular)
             toolTip = "Filter session to \(bucket.label)"
         }
@@ -681,9 +686,11 @@ final class HeatCell: NSView {
 
     private func refresh() {
         let clamped = min(1, max(0, level))
-        layer?.backgroundColor = clamped == 0
-            ? NSColor.separatorColor.withAlphaComponent(0.5).cgColor
-            : NSColor.systemGreen.withAlphaComponent(0.25 + 0.75 * clamped).cgColor
+        LayerAppearance.paint(self) { layer in
+            layer.backgroundColor = clamped == 0
+                ? NSColor.separatorColor.withAlphaComponent(0.5).cgColor
+                : NSColor.systemGreen.withAlphaComponent(0.25 + 0.75 * clamped).cgColor
+        }
     }
 }
 
@@ -767,11 +774,14 @@ final class ReviewTile: NSView {
     }
 
     private func refresh() {
-        layer?.borderColor = isSelected
-            ? NSColor.controlAccentColor.cgColor
-            : NSColor.separatorColor.cgColor
-        layer?.backgroundColor = isSelected
-            ? NSColor.controlAccentColor.withAlphaComponent(0.14).cgColor
-            : NSColor.clear.cgColor
+        let isSelected = isSelected
+        LayerAppearance.paint(self) { layer in
+            layer.borderColor = isSelected
+                ? NSColor.controlAccentColor.cgColor
+                : NSColor.separatorColor.cgColor
+            layer.backgroundColor = isSelected
+                ? NSColor.controlAccentColor.withAlphaComponent(0.14).cgColor
+                : NSColor.clear.cgColor
+        }
     }
 }

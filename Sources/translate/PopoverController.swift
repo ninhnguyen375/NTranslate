@@ -291,6 +291,9 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     var floatingRequestGeneration: Int = 0
     /// Whether the Q&A input/answer currently applies to the subtranslate pane instead of the main one.
     var qaTargetsSub: Bool = false
+    /// Quick-question list shown above the Q&A field; a non-key panel so typing stays in the field.
+    var quickQuestionsPanel: NSPanel?
+    var quickQuestionsMonitor: Any?
     var refreshTimer: Timer?
 
     override init() {

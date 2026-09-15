@@ -919,7 +919,12 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
         } else {
             note = "You typed \"\(typedBack)\". Answer: \(question.answer)"
         }
-        showAnswerFeedback(correct: correct || nearMiss, note: note)
+        var fullNote = note
+        // The whole sentence, blank filled, is what gets re-read on the way to the next card.
+        if kind == .cloze, question.prompt.contains("___") {
+            fullNote += "\n" + question.prompt.replacingOccurrences(of: "___", with: question.answer)
+        }
+        showAnswerFeedback(correct: correct || nearMiss, note: fullNote)
         autoGrade(correct: correct || nearMiss, nearMiss: nearMiss)
         if kind == .listen { stopAudio() }
         revealAnswer()

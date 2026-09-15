@@ -24,6 +24,141 @@ extension PopoverController: NSTextFieldDelegate {
         qaInputField.target = self
         qaInputField.action = #selector(qaInputSubmitted(_:))
         qaInputField.delegate = self
+
+        (qaInputField.cell as? VerticallyCenteredTextFieldCell)?.trailingInset = 22
+        let quick = NSButton(frame: .zero)
+        configureIconButton(quick, symbol: "text.bubble", action: #selector(showQuickQuestions(_:)), label: "Quick questions")
+        quick.autoresizingMask = [.minXMargin, .minYMargin, .maxYMargin]
+        qaInputField.addSubview(quick)
+    }
+
+    static let recentQuestionsKey = "qaRecentQuestions"
+    static let defaultQuickQuestions = [
+        "Cho tôi nghĩa cốt lõi của từ này",
+        "Cho tôi nghĩa cốt lõi của từ này bằng tiếng Anh và tiếng Việt",
+    ]
+
+    /// Keeps the quick-question button pinned to the field's trailing edge after any reflow.
+    func layoutQuickQuestionButton() {
+        guard let quick = qaInputField.subviews.first(where: { $0 is NSButton }) else { return }
+        let size: CGFloat = 22
+        let b = qaInputField.bounds
+        quick.frame = NSRect(x: b.maxX - size - 6, y: (b.height - size) / 2, width: size, height: size)
+    }
+
+    @objc func showQuickQuestions(_ sender: NSButton) {
+        if quickQuestionsPanel != nil {
+            closeQuickQuestions()
+            return
+        }
+        let recent = (UserDefaults.standard.stringArray(forKey: Self.recentQuestionsKey) ?? [])
+            .filter { !Self.defaultQuickQuestions.contains($0) }
+
+        let rowHeight: CGFloat = 26
+        let width = max(260, qaInputField.bounds.width)
+        let stack = QuickQuestionsDocumentView()
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 0
+        stack.edgeInsets = NSEdgeInsets(top: 4, left: 4, bottom: 4, right: 4)
+        func addRow(_ question: String) {
+            let button = NSButton(title: question, target: self, action: #selector(quickQuestionPicked(_:)))
+            button.isBordered = false
+            button.alignment = .left
+            button.lineBreakMode = .byTruncatingTail
+            button.contentTintColor = Palette.bodyText
+            button.toolTip = question
+            button.translatesAutoresizingMaskIntoConstraints = false
+            button.heightAnchor.constraint(equalToConstant: rowHeight).isActive = true
+            button.widthAnchor.constraint(equalToConstant: width - 16).isActive = true
+            stack.addArrangedSubview(button)
+        }
+        Self.defaultQuickQuestions.forEach(addRow)
+        if !recent.isEmpty {
+            let header = NSTextField(labelWithString: "Recent")
+            header.font = .systemFont(ofSize: 11, weight: .semibold)
+            header.textColor = .secondaryLabelColor
+            header.heightAnchor.constraint(equalToConstant: 22).isActive = true
+            stack.addArrangedSubview(header)
+            recent.forEach(addRow)
+        }
+        stack.layoutSubtreeIfNeeded()
+        let contentHeight = stack.fittingSize.height
+        // ponytail: fixed cap of ~6 rows, scroll beyond that.
+        let height = min(contentHeight, rowHeight * 6 + 30)
+        stack.frame = NSRect(x: 0, y: 0, width: width, height: contentHeight)
+
+        let scroll = NSScrollView(frame: NSRect(x: 0, y: 0, width: width, height: height))
+        scroll.drawsBackground = false
+        scroll.hasVerticalScroller = contentHeight > height
+        scroll.autohidesScrollers = true
+        scroll.documentView = stack
+
+        let effect = NSVisualEffectView(frame: scroll.frame)
+        effect.material = .menu
+        effect.state = .active
+        effect.wantsLayer = true
+        effect.layer?.cornerRadius = 8
+        effect.layer?.masksToBounds = true
+        effect.addSubview(scroll)
+
+        let fieldRect = qaInputField.window?.convertToScreen(qaInputField.convert(qaInputField.bounds, to: nil)) ?? .zero
+        let quickPanel = NSPanel(
+            contentRect: NSRect(x: fieldRect.maxX - width, y: fieldRect.maxY + 4, width: width, height: height),
+            styleMask: [.borderless, .nonactivatingPanel],
+            backing: .buffered,
+            defer: false
+        )
+        quickPanel.isOpaque = false
+        quickPanel.backgroundColor = .clear
+        quickPanel.hasShadow = true
+        quickPanel.contentView = effect
+        panel.addChildWindow(quickPanel, ordered: .above)
+        quickQuestionsPanel = quickPanel
+
+        // Click outside or Escape closes it; keys otherwise pass through to the field.
+        quickQuestionsMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .keyDown]) { [weak self] event in
+            guard let self, let quickPanel = self.quickQuestionsPanel else { return event }
+            if event.type == .keyDown {
+                if event.keyCode == 53 {
+                    self.closeQuickQuestions()
+                    return nil
+                }
+                return event
+            }
+            if event.window !== quickPanel, !(event.window === self.panel && sender.frame.contains(sender.superview?.convert(event.locationInWindow, from: nil) ?? .zero)) {
+                self.closeQuickQuestions()
+            }
+            return event
+        }
+    }
+
+    func closeQuickQuestions() {
+        if let monitor = quickQuestionsMonitor { NSEvent.removeMonitor(monitor) }
+        quickQuestionsMonitor = nil
+        guard let quickPanel = quickQuestionsPanel else { return }
+        panel.removeChildWindow(quickPanel)
+        quickPanel.orderOut(nil)
+        quickQuestionsPanel = nil
+    }
+
+    @objc func quickQuestionPicked(_ sender: NSButton) {
+        closeQuickQuestions()
+        qaInputField.stringValue = sender.title
+        qaInputSubmitted(qaInputField)
+    }
+
+    func controlTextDidChange(_ obj: Notification) {
+        guard (obj.object as? NSTextField) === qaInputField else { return }
+        closeQuickQuestions()
+    }
+
+    func rememberRecentQuestion(_ question: String) {
+        guard !Self.defaultQuickQuestions.contains(question) else { return }
+        var recent = UserDefaults.standard.stringArray(forKey: Self.recentQuestionsKey) ?? []
+        recent.removeAll { $0 == question }
+        recent.insert(question, at: 0)
+        UserDefaults.standard.set(Array(recent.prefix(3)), forKey: Self.recentQuestionsKey)
     }
 
     /// Layer colors are baked CGColors — the reflow re-runs this so the field follows
@@ -125,10 +260,16 @@ extension PopoverController: NSTextFieldDelegate {
             removeQASection()
         }
         if qaInputField.isHidden || switchedPane {
+            let wasHidden = qaInputField.isHidden
             qaInputField.isHidden = false
             reflowLayout()
             panel.makeFirstResponder(qaInputField)
+            // Opening from hidden goes straight to the quick questions; async so the field has its frame.
+            if wasHidden, let quick = qaInputField.subviews.first(where: { $0 is NSButton }) as? NSButton {
+                DispatchQueue.main.async { [weak self] in self?.showQuickQuestions(quick) }
+            }
         } else if qaInputField.stringValue.isEmpty {
+            closeQuickQuestions()
             qaInputField.isHidden = true
             reflowLayout()
         } else {
@@ -230,6 +371,7 @@ extension PopoverController: NSTextFieldDelegate {
 
         // Prior turns go to the model before the new question, so follow-ups can refer back.
         let history = section.completedTurns
+        rememberRecentQuestion(question)
         section.appendQuestion(question, placeholder: "Answering...")
         renderQASection(section)
         sender.stringValue = ""
@@ -288,4 +430,9 @@ extension PopoverController: NSTextFieldDelegate {
     func scrollQAToBottom(_ section: QAPaneSection) {
         section.textView.scrollToEndOfDocument(nil)
     }
+}
+
+/// Top-down stacking inside the scroll view, so the list starts at the first question.
+final class QuickQuestionsDocumentView: NSStackView {
+    override var isFlipped: Bool { true }
 }

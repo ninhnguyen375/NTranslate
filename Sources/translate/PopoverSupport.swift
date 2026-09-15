@@ -420,6 +420,8 @@ enum LiquidGlassChrome {
 
 final class VerticallyCenteredTextFieldCell: NSTextFieldCell {
     var horizontalInset: CGFloat = 10
+    /// Extra room kept clear on the right, e.g. for a button overlaid inside the field.
+    var trailingInset: CGFloat = 0
     /// Centre wrapped text on its full measured height instead of a single line.
     var centersMultiline = false
 
@@ -437,11 +439,12 @@ final class VerticallyCenteredTextFieldCell: NSTextFieldCell {
             return NSRect(
                 x: newRect.origin.x + horizontalInset,
                 y: newRect.origin.y + (heightDelta / 2).rounded(.down),
-                width: max(0, newRect.width - horizontalInset * 2),
+                width: max(0, newRect.width - horizontalInset * 2 - trailingInset),
                 height: textHeight
             )
         }
-        return newRect.insetBy(dx: horizontalInset, dy: 0)
+        let inset = newRect.insetBy(dx: horizontalInset, dy: 0)
+        return NSRect(x: inset.minX, y: inset.minY, width: max(0, inset.width - trailingInset), height: inset.height)
     }
 
     override func titleRect(forBounds rect: NSRect) -> NSRect {

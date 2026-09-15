@@ -119,6 +119,24 @@ expect(card.cloze?.hintedPrompt.contains("a______") == true,
                "glossed synonyms keep the English word")
         expect(glossedRelated.synonyms.map(\.gloss) == ["chuyến khởi hành", "sự phóng"],
                "parenthetical synonym gloss is kept")
+        let commaGloss = LearnCard.parse("""
+        Từ gốc: lively
+        adj. sinh động
+        Từ đồng nghĩa: energetic (nhiều năng lượng), vibrant (rực rỡ, náo nhiệt); animated (sôi nổi)
+        Từ trái nghĩa: dull (buồn tẻ, chán; nhạt), lifeless: thiếu sức sống
+        """)
+        expect(commaGloss.synonyms.map(\.form) == ["energetic", "vibrant", "animated"],
+               "comma inside gloss does not split synonyms, got \(commaGloss.synonyms.map(\.form))")
+        expect(commaGloss.synonyms.map(\.gloss) == ["nhiều năng lượng", "rực rỡ, náo nhiệt", "sôi nổi"],
+               "comma gloss kept whole, got \(commaGloss.synonyms.map(\.gloss))")
+        expect(commaGloss.antonyms.map(\.form) == ["dull", "lifeless"],
+               "semicolon inside gloss does not split antonyms, got \(commaGloss.antonyms.map(\.form))")
+        expect(commaGloss.antonyms.first?.gloss == "buồn tẻ, chán; nhạt", "mixed separators kept in gloss")
+        expect(LearnCard.splitTopLevel("a (x, y), b [p; q], c（m, n）· d") == ["a (x, y)", " b [p; q]", " c（m, n）", " d"],
+               "brackets of every kind guard separators")
+        expect(LearnCard.splitTopLevel("a (x, y, b") == ["a (x, y, b"], "unclosed paren keeps rest as one item")
+        expect(LearnCard.splitTopLevel("a), b, c").count == 3, "stray close paren does not break splitting")
+        expect(LearnCard.splitTopLevel("a, (x), b").count == 3, "gloss-only item still split")
         expect(glossedRelated.antonyms.first?.form == "landing", "colon antonym keeps the word")
         expect(glossedRelated.antonyms.first?.gloss == "hạ cánh", "colon antonym keeps the gloss")
         expect(card.mnemonic.contains("a ban donner"),

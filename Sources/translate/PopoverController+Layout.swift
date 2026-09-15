@@ -232,6 +232,7 @@ extension PopoverController {
             )
         }
         applyQAInputChrome()
+        layoutQuickQuestionButton()
     }
 
     func layoutLearnRelatedImage(

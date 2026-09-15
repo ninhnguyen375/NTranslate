@@ -370,9 +370,26 @@ struct LearnCard: Equatable, Sendable {
     /// "departure (chuyến khởi hành), launch" or "landing: hạ cánh".
     private static func parseGlossedList(_ value: String) -> [FamilyForm] {
         guard !isEmptyMarker(value) else { return [] }
-        return value
-            .split(whereSeparator: { $0 == "," || $0 == ";" || $0 == "·" })
-            .compactMap { parseGlossedItem(String($0)) }
+        return splitTopLevel(value).compactMap(parseGlossedItem)
+    }
+
+    /// Splits on `,` `;` `·` outside brackets, so "vibrant (rực rỡ, náo nhiệt)" stays one item.
+    static func splitTopLevel(_ value: String) -> [String] {
+        var items: [String] = []
+        var current = ""
+        var depth = 0
+        for char in value {
+            if depth == 0, char == "," || char == ";" || char == "·" {
+                items.append(current)
+                current = ""
+                continue
+            }
+            if char == "(" || char == "[" || char == "（" { depth += 1 }
+            if char == ")" || char == "]" || char == "）" { depth = max(0, depth - 1) }
+            current.append(char)
+        }
+        items.append(current)
+        return items
     }
 
     private static func parseGlossedItem(_ raw: String) -> FamilyForm? {

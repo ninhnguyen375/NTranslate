@@ -341,6 +341,8 @@ final class ReviewSessionView: NSView {
 
         feedbackLabel.font = .systemFont(ofSize: 13, weight: .semibold)
         feedbackLabel.alignment = .center
+        feedbackLabel.maximumNumberOfLines = 0
+        feedbackLabel.lineBreakMode = .byWordWrapping
         feedbackLabel.isHidden = true
 
         ReviewControls.actionButton(firstChoiceButton, title: "", symbol: "1.circle", target: self, action: #selector(chooseFirst))
@@ -411,6 +413,11 @@ final class ReviewSessionView: NSView {
         answerRow.translatesAutoresizingMaskIntoConstraints = false
         answerRow.addArrangedSubview(learnCardView)
         answerRow.addArrangedSubview(backImages)
+        // Card takes the slack so the image column sits flush with the trailing edge.
+        learnCardView.setContentHuggingPriority(.defaultLow - 1, for: .horizontal)
+        backImages.setContentHuggingPriority(.required, for: .horizontal)
+        // Detail boxes below inset 14pt from their view; match it so the right edges line up.
+        answerRow.edgeInsets = NSEdgeInsets(top: 0, left: 0, bottom: 0, right: 14)
 
         frontRow = NSStackView(views: [frontImages, sourceContainer])
         frontRow.orientation = .horizontal
@@ -560,6 +567,13 @@ final class ReviewSessionView: NSView {
             answerRow.widthAnchor.constraint(equalTo: innerStack.widthAnchor),
             learnDetailView.widthAnchor.constraint(equalTo: innerStack.widthAnchor),
             backImages.widthAnchor.constraint(equalToConstant: backImages.width),
+            // Hugging alone loses to a wrapped IPA line inside the card (250), which then pins the
+            // card to its last measured width and leaves a gap right of the images.
+            {
+                let pin = backImages.trailingAnchor.constraint(equalTo: answerRow.trailingAnchor, constant: -answerRow.edgeInsets.right)
+                pin.priority = .defaultHigh
+                return pin
+            }(),
             frontImages.widthAnchor.constraint(equalToConstant: frontImages.width),
             innerStack.leadingAnchor.constraint(equalTo: documentView.leadingAnchor, constant: 24),
             innerStack.trailingAnchor.constraint(equalTo: documentView.trailingAnchor, constant: -24),
@@ -652,7 +666,7 @@ final class ReviewSessionView: NSView {
         box.wantsLayer = true
         box.layer?.cornerRadius = 9
         box.layer?.borderWidth = 1
-        box.layer?.borderColor = NSColor.separatorColor.cgColor
+        LayerAppearance.paint(box) { $0.borderColor = NSColor.separatorColor.cgColor }
         box.translatesAutoresizingMaskIntoConstraints = false
         label.translatesAutoresizingMaskIntoConstraints = false
         box.addSubview(label)
@@ -674,7 +688,7 @@ final class ReviewSessionView: NSView {
         box.wantsLayer = true
         box.layer?.cornerRadius = 9
         box.layer?.borderWidth = 1
-        box.layer?.borderColor = NSColor.separatorColor.cgColor
+        LayerAppearance.paint(box) { $0.borderColor = NSColor.separatorColor.cgColor }
         box.toolTip = "Click to toggle word list"
         box.translatesAutoresizingMaskIntoConstraints = false
         label.translatesAutoresizingMaskIntoConstraints = false
@@ -783,7 +797,7 @@ final class ReviewSessionView: NSView {
         guard isShowingStructuredCard else { return }
         let width = max(innerStack.bounds.width, bounds.width - 48)
         guard width > 40 else { return }
-        let summaryWidth = backImages.isHidden ? width : width - backImages.width - answerRow.spacing
+        let summaryWidth = backImages.isHidden ? width : width - backImages.width - answerRow.spacing - answerRow.edgeInsets.right
         let summary = learnCardView.preferredHeight(fittingWidth: summaryWidth)
         if abs(learnCardHeight.constant - summary) > 0.5 {
             learnCardHeight.constant = summary
@@ -850,7 +864,7 @@ enum ReviewControls {
         button.wantsLayer = true
         button.layer?.cornerRadius = 7
         button.layer?.borderWidth = 1
-        button.layer?.borderColor = NSColor.separatorColor.cgColor
+        LayerAppearance.paint(button) { $0.borderColor = NSColor.separatorColor.cgColor }
         button.imagePosition = .imageOnly
         button.imageScaling = .scaleNone
         button.target = target
@@ -891,7 +905,7 @@ enum ReviewControls {
         button.wantsLayer = true
         button.layer?.cornerRadius = 8
         button.layer?.borderWidth = 1
-        button.layer?.borderColor = color.withAlphaComponent(0.6).cgColor
+        LayerAppearance.paint(button) { $0.borderColor = color.withAlphaComponent(0.6).cgColor }
     }
 
     static func actionButton(
@@ -962,7 +976,7 @@ final class ReviewImageColumn: NSStackView {
             tile.wantsLayer = true
             tile.layer?.cornerRadius = 12
             tile.layer?.borderWidth = 1
-            tile.layer?.borderColor = NSColor.separatorColor.cgColor
+            LayerAppearance.paint(tile) { $0.borderColor = NSColor.separatorColor.cgColor }
             tile.translatesAutoresizingMaskIntoConstraints = false
             // Max box height = width * aspect; the photo fits inside it at its own aspect.
             tile.heightAnchor.constraint(equalTo: tile.widthAnchor, multiplier: aspect).isActive = true
