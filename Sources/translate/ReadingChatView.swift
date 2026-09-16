@@ -61,7 +61,16 @@ final class ReadingChatView: NSStackView {
     @available(*, unavailable)
     required init?(coder: NSCoder) { nil }
 
+    private var shown: (dialogue: ReadingDialogue, words: [String])?
+
+    /// Rebuilds the bubbles at the current text zoom. Per-line mode overrides reset, like a new passage.
+    func applyZoom() {
+        guard let shown else { return }
+        show(shown.dialogue, words: shown.words)
+    }
+
     func show(_ dialogue: ReadingDialogue, words: [String]) {
+        shown = (dialogue, words)
         selectionBar.hide()
         arrangedSubviews.forEach { $0.removeFromSuperview() }
         bubbles = []
@@ -105,10 +114,14 @@ final class ReadingChatView: NSStackView {
 
     /// Past roughly this many characters a line is tiring to read, however wide the window gets.
     private static let readableColumn: CGFloat = 54
-    private static let characterWidth: CGFloat = {
-        let font = NSFont.systemFont(ofSize: 13.5, weight: .regular)
+    private static var characterWidth: CGFloat {
+        let font = NSFont.systemFont(ofSize: TextZoom.size(sourceSize), weight: .regular)
         return NSAttributedString(string: "0", attributes: [.font: font]).size().width
-    }()
+    }
+
+    /// Unscaled sizes; match the translate popup body so both windows read alike.
+    static let sourceSize: CGFloat = 14
+    static let translationSize: CGFloat = 14
 
     /// Switching the whole passage also clears every per-bubble choice, so what is on screen always
     /// matches what the toolbar says.
@@ -177,14 +190,14 @@ final class ReadingChatView: NSStackView {
             sourceLabel.attributedStringValue = ReadingHighlight.attributed(
                 turn.source,
                 words: words,
-                font: .systemFont(ofSize: 13.5, weight: .regular),
+                font: .systemFont(ofSize: TextZoom.size(ReadingChatView.sourceSize), weight: .regular),
                 color: .labelColor,
                 linked: true
             )
             sourceLabel.allowsEditingTextAttributes = true
             sourceLabel.isSelectable = true
             translationLabel.stringValue = turn.translation
-            translationLabel.font = .systemFont(ofSize: 12.5, weight: .regular)
+            translationLabel.font = .systemFont(ofSize: TextZoom.size(ReadingChatView.translationSize), weight: .regular)
             translationLabel.textColor = .labelColor
             translationLabel.isSelectable = true
 

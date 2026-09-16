@@ -1614,11 +1614,15 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
     /// An underlined word came from one of the cards in play, so clicking it can open that card in
     /// the translate panel with its history already there.
     private func openTranslateForWord(_ word: String) {
-        guard let record = readingPool().first(where: {
-            displayTerm(of: $0).caseInsensitiveCompare(word) == .orderedSame
-        }) else { return }
         stopAudio()
-        onOpenTranslate?(record)
+        if let record = readingPool().first(where: {
+            displayTerm(of: $0).caseInsensitiveCompare(word) == .orderedSame
+        }) {
+            onOpenTranslate?(record)
+        } else {
+            // Typed-in words have no saved card: translate them like any other text.
+            onTranslateSentence?(word)
+        }
     }
 
     private func presentPassageMenu(from sender: NSButton?) {

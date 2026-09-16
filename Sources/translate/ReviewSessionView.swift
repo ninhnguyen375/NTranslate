@@ -935,6 +935,7 @@ extension ReviewSessionView {
         TextZoom.apply(to: termLabel, base: Self.termBaseSize, weight: .bold)
         TextZoom.apply(to: contextLabel, base: Self.contextBaseSize)
         TextZoom.apply(to: resultLabel, base: Self.resultBaseSize)
+        readingChatView.applyZoom()
         if isShowingStructuredCard {
             learnCardView.applyZoom()
             learnDetailView.applyZoom()
