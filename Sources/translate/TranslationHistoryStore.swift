@@ -274,11 +274,14 @@ final class TranslationHistoryStore {
                 && $0.targetLanguage == targetLanguage
                 && (sourceIsAutoDetect || $0.sourceLanguage == sourceLanguage)
         }
-        // A card for the word itself beats a newer card that merely lists it as context, e.g. a
-        // synonym `boldly (context: courageously)` opened from the `courageously` card.
+        // A Learn card is keyed by the term alone: the same word met in another sentence reuses the
+        // card instead of paying for a second one. The encounter sentence still rides along in the
+        // stored source text, it just no longer splits the cache.
         if mode == .learn {
-            let key = LearnCard.lookupKey(sourceText)
-            if let exact = candidates.first(where: { LearnCard.lookupKey($0.sourceText) == key }) { return exact }
+            let key = LearnCard.lookupKey(LearnCard.Encounter.split(sourceText).term)
+            if let exact = candidates.first(where: {
+                LearnCard.lookupKey(LearnCard.Encounter.split($0.sourceText).term) == key
+            }) { return exact }
         }
         return candidates.first { Self.sourceMatches($0.sourceText, sourceText, mode: mode) }
     }

@@ -43,6 +43,10 @@ swiftc -parse-as-library Sources/translate/LearnCard.swift Sources/translate/Rev
   Scripts/review-planner-check.swift -o /tmp/review-planner-check && /tmp/review-planner-check
 
 swiftc -parse-as-library Sources/translate/TranslationHistoryStore.swift Sources/translate/ReviewPlanner.swift \
+  Sources/translate/LearnCard.swift Scripts/learn-cache-key-check.swift \
+  -o /tmp/learn-cache-key-check && /tmp/learn-cache-key-check
+
+swiftc -parse-as-library Sources/translate/TranslationHistoryStore.swift Sources/translate/ReviewPlanner.swift \
   Sources/translate/LearnCard.swift Sources/translate/DeckStats.swift Scripts/deck-stats-check.swift \
   -o /tmp/deck-stats-check && /tmp/deck-stats-check
 

@@ -328,14 +328,16 @@ final class HistoryWindowController: NSWindowController, NSWindowDelegate, NSTab
         metadata.textColor = .secondaryLabelColor
         metadata.toolTip = metadata.stringValue
 
-        let source = historyTextField(record.sourceText, accessibilityLabel: "Source text for \(context): \(record.sourceText)")
+        // Learn records store `term (context: sentence)`; the list shows the term only.
+        let sourceDisplay = record.mode == .learn ? LearnCard.Encounter.split(record.sourceText).term : record.sourceText
+        let source = historyTextField(sourceDisplay, accessibilityLabel: "Source text for \(context): \(sourceDisplay)")
         source.font = .systemFont(ofSize: 14, weight: .regular)
         source.textColor = .labelColor
         let result = historyTextField(record.resultText, accessibilityLabel: "Translation for \(context): \(record.resultText)")
         result.font = .systemFont(ofSize: 14, weight: .semibold)
         result.textColor = .labelColor
 
-        source.toolTip = record.sourceText
+        source.toolTip = sourceDisplay
         result.toolTip = record.resultText
 
         let textStack = NSStackView(views: [metadata, source, result])
@@ -350,7 +352,7 @@ final class HistoryWindowController: NSWindowController, NSWindowDelegate, NSTab
         textStack.setContentHuggingPriority(.defaultLow, for: .horizontal)
         textStack.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         view.addSubview(textStack)
-        view.setAccessibilityLabel("Translation record, \(context), source: \(record.sourceText), translation: \(record.resultText)")
+        view.setAccessibilityLabel("Translation record, \(context), source: \(sourceDisplay), translation: \(record.resultText)")
 
         let actionStack = NSStackView()
         actionStack.translatesAutoresizingMaskIntoConstraints = false
