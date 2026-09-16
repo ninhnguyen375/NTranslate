@@ -58,6 +58,7 @@ enum PopoverIntegrationPolicy {
         case learn
         case proofread
         case ocr
+        case study
     }
 
     static func hotkeyIntent(id: UInt32) -> HotkeyIntent? {
@@ -67,6 +68,7 @@ enum PopoverIntegrationPolicy {
         case 3: .learn
         case 4: .proofread
         case 5: .ocr
+        case 6: .study
         default: nil
         }
     }

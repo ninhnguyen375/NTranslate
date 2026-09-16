@@ -170,6 +170,7 @@ struct AppConfig: Codable {
     var learnHotkey: Hotkey
     var proofreadHotkey: Hotkey
     var ocrHotkey: Hotkey
+    var studyHotkey: Hotkey
     var ui: UI
     var learning: LearningSettings
 
@@ -177,6 +178,7 @@ struct AppConfig: Codable {
     static let defaultLearnHotkey = Hotkey(key: "L", option: true, command: false, control: false, shift: false)
     static let defaultProofreadHotkey = Hotkey(key: "P", option: true, command: false, control: false, shift: false)
     static let defaultOCRHotkey = Hotkey(key: "A", option: true, command: false, control: true, shift: false)
+    static let defaultStudyHotkey = Hotkey(key: "H", option: true, command: false, control: false, shift: false)
 
     var historyDirectoryURL: URL {
         if let historyDirectory, !historyDirectory.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -230,6 +232,7 @@ struct AppConfig: Codable {
         learnHotkey: .init(key: "L", option: true, command: false, control: false, shift: false),
         proofreadHotkey: defaultProofreadHotkey,
         ocrHotkey: defaultOCRHotkey,
+        studyHotkey: defaultStudyHotkey,
         ui: .init(width: 720, height: 320, autoCopy: false, simulateCopy: false, rememberPin: false, density: "compact"),
         learning: LearningSettings()
     )
@@ -265,6 +268,7 @@ struct AppConfig: Codable {
         learnHotkey: Hotkey = AppConfig.defaultLearnHotkey,
         proofreadHotkey: Hotkey = AppConfig.defaultProofreadHotkey,
         ocrHotkey: Hotkey = AppConfig.defaultOCRHotkey,
+        studyHotkey: Hotkey = AppConfig.defaultStudyHotkey,
         ui: UI,
         learning: LearningSettings = LearningSettings()
     ) {
@@ -298,6 +302,7 @@ struct AppConfig: Codable {
         self.learnHotkey = learnHotkey
         self.proofreadHotkey = proofreadHotkey
         self.ocrHotkey = ocrHotkey
+        self.studyHotkey = studyHotkey
         self.ui = ui
         self.learning = learning
     }
@@ -340,6 +345,7 @@ struct AppConfig: Codable {
         learnHotkey = try container.decodeIfPresent(Hotkey.self, forKey: .learnHotkey) ?? Self.defaultLearnHotkey
         proofreadHotkey = try container.decodeIfPresent(Hotkey.self, forKey: .proofreadHotkey) ?? Self.defaultProofreadHotkey
         ocrHotkey = try container.decodeIfPresent(Hotkey.self, forKey: .ocrHotkey) ?? Self.defaultOCRHotkey
+        studyHotkey = try container.decodeIfPresent(Hotkey.self, forKey: .studyHotkey) ?? Self.defaultStudyHotkey
         ui = try container.decodeIfPresent(UI.self, forKey: .ui) ?? Self.default.ui
         learning = try container.decodeIfPresent(LearningSettings.self, forKey: .learning) ?? LearningSettings()
         let legacy = try decoder.container(keyedBy: LegacySpeechKeys.self)

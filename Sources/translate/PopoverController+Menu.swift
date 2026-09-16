@@ -67,22 +67,13 @@ extension PopoverController {
         statusMenu.addItem(openPanelItem)
 
         let reviewItem = NSMenuItem(title: "Spaced Repetition", action: #selector(openReviewWindow), keyEquivalent: "r")
-        reviewItem.image = NSImage(systemSymbolName: "rectangle.stack", accessibilityDescription: "Spaced Repetition")
+        reviewItem.image = Self.reviewMenuIcon
         reviewItem.tag = Self.reviewMenuItemTag
         statusMenu.addItem(reviewItem)
 
         let historyItem = NSMenuItem(title: "Translation History", action: #selector(openTranslationHistory), keyEquivalent: "h")
         historyItem.image = NSImage(systemSymbolName: "clock.arrow.circlepath", accessibilityDescription: "Translation History")
         statusMenu.addItem(historyItem)
-
-        let statsDisabled = NSMenuItem(title: "Saved: 0 · Mastered: 0 · Streak: 0d", action: nil, keyEquivalent: "")
-        statsDisabled.isEnabled = false
-        statsDisabled.tag = Self.statsMenuItemTag
-        statusMenu.addItem(statsDisabled)
-        let statsItem = NSMenuItem(title: "Learning Progress…", action: #selector(showLearningStats), keyEquivalent: "")
-        statsItem.image = NSImage(systemSymbolName: "chart.line.uptrend.xyaxis", accessibilityDescription: "Learning Progress")
-        statsItem.tag = Self.statsActionMenuItemTag
-        statusMenu.addItem(statsItem)
 
         let syncPromptsItem = NSMenuItem(title: "Sync All Prompts with App", action: #selector(syncAllPromptsMenu), keyEquivalent: "")
         syncPromptsItem.image = NSImage(systemSymbolName: "arrow.triangle.2.circlepath.doc.on.clipboard", accessibilityDescription: "Sync All Prompts with App")
@@ -110,7 +101,15 @@ extension PopoverController {
         let quitItem = NSMenuItem(title: "Quit", action: #selector(quitApp), keyEquivalent: "q")
         quitItem.image = NSImage(systemSymbolName: "power", accessibilityDescription: "Quit")
         statusMenu.addItem(quitItem)
-        statusMenu.items.forEach { $0.target = self }
+        statusMenu.items.forEach {
+            $0.target = self
+            // ponytail: macOS 27 no longer draws NSMenuItem.image in this menu, so the symbol
+            // rides inside the title instead. Drop this when menu images render again.
+            if let image = $0.image {
+                $0.image = nil
+                $0.attributedTitle = Self.menuTitle($0.title, icon: image)
+            }
+        }
         statusMenu.delegate = self
         statusItem.menu = statusMenu
         statusItem.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
@@ -118,8 +117,6 @@ extension PopoverController {
 
     static let accessibilityMenuItemTag = 9001
     static let reviewMenuItemTag = 9002
-    static let statsMenuItemTag = 9003
-    static let statsActionMenuItemTag = 9005
     static let syncPromptsMenuItemTag = 9004
     static let attentionDotLayerName = "ntranslate.attentionDot"
 
@@ -145,10 +142,7 @@ extension PopoverController {
         updateStatusBarIcon(reviewCardsDue: sessionCount)
         if let reviewItem = statusItem.menu?.item(withTag: Self.reviewMenuItemTag) {
             reviewItem.title = reviewTitle
-            reviewItem.attributedTitle = sessionCount > 0 ? Self.titleWithAttentionDot(reviewTitle) : nil
-        }
-        if let statsItem = statusItem.menu?.item(withTag: Self.statsMenuItemTag) {
-            statsItem.title = "Saved: \(stats.totalSaved) · Mastered: \(stats.totalMastered) · Streak: \(stats.dayStreak)d"
+            reviewItem.attributedTitle = Self.menuTitle(reviewTitle, icon: Self.reviewMenuIcon, dot: sessionCount > 0)
         }
     }
 
@@ -181,12 +175,28 @@ extension PopoverController {
     }
 
     /// Menu items cannot carry a badge view, so the dot is a red bullet glyph in the title.
-    private static func titleWithAttentionDot(_ title: String) -> NSAttributedString {
+    static let reviewMenuIcon = NSImage(systemSymbolName: "rectangle.stack", accessibilityDescription: "Spaced Repetition")
+
+    private static func menuTitle(_ title: String, icon: NSImage?, dot: Bool = false) -> NSAttributedString {
         let font = NSFont.menuFont(ofSize: 0)
-        let result = NSMutableAttributedString(string: title + "  ", attributes: [
+        let result = NSMutableAttributedString()
+        if let icon = icon?.withSymbolConfiguration(.init(pointSize: font.pointSize, weight: .regular)) {
+            let attachment = NSTextAttachment()
+            attachment.image = icon
+            // Fit every symbol into the same square so titles line up in one column.
+            let box = font.pointSize + 2
+            let scale = box / max(icon.size.width, icon.size.height, 1)
+            let size = NSSize(width: icon.size.width * scale, height: icon.size.height * scale)
+            attachment.bounds = NSRect(x: 0, y: (font.capHeight - size.height) / 2, width: size.width, height: size.height)
+            result.append(NSAttributedString(attachment: attachment))
+            result.append(NSAttributedString(string: "  ", attributes: [.font: font]))
+        }
+        result.append(NSAttributedString(string: title, attributes: [
             .font: font,
             .foregroundColor: NSColor.labelColor,
-        ])
+        ]))
+        guard dot else { return result }
+        result.append(NSAttributedString(string: "  ", attributes: [.font: font]))
         let dotFont = NSFont.systemFont(ofSize: font.pointSize * 0.62)
         // Centre the dot's ink on the text's cap height rather than guessing an offset:
         // the bullet glyph does not sit centred within its own em box.
@@ -262,16 +272,6 @@ extension PopoverController {
         NSApp.orderFrontStandardAboutPanel(options: [
             .applicationVersion: Self.appVersionString()
         ])
-    }
-
-    @objc func showLearningStats() {
-        let stats = historyStore.computeStats()
-        let alert = NSAlert()
-        alert.messageText = "Learning Progress"
-        alert.informativeText = "• Saved words: \(stats.totalSaved)\n• Mastered (interval >= 21 days): \(stats.totalMastered)\n• Daily streak: \(Plural.count(stats.dayStreak, "day"))\n• Cards due today: \(Plural.count(stats.dueCount, "card")) (session limit: \(config.learning.dailyReviewLimit))"
-        alert.alertStyle = .informational
-        alert.addButton(withTitle: "OK")
-        alert.runModal()
     }
 
     @objc func requestAccessibilityPermissionMenu() {

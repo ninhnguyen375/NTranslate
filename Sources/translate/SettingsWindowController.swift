@@ -144,6 +144,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
     private let learnHotkeyFields = HotkeyFields()
     private let proofreadHotkeyFields = HotkeyFields()
     private let ocrHotkeyFields = HotkeyFields()
+    private let studyHotkeyFields = HotkeyFields()
     private let testConnectionButton = NSButton(title: "Test connection", target: nil, action: nil)
     private let testConnectionStatus = NSTextField(labelWithString: "")
     private let hotkeyConflictLabel = NSTextField(wrappingLabelWithString: "")
@@ -204,7 +205,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         dailyReviewLimitField.toolTip = "Maximum cards per review session. New words fill any slots left over by due reviews."
         widthField.formatter = integerFormatter(minimum: 1)
         heightField.formatter = integerFormatter(minimum: 1)
-        [hotkeyFields, copyTranslateHotkeyFields, learnHotkeyFields, proofreadHotkeyFields, ocrHotkeyFields].forEach { $0.configure() }
+        [hotkeyFields, copyTranslateHotkeyFields, learnHotkeyFields, proofreadHotkeyFields, ocrHotkeyFields, studyHotkeyFields].forEach { $0.configure() }
 
         [systemPromptView, learnPromptView, sentenceLearnPromptView, grammarPromptView, imagePromptView, qaPromptView, weavePromptView].forEach {
             $0.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
@@ -499,6 +500,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
             ("Learn Hotkey", learnHotkeyFields.makeRow()),
             ("Proofread Hotkey", proofreadHotkeyFields.makeRow()),
             ("OCR Translate Hotkey", ocrHotkeyFields.makeRow()),
+            ("Study Hotkey", studyHotkeyFields.makeRow()),
             ("Hotkey Conflicts", hotkeyConflictLabel),
         ])
     }
@@ -767,6 +769,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         learnHotkeyFields.populate(config.learnHotkey)
         proofreadHotkeyFields.populate(config.proofreadHotkey)
         ocrHotkeyFields.populate(config.ocrHotkey)
+        studyHotkeyFields.populate(config.studyHotkey)
         languagesTable.reloadData()
         targetLanguagesTable.reloadData()
         reloadLanguagePopups(
@@ -911,6 +914,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         config.learnHotkey = learnHotkeyFields.collect(fallbackKey: "L")
         config.proofreadHotkey = proofreadHotkeyFields.collect(fallbackKey: "P")
         config.ocrHotkey = ocrHotkeyFields.collect(fallbackKey: "A")
+        config.studyHotkey = studyHotkeyFields.collect(fallbackKey: "H")
 
         let issues = config.validationIssues()
         if !issues.isEmpty { throw SettingsError.validation(issues) }
@@ -937,7 +941,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
     }
 
     private func wireHotkeyConflictWatch() {
-        for fields in [hotkeyFields, copyTranslateHotkeyFields, learnHotkeyFields, proofreadHotkeyFields, ocrHotkeyFields] {
+        for fields in [hotkeyFields, copyTranslateHotkeyFields, learnHotkeyFields, proofreadHotkeyFields, ocrHotkeyFields, studyHotkeyFields] {
             fields.popup.target = self
             fields.popup.action = #selector(hotkeyFieldsChanged)
             for box in [fields.option, fields.command, fields.control, fields.shift] {
@@ -959,6 +963,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
             ("Learn hotkey", learnHotkeyFields.collect(fallbackKey: "L"), 3),
             ("Proofread hotkey", proofreadHotkeyFields.collect(fallbackKey: "P"), 4),
             ("OCR Translate hotkey", ocrHotkeyFields.collect(fallbackKey: "A"), 5),
+            ("Study hotkey", studyHotkeyFields.collect(fallbackKey: "H"), 6),
         ]
         let skipped = PopoverIntegrationPolicy.registrableHotkeys(entries).skipped
         if skipped.isEmpty {
