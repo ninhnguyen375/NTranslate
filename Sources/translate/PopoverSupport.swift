@@ -344,8 +344,8 @@ enum Palette {
     )
     /// Text well sits on top of the chrome; more opaque so source/result stay readable.
     static let paneFill = dynamic(
-        light: .white.withAlphaComponent(0.95),
-        dark: .black.withAlphaComponent(0.55)
+        light: .white.withAlphaComponent(0.98),
+        dark: NSColor(white: 0.18, alpha: 0.82)
     )
     /// Bright ends of the vertical divider gradient.
     static let dividerSheen = dynamic(
