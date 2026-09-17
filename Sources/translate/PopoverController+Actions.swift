@@ -252,6 +252,7 @@ extension PopoverController {
         }
         setResultText(record.resultText)
         currentRecordID = record.id
+        try? historyStore.markOpened(recordID: record.id)
         let sourceIdentity = sourceSpeechIdentity(recordID: record.id)
         let resultIdentity = resultSpeechIdentity(recordID: record.id)
         Task { @MainActor [weak self] in

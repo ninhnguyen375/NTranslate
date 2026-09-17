@@ -35,6 +35,9 @@ struct TranslationRecord: Codable, Equatable, Identifiable, Sendable {
     var repetitions: Int // consecutive successful reviews
     var lapses: Int // number of times graded Again
     var lastReviewedAt: Date?
+    /// Last time the card was shown in the popup. A background prefetch stores `.distantPast`
+    /// so it sinks below everything the learner actually opened in History.
+    var openedAt: Date
 
     init(
         id: UUID,
@@ -54,7 +57,8 @@ struct TranslationRecord: Codable, Equatable, Identifiable, Sendable {
         ease: Double = 2.5,
         repetitions: Int = 0,
         lapses: Int = 0,
-        lastReviewedAt: Date? = nil
+        lastReviewedAt: Date? = nil,
+        openedAt: Date? = nil
     ) {
         self.id = id
         self.timestamp = timestamp
@@ -74,13 +78,14 @@ struct TranslationRecord: Codable, Equatable, Identifiable, Sendable {
         self.repetitions = repetitions
         self.lapses = lapses
         self.lastReviewedAt = lastReviewedAt
+        self.openedAt = openedAt ?? timestamp
     }
 
     private enum CodingKeys: String, CodingKey {
         case id, timestamp, updatedAt, deletedAt, mode, sourceText, resultText, sourceLanguage, targetLanguage
         case sourceAudioPath, resultAudioPath, isSaved
         case dueDate, interval, ease
-        case repetitions, lapses, lastReviewedAt
+        case repetitions, lapses, lastReviewedAt, openedAt
     }
 
     init(from decoder: Decoder) throws {
@@ -106,6 +111,7 @@ struct TranslationRecord: Codable, Equatable, Identifiable, Sendable {
         repetitions = try values.decodeIfPresent(Int.self, forKey: .repetitions) ?? 0
         lapses = try values.decodeIfPresent(Int.self, forKey: .lapses) ?? 0
         lastReviewedAt = try values.decodeIfPresent(Date.self, forKey: .lastReviewedAt)
+        openedAt = try values.decodeIfPresent(Date.self, forKey: .openedAt) ?? parsedTimestamp
     }
 
     /// SM-2 simplified algorithm: 3 levels (again: 0, hard: 1, easy: 2)
@@ -347,7 +353,8 @@ final class TranslationHistoryStore {
                     ease: rec.ease,
                     repetitions: rec.repetitions,
                     lapses: rec.lapses,
-                    lastReviewedAt: rec.lastReviewedAt
+                    lastReviewedAt: rec.lastReviewedAt,
+                    openedAt: rec.openedAt
                 )
             }
             return records.first(where: { $0.id == existing.id }) ?? record
@@ -378,7 +385,8 @@ final class TranslationHistoryStore {
                 ease: rec.ease,
                 repetitions: rec.repetitions,
                 lapses: rec.lapses,
-                lastReviewedAt: rec.lastReviewedAt
+                lastReviewedAt: rec.lastReviewedAt,
+                openedAt: rec.openedAt
             )
         }
         return records.first(where: { $0.id == recordID })
@@ -391,6 +399,14 @@ final class TranslationHistoryStore {
             if isSaved && record.dueDate == nil {
                 record.startFreshSchedule()
             }
+        }
+    }
+
+    /// Bumps the record to the top of History; prefetched cards stay at the bottom until opened.
+    func markOpened(recordID: UUID, at date: Date = Date()) throws {
+        try update(recordID: recordID) { record in
+            record.openedAt = date
+            record.updatedAt = date
         }
     }
 

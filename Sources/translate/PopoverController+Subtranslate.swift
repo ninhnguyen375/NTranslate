@@ -333,6 +333,65 @@ extension PopoverController {
         runSubRequest(text: trimmed, mode: mode)
     }
 
+    /// Warms the history cache for every clickable chip word on a finished main card, so opening
+    /// one in the sub pane hits `reusableSubRecord` instead of waiting on the model.
+    func prefetchChipWords(_ card: LearnCard) {
+        guard let translator else { return }
+        let parent = inputTextView.string.trimmingCharacters(in: .whitespacesAndNewlines)
+        // ponytail: capped at 12 parallel calls per card, queue them if providers start rate limiting.
+        let words = (card.synonyms + card.antonyms + card.familyForms)
+            .map { $0.form.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty && Translator.isDictionaryTerm($0) }
+        for word in Array(NSOrderedSet(array: words)).compactMap({ $0 as? String }).prefix(12) {
+            let pair = LanguageDetector.resolvedPair(
+                selectedSource: selectedSourceLanguage(),
+                selectedTarget: selectedTargetLanguage(),
+                text: word,
+                recentTargets: recentTargets,
+                languages: config.languages,
+                targetLanguages: config.targetLanguages,
+                nativeLang: config.resolvedNativeLang
+            )
+            let source = pair.source == LanguageDetector.autoDetect ? LanguageDetector.detectedLanguage(word) : pair.source
+            let key = "\(LearnCard.lookupKey(word))|\(source)|\(pair.target)"
+            guard !prefetchedLearnWords.contains(key),
+                  reusableSubRecord(mode: .learn, text: word, sourceLanguage: source, targetLanguage: pair.target) == nil
+            else { continue }
+            prefetchedLearnWords.insert(key)
+            if prefetchDone >= prefetchTotal { prefetchTotal = 0; prefetchDone = 0 }
+            prefetchTotal += 1
+            let recordedSource = parent.isEmpty || parent == word
+                ? word
+                : LearnCard.Encounter.encode(term: word, context: parent)
+            _ = translator.learn(word, sourceLang: source, targetLang: pair.target, parentContext: parent) { [weak self] result in
+                Task { @MainActor in
+                    guard let self else { return }
+                    self.prefetchDone += 1
+                    self.updatePrefetchProgress()
+                    guard case let .success(value) = result else {
+                        self.prefetchedLearnWords.remove(key)
+                        return
+                    }
+                    let record = TranslationRecord(
+                        id: UUID(), timestamp: Date(), mode: .learn, sourceText: recordedSource, resultText: value,
+                        sourceLanguage: source, targetLanguage: pair.target, isSaved: false,
+                        openedAt: .distantPast
+                    )
+                    _ = try? self.historyStore.appendIfAbsent(record)
+                }
+            }
+        }
+        updatePrefetchProgress()
+    }
+
+    func updatePrefetchProgress() {
+        prefetchProgressLabel.font = .systemFont(ofSize: 11)
+        prefetchProgressLabel.textColor = Palette.loadingText
+        prefetchProgressLabel.stringValue = "Preloading \(prefetchDone)/\(prefetchTotal)"
+        prefetchProgressLabel.toolTip = "Preparing word chips so they open instantly"
+        layoutPrefetchProgress()
+    }
+
     /// Runs Translate or Learn for a freshly selected phrase into the secondary pane, leaving the
     /// main pane untouched.
     func runSubRequest(text: String, mode: TranslationMode, bypassCache: Bool = false) {

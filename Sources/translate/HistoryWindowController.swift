@@ -75,9 +75,11 @@ final class HistoryWindowController: NSWindowController, NSWindowDelegate, NSTab
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         return records.filter { record in
             if savedOnly && !record.isSaved { return false }
-            if let cutoff = timeRange?.cutoff(from: now, calendar: calendar), record.timestamp < cutoff { return false }
+            if let cutoff = timeRange?.cutoff(from: now, calendar: calendar), max(record.timestamp, record.openedAt) < cutoff { return false }
             if trimmed.isEmpty { return true }
             return record.sourceText.lowercased().contains(trimmed) || record.resultText.lowercased().contains(trimmed)
+        }.sorted {
+            $0.openedAt != $1.openedAt ? $0.openedAt > $1.openedAt : $0.timestamp > $1.timestamp
         }
     }
 
@@ -486,7 +488,9 @@ final class HistoryWindowController: NSWindowController, NSWindowDelegate, NSTab
     func openRecord(at index: Int, stopAudio: (() -> Void)? = nil) {
         guard filteredRecords.indices.contains(index) else { return }
         (stopAudio ?? stopAudioPlayback)()
-        onOpenRecord?(filteredRecords[index])
+        let record = filteredRecords[index]
+        try? store.markOpened(recordID: record.id)
+        onOpenRecord?(record)
     }
 
     func stopAudioPlayback() {
