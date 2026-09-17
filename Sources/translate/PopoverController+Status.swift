@@ -46,6 +46,7 @@ extension PopoverController {
             let card = LearnCard.parse(raw)
             learnCardView.applyUsage(from: raw, live: false)
             learnCardView.display(card)
+            if style == .normal { prefetchChipWords(card) }
             let imageTerm = LearnRelatedImage.searchTerm(from: card)
             let seed = imageTerm.isEmpty ? inputTextView.string : imageTerm
             learnRelatedImageStrip.refresh(term: seed, rewriteSource: LearnRelatedImage.senseSource(card: card, sourceText: inputTextView.string))

@@ -268,6 +268,12 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     /// At most one secondary pane (see `PopoverIntegrationPolicy.usesSubtranslate`).
     var subSection: SubtranslateSection?
     var subGeneration = 0
+    /// Chip words already warmed in the background, keyed by word and language pair.
+    var prefetchedLearnWords = Set<String>()
+    /// Background chip-word progress shown beside the result pane icons.
+    let prefetchProgressLabel = NSTextField(labelWithString: "")
+    var prefetchTotal = 0
+    var prefetchDone = 0
     var qaSection: QAPaneSection?
     var qaGeneration = 0
     /// Source text of the last run; a different source closes the sub and Q&A panes.

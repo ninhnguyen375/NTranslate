@@ -219,6 +219,7 @@ extension PopoverController {
             bodyHeight: bodyHeight,
             badgeView: learnBadgeView
         )
+        layoutPrefetchProgress()
         layoutLearnCardScroll()
         layoutLearnRelatedImage(paneWidth: panes.left, bodyHeight: bodyHeight, showing: isShowingStructuredLearnCard, strip: learnRelatedImageStrip, scrollView: inputScrollView, textView: inputTextView)
         layoutSetupActions(in: resultCard)
@@ -233,6 +234,20 @@ extension PopoverController {
         }
         applyQAInputChrome()
         layoutQuickQuestionButton()
+    }
+
+    /// Sits just left of the result pane's speak button, whichever header mode placed it.
+    func layoutPrefetchProgress() {
+        let label = prefetchProgressLabel
+        guard let host = speakResultButton.superview, !speakResultButton.isHidden else {
+            label.isHidden = true
+            return
+        }
+        if label.superview !== host { host.addSubview(label) }
+        label.isHidden = prefetchDone >= prefetchTotal
+        label.sizeToFit()
+        let anchor = speakResultButton.frame
+        label.frame.origin = NSPoint(x: anchor.minX - label.frame.width - 8, y: anchor.midY - label.frame.height / 2)
     }
 
     func layoutLearnRelatedImage(
