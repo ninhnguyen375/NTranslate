@@ -33,10 +33,17 @@ extension PopoverController: NSTextFieldDelegate {
     }
 
     static let recentQuestionsKey = "qaRecentQuestions"
+    static let pinnedQuestionsKey = "qaPinnedQuestions"
     static let defaultQuickQuestions = [
         "Cho tôi nghĩa cốt lõi của từ này",
         "Cho tôi nghĩa cốt lõi của từ này bằng tiếng Anh và tiếng Việt",
     ]
+
+    /// Starred questions shown above Recent; starts as the built-in defaults.
+    static var pinnedQuestions: [String] {
+        get { UserDefaults.standard.stringArray(forKey: pinnedQuestionsKey) ?? defaultQuickQuestions }
+        set { UserDefaults.standard.set(newValue, forKey: pinnedQuestionsKey) }
+    }
 
     /// Keeps the quick-question button pinned to the field's trailing edge after any reflow.
     func layoutQuickQuestionButton() {
@@ -51,8 +58,9 @@ extension PopoverController: NSTextFieldDelegate {
             closeQuickQuestions()
             return
         }
+        let pinned = Self.pinnedQuestions
         let recent = (UserDefaults.standard.stringArray(forKey: Self.recentQuestionsKey) ?? [])
-            .filter { !Self.defaultQuickQuestions.contains($0) }
+            .filter { !pinned.contains($0) }
 
         let rowHeight: CGFloat = 26
         let width = max(260, qaInputField.bounds.width)
@@ -61,7 +69,7 @@ extension PopoverController: NSTextFieldDelegate {
         stack.alignment = .leading
         stack.spacing = 0
         stack.edgeInsets = NSEdgeInsets(top: 4, left: 4, bottom: 4, right: 4)
-        func addRow(_ question: String) {
+        func addRow(_ question: String, isPinned: Bool) {
             let button = NSButton(title: question, target: self, action: #selector(quickQuestionPicked(_:)))
             button.isBordered = false
             button.alignment = .left
@@ -70,17 +78,25 @@ extension PopoverController: NSTextFieldDelegate {
             button.toolTip = question
             button.translatesAutoresizingMaskIntoConstraints = false
             button.heightAnchor.constraint(equalToConstant: rowHeight).isActive = true
-            button.widthAnchor.constraint(equalToConstant: width - 16).isActive = true
-            stack.addArrangedSubview(button)
+            button.widthAnchor.constraint(equalToConstant: width - 16 - rowHeight).isActive = true
+            let star = NSButton(frame: .zero)
+            configureIconButton(star, symbol: isPinned ? "star.fill" : "star", action: #selector(toggleQuickQuestionPin(_:)), label: isPinned ? "Unpin question" : "Pin question")
+            star.identifier = NSUserInterfaceItemIdentifier(question)
+            star.translatesAutoresizingMaskIntoConstraints = false
+            star.widthAnchor.constraint(equalToConstant: rowHeight).isActive = true
+            star.heightAnchor.constraint(equalToConstant: rowHeight).isActive = true
+            let row = NSStackView(views: [button, star])
+            row.spacing = 0
+            stack.addArrangedSubview(row)
         }
-        Self.defaultQuickQuestions.forEach(addRow)
+        pinned.forEach { addRow($0, isPinned: true) }
         if !recent.isEmpty {
             let header = NSTextField(labelWithString: "Recent")
             header.font = .systemFont(ofSize: 11, weight: .semibold)
             header.textColor = .secondaryLabelColor
             header.heightAnchor.constraint(equalToConstant: 22).isActive = true
             stack.addArrangedSubview(header)
-            recent.forEach(addRow)
+            recent.forEach { addRow($0, isPinned: false) }
         }
         stack.layoutSubtreeIfNeeded()
         let contentHeight = stack.fittingSize.height
@@ -142,6 +158,21 @@ extension PopoverController: NSTextFieldDelegate {
         quickQuestionsPanel = nil
     }
 
+    @objc func toggleQuickQuestionPin(_ sender: NSButton) {
+        guard let question = sender.identifier?.rawValue,
+              let quick = qaInputField.subviews.first(where: { $0 is NSButton }) as? NSButton else { return }
+        var pinned = Self.pinnedQuestions
+        if pinned.contains(question) {
+            pinned.removeAll { $0 == question }
+            rememberRecentQuestion(question)
+        } else {
+            pinned.append(question)
+        }
+        Self.pinnedQuestions = pinned
+        closeQuickQuestions()
+        showQuickQuestions(quick)
+    }
+
     @objc func quickQuestionPicked(_ sender: NSButton) {
         closeQuickQuestions()
         qaInputField.stringValue = sender.title
@@ -154,7 +185,7 @@ extension PopoverController: NSTextFieldDelegate {
     }
 
     func rememberRecentQuestion(_ question: String) {
-        guard !Self.defaultQuickQuestions.contains(question) else { return }
+        guard !Self.pinnedQuestions.contains(question) else { return }
         var recent = UserDefaults.standard.stringArray(forKey: Self.recentQuestionsKey) ?? []
         recent.removeAll { $0 == question }
         recent.insert(question, at: 0)
