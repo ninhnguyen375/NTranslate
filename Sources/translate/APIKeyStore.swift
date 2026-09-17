@@ -10,7 +10,41 @@ struct APIKeyStore: Sendable {
     let service: String
     let account: String
 
+    /// Keys live in a 0600 file next to config.json. Reading Keychain from a self-signed build
+    /// prompts for the password after every rebuild, because the item's partition list pins cdhash.
+    var fileURL: URL {
+        URL(fileURLWithPath: AppConfig.configPath).deletingLastPathComponent()
+            .appendingPathComponent("\(account).key")
+    }
+
     func load() throws -> String? {
+        if let data = FileManager.default.contents(atPath: fileURL.path) {
+            let value = String(decoding: data, as: UTF8.self)
+            return value.isEmpty ? nil : value
+        }
+        // One-time migration from Keychain. The file is written even when empty, so Keychain
+        // (and its password prompt) is never touched again once the file exists.
+        let legacy = try loadFromKeychain()
+        try writeFile(legacy ?? "")
+        return legacy
+    }
+
+    func save(_ value: String) throws {
+        try writeFile(value.trimmingCharacters(in: .whitespacesAndNewlines))
+    }
+
+    func delete() throws {
+        try writeFile("")
+    }
+
+    private func writeFile(_ value: String) throws {
+        let fileManager = FileManager.default
+        try fileManager.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data(value.utf8).write(to: fileURL, options: .atomic)
+        try fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: fileURL.path)
+    }
+
+    private func loadFromKeychain() throws -> String? {
         var query = baseQuery
         query[kSecReturnData as String] = true
         query[kSecMatchLimit as String] = kSecMatchLimitOne
@@ -23,35 +57,6 @@ struct APIKeyStore: Sendable {
             throw APIKeyStoreError.invalidData
         }
         return value
-    }
-
-    func save(_ value: String) throws {
-        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.isEmpty {
-            try delete()
-            return
-        }
-
-        let data = Data(trimmed.utf8)
-        let status = SecItemUpdate(
-            baseQuery as CFDictionary,
-            [kSecValueData as String: data] as CFDictionary
-        )
-        if status == errSecSuccess { return }
-        guard status == errSecItemNotFound else { throw APIKeyStoreError.status(status) }
-
-        var item = baseQuery
-        item[kSecValueData as String] = data
-        item[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
-        let addStatus = SecItemAdd(item as CFDictionary, nil)
-        guard addStatus == errSecSuccess else { throw APIKeyStoreError.status(addStatus) }
-    }
-
-    func delete() throws {
-        let status = SecItemDelete(baseQuery as CFDictionary)
-        guard status == errSecSuccess || status == errSecItemNotFound else {
-            throw APIKeyStoreError.status(status)
-        }
     }
 
     private var baseQuery: [String: Any] {

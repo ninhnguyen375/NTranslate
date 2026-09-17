@@ -154,7 +154,7 @@ final class ReviewHomeView: NSView {
         for _ in 0..<7 { heatRow.addArrangedSubview(HeatCell()) }
 
         heatCaption.font = .systemFont(ofSize: 11)
-        heatCaption.textColor = .tertiaryLabelColor
+        heatCaption.textColor = .secondaryLabelColor
         heatCaption.lineBreakMode = .byTruncatingTail
         heatCaption.setContentCompressionResistancePriority(.fittingSizeCompression, for: .horizontal)
 
@@ -180,7 +180,7 @@ final class ReviewHomeView: NSView {
         hero.translatesAutoresizingMaskIntoConstraints = false
         hero.wantsLayer = true
         hero.layer?.cornerRadius = 12
-        LayerAppearance.paint(hero) { $0.backgroundColor = NSColor.quaternaryLabelColor.withAlphaComponent(0.12).cgColor }
+        LayerAppearance.paint(hero) { $0.backgroundColor = NSColor.adaptive(light: .black.withAlphaComponent(0.035), dark: .white.withAlphaComponent(0.12)).cgColor }
         hero.addSubview(heroContent)
         NSLayoutConstraint.activate([
             heroContent.leadingAnchor.constraint(equalTo: hero.leadingAnchor, constant: 20),
@@ -246,7 +246,10 @@ final class ReviewHomeView: NSView {
             (practiceButton, .systemOrange),
             (shuffleButton, .systemPink)
         ]
-        for (button, color) in tints { button.contentTintColor = color }
+        for (button, color) in tints {
+            button.contentTintColor = color
+            ReviewControls.outline(button)
+        }
         startButton.contentTintColor = .white
         // The glass bezel ignores contentTintColor for the symbol, so paint it into the image.
         startButton.image = startButton.image?.withSymbolConfiguration(
@@ -271,7 +274,7 @@ final class ReviewHomeView: NSView {
         emptyLabel.isHidden = true
 
         hintLabel.font = .systemFont(ofSize: 11)
-        hintLabel.textColor = .tertiaryLabelColor
+        hintLabel.textColor = .secondaryLabelColor
         hintLabel.lineBreakMode = .byTruncatingTail
         hintLabel.setContentCompressionResistancePriority(.fittingSizeCompression, for: .horizontal)
 
@@ -422,7 +425,7 @@ final class ReviewHomeView: NSView {
     private static func sectionHeader(_ text: String) -> NSTextField {
         let label = NSTextField(labelWithString: text.uppercased())
         label.font = .systemFont(ofSize: 10, weight: .semibold)
-        label.textColor = .tertiaryLabelColor
+        label.textColor = .secondaryLabelColor
         return label
     }
 
@@ -491,7 +494,7 @@ final class DeckRingView: NSView {
         let track = NSBezierPath()
         track.appendArc(withCenter: center, radius: radius, startAngle: 0, endAngle: 360)
         track.lineWidth = width
-        NSColor.separatorColor.withAlphaComponent(0.45).setStroke()
+        NSColor.adaptive(light: .black.withAlphaComponent(0.07), dark: .white.withAlphaComponent(0.45)).setStroke()
         track.stroke()
 
         let total = segments.reduce(0) { $0 + $1.value }
@@ -688,7 +691,7 @@ final class HeatCell: NSView {
         let clamped = min(1, max(0, level))
         LayerAppearance.paint(self) { layer in
             layer.backgroundColor = clamped == 0
-                ? NSColor.separatorColor.withAlphaComponent(0.5).cgColor
+                ? NSColor.adaptive(light: .black.withAlphaComponent(0.1), dark: .white.withAlphaComponent(0.5)).cgColor
                 : NSColor.systemGreen.withAlphaComponent(0.25 + 0.75 * clamped).cgColor
         }
     }

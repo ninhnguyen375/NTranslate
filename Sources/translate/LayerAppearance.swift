@@ -24,3 +24,11 @@ enum LayerAppearance {
         view.effectiveAppearance.performAsCurrentDrawingAppearance { body(layer) }
     }
 }
+
+extension NSColor {
+    /// `withAlphaComponent` replaces a system colour's alpha instead of scaling it, so a light
+    /// separator at 0.5 turns into mid gray. Tones that must differ per appearance go through here.
+    static func adaptive(light: NSColor, dark: NSColor) -> NSColor {
+        NSColor(name: nil) { $0.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? dark : light }
+    }
+}

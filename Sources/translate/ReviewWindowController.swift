@@ -1493,6 +1493,8 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
         sessionView.termLabel.font = .systemFont(ofSize: 20, weight: .bold)
         let headline = currentPassage.map { Self.passageHeadline($0.passage) } ?? ""
         sessionView.termLabel.stringValue = headline.isEmpty ? "Untitled passage" : headline
+        // The label keeps the height measured for the previous card's font and clips descenders.
+        sessionView.termLabel.invalidateIntrinsicContentSize()
         // Only a passage that is actually on disk can keep the title it gets back.
         sessionView.titleRefreshButton.isHidden = currentPassage == nil
         sessionView.titleRefreshButton.isEnabled = true

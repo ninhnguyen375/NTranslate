@@ -430,6 +430,7 @@ final class ReviewSessionView: NSView {
         termStack.setHuggingPriority(.required, for: .vertical)
         for view in [termLabel, contextLabel] {
             view.setContentHuggingPriority(.defaultHigh, for: .vertical)
+            view.setContentCompressionResistancePriority(.required, for: .vertical)
         }
 
         innerStack.orientation = .vertical
@@ -455,6 +456,7 @@ final class ReviewSessionView: NSView {
         ReviewControls.actionButton(revealButton, title: "Show Answer (Space)", symbol: "eye", target: self, action: #selector(tapReveal))
         ReviewControls.actionButton(backButton, title: "Back", symbol: "chevron.backward", target: self, action: #selector(tapBack))
         backButton.isHidden = true
+        ReviewControls.outline(backButton)
         ReviewControls.actionButton(markDoneButton, title: "Mark Done", symbol: "checkmark.circle", target: self, action: #selector(tapMarkDone))
         markDoneButton.isHidden = true
         ReviewControls.actionButton(regenerateButton, title: "Regenerate", symbol: "arrow.clockwise", target: self, action: #selector(tapRegenerate))
@@ -716,7 +718,7 @@ final class ReviewSessionView: NSView {
     func setPassageDone(_ isDone: Bool) {
         markDoneButton.title = isDone ? "  Done" : "  Mark Done"
         markDoneButton.image = NSImage(
-            systemSymbolName: isDone ? "checkmark.circle.fill" : "checkmark.circle",
+            systemSymbolName: isDone ? "checkmark" : "checkmark.circle",
             accessibilityDescription: markDoneButton.title
         )
         ReviewControls.tint(markDoneButton, .systemGreen)
@@ -812,6 +814,20 @@ final class ReviewSessionView: NSView {
     override func layout() {
         super.layout()
         relayoutStructuredCard()
+        fadeScrollBottom()
+    }
+
+    /// Content scrolling under the action row fades out instead of being cut by a hard edge.
+    private func fadeScrollBottom() {
+        scrollView.wantsLayer = true
+        guard let layer = scrollView.layer, layer.bounds.height > 0 else { return }
+        let mask = (layer.mask as? CAGradientLayer) ?? CAGradientLayer()
+        mask.frame = layer.bounds
+        mask.colors = [NSColor.clear.cgColor, NSColor.black.cgColor]
+        // Unflipped layer: y = 0 is the bottom edge.
+        mask.startPoint = CGPoint(x: 0.5, y: 0)
+        mask.endPoint = CGPoint(x: 0.5, y: min(1, 24 / layer.bounds.height))
+        layer.mask = mask
     }
 }
 
@@ -823,7 +839,7 @@ final class SessionProgressBar: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         let radius = bounds.height / 2
-        NSColor.separatorColor.withAlphaComponent(0.5).setFill()
+        NSColor.adaptive(light: .black.withAlphaComponent(0.07), dark: .white.withAlphaComponent(0.5)).setFill()
         NSBezierPath(roundedRect: bounds, xRadius: radius, yRadius: radius).fill()
 
         let correctWidth = bounds.width * CGFloat(min(1, max(0, correctFraction)))
@@ -906,6 +922,13 @@ enum ReviewControls {
         button.layer?.cornerRadius = 8
         button.layer?.borderWidth = 1
         LayerAppearance.paint(button) { $0.borderColor = color.withAlphaComponent(0.6).cgColor }
+    }
+
+    /// Hairline border so a glass button stays visible on a white Light-mode window.
+    static func outline(_ button: NSButton) {
+        button.wantsLayer = true
+        button.layer?.borderWidth = 1
+        LayerAppearance.paint(button) { $0.borderColor = NSColor.separatorColor.cgColor }
     }
 
     static func actionButton(

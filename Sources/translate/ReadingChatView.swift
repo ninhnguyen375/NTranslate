@@ -273,13 +273,14 @@ final class ReadingChatView: NSStackView {
         }
 
         private func updateLayerColors() {
+            let isDark = effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
             effectiveAppearance.performAsCurrentDrawingAppearance {
                 layer?.backgroundColor = (isFirstSpeaker
-                    ? NSColor.labelColor.withAlphaComponent(0.08)
-                    : NSColor.controlAccentColor.withAlphaComponent(0.22)).cgColor
+                    ? NSColor.adaptive(light: .black.withAlphaComponent(0.04), dark: .labelColor.withAlphaComponent(0.08))
+                    : NSColor.controlAccentColor.withAlphaComponent(isDark ? 0.22 : 0.1)).cgColor
                 layer?.borderColor = (isFirstSpeaker
-                    ? NSColor.separatorColor
-                    : NSColor.controlAccentColor.withAlphaComponent(0.35)).cgColor
+                    ? NSColor.adaptive(light: .black.withAlphaComponent(0.06), dark: .separatorColor)
+                    : NSColor.controlAccentColor.withAlphaComponent(isDark ? 0.35 : 0.18)).cgColor
             }
         }
 
