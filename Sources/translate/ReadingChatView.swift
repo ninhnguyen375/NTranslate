@@ -357,6 +357,8 @@ final class ReadingChatView: NSStackView {
         @objc private func blurredClicked() {
             isForcedBoth = true
             apply(global: globalMode, clearingOverride: false)
+            // Mở lớp mờ là nghe luôn câu nguồn, khỏi bấm thêm nút loa.
+            onSpeak?(false)
         }
 
         /// The button is lit only while it overrides the toolbar, so it always reads as "this line

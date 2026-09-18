@@ -15,7 +15,24 @@ enum HistoryTimeRange: CaseIterable {
     }
 }
 
+/// Card row. The card is painted by the row view itself, so hover and selection only
+/// change a fill colour instead of restyling a nested view.
+private final class HistoryCellView: NSView {
+    let actionStack = NSStackView()
+}
+
 private final class HistoryRowView: NSTableRowView {
+    static let cardInset = NSEdgeInsets(top: 5, left: 2, bottom: 5, right: 2)
+    /// Same gap on all four sides between the card edge and its content.
+    static let cardPadding: CGFloat = 12
+
+    var isHovered = false {
+        didSet {
+            guard isHovered != oldValue else { return }
+            refresh()
+        }
+    }
+
     override var selectionHighlightStyle: NSTableView.SelectionHighlightStyle {
         get { .none }
         set {}
@@ -26,34 +43,88 @@ private final class HistoryRowView: NSTableRowView {
     override func drawSelection(in dirtyRect: NSRect) {}
 
     override var isSelected: Bool {
-        didSet { applySelectionAppearance() }
+        didSet { refresh() }
     }
 
-    override var isEmphasized: Bool {
-        didSet { applySelectionAppearance() }
+    override func drawBackground(in dirtyRect: NSRect) {
+        super.drawBackground(in: dirtyRect)
+        let rect = bounds.insetBy(dx: Self.cardInset.left, dy: Self.cardInset.top)
+        let path = NSBezierPath(roundedRect: rect.insetBy(dx: 0.5, dy: 0.5), xRadius: 12, yRadius: 12)
+
+        let fill: NSColor
+        if isSelected {
+            fill = .controlAccentColor.withAlphaComponent(0.18)
+        } else if isHovered {
+            fill = .quaternaryLabelColor.withAlphaComponent(0.10)
+        } else {
+            fill = .quaternaryLabelColor.withAlphaComponent(0.05)
+        }
+        fill.setFill()
+        path.fill()
+
+        (isSelected ? NSColor.controlAccentColor.withAlphaComponent(0.7) : NSColor.separatorColor).setStroke()
+        path.lineWidth = 1
+        path.stroke()
     }
 
-    override func viewDidMoveToSuperview() {
-        super.viewDidMoveToSuperview()
-        applySelectionAppearance()
+    private func refresh() {
+        needsDisplay = true
     }
 
     override func didAddSubview(_ subview: NSView) {
         super.didAddSubview(subview)
-        applySelectionAppearance()
+        refresh()
+    }
+}
+
+/// One tracking area on the table instead of one per row: a per-row area stops firing
+/// `mouseExited` while the rows scroll under a still cursor, which leaves rows stuck hovered.
+private final class HoverTableView: NSTableView {
+    private var hoveredRow = -1
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        trackingAreas.forEach(removeTrackingArea)
+        addTrackingArea(NSTrackingArea(
+            rect: .zero,
+            options: [.mouseEnteredAndExited, .mouseMoved, .activeInActiveApp, .inVisibleRect],
+            owner: self
+        ))
     }
 
-    private func applySelectionAppearance() {
-        let card = subviews.compactMap { $0 as? NSVisualEffectView }.first
-        card?.wantsLayer = true
-        if isSelected {
-            card?.layer?.borderWidth = 1.5
-            card?.layer?.borderColor = NSColor.controlAccentColor.withAlphaComponent(0.75).cgColor
-            card?.layer?.backgroundColor = NSColor.controlAccentColor.withAlphaComponent(0.08).cgColor
-        } else {
-            card?.layer?.borderWidth = 0
-            card?.layer?.borderColor = nil
-            card?.layer?.backgroundColor = nil
+    override func mouseMoved(with event: NSEvent) {
+        super.mouseMoved(with: event)
+        syncHover()
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        super.mouseExited(with: event)
+        setHovered(-1)
+    }
+
+    /// Called on scroll too, where no mouse event arrives but the row under the cursor changed.
+    func syncHover() {
+        guard let window, window.isKeyWindow else { setHovered(-1); return }
+        let point = convert(window.mouseLocationOutsideOfEventStream, from: nil)
+        setHovered(bounds.contains(point) && visibleRect.contains(point) ? row(at: point) : -1)
+    }
+
+    private func setHovered(_ newRow: Int) {
+        guard newRow != hoveredRow else { return }
+        let previous = hoveredRow
+        hoveredRow = newRow
+        for index in [previous, newRow] where index >= 0 {
+            (rowView(atRow: index, makeIfNecessary: false) as? HistoryRowView)?.isHovered = index == newRow
+        }
+    }
+}
+
+private extension TranslationMode {
+    var accentColor: NSColor {
+        switch self {
+        case .learn: .systemPurple
+        case .translate: .systemGreen
+        case .proofread: .systemOrange
         }
     }
 }
@@ -62,10 +133,11 @@ private final class HistoryRowView: NSTableRowView {
 final class HistoryWindowController: NSWindowController, NSWindowDelegate, NSTableViewDataSource, NSTableViewDelegate, NSSearchFieldDelegate, @preconcurrency AVAudioPlayerDelegate {
     private let store: TranslationHistoryStore
     private let onOpenRecord: ((TranslationRecord) -> Void)?
-    private let tableView = NSTableView()
+    private let tableView = HoverTableView()
     private let searchField = NSSearchField()
     private let filterSegmentedControl = NSSegmentedControl(labels: ["History", "Saved"], trackingMode: .selectOne, target: nil, action: nil)
     private let timeSegmentedControl = NSSegmentedControl(labels: ["All", "Today", "24h", "Week", "Month"], trackingMode: .selectOne, target: nil, action: nil)
+    private let countLabel = NSTextField(labelWithString: "")
     private let exportButton = NSButton()
     private let deleteVisibleButton = NSButton()
     private var audioPlayer: AVAudioPlayer?
@@ -133,6 +205,7 @@ final class HistoryWindowController: NSWindowController, NSWindowDelegate, NSTab
         default: timeRange = .today
         }
         filteredRecords = Self.filter(records: store.records, query: searchField.stringValue, savedOnly: savedOnly, timeRange: timeRange)
+        countLabel.stringValue = filteredRecords.count == 1 ? "1 record" : "\(filteredRecords.count) records"
     }
 
     func numberOfRows(in tableView: NSTableView) -> Int {
@@ -146,6 +219,10 @@ final class HistoryWindowController: NSWindowController, NSWindowDelegate, NSTab
 
     func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {
         HistoryRowView()
+    }
+
+    @objc private func scrollBoundsChanged() {
+        tableView.syncHover()
     }
 
     @objc private func filterChanged() {
@@ -253,22 +330,33 @@ final class HistoryWindowController: NSWindowController, NSWindowDelegate, NSTab
         deleteVisibleButton.isBordered = false
         deleteVisibleButton.imageScaling = .scaleProportionallyUpOrDown
 
-        let topBar = NSStackView(views: [searchField, filterSegmentedControl, timeSegmentedControl, exportButton, deleteVisibleButton])
+        countLabel.font = .systemFont(ofSize: 11, weight: .regular)
+        countLabel.textColor = .tertiaryLabelColor
+
+        let topBar = NSStackView(views: [searchField, filterSegmentedControl, exportButton, deleteVisibleButton])
         topBar.orientation = .horizontal
         topBar.spacing = 8
         topBar.alignment = .centerY
         topBar.translatesAutoresizingMaskIntoConstraints = false
+
+        let spacer = NSView()
+        spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        let filterBar = NSStackView(views: [timeSegmentedControl, spacer, countLabel])
+        filterBar.orientation = .horizontal
+        filterBar.spacing = 8
+        filterBar.alignment = .centerY
+        filterBar.translatesAutoresizingMaskIntoConstraints = false
 
         let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("History"))
         column.resizingMask = .autoresizingMask
         tableView.addTableColumn(column)
         tableView.columnAutoresizingStyle = .firstColumnOnlyAutoresizingStyle
         tableView.headerView = nil
-        tableView.rowHeight = 88
+        tableView.rowHeight = 92
         tableView.backgroundColor = .clear
         tableView.usesAlternatingRowBackgroundColors = false
         tableView.selectionHighlightStyle = .none
-        tableView.intercellSpacing = NSSize(width: 0, height: 8)
+        tableView.intercellSpacing = NSSize(width: 0, height: 0)
         tableView.dataSource = self
         tableView.delegate = self
         tableView.target = self
@@ -280,10 +368,17 @@ final class HistoryWindowController: NSWindowController, NSWindowDelegate, NSTab
         scrollView.hasVerticalScroller = true
         scrollView.documentView = tableView
         scrollView.drawsBackground = false
+        scrollView.contentView.postsBoundsChangedNotifications = true
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(scrollBoundsChanged),
+            name: NSView.boundsDidChangeNotification,
+            object: scrollView.contentView
+        )
 
-        let container = NSStackView(views: [topBar, scrollView])
+        let container = NSStackView(views: [topBar, filterBar, scrollView])
         container.orientation = .vertical
-        container.spacing = 16
+        container.spacing = 10
         container.alignment = .leading
         container.translatesAutoresizingMaskIntoConstraints = false
 
@@ -298,6 +393,9 @@ final class HistoryWindowController: NSWindowController, NSWindowDelegate, NSTab
             topBar.leadingAnchor.constraint(equalTo: container.leadingAnchor),
             topBar.trailingAnchor.constraint(equalTo: container.trailingAnchor),
 
+            filterBar.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            filterBar.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+
             scrollView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
             scrollView.trailingAnchor.constraint(equalTo: container.trailingAnchor)
         ])
@@ -308,58 +406,57 @@ final class HistoryWindowController: NSWindowController, NSWindowDelegate, NSTab
     }
 
     private func rowView(for record: TranslationRecord) -> NSView {
-        // NSVisualEffectView follows the system appearance on its own; a cached cgColor would not.
-        let view = NSVisualEffectView()
-        view.material = .contentBackground
-        view.blendingMode = .withinWindow
-        view.state = .followsWindowActiveState
-        view.wantsLayer = true
-        view.layer?.cornerRadius = 16
-        view.layer?.masksToBounds = true
+        let view = HistoryCellView()
 
         let timestamp = record.timestamp.formatted(date: .abbreviated, time: .shortened)
         let savedState = record.isSaved ? "Saved" : "Not saved"
         let mode = record.mode.displayName
         let context = "\(mode), \(timestamp), \(record.sourceLanguage) to \(record.targetLanguage), \(savedState)"
+        let summary = Self.summary(for: record)
 
-        let metadata = historyTextField(
-            "\(mode)  ·  \(timestamp)  ·  \(record.sourceLanguage) → \(record.targetLanguage)",
+        let pill = modePill(record.mode)
+        let detail = historyTextField(
+            "\(timestamp)  ·  \(record.sourceLanguage) → \(record.targetLanguage)",
             accessibilityLabel: "Metadata for \(context)"
         )
-        metadata.font = .systemFont(ofSize: 11, weight: .medium)
-        metadata.textColor = .secondaryLabelColor
-        metadata.toolTip = metadata.stringValue
+        detail.font = .systemFont(ofSize: 11, weight: .regular)
+        detail.textColor = .tertiaryLabelColor
+        detail.toolTip = detail.stringValue
 
-        // Learn records store `term (context: sentence)`; the list shows the term only.
-        let sourceDisplay = record.mode == .learn ? LearnCard.Encounter.split(record.sourceText).term : record.sourceText
-        let source = historyTextField(sourceDisplay, accessibilityLabel: "Source text for \(context): \(sourceDisplay)")
-        source.font = .systemFont(ofSize: 14, weight: .regular)
+        let metaStack = NSStackView(views: [pill, detail])
+        metaStack.orientation = .horizontal
+        metaStack.spacing = 7
+        metaStack.alignment = .centerY
+
+        let source = historyTextField(summary.title, accessibilityLabel: "Source text for \(context): \(summary.title)")
+        source.font = .systemFont(ofSize: 15, weight: .semibold)
         source.textColor = .labelColor
-        let result = historyTextField(record.resultText, accessibilityLabel: "Translation for \(context): \(record.resultText)")
-        result.font = .systemFont(ofSize: 14, weight: .semibold)
-        result.textColor = .labelColor
 
-        source.toolTip = sourceDisplay
+        let result = historyTextField(summary.body, accessibilityLabel: "Translation for \(context): \(summary.body)")
+        result.font = .systemFont(ofSize: 13, weight: .regular)
+        result.textColor = .secondaryLabelColor
+
+        source.toolTip = summary.title
         result.toolTip = record.resultText
 
-        let textStack = NSStackView(views: [metadata, source, result])
+        let textStack = NSStackView(views: [metaStack, source, result])
         textStack.translatesAutoresizingMaskIntoConstraints = false
         textStack.orientation = .vertical
-        textStack.alignment = .width
-        textStack.spacing = 3
-        [metadata, source, result].forEach {
+        textStack.alignment = .leading
+        textStack.spacing = 4
+        [metaStack, source, result].forEach {
             $0.leadingAnchor.constraint(equalTo: textStack.leadingAnchor).isActive = true
             $0.trailingAnchor.constraint(equalTo: textStack.trailingAnchor).isActive = true
         }
         textStack.setContentHuggingPriority(.defaultLow, for: .horizontal)
         textStack.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         view.addSubview(textStack)
-        view.setAccessibilityLabel("Translation record, \(context), source: \(sourceDisplay), translation: \(record.resultText)")
+        view.setAccessibilityLabel("Translation record, \(context), source: \(summary.title), translation: \(record.resultText)")
 
-        let actionStack = NSStackView()
+        let actionStack = view.actionStack
         actionStack.translatesAutoresizingMaskIntoConstraints = false
         actionStack.orientation = .horizontal
-        actionStack.spacing = 8
+        actionStack.spacing = 4
         actionStack.setContentHuggingPriority(.required, for: .horizontal)
         actionStack.setContentCompressionResistancePriority(.required, for: .horizontal)
 
@@ -370,55 +467,87 @@ final class HistoryWindowController: NSWindowController, NSWindowDelegate, NSTab
             actionStack.addArrangedSubview(audioButton(record: record, kind: .result, context: context))
         }
 
-        let bookmarkBtn = NSButton()
-        bookmarkBtn.image = NSImage(systemSymbolName: record.isSaved ? "bookmark.fill" : "bookmark", accessibilityDescription: "Toggle saved")
-        bookmarkBtn.isBordered = false
+        let bookmarkBtn = Self.iconButton(
+            symbol: record.isSaved ? "bookmark.fill" : "bookmark",
+            description: "Toggle saved"
+        )
+        bookmarkBtn.contentTintColor = record.isSaved ? .controlAccentColor : nil
         bookmarkBtn.target = self
         bookmarkBtn.action = #selector(toggleBookmark(_:))
         bookmarkBtn.identifier = NSUserInterfaceItemIdentifier(record.id.uuidString)
         actionStack.addArrangedSubview(bookmarkBtn)
 
-        let deleteBtn = NSButton()
-        deleteBtn.image = NSImage(systemSymbolName: "trash", accessibilityDescription: "Delete record")
-        deleteBtn.isBordered = false
+        let deleteBtn = Self.iconButton(symbol: "trash", description: "Delete record")
         deleteBtn.target = self
         deleteBtn.action = #selector(deleteRecord(_:))
         deleteBtn.identifier = NSUserInterfaceItemIdentifier(record.id.uuidString)
         actionStack.addArrangedSubview(deleteBtn)
-        actionStack.widthAnchor.constraint(equalToConstant: actionStack.fittingSize.width).isActive = true
 
-        let separator = NSBox()
-        separator.boxType = .separator
-        separator.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(separator)
         view.addSubview(actionStack)
 
+        let inset = HistoryRowView.cardInset
+        let pad = HistoryRowView.cardPadding
         NSLayoutConstraint.activate([
-            textStack.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 12),
-            textStack.topAnchor.constraint(equalTo: view.topAnchor, constant: 8),
-            textStack.trailingAnchor.constraint(equalTo: separator.leadingAnchor, constant: -12),
-            textStack.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -8),
+            textStack.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: inset.left + pad),
+            textStack.topAnchor.constraint(equalTo: view.topAnchor, constant: inset.top + pad),
+            textStack.trailingAnchor.constraint(lessThanOrEqualTo: actionStack.leadingAnchor, constant: -10),
+            textStack.bottomAnchor.constraint(lessThanOrEqualTo: view.bottomAnchor, constant: -(inset.bottom + pad)),
 
-            separator.widthAnchor.constraint(equalToConstant: 1),
-            separator.topAnchor.constraint(equalTo: view.topAnchor, constant: 12),
-            separator.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -12),
-            separator.trailingAnchor.constraint(equalTo: actionStack.leadingAnchor, constant: -12),
-
-            actionStack.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -12),
-            actionStack.centerYAnchor.constraint(equalTo: view.centerYAnchor)
+            actionStack.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -(inset.right + pad)),
+            actionStack.topAnchor.constraint(equalTo: view.topAnchor, constant: inset.top + pad)
         ])
 
         return view
     }
 
-    private func historyTextField(_ value: String, accessibilityLabel: String) -> NSTextField {
+    /// Learn records store the whole card in `resultText`; the list shows the term with its
+    /// pronunciation on top and the meanings underneath, not the raw `Từ gốc:` block.
+    static func summary(for record: TranslationRecord) -> (title: String, body: String) {
+        guard record.mode == .learn else { return (record.sourceText, record.resultText) }
+        let term = LearnCard.Encounter.split(record.sourceText).term
+        let card = LearnCard.parse(record.resultText)
+        let title = card.pronunciation.isEmpty ? term : "\(term)   \(card.pronunciation)"
+        // A sentence card has no `n./v.` meanings; its first line already carries the gist,
+        // so show that instead of every section run together on one line.
+        let firstLine = record.resultText.components(separatedBy: .newlines)
+            .first { !$0.trimmingCharacters(in: .whitespaces).isEmpty } ?? record.resultText
+        let body = card.meanings.isEmpty ? firstLine : card.meanings.joined(separator: " · ")
+        return (title, body)
+    }
+
+    private func modePill(_ mode: TranslationMode) -> NSView {
+        let label = NSTextField(labelWithString: mode.displayName.uppercased())
+        label.font = .systemFont(ofSize: 9, weight: .semibold)
+        label.textColor = mode.accentColor
+        label.translatesAutoresizingMaskIntoConstraints = false
+        label.setAccessibilityElement(false)
+
+        let box = NSView()
+        box.wantsLayer = true
+        box.layer?.cornerRadius = 4
+        box.layer?.backgroundColor = mode.accentColor.withAlphaComponent(0.16).cgColor
+        box.translatesAutoresizingMaskIntoConstraints = false
+        box.addSubview(label)
+        box.setContentHuggingPriority(.required, for: .horizontal)
+        box.setContentCompressionResistancePriority(.required, for: .horizontal)
+
+        NSLayoutConstraint.activate([
+            label.leadingAnchor.constraint(equalTo: box.leadingAnchor, constant: 6),
+            label.trailingAnchor.constraint(equalTo: box.trailingAnchor, constant: -6),
+            label.topAnchor.constraint(equalTo: box.topAnchor, constant: 2),
+            label.bottomAnchor.constraint(equalTo: box.bottomAnchor, constant: -2)
+        ])
+        return box
+    }
+
+    private func historyTextField(_ value: String, accessibilityLabel: String, lines: Int = 1) -> NSTextField {
         let line = value.components(separatedBy: .newlines).joined(separator: " ")
         let field = NSTextField(labelWithString: line)
-        field.maximumNumberOfLines = 1
+        field.maximumNumberOfLines = lines
         field.lineBreakMode = .byTruncatingTail
         field.alignment = .left
         field.textColor = .labelColor
-        field.cell?.wraps = false
+        field.cell?.wraps = lines > 1
         field.cell?.truncatesLastVisibleLine = true
         field.setContentHuggingPriority(.defaultLow, for: .horizontal)
         field.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
@@ -428,11 +557,23 @@ final class HistoryWindowController: NSWindowController, NSWindowDelegate, NSTab
         return field
     }
 
+    /// Same square hit area for every row action, so the stack never squeezes an icon.
+    static func iconButton(symbol: String, description: String) -> NSButton {
+        let button = NSButton()
+        button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: description)?
+            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 13, weight: .regular))
+        button.isBordered = false
+        button.imagePosition = .imageOnly
+        button.imageScaling = .scaleProportionallyDown
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.widthAnchor.constraint(equalToConstant: 24).isActive = true
+        button.heightAnchor.constraint(equalToConstant: 24).isActive = true
+        return button
+    }
+
     private func audioButton(record: TranslationRecord, kind: TranslationAudioKind, context: String) -> NSButton {
         let title = kind == .source ? "Play source" : "Play result"
-        let button = NSButton()
-        button.image = NSImage(systemSymbolName: "speaker.wave.2", accessibilityDescription: title)
-        button.isBordered = false
+        let button = Self.iconButton(symbol: "speaker.wave.2", description: title)
         button.target = self
         button.action = #selector(playAudio(_:))
         button.identifier = NSUserInterfaceItemIdentifier("\(record.id.uuidString)|\(kind.rawValue)")

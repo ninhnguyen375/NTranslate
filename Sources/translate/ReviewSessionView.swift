@@ -79,6 +79,8 @@ final class ReviewSessionView: NSView {
     private var learnDetailHeight: NSLayoutConstraint!
     let readingChatView = ReadingChatView()
     let readingModeControl = NSSegmentedControl()
+    private let readingAudioLabel = NSTextField(labelWithString: "")
+    private lazy var readingAudioPill = Self.makePill(around: readingAudioLabel)
     let choiceStack = NSStackView()
     let firstChoiceButton = NSButton()
     let secondChoiceButton = NSButton()
@@ -155,8 +157,20 @@ final class ReviewSessionView: NSView {
             self.wordsDetailLabel.isHidden.toggle()
         }
         pillRow.addArrangedSubview(countPill)
+        readingAudioPill.isHidden = true
+        pillRow.addArrangedSubview(readingAudioPill)
         pillRow.isHidden = false
         pillContainer.isHidden = false
+    }
+
+    /// Audio for the passage loads in the background; the pill only exists while that is running.
+    func setReadingAudioProgress(done: Int, total: Int) {
+        guard total > 0, done < total else {
+            readingAudioPill.isHidden = true
+            return
+        }
+        readingAudioLabel.stringValue = "Audio \(done)/\(total)"
+        readingAudioPill.isHidden = false
     }
 
     /// Grade buttons carry the interval they would schedule, so the choice is never blind.
@@ -661,7 +675,11 @@ final class ReviewSessionView: NSView {
     }
 
     static func makePill(_ text: String) -> NSView {
-        let label = NSTextField(labelWithString: text)
+        makePill(around: NSTextField(labelWithString: text))
+    }
+
+    /// Same pill, but around a label the caller keeps, so its text can change later.
+    static func makePill(around label: NSTextField) -> NSView {
         label.font = .systemFont(ofSize: 11, weight: .medium)
         label.textColor = .secondaryLabelColor
         let box = NSView()

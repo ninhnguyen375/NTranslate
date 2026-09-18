@@ -465,6 +465,27 @@ final class VerticallyCenteredTextFieldCell: NSTextFieldCell {
 class SelectableTextView: NSTextView {
     var onResignFirstResponder: (() -> Void)?
 
+    /// Coloured rails drawn down the left margin of a character range, one per conversation turn.
+    /// Empty everywhere except the Q&A pane, so the default text view is untouched.
+    var rails: [(range: NSRange, color: NSColor)] = [] {
+        didSet { needsDisplay = true }
+    }
+
+    override func drawBackground(in rect: NSRect) {
+        super.drawBackground(in: rect)
+        guard !rails.isEmpty, let layoutManager, let container = textContainer else { return }
+        let origin = textContainerOrigin
+        for rail in rails {
+            let glyphs = layoutManager.glyphRange(forCharacterRange: rail.range, actualCharacterRange: nil)
+            guard glyphs.length > 0 else { continue }
+            let bounds = layoutManager.boundingRect(forGlyphRange: glyphs, in: container)
+            let bar = NSRect(x: origin.x, y: bounds.minY + origin.y, width: 2, height: bounds.height)
+            guard bar.intersects(rect) else { continue }
+            rail.color.setFill()
+            NSBezierPath(roundedRect: bar, xRadius: 1, yRadius: 1).fill()
+        }
+    }
+
     /// The popup activates the app asynchronously, so the first click after it appears would
     /// otherwise be swallowed by window activation: the view becomes first responder with an empty
     /// selection at index 0, which scrolls the pane back to the top mid-double-click.

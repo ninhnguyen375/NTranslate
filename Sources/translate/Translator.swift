@@ -72,7 +72,7 @@ final class Translator: @unchecked Sendable {
 
     private enum RequestMode {
         case translate(sourceLang: String, targetLang: String, context: [ContextPair], parentContext: String?)
-        case learn(sourceLang: String, targetLang: String, parentContext: String?)
+        case learn(sourceLang: String, targetLang: String)
         case proofread(lang: String)
         case ask(question: String, sourceText: String, translatedText: String, sourceLang: String, targetLang: String, history: [QATurn], parentContext: String?)
         case imageSearch
@@ -265,13 +265,15 @@ final class Translator: @unchecked Sendable {
                 sourceLang: sourceLang,
                 targetLang: targetLang
             ) + Self.qaParentContextBlock(parentContext) + Self.qaHistoryBlock(history)
-        case let .learn(sourceLang, targetLang, parentContext):
+        case let .learn(sourceLang, targetLang):
+            // ponytail: no context block here on purpose - a learn card covers every sense of the
+            // word, so surrounding text would narrow it to one meaning.
             systemPrompt = Self.renderLearnPrompt(
                 for: text,
                 sourceLang: sourceLang,
                 targetLang: targetLang,
                 config: config
-            ) + Self.parentContextBlock(parentContext)
+            )
         }
         do {
             req.httpBody = try Self.requestPayload(
@@ -630,13 +632,12 @@ final class Translator: @unchecked Sendable {
         _ text: String,
         sourceLang: String,
         targetLang: String,
-        parentContext: String? = nil,
         onPartial: (@Sendable (String) -> Void)? = nil,
         completion: @escaping @Sendable (Result<String, Error>) -> Void
     ) -> RequestHandle {
         request(
             text,
-            mode: .learn(sourceLang: sourceLang, targetLang: targetLang, parentContext: parentContext),
+            mode: .learn(sourceLang: sourceLang, targetLang: targetLang),
             onPartial: onPartial,
             completion: completion
         )

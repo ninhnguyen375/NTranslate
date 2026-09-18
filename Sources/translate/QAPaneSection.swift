@@ -59,48 +59,51 @@ final class QAPaneSection {
     }
 
     func render(font: NSFont, questionColor: NSColor, answerColor: NSColor, pendingColor: NSColor, errorColor: NSColor) {
-        var body = NSMutableAttributedString()
+        let body = NSMutableAttributedString()
+        var rails: [(range: NSRange, color: NSColor)] = []
         let questionFont = NSFont.systemFont(ofSize: font.pointSize, weight: .semibold)
         let roleFont = NSFont.systemFont(ofSize: max(10, font.pointSize - 1), weight: .bold)
         let youColor = NSColor.controlAccentColor
         let assistantColor = NSColor.systemTeal
         for (index, turn) in turns.enumerated() {
             if index > 0 { body.append(.plainDisplay("\n\n", font: font, color: answerColor)) }
-            appendRole(&body, title: "You", color: youColor, font: roleFont)
-            body.append(Self.tinted(
-                .plainDisplay(turn.question, font: questionFont, color: questionColor),
-                background: youColor.withAlphaComponent(0.12)
-            ))
+            let questionStart = body.length
+            appendRole(body, title: "You", color: youColor, font: roleFont)
+            body.append(.plainDisplay(turn.question, font: questionFont, color: questionColor))
+            rails.append((NSRange(location: questionStart, length: body.length - questionStart), youColor))
+
             body.append(.plainDisplay("\n\n", font: font, color: answerColor))
-            appendRole(&body, title: "NTranslate", color: assistantColor, font: roleFont)
-            let reply: NSAttributedString
+
+            let answerStart = body.length
+            appendRole(body, title: "NTranslate", color: assistantColor, font: roleFont)
             if turn.isPending {
-                reply = .plainDisplay(turn.answer, font: font, color: pendingColor)
+                body.append(.plainDisplay(turn.answer, font: font, color: pendingColor))
             } else if turn.failed || turn.answer.hasPrefix("Error:") || turn.answer.hasPrefix("Lỗi:") {
-                reply = .plainDisplay(turn.answer, font: font, color: errorColor)
+                body.append(.plainDisplay(turn.answer, font: font, color: errorColor))
             } else {
-                reply = .markdownDisplay(turn.answer, font: font, color: answerColor)
+                body.append(.markdownDisplay(turn.answer, font: font, color: answerColor))
             }
-            body.append(Self.tinted(reply, background: assistantColor.withAlphaComponent(0.10)))
+            rails.append((NSRange(location: answerStart, length: body.length - answerStart), assistantColor))
         }
+        // The rail lives in the margin the indent opens up, so every line of a turn clears it.
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.firstLineHeadIndent = Self.railIndent
+        paragraph.headIndent = Self.railIndent
+        paragraph.paragraphSpacing = 3
+        body.addAttribute(.paragraphStyle, value: paragraph, range: NSRange(location: 0, length: body.length))
         textView.textStorage?.setAttributedString(body)
+        textView.rails = rails
     }
 
-    private func appendRole(_ body: inout NSMutableAttributedString, title: String, color: NSColor, font: NSFont) {
-        let paragraph = NSMutableParagraphStyle()
-        paragraph.paragraphSpacing = 3
+    /// Width of the rail plus the gap before the text.
+    private static let railIndent: CGFloat = 12
+
+    private func appendRole(_ body: NSMutableAttributedString, title: String, color: NSColor, font: NSFont) {
         body.append(NSAttributedString(string: "\(title)\n", attributes: [
             .font: font,
             .foregroundColor: color,
             .kern: 0.4,
-            .paragraphStyle: paragraph,
         ]))
-    }
-
-    private static func tinted(_ text: NSAttributedString, background: NSColor) -> NSAttributedString {
-        let painted = NSMutableAttributedString(attributedString: text)
-        painted.addAttribute(.backgroundColor, value: background, range: NSRange(location: 0, length: painted.length))
-        return painted
     }
 
     func removeFromSuperview() {

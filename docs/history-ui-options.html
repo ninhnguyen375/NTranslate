@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="vi" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>History UI Options</title>
+<style>
+:root{
+  --bg:#1c1c1e; --panel:#242427; --card:#2c2c2e; --card-2:#232325;
+  --line:rgba(255,255,255,.10); --line-strong:rgba(255,255,255,.18);
+  --fg:#f2f2f7; --fg-2:#a1a1aa; --fg-3:#6f6f78;
+  --accent:#0a84ff; --learn:#bf5af2; --translate:#30d158; --read:#ff9f0a;
+  --chip:rgba(255,255,255,.07);
+}
+:root[data-theme="light"]{
+  --bg:#f2f2f7; --panel:#ffffff; --card:#ffffff; --card-2:#f7f7fa;
+  --line:rgba(0,0,0,.08); --line-strong:rgba(0,0,0,.14);
+  --fg:#1c1c1e; --fg-2:#6b6b70; --fg-3:#9a9aa0;
+  --accent:#007aff; --learn:#af52de; --translate:#2aa84a; --read:#e08600;
+  --chip:rgba(0,0,0,.05);
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);
+  font:14px/1.45 -apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",sans-serif;
+  padding:32px 16px 64px}
+.wrap{max-width:900px;margin:0 auto}
+h1{font-size:22px;margin:0 0 4px}
+.sub{color:var(--fg-2);margin:0 0 24px}
+h2{font-size:16px;margin:40px 0 4px;display:flex;align-items:center;gap:8px}
+h2 .tag{font-size:11px;font-weight:600;color:var(--accent);background:var(--chip);
+  padding:2px 8px;border-radius:999px}
+.note{color:var(--fg-2);font-size:13px;margin:0 0 14px}
+.toggle{position:fixed;top:16px;right:16px;background:var(--panel);color:var(--fg);
+  border:1px solid var(--line);border-radius:999px;padding:7px 14px;cursor:pointer;font:inherit}
+
+/* window chrome */
+.win{background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden;
+  box-shadow:0 12px 40px rgba(0,0,0,.35)}
+.titlebar{display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid var(--line)}
+.dot{width:11px;height:11px;border-radius:50%}
+.dot.r{background:#ff5f57}.dot.y{background:#febc2e}.dot.g{background:#28c840}
+.wintitle{margin-left:10px;font-weight:600;font-size:13px;color:var(--fg-2)}
+
+/* toolbar */
+.bar{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--line)}
+.search{flex:1;display:flex;align-items:center;gap:7px;background:var(--chip);
+  border:1px solid transparent;border-radius:8px;padding:6px 10px;color:var(--fg-3);font-size:13px;min-width:0}
+.seg{display:flex;background:var(--chip);border-radius:8px;padding:2px}
+.seg span{padding:5px 11px;border-radius:6px;font-size:12px;color:var(--fg-2);white-space:nowrap}
+.seg span.on{background:var(--accent);color:#fff;font-weight:600}
+.seg.ghost span.on{background:var(--panel);color:var(--fg);box-shadow:0 1px 3px rgba(0,0,0,.25)}
+.icons{display:flex;gap:4px;color:var(--fg-2);padding-left:4px;border-left:1px solid var(--line)}
+.icons i{width:28px;height:28px;display:grid;place-items:center;border-radius:6px;font-style:normal;font-size:14px}
+.bar2{padding:8px 14px 10px;display:flex;gap:8px;align-items:center;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.count{color:var(--fg-3);font-size:12px;margin-left:auto}
+
+/* list shared */
+.list{padding:8px;max-height:430px;overflow:auto}
+.meta{font-size:11px;color:var(--fg-3);display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.pill{font-size:10px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;
+  padding:2px 7px;border-radius:5px;color:#fff}
+.pill.learn{background:var(--learn)}.pill.translate{background:var(--translate)}
+.pill.read{background:var(--read)}
+.src{font-size:15px;font-weight:600;margin-top:5px}
+.dst{font-size:13px;color:var(--fg-2);margin-top:2px;
+  overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.acts{display:flex;gap:2px;color:var(--fg-3);opacity:0;transition:opacity .12s}
+.acts b{width:26px;height:26px;display:grid;place-items:center;border-radius:6px;font-weight:400;font-size:13px}
+.row:hover .acts{opacity:1}
+.ipa{color:var(--fg-3);font-weight:400;font-size:13px;margin-left:6px}
+
+/* A: flat rows */
+.a .row{display:flex;gap:12px;align-items:flex-start;padding:11px 12px;border-radius:9px}
+.a .row+.row{border-top:1px solid var(--line)}
+.a .row:hover{background:var(--chip)}
+.a .rail{width:3px;align-self:stretch;border-radius:3px;background:var(--learn);flex:none}
+.a .row.t .rail{background:var(--translate)}
+.a .body{flex:1;min-width:0}
+
+/* B: cards */
+.b .row{background:var(--card);border:1px solid var(--line);border-radius:12px;
+  padding:12px 14px;display:flex;gap:12px;margin-bottom:8px}
+.b .row:hover{border-color:var(--line-strong)}
+.b .body{flex:1;min-width:0}
+.b .acts{flex-direction:column;align-self:center}
+
+/* C: two column */
+.c .row{display:grid;grid-template-columns:150px 1fr auto;gap:14px;align-items:start;
+  padding:12px;border-radius:9px}
+.c .row+.row{border-top:1px solid var(--line)}
+.c .row:hover{background:var(--chip)}
+.c .left{font-size:11px;color:var(--fg-3);line-height:1.6}
+.c .left .pill{display:inline-block;margin-bottom:4px}
+
+/* D: grouped */
+.d .day{position:sticky;top:0;background:var(--panel);padding:8px 12px 6px;
+  font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--fg-3);z-index:1}
+.d .row{display:flex;gap:12px;padding:10px 12px;border-radius:9px;align-items:flex-start}
+.d .row:hover{background:var(--chip)}
+.d .time{font-size:11px;color:var(--fg-3);width:44px;flex:none;padding-top:2px;font-variant-numeric:tabular-nums}
+.d .body{flex:1;min-width:0}
+
+ul.fix{margin:8px 0 0;padding-left:20px;color:var(--fg-2);font-size:13px}
+ul.fix li{margin:5px 0}
+ul.fix b{color:var(--fg)}
+</style>
+</head>
+<body>
+<button class="toggle" onclick="document.documentElement.dataset.theme=document.documentElement.dataset.theme==='dark'?'light':'dark'">Light / Dark</button>
+<div class="wrap">
+
+<h1>Translation History: 4 phương án UI</h1>
+<p class="sub">Xem cả hai chế độ sáng/tối bằng nút góc phải. Chọn 1 phương án, tôi implement vào <code>HistoryWindowController.swift</code>.</p>
+
+<h2>Vấn đề của bản hiện tại</h2>
+<ul class="fix">
+  <li><b>Hierarchy ngược:</b> dòng kết quả đang đậm hơn dòng gốc, mắt người đọc bị kéo xuống dòng dưới.</li>
+  <li><b>Một dòng bị cắt:</b> toàn bộ nghĩa bị <code>truncatingTail</code>, đọc không được gì.</li>
+  <li><b>Toolbar chật:</b> 2 segmented control cạnh nhau, không rõ cái nào là filter gì.</li>
+  <li><b>Card cao 88px cố định</b> nên khoảng trắng rất lớn, danh sách chỉ hiện 4 mục.</li>
+  <li><b>Vạch ngăn dọc + icon</b> tạo cột nhiễu, icon luôn hiện dù không dùng tới.</li>
+  <li>Không phân biệt được Learn / Translate ngoài chữ nhỏ màu xám.</li>
+</ul>
+
+<h2>A. Flat list <span class="tag">gợi ý</span></h2>
+<p class="note">Bỏ card, dùng rail màu theo mode, hover mới hiện icon. Đậm đặc gấp đôi, đọc được 2 dòng nghĩa.</p>
+<div class="win">
+  <div class="titlebar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="wintitle">Translation History</span></div>
+  <div class="bar">
+    <div class="search">&#9906; Search history...</div>
+    <div class="seg"><span class="on">History</span><span>Saved</span></div>
+    <div class="icons"><i>&#8593;</i><i>&#128465;</i></div>
+  </div>
+  <div class="bar2">
+    <div class="seg ghost"><span>All</span><span class="on">Today</span><span>24h</span><span>Week</span><span>Month</span></div>
+    <span class="count">18 records</span>
+  </div>
+  <div class="list a">
+    <div class="row"><div class="rail"></div><div class="body">
+      <div class="meta"><span class="pill learn">Learn</span> 20:59 <span>EN &#8594; VI</span></div>
+      <div class="src">handed <span class="ipa">/'hændɪd/</span></div>
+      <div class="dst">B1 adj. có tay, thuận tay. Mức dùng neutral, rất phổ biến.</div>
+    </div><div class="acts"><b>&#9835;</b><b>&#9734;</b><b>&#128465;</b></div></div>
+    <div class="row"><div class="rail"></div><div class="body">
+      <div class="meta"><span class="pill learn">Learn</span> 21:01 <span>EN &#8594; VI</span></div>
+      <div class="src">velvet <span class="ipa">/'velvɪt/</span></div>
+      <div class="dst">B2 n. vải nhung, mềm mượt. Mức dùng neutral, phổ biến.</div>
+    </div><div class="acts"><b>&#9835;</b><b>&#9734;</b><b>&#128465;</b></div></div>
+    <div class="row t"><div class="rail"></div><div class="body">
+      <div class="meta"><span class="pill translate">Translate</span> 20:53 <span>EN &#8594; VI</span></div>
+      <div class="src">True, but the director wants to inspire big emotions now.</div>
+      <div class="dst">Đúng vậy, nhưng đạo diễn muốn khơi gợi những cảm xúc mạnh lúc này.</div>
+    </div><div class="acts"><b>&#9835;</b><b>&#9734;</b><b>&#128465;</b></div></div>
+    <div class="row"><div class="rail"></div><div class="body">
+      <div class="meta"><span class="pill learn">Learn</span> 19:07 <span>EN &#8594; VI</span></div>
+      <div class="src">cape <span class="ipa">/keɪp/</span></div>
+      <div class="dst">CEFR B2 n. áo choàng không tay; mũi đất nhô ra biển.</div>
+    </div><div class="acts"><b>&#9835;</b><b>&#9734;</b><b>&#128465;</b></div></div>
+  </div>
+</div>
+
+<h2>B. Card tinh gọn</h2>
+<p class="note">Giữ card như hiện tại nhưng bỏ vạch ngăn dọc, cao theo nội dung, icon xếp dọc bên phải.</p>
+<div class="win">
+  <div class="titlebar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="wintitle">Translation History</span></div>
+  <div class="bar">
+    <div class="search">&#9906; Search history...</div>
+    <div class="seg"><span class="on">History</span><span>Saved</span></div>
+    <div class="seg ghost"><span>All</span><span class="on">Today</span><span>Week</span></div>
+    <div class="icons"><i>&#8593;</i><i>&#128465;</i></div>
+  </div>
+  <div class="list b">
+    <div class="row"><div class="body">
+      <div class="meta"><span class="pill learn">Learn</span> 2026 Sep 18, 20:59 <span>EN &#8594; VI</span></div>
+      <div class="src">handed <span class="ipa">/'hændɪd/</span></div>
+      <div class="dst">B1 adj. có tay, thuận tay. Mức dùng neutral, rất phổ biến.</div>
+    </div><div class="acts"><b>&#9835;</b><b>&#9734;</b><b>&#128465;</b></div></div>
+    <div class="row"><div class="body">
+      <div class="meta"><span class="pill translate">Translate</span> 2026 Sep 18, 20:53 <span>EN &#8594; VI</span></div>
+      <div class="src">True, but the director wants to inspire big emotions now.</div>
+      <div class="dst">Đúng vậy, nhưng đạo diễn muốn khơi gợi những cảm xúc mạnh lúc này.</div>
+    </div><div class="acts"><b>&#9835;</b><b>&#9734;</b><b>&#128465;</b></div></div>
+    <div class="row"><div class="body">
+      <div class="meta"><span class="pill learn">Learn</span> 2026 Sep 18, 19:07 <span>EN &#8594; VI</span></div>
+      <div class="src">cape <span class="ipa">/keɪp/</span></div>
+      <div class="dst">CEFR B2 n. áo choàng không tay; mũi đất nhô ra biển.</div>
+    </div><div class="acts"><b>&#9835;</b><b>&#9734;</b><b>&#128465;</b></div></div>
+  </div>
+</div>
+
+<h2>C. Hai cột</h2>
+<p class="note">Metadata dồn sang cột trái cố định, cột phải chỉ còn nội dung. Quét mắt rất nhanh, hợp khi cửa sổ rộng.</p>
+<div class="win">
+  <div class="titlebar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="wintitle">Translation History</span></div>
+  <div class="bar">
+    <div class="search">&#9906; Search history...</div>
+    <div class="seg"><span class="on">History</span><span>Saved</span></div>
+    <div class="icons"><i>&#8593;</i><i>&#128465;</i></div>
+  </div>
+  <div class="list c">
+    <div class="row">
+      <div class="left"><span class="pill learn">Learn</span><br>Sep 18, 20:59<br>EN &#8594; VI</div>
+      <div><div class="src">handed <span class="ipa">/'hændɪd/</span></div>
+      <div class="dst">B1 adj. có tay, thuận tay. Mức dùng neutral, rất phổ biến.</div></div>
+      <div class="acts"><b>&#9835;</b><b>&#9734;</b><b>&#128465;</b></div>
+    </div>
+    <div class="row">
+      <div class="left"><span class="pill translate">Translate</span><br>Sep 18, 20:53<br>EN &#8594; VI</div>
+      <div><div class="src">True, but the director wants to inspire big emotions now.</div>
+      <div class="dst">Đúng vậy, nhưng đạo diễn muốn khơi gợi những cảm xúc mạnh lúc này.</div></div>
+      <div class="acts"><b>&#9835;</b><b>&#9734;</b><b>&#128465;</b></div>
+    </div>
+    <div class="row">
+      <div class="left"><span class="pill learn">Learn</span><br>Sep 18, 19:07<br>EN &#8594; VI</div>
+      <div><div class="src">cape <span class="ipa">/keɪp/</span></div>
+      <div class="dst">CEFR B2 n. áo choàng không tay; mũi đất nhô ra biển.</div></div>
+      <div class="acts"><b>&#9835;</b><b>&#9734;</b><b>&#128465;</b></div>
+    </div>
+  </div>
+</div>
+
+<h2>D. Nhóm theo ngày</h2>
+<p class="note">Header ngày dính khi cuộn, mỗi dòng chỉ còn giờ. Hợp nhất khi lịch sử dài nhiều tháng.</p>
+<div class="win">
+  <div class="titlebar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="wintitle">Translation History</span></div>
+  <div class="bar">
+    <div class="search">&#9906; Search history...</div>
+    <div class="seg"><span class="on">History</span><span>Saved</span></div>
+    <div class="icons"><i>&#8593;</i><i>&#128465;</i></div>
+  </div>
+  <div class="list d">
+    <div class="day">Hôm nay, 18 tháng 9</div>
+    <div class="row"><div class="time">21:01</div><div class="body">
+      <div class="src">velvet <span class="ipa">/'velvɪt/</span> <span class="pill learn">Learn</span></div>
+      <div class="dst">B2 n. vải nhung, mềm mượt. Mức dùng neutral, phổ biến.</div>
+    </div><div class="acts"><b>&#9835;</b><b>&#9734;</b><b>&#128465;</b></div></div>
+    <div class="row"><div class="time">20:59</div><div class="body">
+      <div class="src">handed <span class="ipa">/'hændɪd/</span> <span class="pill learn">Learn</span></div>
+      <div class="dst">B1 adj. có tay, thuận tay. Mức dùng neutral, rất phổ biến.</div>
+    </div><div class="acts"><b>&#9835;</b><b>&#9734;</b><b>&#128465;</b></div></div>
+    <div class="row"><div class="time">20:53</div><div class="body">
+      <div class="src">True, but the director wants to inspire big emotions now. <span class="pill translate">Translate</span></div>
+      <div class="dst">Đúng vậy, nhưng đạo diễn muốn khơi gợi những cảm xúc mạnh lúc này.</div>
+    </div><div class="acts"><b>&#9835;</b><b>&#9734;</b><b>&#128465;</b></div></div>
+    <div class="day">Hôm qua, 17 tháng 9</div>
+    <div class="row"><div class="time">19:07</div><div class="body">
+      <div class="src">cape <span class="ipa">/keɪp/</span> <span class="pill learn">Learn</span></div>
+      <div class="dst">CEFR B2 n. áo choàng không tay; mũi đất nhô ra biển.</div>
+    </div><div class="acts"><b>&#9835;</b><b>&#9734;</b><b>&#128465;</b></div></div>
+  </div>
+</div>
+
+<h2>Sửa chung cho mọi phương án</h2>
+<ul class="fix">
+  <li><b>Đảo hierarchy:</b> từ gốc 15pt semibold, bản dịch 13pt secondary. Hiện tại đang ngược.</li>
+  <li><b>Bỏ rowHeight cố định 88:</b> dung <code>NSTableView.usesAutomaticRowHeights</code>, nghĩa hiện 2 dòng.</li>
+  <li><b>Pill màu theo mode</b> thay cho chữ xám, phân biệt Learn / Translate / Read tức thì.</li>
+  <li><b>Icon chỉ hiện khi hover</b> hoặc khi row được chọn, bỏ vạch ngăn dọc.</li>
+  <li><b>Tách 2 hàng toolbar</b> (hoặc thu gọn time filter vào menu) để không chật khi cửa sổ hẹp.</li>
+  <li><b>Thêm đếm số bản ghi</b> ở góc phải, biết filter có ẩn mất gì không.</li>
+</ul>
+
+</div>
+</body>
+</html>

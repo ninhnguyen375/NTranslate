@@ -363,7 +363,7 @@ extension PopoverController {
             let recordedSource = parent.isEmpty || parent == word
                 ? word
                 : LearnCard.Encounter.encode(term: word, context: parent)
-            _ = translator.learn(word, sourceLang: source, targetLang: pair.target, parentContext: parent) { [weak self] result in
+            _ = translator.learn(word, sourceLang: source, targetLang: pair.target) { [weak self] result in
                 Task { @MainActor in
                     guard let self else { return }
                     self.prefetchDone += 1
@@ -498,7 +498,7 @@ extension PopoverController {
         if mode == .proofread {
             subRequest = translator.proofread(text, lang: displaySource, onPartial: onPartial, completion: handler)
         } else if mode == .learn {
-            subRequest = translator.learn(text, sourceLang: displaySource, targetLang: pair.target, parentContext: inputTextView.string, onPartial: onPartial, completion: handler)
+            subRequest = translator.learn(text, sourceLang: displaySource, targetLang: pair.target, onPartial: onPartial, completion: handler)
         } else {
             let context = historyStore.recentContext(
                 sourceLanguage: displaySource,

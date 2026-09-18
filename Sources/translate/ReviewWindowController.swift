@@ -73,6 +73,7 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
     private var activeSpeechIdentity: SpeechIdentity?
     private var activeSpeechRate: Float = 1.0
     private var pendingNewWordSpeech: SpeechIdentity?
+    private var readingAudioGeneration = 0
 
     // Reading passage
     private var weaveRequest: RequestHandle?
@@ -818,6 +819,8 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
         // A self-graded card already picked; `showAutoGrade` put the Continue button up instead.
         sessionView.gradeStack.isHidden = pendingAutoGrade != nil
         adjustWindowHeightForContentIfNeeded()
+        // Lật thẻ là nghe luôn, khỏi phải bấm nút loa.
+        speakCurrentSource()
     }
 
     private func loadImages(for record: TranslationRecord) {
@@ -838,8 +841,7 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
         regenerateRequest = translator.learn(
             encounter.term,
             sourceLang: record.sourceLanguage,
-            targetLang: record.targetLanguage,
-            parentContext: encounter.context
+            targetLang: record.targetLanguage
         ) { [weak self] result in
             Task { @MainActor in
                 guard let self else { return }
@@ -1451,6 +1453,7 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
         sessionView.showsFrontImages = false
         if let dialogue = ReadingDialogue.parse(text) {
             sessionView.readingChatView.show(dialogue, words: words)
+            prefetchReadingAudio(dialogue)
             sessionView.readingChatView.setGlobalMode(preferredReadingMode ?? .both)
             sessionView.readingChatView.isHidden = false
             sessionView.readingModeControl.isHidden = false
@@ -1584,6 +1587,48 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
     private func hideReadingChat() {
         sessionView.readingChatView.isHidden = true
         sessionView.readingModeControl.isHidden = true
+        readingAudioGeneration += 1
+        sessionView.setReadingAudioProgress(done: 0, total: 0)
+    }
+
+    /// Every line of the passage gets its audio fetched once in the background, so a speak button
+    /// plays at the click instead of waiting on the API. One line at a time: a dozen parallel
+    /// speech requests only slow each other down.
+    private func prefetchReadingAudio(_ dialogue: ReadingDialogue) {
+        readingAudioGeneration += 1
+        let generation = readingAudioGeneration
+        let speechCfg = config ?? AppConfig.load()
+        guard speechCfg.autoPrefetchSpeech, let translator else {
+            sessionView.setReadingAudioProgress(done: 0, total: 0)
+            return
+        }
+        let model = SpeechModelResolver.model(
+            for: readingPool().first?.sourceLanguage ?? "English",
+            config: speechCfg
+        )
+        let pending = dialogue.turns.map(\.source).filter {
+            WeaveAudioCache.load(text: $0, model: model) == nil
+        }
+        guard !pending.isEmpty else {
+            sessionView.setReadingAudioProgress(done: 0, total: 0)
+            return
+        }
+        sessionView.setReadingAudioProgress(done: 0, total: pending.count)
+        Task { @MainActor in
+            for (index, line) in pending.enumerated() {
+                guard generation == self.readingAudioGeneration else { return }
+                let data: Data? = await withCheckedContinuation { continuation in
+                    _ = translator.speak(line, model: model, speed: 1.0) { result in
+                        continuation.resume(returning: try? result.get())
+                    }
+                }
+                guard generation == self.readingAudioGeneration else { return }
+                if let data, SpeechAudioPolicy.isValid(data) {
+                    WeaveAudioCache.store(data, text: line, model: model)
+                }
+                self.sessionView.setReadingAudioProgress(done: index + 1, total: pending.count)
+            }
+        }
     }
 
     private func readingModeHint() -> String {
