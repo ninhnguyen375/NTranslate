@@ -62,7 +62,11 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
     private var missedLapses: [String: Int] = [:]
     private var relearnCounts: [UUID: Int] = [:]
     private var pendingAutoGrade: SRSGrade?
-    private var undoSnapshot: (record: TranslationRecord, index: Int)?
+    private var undoSnapshot: (record: TranslationRecord, index: Int, previousGrade: SRSGrade?)?
+    /// The card's scheduling as it stood before its first grade this session, plus that grade.
+    /// Re-grading a relearning card rewinds to this baseline, so one card writes one lapse.
+    private var sessionBaseline: [UUID: TranslationRecord] = [:]
+    private var sessionGrades: [UUID: SRSGrade] = [:]
 
     private var currentContext: String?
     private var isContextExpanded = false
@@ -435,6 +439,8 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
         missedTerms.removeAll()
         missedLapses.removeAll()
         relearnCounts.removeAll()
+        sessionBaseline.removeAll()
+        sessionGrades.removeAll()
         undoSnapshot = nil
         show(.session)
         loadCurrentCard()
@@ -444,17 +450,33 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
         stopAudio()
         guard currentIndex < recordsToReview.count else { return }
         let record = recordsToReview[currentIndex]
-        undoSnapshot = (store.records.first(where: { $0.id == record.id }) ?? record, currentIndex)
+        let stored = store.records.first(where: { $0.id == record.id }) ?? record
+        let previousGrade = sessionGrades[record.id]
+        undoSnapshot = (stored, currentIndex, previousGrade)
         if ReviewPlanner.writesSchedule(isPractice: isPracticeMode) {
             do {
+                // A second pass in the same session replaces the first grade instead of stacking
+                // on top of it, so three taps of Again cost one lapse, not three.
+                if let baseline = sessionBaseline[record.id] {
+                    try store.restoreSRS(from: baseline)
+                } else {
+                    sessionBaseline[record.id] = stored
+                }
                 try store.updateSRS(recordID: record.id, grade: grade)
             } catch {
                 NSLog("[NTranslate] Failed to update SRS: \(error.localizedDescription)")
             }
+        } else if sessionBaseline[record.id] == nil {
+            sessionBaseline[record.id] = stored
         }
 
-        answeredCount += 1
+        if let previousGrade {
+            if previousGrade != .again { correctCount -= 1 }
+        } else {
+            answeredCount += 1
+        }
         if grade != .again { correctCount += 1 }
+        sessionGrades[record.id] = grade
         if grade == .again { requeueForRelearning(record) }
 
         pendingAutoGrade = nil
@@ -466,7 +488,8 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
     /// sitting is drilling, not learning, and it crowds out the rest of the queue.
     private func requeueForRelearning(_ record: TranslationRecord) {
         let term = displayTerm(of: record)
-        missedLapses[term, default: 0] += 1
+        // One missed card is one lapse in the summary, however many times it comes back.
+        missedLapses[term] = 1
         if !missedTerms.contains(term) { missedTerms.append(term) }
         let seen = relearnCounts[record.id] ?? 0
         guard seen < ReviewPlanner.maxRelearnPerCard else { return }
@@ -490,7 +513,17 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
             recordsToReview.remove(at: queued)
             relearnCounts[snapshot.record.id] = max(0, (relearnCounts[snapshot.record.id] ?? 1) - 1)
         }
-        answeredCount = max(0, answeredCount - 1)
+        if sessionGrades[snapshot.record.id] != .some(.again) && sessionGrades[snapshot.record.id] != nil {
+            correctCount = max(0, correctCount - 1)
+        }
+        if let previousGrade = snapshot.previousGrade {
+            sessionGrades[snapshot.record.id] = previousGrade
+            if previousGrade != .again { correctCount += 1 }
+        } else {
+            sessionGrades[snapshot.record.id] = nil
+            sessionBaseline[snapshot.record.id] = nil
+            answeredCount = max(0, answeredCount - 1)
+        }
         undoSnapshot = nil
         currentIndex = snapshot.index
         isReadingMode = false

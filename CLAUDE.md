@@ -67,6 +67,10 @@ swiftc -parse-as-library Sources/translate/VocabPack.swift Sources/translate/Wea
   Sources/translate/VocabDiscovery.swift Sources/translate/LearnBadgeView.swift \
   Scripts/learn-badge-check.swift -o /tmp/learn-badge-check && /tmp/learn-badge-check
 
+swiftc -parse-as-library Sources/translate/TranslationHistoryStore.swift \
+  Sources/translate/ReviewPlanner.swift Sources/translate/LearnCard.swift \
+  Scripts/session-regrade-check.swift -o /tmp/session-regrade-check && /tmp/session-regrade-check
+
 swiftc -parse-as-library Sources/translate/SquareToolButton.swift Scripts/square-tool-button-check.swift \
   -o /tmp/square-tool-button-check && /tmp/square-tool-button-check
 ```
