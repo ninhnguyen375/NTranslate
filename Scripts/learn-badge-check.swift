@@ -1,9 +1,5 @@
 // Self-check for LearnBadgeView parsing and stripping.
-//
-//   swiftc -parse-as-library Sources/translate/VocabPack.swift Sources/translate/WeaveCache.swift \
-//     Sources/translate/VocabDiscovery.swift Sources/translate/LearnBadgeView.swift \
-//     Scripts/learn-badge-check.swift -o /tmp/learn-badge-check && /tmp/learn-badge-check
-//
+// Run it with `./Scripts/check-all.sh`, which owns the file list it compiles against.
 import AppKit
 import Foundation
 

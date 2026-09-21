@@ -190,15 +190,15 @@ extension PopoverController {
             inputContextLabel.isHidden = true
         }
         hideFloatingSelectionBar()
-        // Editing the main source invalidates whatever phrase the sub pane was explaining.
-        removeSubSection()
-        removeQASection()
+        // The sub and Q&A panes stay: they are dropped on the next run if the source really changed
+        // (`closeFollowUpPanesIfSourceChanged`). Dropping them per keystroke threw away a whole
+        // follow-up conversation over a one-character typo fix.
         if pendingImage != nil { setPendingImage(nil) }
         invalidateTranslationRequest()
         invalidateSpeech(stopPlayback: true)
         updateSpeakButtons()
         updatePaneLanguageLabels()
-        reflowLayout()
+        scheduleReflow()
     }
 
     func textViewDidChangeSelection(_ notification: Notification) {

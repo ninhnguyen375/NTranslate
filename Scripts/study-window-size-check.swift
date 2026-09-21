@@ -1,14 +1,6 @@
 // Measures the Study window after Auto Layout. The frame starts at 753, but tiles
 // and labels can push it wider unless hugging/compression let the window stay put.
-//
-//   swiftc -parse-as-library Sources/translate/TranslationHistoryStore.swift \
-//     Sources/translate/ReviewPlanner.swift \
-//     Sources/translate/LearnCard.swift \
-//     Sources/translate/DeckStats.swift \
-//     Sources/translate/Plural.swift \
-//     Sources/translate/ReviewHomeView.swift \
-//     Scripts/study-window-size-check.swift \
-//     -o /tmp/study-window-size-check && /tmp/study-window-size-check
+// Run it with `./Scripts/check-all.sh`, which owns the file list it compiles against.
 import AppKit
 import Foundation
 
@@ -29,37 +21,6 @@ private func expect(_ condition: Bool, _ message: String) {
     } else {
         failures += 1
         print("FAIL \(message)")
-    }
-}
-
-/// Same helpers ReviewHomeView uses; the session view is not compiled into this check.
-@MainActor
-final class ReviewFlippedView: NSView {
-    override var isFlipped: Bool { true }
-}
-
-@MainActor
-enum ReviewControls {
-    static let iconSize: CGFloat = 20
-
-    static func actionButton(
-        _ button: NSButton,
-        title: String,
-        symbol: String,
-        target: AnyObject,
-        action: Selector,
-        key: String? = nil
-    ) {
-        button.title = "  " + title
-        button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: title)
-        button.imagePosition = .imageLeading
-        button.imageHugsTitle = true
-        button.bezelStyle = .glass
-        button.controlSize = .regular
-        button.font = .systemFont(ofSize: 13, weight: .medium)
-        button.target = target
-        button.action = action
-        if let key { button.keyEquivalent = key }
     }
 }
 

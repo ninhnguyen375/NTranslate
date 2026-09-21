@@ -1,8 +1,6 @@
 // Self-check for the Learn vocabulary pack: lookup keys, language gating, and the resume
 // bookkeeping the generator relies on when a run stops halfway.
-//
-//   swiftc -parse-as-library Sources/translate/VocabPack.swift Scripts/VocabWork.swift \
-//     Scripts/vocab-pack-check.swift -o /tmp/vocab-pack-check && /tmp/vocab-pack-check
+// Run it with `./Scripts/check-all.sh`, which owns the file list it compiles against.
 import Foundation
 
 @main

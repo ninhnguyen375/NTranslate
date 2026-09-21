@@ -151,8 +151,18 @@ final class HistoryWindowController: NSWindowController, NSWindowDelegate, NSTab
             if trimmed.isEmpty { return true }
             return record.sourceText.lowercased().contains(trimmed) || record.resultText.lowercased().contains(trimmed)
         }.sorted {
-            $0.openedAt != $1.openedAt ? $0.openedAt > $1.openedAt : $0.timestamp > $1.timestamp
+            let r0 = matchRank($0, trimmed), r1 = matchRank($1, trimmed)
+            if r0 != r1 { return r0 < r1 }
+            return $0.openedAt != $1.openedAt ? $0.openedAt > $1.openedAt : $0.timestamp > $1.timestamp
         }
+    }
+
+    /// 0: source equals query, 1: source starts with query, 2: other match (or empty query).
+    private static func matchRank(_ record: TranslationRecord, _ query: String) -> Int {
+        guard !query.isEmpty else { return 2 }
+        let source = record.sourceText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if source == query { return 0 }
+        return source.hasPrefix(query) ? 1 : 2
     }
 
     static func deleteSnapshot(records: [TranslationRecord]) -> (ids: Set<UUID>, count: Int) {

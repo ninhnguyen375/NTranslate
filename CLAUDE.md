@@ -11,72 +11,29 @@
 - Sau khi PR/feature/release đã merge thành công vào `main`, kiểm tra rồi xóa branch local/remote đã merge và worktree liên quan nếu sạch; không xóa branch chưa merge hoặc worktree có thay đổi chưa commit, chạy `git worktree prune`, và báo rõ mọi branch/worktree được giữ lại.
 - Không bao giờ xóa branch local/remote `windows-app` khi cleanup branch/worktree. Đây là nhánh phát triển app Windows độc lập, tồn tại lâu dài và không merge vào `main`.
 - Sinh tiếp gói từ vựng theo từng đợt bằng `./Scripts/vocab-daily.sh [số từ]` (mặc định 500). Script tự build generator khi nguồn đổi, chạy đợt mới rồi fold luôn `Resources/vocab-en-vi.json`; thẻ theo prompt cũ vẫn nằm trong gói cho tới ngày từ đó được sinh lại.
-- `learnPrompt` và `weavePrompt` nằm trong `config.json`, và app đang chạy sẽ ghi đè cả file config từ bộ nhớ khi pin popup. Sửa prompt trong config phải làm lúc app đã tắt, hoặc dùng mục sync prompt trong Settings sau khi cài bản mới.
+- `learnPrompt` và `weavePrompt` nằm trong `config.json`. Sửa prompt trong config phải làm lúc app đã tắt, hoặc dùng mục sync prompt trong Settings sau khi cài bản mới, vì app giữ config trong bộ nhớ suốt phiên chạy.
 - Mọi thay đổi prompt phải đi trọn ba bước, không dừng ở bước một: (1) sửa default trong `Sources/translate/AppConfigPrompts.swift`, (2) ghi đè đúng field đó trong `~/Library/Application Support/NTranslate/config.json` khi app đã tắt (`pkill -x NTranslate`), (3) chạy `./install-app.sh`. Làm đủ ba bước thì user không phải bấm "Sync with app prompt" thủ công trong Settings. Sửa mỗi default trong source là prompt cũ trong config vẫn tiếp tục được dùng.
 - Chạy bản debug bằng `./Scripts/run-dev.sh`, không chạy thẳng `.build/debug/translate`: script ký binary bằng cùng identity với app đã cài nên Keychain không hỏi lại password mỗi lần build.
 - Verify code bằng `swift build`. Không chạy `swift test`: target test dùng swift-testing (`import Testing`) mà toolchain hiện tại không cung cấp, luôn fail với `no such module 'Testing'`.
 - Khi sửa giá trị mặc định trong `AppConfig.default` (width, height, hotkey...), đồng thời cập nhật field tương ứng trong `~/Library/Application Support/NTranslate/config.json` trên máy user, vì config đã tồn tại sẽ giữ giá trị cũ và không tự nhận default mới.
+- `ui.rememberPin` là ngoại lệ: trạng thái pin lưu ở `UserDefaults` (key `local.ninh.ntranslate.rememberPin`), không ghi ngược vào `config.json` nữa (ghi ngược từng đè mất prompt sửa trên đĩa). Field trong config chỉ còn là giá trị khởi tạo cho tới lần toggle pin đầu tiên; sau đó sửa nó không còn tác dụng, phải `defaults delete local.ninh.ntranslate local.ninh.ntranslate.rememberPin`.
 - Folder lưu history chính trên máy này là `/Volumes/ESSD/MacData/NTranslateData` (file theo tháng trong `devices/<device-id>/YYYY-MM.json`), không phải `~/Library/Application Support/NTranslate`. Tra record thật thì đọc ở đây.
 
 ## Test
 
 - Verify mặc định là `swift build`. `swift test` không dùng được (lý do ở trên), nên logic không tầm thường đi kèm một self-check standalone trong `Scripts/`, chạy bằng `swiftc` chứ không qua test target.
-- Chạy các check hiện có:
+- Chạy toàn bộ check bằng một lệnh:
 
 ```bash
-swiftc -parse-as-library Sources/translate/SpeechTrim.swift Scripts/speech-trim-check.swift \
-  -o /tmp/speech-trim-check && /tmp/speech-trim-check
-
-swiftc -parse-as-library Scripts/double-click-selection-check.swift \
-  -o /tmp/dclick-check && /tmp/dclick-check
-
-swiftc -parse-as-library Scripts/tagged-response-check.swift \
-  -o /tmp/tagged-response-check && /tmp/tagged-response-check
-
-swiftc -parse-as-library Sources/translate/VocabPack.swift Scripts/VocabWork.swift \
-  Scripts/vocab-pack-check.swift -o /tmp/vocab-pack-check && /tmp/vocab-pack-check
-
-swiftc -parse-as-library Sources/translate/LearnCard.swift Scripts/learn-card-check.swift \
-  -o /tmp/learn-card-check && /tmp/learn-card-check
-
-swiftc -parse-as-library Sources/translate/LearnCard.swift Sources/translate/ReviewPlanner.swift \
-  Scripts/review-planner-check.swift -o /tmp/review-planner-check && /tmp/review-planner-check
-
-swiftc -parse-as-library Sources/translate/TranslationHistoryStore.swift Sources/translate/ReviewPlanner.swift \
-  Sources/translate/LearnCard.swift Scripts/learn-cache-key-check.swift \
-  -o /tmp/learn-cache-key-check && /tmp/learn-cache-key-check
-
-swiftc -parse-as-library Sources/translate/TranslationHistoryStore.swift Sources/translate/ReviewPlanner.swift \
-  Sources/translate/LearnCard.swift Sources/translate/DeckStats.swift Scripts/deck-stats-check.swift \
-  -o /tmp/deck-stats-check && /tmp/deck-stats-check
-
-swiftc -parse-as-library Sources/translate/TranslationHistoryStore.swift \
-  Sources/translate/ReviewPlanner.swift Sources/translate/LearnCard.swift \
-  Sources/translate/DeckStats.swift Sources/translate/Plural.swift \
-  Sources/translate/ReviewHomeView.swift Scripts/study-window-size-check.swift \
-  -o /tmp/study-window-size-check && /tmp/study-window-size-check
-
-swiftc -parse-as-library Sources/translate/VocabPack.swift Sources/translate/WeaveCache.swift \
-  Sources/translate/VocabDiscovery.swift Scripts/vocab-discovery-check.swift \
-  -o /tmp/vocab-discovery-check && /tmp/vocab-discovery-check
-
-swiftc -parse-as-library Sources/translate/WeaveCache.swift Scripts/weave-cache-check.swift \
-  -o /tmp/weave-cache-check && /tmp/weave-cache-check
-
-swiftc -parse-as-library Sources/translate/VocabPack.swift Sources/translate/WeaveCache.swift \
-  Sources/translate/VocabDiscovery.swift Sources/translate/LearnBadgeView.swift \
-  Scripts/learn-badge-check.swift -o /tmp/learn-badge-check && /tmp/learn-badge-check
-
-swiftc -parse-as-library Sources/translate/TranslationHistoryStore.swift \
-  Sources/translate/ReviewPlanner.swift Sources/translate/LearnCard.swift \
-  Scripts/session-regrade-check.swift -o /tmp/session-regrade-check && /tmp/session-regrade-check
-
-swiftc -parse-as-library Sources/translate/SquareToolButton.swift Scripts/square-tool-button-check.swift \
-  -o /tmp/square-tool-button-check && /tmp/square-tool-button-check
+./Scripts/check-all.sh              # tất cả
+./Scripts/check-all.sh learn        # chỉ check có tên chứa "learn"
+SKIP_UI=1 ./Scripts/check-all.sh    # bỏ qua check cần quyền Accessibility
 ```
 
-- `double-click-selection-check` bắn chuột tổng hợp qua `CGEvent`, nên terminal đang chạy phải có quyền Accessibility. Check này fail cả khi bản có fix mất selection lẫn khi bản không fix bỗng chạy đúng (tức check hết tái hiện được bug).
+- Thêm check mới thì khai báo luôn danh sách file nguồn trong bảng `checks` ở đầu `Scripts/check-all.sh`. Đừng chép lệnh `swiftc` vào tài liệu: danh sách file chép trong comment sẽ lạc hậu mà không ai biết, còn bảng trong script thì chạy một lần là lộ ra ngay.
+- `double-click-selection-check` bắn chuột tổng hợp qua `CGEvent`, nên terminal đang chạy phải có quyền Accessibility. Check so sánh hai chiều: bản có fix phải chọn đúng từ dưới con trỏ (`bravo`), bản không fix phải chọn ra thứ khác. Triệu chứng của bản không fix đổi theo phiên bản macOS (trước là mất sạch selection, trên macOS 26 là kéo selection tới cuối dòng), nên đừng siết lại thành "phải rỗng".
 - Muốn tái hiện lỗi tương tác chuột trong app thật thì dựng harness tạm: một file `Sources/translate/*Sim.swift` gọi từ `applicationDidFinishLaunching`, bật bằng biến môi trường, bắn `CGEvent` rồi log ra stderr. Gỡ sạch harness và mọi log tạm ngay khi tìm xong root cause, chỉ giữ lại check trong `Scripts/`.
+- Chrome dùng chung của các màn review (`ReviewControls`, `ReviewFlippedView`) nằm ở `Sources/translate/ReviewControls.swift`, tách riêng để check standalone compile được mà không kéo theo cả `ReviewSessionView`. Đừng chuyển ngược vào file view.
 - Đọc kết quả bằng `Scripts/run-dev.sh` thay vì `.build/debug/translate` để Keychain không hỏi password giữa chừng.
 
 ## SPDD

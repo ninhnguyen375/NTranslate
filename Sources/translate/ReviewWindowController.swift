@@ -484,8 +484,8 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
         loadCurrentCard()
     }
 
-    /// A missed card comes back later in the same session. Twice at most: a third pass in one
-    /// sitting is drilling, not learning, and it crowds out the rest of the queue.
+    /// A missed card comes back later in the same session, once: a third pass in one sitting is
+    /// drilling, not learning, and it crowds out the rest of the queue.
     private func requeueForRelearning(_ record: TranslationRecord) {
         let term = displayTerm(of: record)
         // One missed card is one lapse in the summary, however many times it comes back.
@@ -849,6 +849,12 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
             sessionView.regenerateCardButton.isHidden = sessionView.onRegenerateCard == nil
         }
         sessionView.revealButton.isHidden = true
+        // A card back for relearning offers its earlier grade on Enter; the buttons still override it.
+        if pendingAutoGrade == nil, let earlier = sessionGrades[record.id] {
+            pendingAutoGrade = earlier
+            sessionView.showAutoGrade(earlier, name: ["Again", "Hard", "Easy"][earlier.rawValue],
+                                      interval: gradePreview(earlier, for: record))
+        }
         // A self-graded card already picked; `showAutoGrade` put the Continue button up instead.
         sessionView.gradeStack.isHidden = pendingAutoGrade != nil
         adjustWindowHeightForContentIfNeeded()

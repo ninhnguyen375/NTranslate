@@ -6,10 +6,8 @@
 // tracked), AppKit throws the double-click's word selection away. SelectableTextView forces the
 // downgrade in `viewDidMoveToWindow`, so the first double-click already works.
 //
-// Standalone, because the package test target needs swift-testing that this toolchain lacks:
-//
-//   swiftc -parse-as-library Scripts/double-click-selection-check.swift -o /tmp/dclick-check \
-//     && /tmp/dclick-check
+// Standalone, because the package test target needs swift-testing that this toolchain lacks.
+// Run it with `./Scripts/check-all.sh`, which owns the file list it compiles against.
 //
 // Posts synthetic clicks, so the running terminal needs Accessibility permission.
 import Cocoa
@@ -39,6 +37,8 @@ final class BarStub: NSObject, NSTextViewDelegate {
 @main
 enum Check {
     static let text = "alpha bravo charlie delta"
+    /// The word under the click point in `doubleClick`.
+    static let expectedWord = "bravo"
     static let delegate = BarStub()
     static var failures: [String] = []
 
@@ -52,13 +52,16 @@ enum Check {
     static func runCases() {
         measure(fixApplied: false) { unfixed in
             measure(fixApplied: true) { fixed in
-                if fixed.isEmpty {
-                    failures.append("with the fix, the first double-click selected nothing")
+                if fixed != expectedWord {
+                    failures.append("with the fix, the first double-click selected '\(fixed)' instead of '\(expectedWord)'")
                 }
-                if unfixed.isEmpty {
-                    print("note: the unfixed view also selected nothing to lose - the bug reproduces")
+                // The broken view used to end up with nothing selected. On macOS 26 the same
+                // mid-tracking relayout instead runs the selection out to the end of the line, so
+                // the control is "anything but the right word", not "empty".
+                if unfixed == expectedWord {
+                    failures.append("unfixed view also selected '\(unfixed)' - the check no longer reproduces the bug")
                 } else {
-                    failures.append("unfixed view selected '\(unfixed)' - the check no longer reproduces the bug")
+                    print("note: the unfixed view selected '\(unfixed)' instead of '\(expectedWord)' - the bug reproduces")
                 }
                 for failure in failures { print("FAIL: \(failure)") }
                 print(failures.isEmpty ? "OK: first double-click selects a word only with the fix" : "FAILED")

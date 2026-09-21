@@ -1,9 +1,6 @@
 // Self-check for SpeechTrim. The package test target needs swift-testing, which the current
-// toolchain does not ship, so this runs standalone:
-//
-//   swiftc -parse-as-library Sources/translate/SpeechTrim.swift \
-//     Scripts/speech-trim-check.swift -o /tmp/speech-trim-check \
-//     && /tmp/speech-trim-check
+// toolchain does not ship, so this runs standalone.
+// Run it with `./Scripts/check-all.sh`, which owns the file list it compiles against.
 import AVFoundation
 import Foundation
 
@@ -53,6 +50,6 @@ import Foundation
         assert(abs(encoded.lead - 0.22) < 0.05, "encoded lead off: \(encoded.lead)")
         assert(abs(encoded.tail - 0.78) < 0.05, "encoded tail off: \(encoded.tail)")
 
-        print("SpeechTrim OK — lead \(raw.lead), tail \(raw.tail)")
+        print("SpeechTrim OK: lead \(raw.lead), tail \(raw.tail)")
     }
 }

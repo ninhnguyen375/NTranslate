@@ -1,8 +1,5 @@
 // Standalone check for VocabDiscovery ordering and level parsing.
-//
-//   swiftc -parse-as-library Sources/translate/VocabPack.swift \
-//     Sources/translate/VocabDiscovery.swift Scripts/vocab-discovery-check.swift \
-//     -o /tmp/vocab-discovery-check && /tmp/vocab-discovery-check
+// Run it with `./Scripts/check-all.sh`, which owns the file list it compiles against.
 import Foundation
 
 private var failures = 0

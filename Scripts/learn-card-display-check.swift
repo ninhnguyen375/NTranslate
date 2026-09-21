@@ -1,16 +1,6 @@
 // Self-check for structured Learn popup decisions, headword highlight, and
 // height measurement that must stay stable off-window (findings 1 and 2).
-//
-//   swiftc -parse-as-library Sources/translate/LearnCard.swift \
-//     Sources/translate/TextZoom.swift \
-//     Sources/translate/VocabPack.swift \
-//     Sources/translate/WeaveCache.swift \
-//     Sources/translate/VocabDiscovery.swift \
-//     Sources/translate/LearnBadgeView.swift \
-//     Sources/translate/LearnStructuredCardView.swift \
-//     Sources/translate/LearnRelatedImage.swift \
-//     Scripts/learn-card-display-check.swift -o /tmp/learn-card-display-check \
-//     && /tmp/learn-card-display-check
+// Run it with `./Scripts/check-all.sh`, which owns the file list it compiles against.
 import AppKit
 import Foundation
 

@@ -1,6 +1,6 @@
 // Self-check for the tagged model responses (image translation and text auto-detect):
 // streaming extraction and final parse.
-// swiftc -parse-as-library Scripts/tagged-response-check.swift -o /tmp/tagged-response-check && /tmp/tagged-response-check
+// Run it with `./Scripts/check-all.sh`, which owns the file list it compiles against.
 
 import Foundation
 

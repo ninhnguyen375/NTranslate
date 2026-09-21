@@ -1,10 +1,7 @@
 // Standalone check: re-grading a card inside one session replaces the earlier grade instead of
 // stacking on it. Mirrors ReviewWindowController.applyGrade, which rewinds to the session
 // baseline before writing. See CLAUDE.md, `swift test` cannot run in this toolchain.
-//
-//   swiftc -parse-as-library Sources/translate/TranslationHistoryStore.swift \
-//     Sources/translate/ReviewPlanner.swift Sources/translate/LearnCard.swift \
-//     Scripts/session-regrade-check.swift -o /tmp/session-regrade-check && /tmp/session-regrade-check
+// Run it with `./Scripts/check-all.sh`, which owns the file list it compiles against.
 import Foundation
 
 /// AppConfig drags in AppKit; the convenience init only reads this property.

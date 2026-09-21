@@ -15,4 +15,10 @@ config.json
 /Scripts/.vocab-work/
 Resources/vocab-en-vi.json.bak
 Scripts/__pycache__/
-/.cursor-runs/
+
+# Build artifacts staged by install-app.sh. Info.plist stays tracked: it carries the version
+# and build number. The binary and the generated icon do not belong in git.
+/NTranslate.app/Contents/MacOS/
+/NTranslate.app/Contents/Resources/
+/NTranslate.iconset/
+/NTranslate.icns

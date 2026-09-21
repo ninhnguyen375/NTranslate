@@ -1,9 +1,6 @@
 // Standalone check for DeckStats. See CLAUDE.md: `swift test` cannot run in this toolchain, so
 // non-trivial pure logic gets a check that compiles with swiftc.
-//
-//   swiftc -parse-as-library Sources/translate/TranslationHistoryStore.swift \
-//     Sources/translate/ReviewPlanner.swift Sources/translate/LearnCard.swift Sources/translate/DeckStats.swift \
-//     Scripts/deck-stats-check.swift -o /tmp/deck-stats-check && /tmp/deck-stats-check
+// Run it with `./Scripts/check-all.sh`, which owns the file list it compiles against.
 import Foundation
 
 /// TranslationHistoryStore has one convenience init that mentions AppConfig, and AppConfig drags

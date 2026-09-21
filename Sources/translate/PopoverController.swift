@@ -232,12 +232,16 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     /// Set once an image request has streamed its transcription into the input pane; the pane is no
     /// longer in image mode, but the in-flight image response still belongs to it.
     var imageStreamAdoptedSource = false
+    /// One reflow per window while a response streams in; see `throttleStreamReflow`.
+    static let streamReflowInterval: TimeInterval = 0.1
     var lastStreamReflowMain = Date.distantPast
     var lastStreamReflowSub = Date.distantPast
     var lastStreamReflowQA = Date.distantPast
-    var lastStreamedHeightMain: CGFloat = 0
-    var lastStreamedHeightSub: CGFloat = 0
-    var lastStreamedHeightQA: CGFloat = 0
+    var streamReflowTrailing: DispatchWorkItem?
+    /// Last time the structured Learn card was rebuilt; throttles the rebuild while streaming.
+    var lastLearnCardRender = Date.distantPast
+    /// Pending coalesced reflow; see `scheduleReflow`.
+    var pendingReflow: DispatchWorkItem?
     var lastStreamedMain = ""
     var lastStreamedSub = ""
     /// Last style passed to `setResultText`. Callers set this explicitly for errors; do not re-infer
@@ -252,6 +256,8 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     let inPaneRetryButton = NSButton(title: "Retry", target: nil, action: nil)
     var keyMonitor: Any?
     var globalMouseMonitor: Any?
+    /// One-shot monitors that wait for the mouse button to come up before taking first responder.
+    var focusMouseUpMonitors: [Any] = []
     var localMouseMonitor: Any?
     var previousApp: NSRunningApplication?
     var restoresPreviousAppOnClose = false
@@ -259,6 +265,16 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     var isPastingResult = false
     var recentTargets: [String] = []
     static let lastTargetLangKey = "local.ninh.ntranslate.lastTargetLang"
+    static let rememberPinKey = "local.ninh.ntranslate.rememberPin"
+    /// Shortcuts mirrored into the main action row's overflow menu, keyed by the chip's visible
+    /// title. Only the main row uses them; see `layoutActionRowOverflow`.
+    static let overflowShortcuts: [String: (key: String, modifiers: NSEvent.ModifierFlags)] = [
+        "Translate": ("\r", .command),
+        "Learn": ("l", .command),
+        "Proofread": ("p", .command),
+        "Ask": ("k", .command),
+        "Images": ("i", .command)
+    ]
     var showMousePoint: NSPoint = .zero
     var userMovedWindow = false
     var isProgrammaticFrameChange = false
@@ -388,14 +404,6 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
             }
             if flags == [.command, .shift], event.keyCode == UInt16(kVK_ANSI_C) {
                 self.copyResult()
-                return nil
-            }
-            if flags == [.command, .shift], event.keyCode == UInt16(kVK_ANSI_L) {
-                self.runLearn()
-                return nil
-            }
-            if flags == [.command, .shift], event.keyCode == UInt16(kVK_ANSI_P) {
-                self.runProofread()
                 return nil
             }
             if flags == .command, event.keyCode == UInt16(kVK_ANSI_K) {

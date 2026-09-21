@@ -1,9 +1,6 @@
 // Self-check for coalesced background history writes. Uses a throwaway directory so it cannot
 // touch the user's real history folder.
-// swiftc -parse-as-library Sources/translate/TranslationHistoryStore.swift \
-//   Sources/translate/ReviewPlanner.swift Sources/translate/LearnCard.swift \
-//   Scripts/history-write-queue-check.swift -o /tmp/history-write-queue-check \
-//   && /tmp/history-write-queue-check
+// Run it with `./Scripts/check-all.sh`, which owns the file list it compiles against.
 
 import Foundation
 

@@ -390,7 +390,10 @@ extension PopoverController: NSTextFieldDelegate {
             return
         }
 
-        if let existing = qaSection, existing.targetsSub != qaTargetsSub {
+        // The transcript is sent as history alongside the current source, so it has to describe
+        // that same source. Editing the source without re-running leaves `lastRunSource` behind.
+        let liveSource = inputTextView.string.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let existing = qaSection, existing.targetsSub != qaTargetsSub || liveSource != lastRunSource {
             removeQASection()
         }
         let section = qaSection ?? makeQASection()

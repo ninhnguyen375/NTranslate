@@ -174,7 +174,7 @@ enum ReviewPlanner {
     /// A missed card comes back later in the same session instead of waiting for tomorrow: the
     /// first successful recall after a miss is what actually fixes the memory.
     static let relearnGap = 10
-    static let maxRelearnPerCard = 2
+    static let maxRelearnPerCard = 1
 
     static func requeueIndex(currentIndex: Int, count: Int, gap: Int = relearnGap) -> Int {
         min(count, currentIndex + gap + 1)

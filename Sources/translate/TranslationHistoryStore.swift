@@ -300,12 +300,13 @@ final class TranslationHistoryStore {
         limit: Int = 10
     ) -> [TranslationRecord] {
         let excluded = Self.trim(excludingText)
-        return records.filter {
+        // Lazy so the scan stops at `limit` matches instead of filtering the whole history first.
+        return Array(records.lazy.filter {
             $0.mode == .translate
                 && $0.sourceLanguage == sourceLanguage
                 && $0.targetLanguage == targetLanguage
                 && Self.trim($0.sourceText) != excluded
-        }.prefix(limit).map { $0 }
+        }.prefix(limit))
     }
 
     @discardableResult

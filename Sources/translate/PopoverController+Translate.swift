@@ -68,7 +68,9 @@ extension PopoverController {
             panel.makeKeyAndOrderFront(nil)
         }
 
+        #if DEBUG
         let hotkeyStart = DispatchTime.now()
+        #endif
         let simulateCopy = PopoverIntegrationPolicy.shouldSimulateCopy(
             force: forceSimulatedCopy,
             configured: config.ui.simulateCopy
@@ -88,7 +90,9 @@ extension PopoverController {
             let message = failure
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
+                #if DEBUG
                 NSLog("[NTranslate][timing] hotkey to handler=\(SelectionReader.ms(since: hotkeyStart))")
+                #endif
                 if let message {
                     self.showEmptySelectionPanel(message: message)
                 } else if let result {
@@ -161,9 +165,12 @@ extension PopoverController {
         }
         invalidateCurrentRecord()
         closeFollowUpPanesIfSourceChanged(inputTextView.string.trimmingCharacters(in: .whitespacesAndNewlines))
-        removeQASection()
-        qaInputField.stringValue = ""
-        qaInputField.isHidden = true
+        // Re-running the same source keeps the follow-up conversation; only a source change (which
+        // already dropped the pane above) resets the Ask field.
+        if qaSection == nil {
+            qaInputField.stringValue = ""
+            qaInputField.isHidden = true
+        }
         let generation = existingGeneration ?? beginRequest()
         guard let translator else {
             finishRequest(generation: generation)
@@ -203,20 +210,7 @@ extension PopoverController {
             return
         }
         let text = inputTextView.string.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else {
-            invalidateTranslationRequest()
-            setResultText(PopoverFeedback.emptyInputHint)
-            reflowLayout()
-            updateBusyState()
-            return
-        }
-        guard text.count <= config.maxTranslateLength else {
-            invalidateTranslationRequest()
-            setResultText(PopoverFeedback.textTooLong)
-            reflowLayout()
-            updateBusyState()
-            return
-        }
+        guard isSourceTextRunnable(text, invalidatingRequest: true) else { return }
         let sourceWasAutoDetect = selectedSourceLanguage() == LanguageDetector.autoDetect
         let pair = resolvedLanguagePair(for: text)
         updateLanguageSelection(for: text)
@@ -342,7 +336,9 @@ extension PopoverController {
                     prefetchSpeech(sourceSpeechIdentity(recordID: stored.id), translationGeneration: generation)
                     prefetchSpeech(resultSpeechIdentity(recordID: stored.id), translationGeneration: nil)
                     updatePaneLanguageLabels()
-                    if config.ui.autoCopy {
+                    // A request outlives the panel now, so a finished answer must not grab the
+                    // clipboard behind the user's back after they dismissed it.
+                    if config.ui.autoCopy, panel.isVisible {
                         NSPasteboard.general.clearContents()
                         NSPasteboard.general.setString(value.text, forType: .string)
                         flashCopied()
@@ -357,17 +353,22 @@ extension PopoverController {
             invalidateCurrentRecord()
             let message = PopoverFeedback.userFacingError(error)
             if message == PopoverFeedback.stopped {
+                // Stop is itself a `.loading` call, so the stream throttle would swallow it and
+                // leave the card showing the text from up to one window earlier.
+                lastLearnCardRender = .distantPast
                 if lastStreamedMain.isEmpty {
                     setResultText(PopoverFeedback.stopped, style: .loading)
                 } else {
                     setResultText(lastStreamedMain, style: .loading)
                 }
-            } else if let raw = Optional(lastStreamedMain), !raw.isEmpty,
-                      (raw.hasPrefix("{") || raw.hasPrefix("```")),
-                      error is Translator.ResponseError {
-                setResultText(raw, style: .error)
             } else {
                 setResultText(message, style: .error)
+                // A malformed response used to be dumped into the pane as raw JSON. Keep it for
+                // debugging, but behind the tooltip instead of in the user's face.
+                let raw = lastStreamedMain
+                if !raw.isEmpty, raw.hasPrefix("{") || raw.hasPrefix("```"), error is Translator.ResponseError {
+                    textView.toolTip = raw
+                }
             }
         }
         reflowLayout()

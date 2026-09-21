@@ -23,6 +23,7 @@ extension PopoverController {
             ? .markdownDisplay(textToDisplay, font: font, color: color)
             : .plainDisplay(textToDisplay, font: font, color: color)
         textView.textStorage?.setAttributedString(display)
+        textView.toolTip = nil
         applyStructuredLearnCard(raw: value, style: resolved)
         if wasBadgeHidden != learnBadgeView.isHidden, panel.contentView != nil {
             reflowLayout()
@@ -42,6 +43,15 @@ extension PopoverController {
     func applyStructuredLearnCard(raw: String, style: PopoverFeedback.ResultStyle) {
         let show = LearnCard.shouldPresentStructured(raw, isError: style == .error)
         pinLearnCardToTop = show
+        // Parsing and rebuilding the card is the most expensive thing a chunk can trigger, and the
+        // stream delivers many chunks a second. While the card is already up and still loading,
+        // rebuild it on the same window the layout uses. The success path ends with a non-loading
+        // call; Stop ends with a loading one and resets `lastLearnCardRender` to get past this.
+        if show, style == .loading, isShowingStructuredLearnCard,
+           Date().timeIntervalSince(lastLearnCardRender) < Self.streamReflowInterval {
+            return
+        }
+        if show { lastLearnCardRender = Date() }
         if show {
             let card = LearnCard.parse(raw)
             learnCardView.applyUsage(from: raw, live: false)
@@ -227,57 +237,48 @@ extension PopoverController {
         updateCopyButtonEnabled()
     }
 
+    /// Streaming used to measure the pane on every chunk and reflow whenever the height moved by a
+    /// point. The measure itself is a full TextKit layout of the whole answer, and the layout pass
+    /// that followed measured it a second time at a different width — two full layouts per chunk.
+    /// A plain 100ms window costs one, and 100ms of lag is invisible while text is still arriving.
     func throttleStreamReflow(scope: RequestScope) {
-        let now = Date()
-        let measured: CGFloat
-        switch scope {
-        case .main:
-            if isShowingStructuredLearnCard {
-                measured = measuredStructuredLearnCardHeight()
-            } else {
-                measured = textView.attributedString().length == 0
-                    ? 0
-                    : PopoverLayoutMath.measuredTextHeight(textView.attributedString(), width: max(100, textView.bounds.width))
-            }
-        case .sub:
-            guard let section = subSection else { return }
-            if section.isShowingStructuredLearnCard {
-                measured = measuredStructuredSubLearnCardHeight(section)
-            } else {
-                let attr = section.resultTextView.attributedString()
-                measured = attr.length == 0
-                    ? 0
-                    : PopoverLayoutMath.measuredTextHeight(attr, width: max(100, section.resultTextView.bounds.width))
-            }
-        }
-        let last = scope == .main ? lastStreamedHeightMain : lastStreamedHeightSub
-        let heightChanged = abs(measured - last) >= 1
+        // A request outlives the panel now, so a hidden panel must not pay for layout; `presentPanel`
+        // reflows when it comes back.
+        guard panel.isVisible else { return }
         let lastReflow = scope == .main ? lastStreamReflowMain : lastStreamReflowSub
-        if heightChanged || now.timeIntervalSince(lastReflow) >= 0.1 {
-            if scope == .main {
-                lastStreamReflowMain = now
-                lastStreamedHeightMain = measured
-            } else {
-                lastStreamReflowSub = now
-                lastStreamedHeightSub = measured
-            }
-            reflowLayout()
+        guard PopoverLayoutMath.shouldReflowStream(now: Date(), last: lastReflow, interval: Self.streamReflowInterval) else {
+            scheduleTrailingStreamReflow()
+            return
         }
+        if scope == .main {
+            lastStreamReflowMain = Date()
+        } else {
+            lastStreamReflowSub = Date()
+        }
+        reflowLayout()
     }
 
     func throttleQAStreamReflow() {
-        guard let section = qaSection else { return }
-        let now = Date()
-        let attr = section.textView.attributedString()
-        let measured = attr.length == 0
-            ? 0
-            : PopoverLayoutMath.measuredTextHeight(attr, width: max(100, section.textView.bounds.width))
-        let heightChanged = abs(measured - lastStreamedHeightQA) >= 1
-        if heightChanged || now.timeIntervalSince(lastStreamReflowQA) >= 0.1 {
-            lastStreamReflowQA = now
-            lastStreamedHeightQA = measured
-            reflowLayout()
+        guard qaSection != nil else { return }
+        guard PopoverLayoutMath.shouldReflowStream(now: Date(), last: lastStreamReflowQA, interval: Self.streamReflowInterval) else {
+            scheduleTrailingStreamReflow()
+            return
         }
+        lastStreamReflowQA = Date()
+        reflowLayout()
+    }
+
+    /// The chunk that arrives inside a throttle window still has to be laid out. Completion
+    /// handlers reflow, but Stop does not, so a trailing pass closes that gap.
+    private func scheduleTrailingStreamReflow() {
+        guard streamReflowTrailing == nil else { return }
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            self.streamReflowTrailing = nil
+            self.reflowLayout()
+        }
+        streamReflowTrailing = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.streamReflowInterval, execute: work)
     }
 
     func applyStopAppearance(to row: ActionRowSection, stopping: Bool, isSub: Bool) {
@@ -311,6 +312,24 @@ extension PopoverController {
         pendingSourceSpeech.removeAll()
         invalidateCurrentRecord()
         updateBusyState()
+    }
+
+    /// Shared entry guard for the text modes. Translate, Learn and Proofread each repeated the same
+    /// empty / over-length checks with the same feedback; one copy keeps them from drifting apart.
+    func isSourceTextRunnable(_ text: String, invalidatingRequest: Bool = false) -> Bool {
+        let message: String
+        if text.isEmpty {
+            message = PopoverFeedback.emptyInputHint
+        } else if text.count > config.maxTranslateLength {
+            message = PopoverFeedback.textTooLong
+        } else {
+            return true
+        }
+        if invalidatingRequest { invalidateTranslationRequest() }
+        setResultText(message)
+        reflowLayout()
+        updateBusyState()
+        return false
     }
 
     func updateBusyState() {

@@ -546,7 +546,7 @@ extension PopoverController {
         let wasVisible = panel.isVisible
         if !wasVisible {
             userMovedWindow = false
-            isPinned = config.ui.rememberPin
+            isPinned = storedRememberPin
             updatePinButton()
             updateReviewBadge()
         }
@@ -572,19 +572,20 @@ extension PopoverController {
     func closePanel() {
         guard panel.isVisible else { return }
         hideFloatingSelectionBar()
-        mainRequest?.cancel()
+        // The main request keeps running: closing the panel is often a stray click, and killing a
+        // half-finished answer costs the user the wait and the tokens. It still lands in history,
+        // and the next hotkey run cancels it through `beginRequest`.
         subRequest?.cancel()
         qaRequest?.cancel()
-        mainRequest = nil
         subRequest = nil
         qaRequest = nil
-        requestGeneration += 1
-        isRequestInFlight = false
         subGeneration += 1
         qaGeneration += 1
         subSection?.requestInFlight = false
         removeSubSection()
-        invalidateCurrentRecord()
+        removeQASection()
+        qaInputField.stringValue = ""
+        qaInputField.isHidden = true
         invalidateSpeech(stopPlayback: true)
         clearStatus()
         copyFlashWorkItem?.cancel()
@@ -593,6 +594,7 @@ extension PopoverController {
         updateBusyState()
         panel.orderOut(nil)
         removeOutsideClickMonitor()
+        clearFocusMouseUpMonitors()
         restorePreviousAppFocus()
         previousApp = nil
         restoresPreviousAppOnClose = false
@@ -614,12 +616,15 @@ extension PopoverController {
         persistRememberPin()
     }
 
+    /// Pin state is a runtime toggle, so it lives in `UserDefaults`. It used to rewrite the whole
+    /// `config.json` from memory, which overwrote any prompt edits made on disk.
+    var storedRememberPin: Bool {
+        UserDefaults.standard.object(forKey: Self.rememberPinKey) as? Bool ?? config.ui.rememberPin
+    }
+
     func persistRememberPin() {
-        guard config.ui.rememberPin != isPinned else { return }
-        var next = config
-        next.ui.rememberPin = isPinned
-        config = next
-        try? AppConfig.write(next)
+        guard storedRememberPin != isPinned else { return }
+        UserDefaults.standard.set(isPinned, forKey: Self.rememberPinKey)
     }
 
     @objc func checkForUpdatesClicked() {
@@ -750,30 +755,58 @@ extension PopoverController {
     }
 
     func focusInputTextView() {
-        attemptFocusInputTextView(remainingRetries: 10)
-    }
-
-    private func attemptFocusInputTextView(remainingRetries: Int) {
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
             self.panel.makeKey()
             // `presentPanel` runs twice per hotkey (once to show the panel, again once the selection
             // read returns), so this can land in the middle of a click. NSTextView tracks the mouse
             // in its own event loop — taking first responder away mid-track drops the double-click's
-            // word selection and parks the caret at offset 0.
+            // word selection and parks the caret at offset 0. Wait for the button to come up
+            // instead of polling: a drag held longer than the old retry budget silently lost focus.
             if NSEvent.pressedMouseButtons != 0 {
-                guard remainingRetries > 0 else { return }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) { [weak self] in
-                    self?.attemptFocusInputTextView(remainingRetries: remainingRetries - 1)
-                }
+                self.focusInputAfterMouseUp()
                 return
             }
-            if let focused = self.panel.firstResponder as? NSTextView,
-               focused === self.inputTextView || focused.selectedRange().length > 0 {
-                return
-            }
-            self.panel.makeFirstResponder(self.inputTextView)
+            self.moveFocusToInput()
         }
+    }
+
+    private func focusInputAfterMouseUp() {
+        guard focusMouseUpMonitors.isEmpty else { return }
+        let matching: NSEvent.EventTypeMask = [.leftMouseUp, .rightMouseUp]
+        let resume: @MainActor () -> Void = { [weak self] in
+            guard let self else { return }
+            self.clearFocusMouseUpMonitors()
+            DispatchQueue.main.async { [weak self] in self?.moveFocusToInput() }
+        }
+        if let local = NSEvent.addLocalMonitorForEvents(matching: matching, handler: { [weak self] event in
+            guard self != nil else { return event }
+            resume()
+            return event
+        }) {
+            focusMouseUpMonitors.append(local)
+        }
+        if let global = NSEvent.addGlobalMonitorForEvents(matching: matching, handler: { _ in
+            Task { @MainActor in resume() }
+        }) {
+            focusMouseUpMonitors.append(global)
+        }
+        // The button may have come up between the check above and the monitors being installed.
+        if NSEvent.pressedMouseButtons == 0 { resume() }
+    }
+
+    func clearFocusMouseUpMonitors() {
+        focusMouseUpMonitors.forEach(NSEvent.removeMonitor)
+        focusMouseUpMonitors = []
+    }
+
+    private func moveFocusToInput() {
+        guard panel.isVisible else { return }
+        if let focused = panel.firstResponder as? NSTextView,
+           focused === inputTextView || focused.selectedRange().length > 0 {
+            return
+        }
+        panel.makeFirstResponder(inputTextView)
     }
 
     func updateLanguageSelection(for text: String) {

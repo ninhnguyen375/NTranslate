@@ -1,6 +1,5 @@
 // Self-check for Plural. Run with:
-//   swiftc -parse-as-library Sources/translate/Plural.swift Scripts/plural-check.swift \
-//     -o /tmp/plural-check && /tmp/plural-check
+// Run it with `./Scripts/check-all.sh`, which owns the file list it compiles against.
 import Foundation
 
 @main

@@ -1,9 +1,6 @@
 // Self-check for SpeechGain. The package test target needs swift-testing, which the current
-// toolchain does not ship, so this runs standalone:
-//
-//   swiftc -parse-as-library Sources/translate/SpeechGain.swift \
-//     Scripts/speech-gain-check.swift -o /tmp/speech-gain-check \
-//     && /tmp/speech-gain-check
+// toolchain does not ship, so this runs standalone.
+// Run it with `./Scripts/check-all.sh`, which owns the file list it compiles against.
 import AVFoundation
 import Foundation
 

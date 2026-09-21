@@ -1,9 +1,6 @@
 // Standalone check: a Learn card is keyed by term + languages + mode, not by the sentence it was
 // met in. See CLAUDE.md, `swift test` cannot run in this toolchain.
-//
-//   swiftc -parse-as-library Sources/translate/TranslationHistoryStore.swift \
-//     Sources/translate/ReviewPlanner.swift Sources/translate/LearnCard.swift \
-//     Scripts/learn-cache-key-check.swift -o /tmp/learn-cache-key-check && /tmp/learn-cache-key-check
+// Run it with `./Scripts/check-all.sh`, which owns the file list it compiles against.
 import Foundation
 
 /// AppConfig drags in AppKit and the prompt files; the convenience init only reads this property.

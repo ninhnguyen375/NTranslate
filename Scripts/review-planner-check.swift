@@ -1,8 +1,6 @@
 // Standalone check for the review logic that has no UI: which question a card asks, how an answer
 // grades itself, how the schedule advances, and how a session is ordered.
-//
-//   swiftc -parse-as-library Sources/translate/LearnCard.swift Sources/translate/ReviewPlanner.swift \
-//     Scripts/review-planner-check.swift -o /tmp/review-planner-check && /tmp/review-planner-check
+// Run it with `./Scripts/check-all.sh`, which owns the file list it compiles against.
 import Foundation
 
 private var failures = 0

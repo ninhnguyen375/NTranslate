@@ -45,8 +45,7 @@ extension PopoverController {
         invalidateSpeech(stopPlayback: true)
         let text = inputTextView.string.trimmingCharacters(in: .whitespacesAndNewlines)
         closeFollowUpPanesIfSourceChanged(text)
-        guard !text.isEmpty else { setResultText(PopoverFeedback.emptyInputHint); reflowLayout(); updateBusyState(); return }
-        guard text.count <= config.maxTranslateLength else { setResultText(PopoverFeedback.textTooLong); reflowLayout(); updateBusyState(); return }
+        guard isSourceTextRunnable(text) else { return }
         let sourceWasAutoDetect = selectedSourceLanguage() == LanguageDetector.autoDetect
         let pair = resolvedLanguagePair(for: text)
         updateLanguageSelection(for: text)
@@ -160,8 +159,8 @@ extension PopoverController {
         invalidateCurrentRecord()
         invalidateSpeech(stopPlayback: true)
         let text = inputTextView.string.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { setResultText(PopoverFeedback.emptyInputHint); reflowLayout(); updateBusyState(); return }
-        guard text.count <= config.maxTranslateLength else { setResultText(PopoverFeedback.textTooLong); reflowLayout(); updateBusyState(); return }
+        closeFollowUpPanesIfSourceChanged(text)
+        guard isSourceTextRunnable(text) else { return }
         let lang = effectiveSourceLanguage(for: text)
         let generation = beginRequest()
         if !bypassCache, let record = historyStore.reusableRecord(
@@ -268,7 +267,7 @@ extension PopoverController {
         }
         updatePaneLanguageLabels()
         updateSaveWordButton()
-        if mode == .translate, config.ui.autoCopy {
+        if mode == .translate, config.ui.autoCopy, panel.isVisible {
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(record.resultText, forType: .string)
             flashCopied()

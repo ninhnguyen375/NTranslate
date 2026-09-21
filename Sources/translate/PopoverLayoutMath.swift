@@ -12,9 +12,13 @@ enum PopoverLayoutMath {
 
     static let measureCacheLimit = 32
 
-    /// Standalone checks read this; not part of the layout API.
+    /// Standalone checks read these; not part of the layout API.
     @MainActor
     static var measureCacheCount: Int { measureCache.count }
+    @MainActor
+    private(set) static var measureCacheHits = 0
+    @MainActor
+    static var chipIconCacheCount: Int { chipIconCache.count }
 
     @MainActor
     private static var measureCache: [MeasureKey: CGFloat] = [:]
@@ -34,6 +38,8 @@ enum PopoverLayoutMath {
             fontName: font?.fontName ?? ""
         )
         if let cached = measureCache[key] {
+            measureCacheHits += 1
+            touchMeasure(key)
             return cached
         }
         let storage = NSTextStorage(attributedString: sample)
@@ -48,15 +54,33 @@ enum PopoverLayoutMath {
         return height
     }
 
+    /// Order is eviction order, so a hit has to move its key to the back. Without this the cache
+    /// is insertion-ordered: a streamed answer inserts a fresh key per reflow and evicts the
+    /// steady layout keys that every one of those reflows is about to ask for again.
+    @MainActor
+    private static func touchMeasure(_ key: MeasureKey) {
+        guard let index = measureCacheOrder.firstIndex(of: key) else { return }
+        measureCacheOrder.remove(at: index)
+        measureCacheOrder.append(key)
+    }
+
     @MainActor
     private static func rememberMeasure(_ key: MeasureKey, _ height: CGFloat) {
-        if measureCache[key] != nil { return }
+        if measureCache[key] != nil {
+            touchMeasure(key)
+            return
+        }
         if measureCacheOrder.count >= measureCacheLimit, let oldest = measureCacheOrder.first {
             measureCacheOrder.removeFirst()
             measureCache.removeValue(forKey: oldest)
         }
         measureCache[key] = height
         measureCacheOrder.append(key)
+    }
+
+    /// One reflow per `interval` while a response streams in. Pure so a self-check can drive it.
+    static func shouldReflowStream(now: Date, last: Date, interval: TimeInterval) -> Bool {
+        now.timeIntervalSince(last) >= interval
     }
 
     static func clickIsInsidePanel(click: NSPoint, panelFrame: NSRect, padding: CGFloat = 2) -> Bool {
@@ -141,12 +165,50 @@ enum PopoverLayoutMath {
     /// icon visibly off against the title. Trim to the drawn ink, then bake `gap` points of
     /// transparent padding on the trailing edge — `NSTextAttachment` has no spacing knob and an
     /// image-less spacer attachment renders zero width.
+    @MainActor
     static func chipIconImage(
         symbol: String,
         tint: NSColor,
         pointSize: CGFloat,
         weight: NSFont.Weight = .medium,
         gap: CGFloat = actionIconTitleGap
+    ) -> NSImage? {
+        // Trimming walks every pixel through `colorAt`, which is slow enough to show up whenever a
+        // row restyles. The result only depends on these five inputs, so it is cached; the tint is
+        // resolved against the current appearance by the caller, so its components are the key.
+        let key = ChipIconKey(symbol: symbol, tint: colorKey(tint), pointSize: pointSize, weight: weight.rawValue, gap: gap)
+        if let cached = chipIconCache[key] { return cached }
+        let made = makeChipIconImage(symbol: symbol, tint: tint, pointSize: pointSize, weight: weight, gap: gap)
+        if chipIconCache.count >= chipIconCacheLimit { chipIconCache.removeAll(keepingCapacity: true) }
+        chipIconCache[key] = made
+        return made
+    }
+
+    private struct ChipIconKey: Hashable {
+        let symbol: String
+        let tint: String
+        let pointSize: CGFloat
+        let weight: CGFloat
+        let gap: CGFloat
+    }
+
+    static let chipIconCacheLimit = 64
+
+    @MainActor
+    private static var chipIconCache: [ChipIconKey: NSImage?] = [:]
+
+    private static func colorKey(_ color: NSColor) -> String {
+        guard let rgb = color.usingColorSpace(.sRGB) else { return color.description }
+        let parts = [rgb.redComponent, rgb.greenComponent, rgb.blueComponent, rgb.alphaComponent]
+        return parts.map { String(Int(($0 * 1000).rounded())) }.joined(separator: ",")
+    }
+
+    private static func makeChipIconImage(
+        symbol: String,
+        tint: NSColor,
+        pointSize: CGFloat,
+        weight: NSFont.Weight,
+        gap: CGFloat
     ) -> NSImage? {
         guard let base = NSImage(systemSymbolName: symbol, accessibilityDescription: nil),
               let image = base.withSymbolConfiguration(

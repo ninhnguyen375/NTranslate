@@ -1,7 +1,6 @@
 // Self-check for the shared streaming session router: task isolation, map cleanup,
 // and SSE bytes split across chunks (including a torn UTF-8 sequence).
-// swiftc -parse-as-library Sources/translate/StreamSession.swift \
-//   Scripts/stream-session-check.swift -o /tmp/stream-session-check && /tmp/stream-session-check
+// Run it with `./Scripts/check-all.sh`, which owns the file list it compiles against.
 
 import Foundation
 

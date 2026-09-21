@@ -1,8 +1,5 @@
 // Self-check for LearnCard parsing and confusable drill assembly.
-//
-//   swiftc -parse-as-library Sources/translate/LearnCard.swift Scripts/learn-card-check.swift \
-//     -o /tmp/learn-card-check && /tmp/learn-card-check
-//
+// Run it with `./Scripts/check-all.sh`, which owns the file list it compiles against.
 // The review window asks questions built entirely out of stored card text, so a parsing slip
 // shows up as a card that silently refuses to quiz. These cases pin the shapes that matter.
 import Foundation

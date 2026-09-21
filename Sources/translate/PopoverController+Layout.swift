@@ -3,6 +3,10 @@ import AppKit
 
 extension PopoverController {
     func reflowLayout(reanchorToMouse: Bool = false) {
+        pendingReflow?.cancel()
+        pendingReflow = nil
+        streamReflowTrailing?.cancel()
+        streamReflowTrailing = nil
         guard panel.contentView != nil else { return }
         let width = CGFloat(config.ui.width)
         let height = currentPopoverHeight()
@@ -11,6 +15,19 @@ extension PopoverController {
         if !selectionFloatingBar.isHidden {
             updateFloatingSelectionBar()
         }
+    }
+
+    /// Coalesces bursts of reflow requests (typing) into one pass on the next runloop turn.
+    /// A reflow measures three panes and moves ~40 views, which is too much to run per keystroke.
+    func scheduleReflow() {
+        guard pendingReflow == nil else { return }
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            self.pendingReflow = nil
+            self.reflowLayout()
+        }
+        pendingReflow = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.016, execute: work)
     }
 
     func layoutSplitPrism(width: CGFloat, height: CGFloat) {
@@ -66,6 +83,90 @@ extension PopoverController {
         chromeHost.frame = shellGlass.bounds
         applySplitHostChrome()
 
+        layoutHeaderRow(width: width, headerY: headerY)
+
+        // Stacked order from top to bottom: main split -> main action row -> Subtranslate
+        // divider -> subtranslate split -> subtranslate action row -> QA -> QA input.
+        var currentY = splitY
+        if let qa = qaSection, let qaPaneH = heights.qa {
+            layoutQASection(qa, x: L.padding, y: currentY, width: contentWidth, height: qaPaneH)
+            currentY += qaPaneH + L.sectionGap
+        }
+        if let sub = subSection, let subH = heights.sub {
+            layoutActionRow(sub.actionRow, y: currentY, contentWidth: contentWidth)
+            currentY += L.bottomBarHeight + L.footerGap
+            layoutSubSection(sub, x: L.padding, y: currentY, width: contentWidth, height: subH, panes: subSectionPanes(contentWidth: contentWidth, mode: sub.mode))
+            currentY += subH
+            layoutSectionDivider(sub, x: L.padding, y: currentY, width: contentWidth)
+            currentY += L.sectionDividerReserved
+        }
+        let mainRowEnd = layoutActionRow(
+            mainActionRow,
+            y: currentY,
+            contentWidth: contentWidth,
+            reservedTrailing: mergeQA ? PopoverLayoutMath.actionButtonGap + mergedQAInputMinWidth : 0
+        )
+        if mergeQA {
+            let fieldX = mainRowEnd + PopoverLayoutMath.actionButtonGap
+            qaInputField.frame = NSRect(
+                x: fieldX,
+                y: currentY,
+                width: max(0, L.padding + contentWidth - fieldX),
+                height: L.bottomBarHeight
+            )
+        }
+        currentY += L.bottomBarHeight + L.footerGap
+
+        splitHost.frame = NSRect(x: L.padding, y: currentY, width: contentWidth, height: splitHeight)
+
+        sourceCard.frame = NSRect(x: 0, y: 0, width: panes.left, height: splitHeight)
+        splitDivider.frame = NSRect(x: panes.left, y: L.padding, width: max(1, L.dividerWidth), height: max(0, splitHeight - L.padding * 2))
+        splitDividerGradient?.frame = splitDivider.bounds
+        splitHost.addSubview(splitDivider, positioned: .above, relativeTo: nil)
+        resultCard.frame = NSRect(x: panes.left + L.dividerWidth, y: 0, width: panes.right, height: splitHeight)
+
+        layoutPaneChrome(
+            headerBar: sourceHeaderBar,
+            headerLabel: sourceHeaderLabel,
+            scrollView: inputScrollView,
+            textView: inputTextView,
+            trailingIcons: [speakSourceButton, speakSourceSlowButton],
+            paneWidth: panes.left,
+            bodyHeight: bodyHeight
+        )
+        layoutPaneChrome(
+            headerBar: resultHeaderBar,
+            headerLabel: resultHeaderLabel,
+            scrollView: textScrollView,
+            textView: textView,
+            trailingIcons: [speakResultButton, speakResultSlowButton, retryButton, copyButton, saveWordButton],
+            paneWidth: panes.right,
+            bodyHeight: bodyHeight,
+            badgeView: learnBadgeView
+        )
+        layoutPrefetchProgress()
+        layoutLearnCardScroll()
+        layoutLearnRelatedImage(paneWidth: panes.left, bodyHeight: bodyHeight, showing: isShowingStructuredLearnCard, strip: learnRelatedImageStrip, scrollView: inputScrollView, textView: inputTextView)
+        layoutSetupActions(in: resultCard)
+
+        if !mergeQA {
+            qaInputField.frame = NSRect(
+                x: L.padding,
+                y: qaY,
+                width: contentWidth,
+                height: qaH
+            )
+        }
+        applyQAInputChrome()
+        layoutQuickQuestionButton()
+    }
+
+
+    /// Header row: chrome icons on the right, title plus the language chips on the left, and the
+    /// status message that borrows their slot. Split out of `layoutSplitPrism`, which had grown to
+    /// cover the whole panel in one pass.
+    private func layoutHeaderRow(width: CGFloat, headerY: CGFloat) {
+        let L = ChromeLayout.self
         let chromeIcon = L.chromeIconSize
         let headerIconGap: CGFloat = 8
         closeButton.frame = NSRect(
@@ -159,81 +260,6 @@ extension PopoverController {
         LiquidGlassChrome.clipToShell(shellGlass)
         LiquidGlassChrome.clipToShell(chromeHost)
         LiquidGlassChrome.applyWindowShape(panel)
-
-        // Stacked order from top to bottom: main split -> main action row -> Subtranslate
-        // divider -> subtranslate split -> subtranslate action row -> QA -> QA input.
-        var currentY = splitY
-        if let qa = qaSection, let qaPaneH = heights.qa {
-            layoutQASection(qa, x: L.padding, y: currentY, width: contentWidth, height: qaPaneH)
-            currentY += qaPaneH + L.sectionGap
-        }
-        if let sub = subSection, let subH = heights.sub {
-            layoutActionRow(sub.actionRow, y: currentY, contentWidth: contentWidth)
-            currentY += L.bottomBarHeight + L.footerGap
-            layoutSubSection(sub, x: L.padding, y: currentY, width: contentWidth, height: subH, panes: subSectionPanes(contentWidth: contentWidth, mode: sub.mode))
-            currentY += subH
-            layoutSectionDivider(sub, x: L.padding, y: currentY, width: contentWidth)
-            currentY += L.sectionDividerReserved
-        }
-        let mainRowEnd = layoutActionRow(
-            mainActionRow,
-            y: currentY,
-            contentWidth: contentWidth,
-            reservedTrailing: mergeQA ? PopoverLayoutMath.actionButtonGap + mergedQAInputMinWidth : 0
-        )
-        if mergeQA {
-            let fieldX = mainRowEnd + PopoverLayoutMath.actionButtonGap
-            qaInputField.frame = NSRect(
-                x: fieldX,
-                y: currentY,
-                width: max(0, L.padding + contentWidth - fieldX),
-                height: L.bottomBarHeight
-            )
-        }
-        currentY += L.bottomBarHeight + L.footerGap
-
-        splitHost.frame = NSRect(x: L.padding, y: currentY, width: contentWidth, height: splitHeight)
-
-        sourceCard.frame = NSRect(x: 0, y: 0, width: panes.left, height: splitHeight)
-        splitDivider.frame = NSRect(x: panes.left, y: L.padding, width: max(1, L.dividerWidth), height: max(0, splitHeight - L.padding * 2))
-        splitDividerGradient?.frame = splitDivider.bounds
-        splitHost.addSubview(splitDivider, positioned: .above, relativeTo: nil)
-        resultCard.frame = NSRect(x: panes.left + L.dividerWidth, y: 0, width: panes.right, height: splitHeight)
-
-        layoutPaneChrome(
-            headerBar: sourceHeaderBar,
-            headerLabel: sourceHeaderLabel,
-            scrollView: inputScrollView,
-            textView: inputTextView,
-            trailingIcons: [speakSourceButton, speakSourceSlowButton],
-            paneWidth: panes.left,
-            bodyHeight: bodyHeight
-        )
-        layoutPaneChrome(
-            headerBar: resultHeaderBar,
-            headerLabel: resultHeaderLabel,
-            scrollView: textScrollView,
-            textView: textView,
-            trailingIcons: [speakResultButton, speakResultSlowButton, retryButton, copyButton, saveWordButton],
-            paneWidth: panes.right,
-            bodyHeight: bodyHeight,
-            badgeView: learnBadgeView
-        )
-        layoutPrefetchProgress()
-        layoutLearnCardScroll()
-        layoutLearnRelatedImage(paneWidth: panes.left, bodyHeight: bodyHeight, showing: isShowingStructuredLearnCard, strip: learnRelatedImageStrip, scrollView: inputScrollView, textView: inputTextView)
-        layoutSetupActions(in: resultCard)
-
-        if !mergeQA {
-            qaInputField.frame = NSRect(
-                x: L.padding,
-                y: qaY,
-                width: contentWidth,
-                height: qaH
-            )
-        }
-        applyQAInputChrome()
-        layoutQuickQuestionButton()
     }
 
     /// Sits just left of the result pane's speak button, whichever header mode placed it.
@@ -418,11 +444,20 @@ extension PopoverController {
         applyActionChipLabel(button, title: "", symbol: "ellipsis", accent: false)
         applyActionChipChrome(button)
         let menu = NSMenu()
+        // The subtranslate row reuses these titles for its own actions, so only the main row may
+        // advertise the shortcuts: ⌘L runs `runLearn`, never `runSubLearn`.
+        let advertisesShortcuts = row === mainActionRow
         for chip in overflowed {
             let title = PopoverLayoutMath.visibleActionChipTitle(of: chip)
-            let item = NSMenuItem(title: title, action: chip.action, keyEquivalent: "")
+            let shortcut = advertisesShortcuts ? Self.overflowShortcuts[title] : nil
+            let item = NSMenuItem(title: title, action: chip.action, keyEquivalent: shortcut?.key ?? "")
+            if let shortcut { item.keyEquivalentModifierMask = shortcut.modifiers }
             item.target = chip.target
             item.isEnabled = chip.isEnabled
+            // A chip that overflowed loses both its icon and its shortcut hint otherwise.
+            if let symbol = (chip as? ActionChipButton)?.chipSymbol {
+                item.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
+            }
             menu.addItem(item)
         }
         button.menu = menu
@@ -822,7 +857,13 @@ extension PopoverController {
         guard !isPinned else { return }
         showMousePoint = point
         userMovedWindow = false
-        reflowLayout(reanchorToMouse: true)
+        // Only the origin moves, so skip the measure pass and reuse the size already on screen.
+        guard panel.contentView != nil, panel.frame.width > 1 else {
+            reflowLayout(reanchorToMouse: true)
+            return
+        }
+        applyPanelFrame(size: panel.frame.size, reanchorToMouse: true)
+        if !selectionFloatingBar.isHidden { updateFloatingSelectionBar() }
     }
     func preferredPopoverHeight() -> CGFloat {
         let width = CGFloat(config.ui.width)
