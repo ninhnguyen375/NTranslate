@@ -42,6 +42,11 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
     private var recordsToReview: [TranslationRecord] = []
     private var currentIndex = 0
     private var isAnswerRevealed = false
+    /// Set between answering a question and flipping the card: the full sentence shown and spoken.
+    private var resultSentence: String?
+    /// The result sentence whose audio is being fetched while the learner answers; `waiting`
+    /// means the answer is in and the audio plays the moment it lands.
+    private var sentencePrefetch: (text: String, waiting: Bool)?
     private var audioPlayer: AVAudioPlayer?
     private var isPracticeMode = false
     private var screen: Screen = .home
@@ -606,6 +611,8 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
         sessionView.gradeStack.isHidden = true
         sessionView.autoGradeStack.isHidden = true
         isAnswerRevealed = false
+        resultSentence = nil
+        sentencePrefetch = nil
         stopAudio()
         updateSpeakButtonUI()
 
@@ -777,6 +784,9 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
             sessionView.choiceStack.isHidden = true
             sessionView.termLabel.font = .systemFont(ofSize: 24, weight: .bold)
         case let .typed(question, kind):
+            if currentIndex < recordsToReview.count {
+                prefetchResultSentence(Self.filledSentence(question.prompt, question.answer), for: recordsToReview[currentIndex])
+            }
             sessionView.termLabel.stringValue = question.hintedPrompt
             sessionView.termLabel.font = .systemFont(ofSize: 17, weight: .regular)
             sessionView.answerField.isHidden = false
@@ -800,6 +810,9 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
             }
             window?.makeFirstResponder(sessionView.answerField)
         case let .contrast(drill, choices):
+            if currentIndex < recordsToReview.count {
+                prefetchResultSentence(Self.filledSentence(drill.sentence, drill.correct), for: recordsToReview[currentIndex])
+            }
             sessionView.termLabel.stringValue = drill.sentence
             sessionView.termLabel.font = .systemFont(ofSize: 17, weight: .regular)
             sessionView.answerField.isHidden = true
@@ -817,8 +830,9 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
         sessionView.speakSlowSourceButton.isHidden = hidden
         sessionView.speakShortcutLabel.isHidden = hidden
         sessionView.speakSlowShortcutLabel.isHidden = hidden
-        sessionView.openTranslateButton.isHidden = hidden
-        sessionView.openTranslateShortcutLabel.isHidden = hidden
+        // Hide the button's pair box, not just its contents, or the empty box keeps its width
+        // and pushes the speak buttons off centre.
+        sessionView.openTranslateButton.superview?.isHidden = hidden
         if hidden {
             sessionView.pronunciationLabel.isHidden = true
             sessionView.contextLabel.isHidden = true
@@ -830,6 +844,7 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
         guard screen == .session, !isReadingMode else { return }
         guard !recordsToReview.isEmpty, currentIndex < recordsToReview.count else { return }
         isAnswerRevealed = true
+        resultSentence = nil
         let record = recordsToReview[currentIndex]
         // Whatever the question was, the flipped card shows the term itself again.
         if hasActiveQuestion {
@@ -855,8 +870,14 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
             sessionView.showAutoGrade(earlier, name: ["Again", "Hard", "Easy"][earlier.rawValue],
                                       interval: gradePreview(earlier, for: record))
         }
+        // Flipping a question without answering it means the word was not recalled.
+        if pendingAutoGrade == nil, hasActiveQuestion {
+            pendingAutoGrade = .again
+            sessionView.showAutoGrade(.again, name: "Again", interval: gradePreview(.again, for: record))
+        }
         // A self-graded card already picked; `showAutoGrade` put the Continue button up instead.
         sessionView.gradeStack.isHidden = pendingAutoGrade != nil
+        sessionView.autoGradeStack.isHidden = pendingAutoGrade == nil
         adjustWindowHeightForContentIfNeeded()
         // Lật thẻ là nghe luôn, khỏi phải bấm nút loa.
         speakCurrentSource()
@@ -919,6 +940,42 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
         sessionView.feedbackLabel.isHidden = false
     }
 
+    /// Wrong attempt bold in red, the answer bold in green, the rest dimmed.
+    private func highlightFeedback(typed: String?, answer: String) {
+        let label = sessionView.feedbackLabel
+        let text = label.stringValue as NSString
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.alignment = .center
+        let result = NSMutableAttributedString(string: label.stringValue, attributes: [
+            .font: label.font ?? .systemFont(ofSize: 13),
+            .foregroundColor: NSColor.secondaryLabelColor,
+            .paragraphStyle: paragraph,
+        ])
+        let bold = NSFont.systemFont(ofSize: label.font?.pointSize ?? 13, weight: .bold)
+        var typedRange = NSRange(location: NSNotFound, length: 0)
+        if let typed, !typed.isEmpty {
+            // Anchor on "typed " so a short attempt like "u" cannot match inside "You".
+            var range = text.range(of: "typed \(typed)")
+            if range.location != NSNotFound { range = NSRange(location: range.location + 6, length: (typed as NSString).length) }
+            typedRange = range
+            if range.location != NSNotFound {
+                result.addAttributes([
+                    .foregroundColor: NSColor.systemRed,
+                    .font: bold,
+                ], range: range)
+            }
+        }
+        var answerRange = text.range(of: answer)
+        // The typed attempt can contain the answer ("duckings"); take the other occurrence then.
+        if NSIntersectionRange(answerRange, typedRange).length > 0 {
+            answerRange = text.range(of: answer, options: .backwards)
+        }
+        if answerRange.location != NSNotFound {
+            result.addAttributes([.foregroundColor: NSColor.systemGreen, .font: bold], range: answerRange)
+        }
+        label.attributedStringValue = result
+    }
+
     private func showHint(_ text: String?) {
         sessionView.hintLabel.stringValue = text ?? ""
         sessionView.hintLabel.isHidden = (text ?? "").isEmpty
@@ -954,21 +1011,61 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
         let typedBack = typed.trimmingCharacters(in: .whitespacesAndNewlines)
         let note: String
         if nearMiss {
-            note = "Just a typo: \(question.answer) (you typed \"\(typedBack)\")"
+            note = "Just a typo: \(question.answer) (you typed \(typedBack))"
         } else if correct {
             note = "Answer: \(question.answer)"
         } else {
-            note = "You typed \"\(typedBack)\". Answer: \(question.answer)"
+            note = "You typed \(typedBack). Answer: \(question.answer)"
         }
-        var fullNote = note
-        // The whole sentence, blank filled, is what gets re-read on the way to the next card.
-        if kind == .cloze, question.prompt.contains("___") {
-            fullNote += "\n" + question.prompt.replacingOccurrences(of: "___", with: question.answer)
-        }
-        showAnswerFeedback(correct: correct || nearMiss, note: fullNote)
+        // The filled sentence already sits in the term label, so the note only calls out the words.
+        showAnswerFeedback(correct: correct || nearMiss, note: note)
+        highlightFeedback(typed: correct ? nil : typedBack, answer: question.answer)
         autoGrade(correct: correct || nearMiss, nearMiss: nearMiss)
         if kind == .listen { stopAudio() }
-        revealAnswer()
+        showAnswerResult(filling: question.prompt, with: question.answer)
+    }
+
+    /// The answered question stays up with its blank filled and read aloud; Return or Space flips.
+    private func showAnswerResult(filling prompt: String, with answer: String) {
+        resultSentence = Self.filledSentence(prompt, answer)
+        sessionView.termLabel.stringValue = resultSentence ?? answer
+        sessionView.answerField.isHidden = true
+        sessionView.choiceStack.isHidden = true
+        sessionView.autoGradeStack.isHidden = true
+        sessionView.revealButton.isHidden = false
+        sessionView.speakSourceButton.isHidden = false
+        sessionView.speakSlowSourceButton.isHidden = false
+        sessionView.speakShortcutLabel.isHidden = false
+        sessionView.speakSlowShortcutLabel.isHidden = false
+        window?.makeFirstResponder(nil)
+        adjustWindowHeightForContentIfNeeded()
+        if let pending = sentencePrefetch, pending.text == resultSentence {
+            sentencePrefetch?.waiting = true
+        } else {
+            speakCurrentSource()
+        }
+    }
+
+    private static func filledSentence(_ prompt: String, _ answer: String) -> String {
+        prompt.contains("___") ? prompt.replacingOccurrences(of: "___", with: answer) : answer
+    }
+
+    /// Fetches the result sentence's speech while the question is up, so it plays on submit.
+    private func prefetchResultSentence(_ text: String, for record: TranslationRecord) {
+        let model = SpeechModelResolver.model(for: record.sourceLanguage, config: config ?? AppConfig.load())
+        guard let translator, WeaveAudioCache.load(text: text, model: model) == nil else { return }
+        sentencePrefetch = (text, false)
+        _ = translator.speak(text, model: model, speed: 1.0) { [weak self] result in
+            Task { @MainActor in
+                guard let self, self.sentencePrefetch?.text == text else { return }
+                if case let .success(data) = result, SpeechAudioPolicy.isValid(data) {
+                    WeaveAudioCache.store(data, text: text, model: model)
+                }
+                let waiting = self.sentencePrefetch?.waiting ?? false
+                self.sentencePrefetch = nil
+                if waiting, self.resultSentence == text, !self.isAnswerRevealed { self.speakCurrentSource() }
+            }
+        }
     }
 
     private func chooseContrast(index: Int) {
@@ -980,7 +1077,7 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
             : "\(drill.correct): \(drill.explanation)"
         showAnswerFeedback(correct: correct, note: note)
         autoGrade(correct: correct, nearMiss: false)
-        revealAnswer()
+        showAnswerResult(filling: drill.sentence, with: drill.correct)
     }
 
     /// Leaving the card behind has to take its question with it, or a later keystroke would
@@ -988,6 +1085,8 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
     private func clearActiveQuestion() {
         activeQuestion = .none
         isAnswerRevealed = false
+        resultSentence = nil
+        sentencePrefetch = nil
         pendingAutoGrade = nil
         questionShownAt = nil
     }
@@ -1282,6 +1381,10 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
         }
         // Return / keypad Enter confirm the auto-grade Continue button.
         if chars == "\r" || chars == "\n" {
+            if resultSentence != nil, !isAnswerRevealed {
+                revealAnswer()
+                return nil
+            }
             if isAnswerRevealed, let auto = pendingAutoGrade {
                 applyGrade(auto)
                 return nil
@@ -1789,6 +1892,13 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
         guard !recordsToReview.isEmpty, currentIndex < recordsToReview.count else { return nil }
         let record = recordsToReview[currentIndex]
         let speechCfg = config ?? AppConfig.load()
+        if let sentence = resultSentence {
+            return SpeechIdentity(
+                kind: .source,
+                text: sentence,
+                model: SpeechModelResolver.model(for: record.sourceLanguage, config: speechCfg)
+            )
+        }
         return SpeechIdentity(
             kind: .source,
             text: displayTerm(of: record),

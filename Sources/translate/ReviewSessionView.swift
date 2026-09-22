@@ -368,9 +368,6 @@ final class ReviewSessionView: NSView {
         choiceStack.addArrangedSubview(secondChoiceButton)
         choiceStack.isHidden = true
         choiceStack.translatesAutoresizingMaskIntoConstraints = false
-        let choiceWidth = choiceStack.widthAnchor.constraint(equalToConstant: 380)
-        choiceWidth.priority = .defaultLow
-        choiceWidth.isActive = true
         choiceStack.widthAnchor.constraint(greaterThanOrEqualToConstant: 140).isActive = true
 
         sourceContainer.orientation = .vertical
