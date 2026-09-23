@@ -223,6 +223,7 @@ final class Translator: @unchecked Sendable {
         _ text: String,
         mode: RequestMode,
         stream: Bool = true,
+        model: String? = nil,
         onPartial: (@Sendable (String) -> Void)? = nil,
         completion: @escaping @Sendable (Result<String, Error>) -> Void
     ) -> RequestHandle {
@@ -277,7 +278,7 @@ final class Translator: @unchecked Sendable {
         }
         do {
             req.httpBody = try Self.requestPayload(
-                model: config.model,
+                model: model ?? config.model,
                 systemPrompt: systemPrompt,
                 userContent: wrappedText,
                 stream: stream
@@ -723,6 +724,7 @@ final class Translator: @unchecked Sendable {
         targetLang: String,
         history: [QATurn] = [],
         parentContext: String? = nil,
+        model: String? = nil,
         onPartial: (@Sendable (String) -> Void)? = nil,
         completion: @escaping @Sendable (Result<String, Error>) -> Void
     ) -> RequestHandle {
@@ -737,6 +739,7 @@ final class Translator: @unchecked Sendable {
                 history: history,
                 parentContext: parentContext
             ),
+            model: model ?? (config.askModel.isEmpty ? nil : config.askModel),
             onPartial: onPartial,
             completion: completion
         )

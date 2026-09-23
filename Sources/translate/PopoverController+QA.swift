@@ -25,11 +25,45 @@ extension PopoverController: NSTextFieldDelegate {
         qaInputField.action = #selector(qaInputSubmitted(_:))
         qaInputField.delegate = self
 
-        (qaInputField.cell as? VerticallyCenteredTextFieldCell)?.trailingInset = 22
+        (qaInputField.cell as? VerticallyCenteredTextFieldCell)?.trailingInset = 46
         let quick = NSButton(frame: .zero)
         configureIconButton(quick, symbol: "text.bubble", action: #selector(showQuickQuestions(_:)), label: "Quick questions")
         quick.autoresizingMask = [.minXMargin, .minYMargin, .maxYMargin]
         qaInputField.addSubview(quick)
+        let popOut = NSButton(frame: .zero)
+        configureIconButton(popOut, symbol: "macwindow", action: #selector(openQAWindow), label: "Ask in separate window")
+        popOut.identifier = NSUserInterfaceItemIdentifier("qaPopOut")
+        popOut.autoresizingMask = [.minXMargin, .minYMargin, .maxYMargin]
+        qaInputField.addSubview(popOut)
+    }
+
+    /// Opens the standalone Ask window with the current texts, carrying over the pane's conversation.
+    @objc func openQAWindow() {
+        // From the menu bar or hotkey there may be no translation yet: open as a plain chat.
+        let targets = qaTargets() ?? (source: "", result: "", sourceLang: selectedSourceLanguage(), targetLang: selectedTargetLanguage())
+        let controller = _qaWindowController ?? QAWindowController()
+        _qaWindowController = controller
+        controller.translator = translator
+        controller.window?.appearance = config.theme.nsAppearance
+        controller.onWindowClosed = { [weak self] in
+            DispatchQueue.main.async { self?.demoteAfterStudyWindow() }
+        }
+        let turns = qaSection?.turns ?? []
+        let draft = qaInputField.stringValue
+        closeQuickQuestions()
+        removeQASection()
+        qaInputField.stringValue = ""
+        qaInputField.isHidden = true
+        reflowLayout()
+        controller.show(
+            context: .init(source: targets.source, result: targets.result, sourceLang: targets.sourceLang,
+                           targetLang: targets.targetLang, parentContext: qaParentContext()),
+            turns: turns,
+            draft: draft
+        )
+        if NSApp.activationPolicy() != .regular { NSApp.setActivationPolicy(.regular) }
+        NSApp.activate(ignoringOtherApps: true)
+        controller.window?.makeKeyAndOrderFront(nil)
     }
 
     static let recentQuestionsKey = "qaRecentQuestions"
@@ -51,6 +85,8 @@ extension PopoverController: NSTextFieldDelegate {
         let size: CGFloat = 22
         let b = qaInputField.bounds
         quick.frame = NSRect(x: b.maxX - size - 6, y: (b.height - size) / 2, width: size, height: size)
+        qaInputField.subviews.first(where: { $0.identifier?.rawValue == "qaPopOut" })?.frame =
+            quick.frame.offsetBy(dx: -size - 2, dy: 0)
     }
 
     @objc func showQuickQuestions(_ sender: NSButton) {

@@ -28,6 +28,7 @@ checks=(
   "speech-gain|$S/SpeechGain.swift"
   "tagged-response|"
   "plural|$S/Plural.swift"
+  "markdown-display|$S/MarkdownDisplay.swift"
   "text-zoom|$S/TextZoom.swift"
   "stream-session|$S/StreamSession.swift"
   "square-tool-button|$S/SquareToolButton.swift"

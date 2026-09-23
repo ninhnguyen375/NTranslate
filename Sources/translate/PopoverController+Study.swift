@@ -136,6 +136,9 @@ extension PopoverController {
     /// Back to a menu-bar utility once the Study window is gone.
     func demoteAfterStudyWindow() {
         guard NSApp.activationPolicy() != .accessory else { return }
+        // The Ask window shares the promotion; stay regular while either one is still open.
+        guard _reviewWindowController?.window?.isVisible != true,
+              _qaWindowController?.window?.isVisible != true else { return }
         NSApp.setActivationPolicy(.accessory)
     }
 }

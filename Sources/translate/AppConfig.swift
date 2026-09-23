@@ -123,6 +123,8 @@ struct AppConfig: Codable {
     var apiBaseURL: String
     var apiSpeechURL: String
     var model: String
+    /// Model for the Ask window only; empty falls back to `model`. Independent from Settings "Model".
+    var askModel: String = ""
     var sourceLang: String
     var targetLang: String
     var nativeLang: String
@@ -319,6 +321,7 @@ struct AppConfig: Codable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         apiBaseURL = try container.decode(String.self, forKey: .apiBaseURL)
         model = try container.decode(String.self, forKey: .model)
+        askModel = try container.decodeIfPresent(String.self, forKey: .askModel) ?? ""
         sourceLang = try container.decode(String.self, forKey: .sourceLang)
         targetLang = try container.decode(String.self, forKey: .targetLang)
         nativeLang = try container.decodeIfPresent(String.self, forKey: .nativeLang) ?? "Vietnamese"

@@ -71,6 +71,11 @@ extension PopoverController {
         reviewItem.tag = Self.reviewMenuItemTag
         statusMenu.addItem(reviewItem)
 
+        let askItem = NSMenuItem(title: "Ask in Window", action: #selector(openQAWindow), keyEquivalent: "k")
+        askItem.keyEquivalentModifierMask = .option
+        askItem.image = NSImage(systemSymbolName: "text.bubble", accessibilityDescription: "Ask in Window")
+        statusMenu.addItem(askItem)
+
         let historyItem = NSMenuItem(title: "Translation History", action: #selector(openTranslationHistory), keyEquivalent: "h")
         historyItem.image = NSImage(systemSymbolName: "clock.arrow.circlepath", accessibilityDescription: "Translation History")
         statusMenu.addItem(historyItem)
@@ -250,7 +255,8 @@ extension PopoverController {
             self?.applyLearningSettings(learning)
         }
         reviewWindowController.onWindowClosed = { [weak self] in
-            self?.demoteAfterStudyWindow()
+            // Async: the closing window still reports visible inside windowWillClose.
+            DispatchQueue.main.async { self?.demoteAfterStudyWindow() }
         }
         reviewWindowController.showReview()
         promoteForStudyWindow()
@@ -566,6 +572,11 @@ extension PopoverController {
     }
 
     @objc func closePanelMenu() {
+        // Cmd+W closes whichever window is in front (Study, Ask, History...), not only the panel.
+        if let key = NSApp.keyWindow, key !== panel, key.styleMask.contains(.closable) {
+            key.performClose(nil)
+            return
+        }
         closePopover()
     }
 

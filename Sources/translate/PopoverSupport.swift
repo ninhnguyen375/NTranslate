@@ -5,44 +5,6 @@ import Carbon.HIToolbox
 import AVFoundation
 import QuartzCore
 
-extension NSAttributedString {
-    static func plainDisplay(_ text: String, font: NSFont, color: NSColor = .labelColor) -> NSAttributedString {
-        NSAttributedString(string: text, attributes: [.font: font, .foregroundColor: color])
-    }
-
-    /// Inline-markdown preview for model output: **bold**, *italic*, `code`, [links].
-    /// ponytail: Foundation's parser only, so headings/lists/fences stay literal. Swap in a real
-    /// block parser if users start asking for tables or code blocks.
-    static func markdownDisplay(_ text: String, font: NSFont, color: NSColor = .labelColor) -> NSAttributedString {
-        let options = AttributedString.MarkdownParsingOptions(
-            allowsExtendedAttributes: true,
-            interpretedSyntax: .inlineOnlyPreservingWhitespace,
-            failurePolicy: .returnPartiallyParsedIfPossible
-        )
-        guard let parsed = try? AttributedString(markdown: text, options: options) else {
-            return plainDisplay(text, font: font, color: color)
-        }
-        let result = NSMutableAttributedString(attributedString: NSAttributedString(parsed))
-        let full = NSRange(location: 0, length: result.length)
-        result.addAttribute(.foregroundColor, value: color, range: full)
-        // AttributedString reports emphasis as intents, not fonts; resolve them into real traits.
-        result.enumerateAttribute(.font, in: full) { value, range, _ in
-            let existing = value as? NSFont
-            let traits = existing.map { NSFontManager.shared.traits(of: $0) } ?? []
-            var descriptor = font.fontDescriptor
-            var symbolic: NSFontDescriptor.SymbolicTraits = []
-            if traits.contains(.boldFontMask) { symbolic.insert(.bold) }
-            if traits.contains(.italicFontMask) { symbolic.insert(.italic) }
-            if let existing, existing.fontName.lowercased().contains("mono") {
-                descriptor = NSFont.monospacedSystemFont(ofSize: font.pointSize, weight: .regular).fontDescriptor
-            }
-            if !symbolic.isEmpty { descriptor = descriptor.withSymbolicTraits(symbolic) }
-            result.addAttribute(.font, value: NSFont(descriptor: descriptor, size: font.pointSize) ?? font, range: range)
-        }
-        return result
-    }
-}
-
 struct AsyncGeneration {
     private(set) var current = 0
 
@@ -59,6 +21,7 @@ enum PopoverIntegrationPolicy {
         case proofread
         case ocr
         case study
+        case askWindow
     }
 
     static func hotkeyIntent(id: UInt32) -> HotkeyIntent? {
@@ -69,6 +32,7 @@ enum PopoverIntegrationPolicy {
         case 4: .proofread
         case 5: .ocr
         case 6: .study
+        case 7: .askWindow
         default: nil
         }
     }

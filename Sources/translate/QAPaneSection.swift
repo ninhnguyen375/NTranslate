@@ -46,6 +46,10 @@ final class QAPaneSection {
         turns.append(Turn(question: question, answer: placeholder, isPending: true))
     }
 
+    func removeAllTurns() {
+        turns.removeAll()
+    }
+
     func updateLastAnswer(_ answer: String) {
         guard let index = turns.indices.last, turns[index].isPending else { return }
         turns[index].answer = answer
@@ -81,16 +85,29 @@ final class QAPaneSection {
             } else if turn.failed || turn.answer.hasPrefix("Error:") || turn.answer.hasPrefix("Lỗi:") {
                 body.append(.plainDisplay(turn.answer, font: font, color: errorColor))
             } else {
-                body.append(.markdownDisplay(turn.answer, font: font, color: answerColor))
+                body.append(.markdownBlockDisplay(turn.answer, font: font, color: answerColor))
             }
             rails.append((NSRange(location: answerStart, length: body.length - answerStart), assistantColor))
         }
         // The rail lives in the margin the indent opens up, so every line of a turn clears it.
-        let paragraph = NSMutableParagraphStyle()
-        paragraph.firstLineHeadIndent = Self.railIndent
-        paragraph.headIndent = Self.railIndent
-        paragraph.paragraphSpacing = 3
-        body.addAttribute(.paragraphStyle, value: paragraph, range: NSRange(location: 0, length: body.length))
+        // Answers carry their own block styles (lists, quotes, tables), so shift them instead of overwriting.
+        let full = NSRange(location: 0, length: body.length)
+        var shifted: [(NSRange, NSParagraphStyle)] = []
+        body.enumerateAttribute(.paragraphStyle, in: full) { value, range, _ in
+            let paragraph = ((value as? NSParagraphStyle)?.mutableCopy() as? NSMutableParagraphStyle) ?? {
+                let style = NSMutableParagraphStyle()
+                style.paragraphSpacing = 3
+                return style
+            }()
+            paragraph.firstLineHeadIndent += Self.railIndent
+            paragraph.headIndent += Self.railIndent
+            paragraph.tabStops = paragraph.tabStops.map { NSTextTab(textAlignment: $0.alignment, location: $0.location + Self.railIndent) }
+            if let table = paragraph.textBlocks.first as? NSTextTableBlock {
+                table.setWidth(Self.railIndent, type: .absoluteValueType, for: .margin, edge: .minX)
+            }
+            shifted.append((range, paragraph))
+        }
+        shifted.forEach { body.addAttribute(.paragraphStyle, value: $0.1, range: $0.0) }
         textView.textStorage?.setAttributedString(body)
         textView.rails = rails
     }

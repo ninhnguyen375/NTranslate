@@ -3,6 +3,8 @@ import AppKit
 import Carbon.HIToolbox
 
 extension PopoverController {
+    // ponytail: fixed combo, not in config/Settings; move to AppConfig if users want to rebind it.
+    static let askWindowHotkey = AppConfig.Hotkey(key: "k", option: true, command: false, control: false, shift: false)
 
     static func hotKeyModifiers(_ hotkey: AppConfig.Hotkey) -> UInt32 {
         var flags: UInt32 = 0
@@ -34,6 +36,8 @@ extension PopoverController {
                 controller.perform(#selector(PopoverController.ocrHotKeyPressed), on: .main, with: nil, waitUntilDone: false)
             case .study:
                 controller.perform(#selector(PopoverController.openReviewWindow), on: .main, with: nil, waitUntilDone: false)
+            case .askWindow:
+                controller.perform(#selector(PopoverController.openQAWindow), on: .main, with: nil, waitUntilDone: false)
             case nil: break
             }
             return noErr
@@ -51,6 +55,7 @@ extension PopoverController {
             (name: "Proofread", hotkey: config.proofreadHotkey, id: 4),
             (name: "OCR Translate", hotkey: config.ocrHotkey, id: 5),
             (name: "Study", hotkey: config.studyHotkey, id: 6),
+            (name: "Ask in Window", hotkey: Self.askWindowHotkey, id: 7),
         ])
         var failed: [String] = []
         for entry in register {

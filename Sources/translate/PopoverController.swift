@@ -188,6 +188,7 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         _historyWindowController = controller
         return controller
     }
+    var _qaWindowController: QAWindowController?
     var _reviewWindowController: ReviewWindowController?
     var reviewWindowController: ReviewWindowController {
         if let existing = _reviewWindowController { return existing }
