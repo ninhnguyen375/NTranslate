@@ -745,6 +745,41 @@ final class Translator: @unchecked Sendable {
         )
     }
 
+    /// Plain multi-turn chat for the Ask window: no system prompt, history sent as real turns.
+    @discardableResult
+    func chat(
+        _ question: String,
+        history: [QATurn] = [],
+        model: String? = nil,
+        onPartial: (@Sendable (String) -> Void)? = nil,
+        completion: @escaping @Sendable (Result<String, Error>) -> Void
+    ) -> RequestHandle {
+        guard let url = URL(string: config.apiBaseURL) else {
+            completion(.failure(NSError(domain: "Config", code: 1, userInfo: [NSLocalizedDescriptionKey: "Invalid API base URL"])))
+            return RequestHandle()
+        }
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.timeoutInterval = Self.requestTimeoutInterval
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        var messages: [[String: String]] = history.flatMap {
+            [["role": "user", "content": $0.question], ["role": "assistant", "content": $0.answer]]
+        }
+        messages.append(["role": "user", "content": question])
+        do {
+            req.httpBody = try JSONSerialization.data(withJSONObject: [
+                "model": model ?? (config.askModel.isEmpty ? config.model : config.askModel),
+                "stream": true,
+                "messages": messages
+            ])
+        } catch {
+            completion(.failure(error))
+            return RequestHandle()
+        }
+        return perform(req, stream: true, onPartial: onPartial, completion: completion)
+    }
+
     @discardableResult
     func imageSearchQuery(_ text: String, completion: @escaping @Sendable (Result<String, Error>) -> Void) -> RequestHandle {
         request(text, mode: .imageSearch, stream: false, completion: completion)

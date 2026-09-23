@@ -37,10 +37,8 @@ extension PopoverController: NSTextFieldDelegate {
         qaInputField.addSubview(popOut)
     }
 
-    /// Opens the standalone Ask window with the current texts, carrying over the pane's conversation.
+    /// Opens the standalone Ask window: a plain chat, independent of the popover's translation.
     @objc func openQAWindow() {
-        // From the menu bar or hotkey there may be no translation yet: open as a plain chat.
-        let targets = qaTargets() ?? (source: "", result: "", sourceLang: selectedSourceLanguage(), targetLang: selectedTargetLanguage())
         let controller = _qaWindowController ?? QAWindowController()
         _qaWindowController = controller
         controller.translator = translator
@@ -48,19 +46,7 @@ extension PopoverController: NSTextFieldDelegate {
         controller.onWindowClosed = { [weak self] in
             DispatchQueue.main.async { self?.demoteAfterStudyWindow() }
         }
-        let turns = qaSection?.turns ?? []
-        let draft = qaInputField.stringValue
-        closeQuickQuestions()
-        removeQASection()
-        qaInputField.stringValue = ""
-        qaInputField.isHidden = true
-        reflowLayout()
-        controller.show(
-            context: .init(source: targets.source, result: targets.result, sourceLang: targets.sourceLang,
-                           targetLang: targets.targetLang, parentContext: qaParentContext()),
-            turns: turns,
-            draft: draft
-        )
+        controller.show()
         if NSApp.activationPolicy() != .regular { NSApp.setActivationPolicy(.regular) }
         NSApp.activate(ignoringOtherApps: true)
         controller.window?.makeKeyAndOrderFront(nil)

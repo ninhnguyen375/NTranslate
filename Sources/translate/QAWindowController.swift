@@ -1,25 +1,18 @@
 import AppKit
 
 /// Standalone Q&A window: the same multi-turn conversation as the popover's Q&A pane, but in a
-/// regular focused window (like Study) so it survives the popover closing. Context is the
-/// source/translation snapshot taken when the window was opened.
+/// regular focused window (like Study) so it survives the popover closing. Plain chat: it never
+/// takes the popover's translation or conversation as context.
 @MainActor
-final class QAWindowController: NSWindowController, NSWindowDelegate {
-    struct Context {
-        let source: String
-        let result: String
-        let sourceLang: String
-        let targetLang: String
-        let parentContext: String?
-    }
+final class QAWindowController: NSWindowController, NSWindowDelegate, NSTextViewDelegate {
 
     var translator: Translator?
     var onWindowClosed: (() -> Void)?
 
-    private var context: Context?
     private let section = QAPaneSection()
-    private let contextLabel = NSTextField(wrappingLabelWithString: "")
-    private let inputField = NSTextField(frame: .zero)
+    private let inputField = NSTextView(frame: .zero)
+    private let inputScroll = NSScrollView()
+    private lazy var inputHeight = inputScroll.heightAnchor.constraint(equalToConstant: 28)
     private let modelBox = NSComboBox()
     private static let recentModelsKey = "local.ninh.ntranslate.askRecentModels"
     private var request: RequestHandle?
@@ -48,11 +41,6 @@ final class QAWindowController: NSWindowController, NSWindowDelegate {
     private func buildContent() {
         guard let content = window?.contentView else { return }
 
-        contextLabel.font = .systemFont(ofSize: 12)
-        contextLabel.textColor = .secondaryLabelColor
-        contextLabel.maximumNumberOfLines = 4
-        contextLabel.lineBreakMode = .byTruncatingTail
-        contextLabel.isSelectable = true
 
         let textView = section.textView
         textView.isEditable = false
@@ -72,76 +60,112 @@ final class QAWindowController: NSWindowController, NSWindowDelegate {
         scroll.autohidesScrollers = true
         scroll.documentView = textView
 
-        inputField.placeholderString = "Ask a question about this translation..."
+        // Enter sends, Shift+Enter inserts a newline; box grows up to 6 lines then scrolls.
+        inputField.setValue("Ask anything...", forKey: "placeholderString")
         inputField.font = .systemFont(ofSize: 14)
-        inputField.bezelStyle = .roundedBezel
-        inputField.target = self
-        inputField.action = #selector(submit(_:))
+        inputField.isRichText = false
+        inputField.allowsUndo = true
+        inputField.drawsBackground = false
+        inputField.textContainerInset = NSSize(width: 4, height: 5)
+        inputField.isVerticallyResizable = true
+        inputField.autoresizingMask = [.width]
+        inputField.textContainer?.widthTracksTextView = true
+        inputField.delegate = self
+        inputScroll.documentView = inputField
+        inputScroll.hasVerticalScroller = true
+        inputScroll.autohidesScrollers = true
+        inputScroll.borderType = .noBorder
+        inputScroll.drawsBackground = false
 
-        let copyButton = NSButton(image: NSImage(systemSymbolName: "doc.on.doc", accessibilityDescription: "Copy transcript")!, target: self, action: #selector(copyTranscript))
-        copyButton.bezelStyle = .texturedRounded
-        copyButton.toolTip = "Copy transcript"
-        let clearButton = NSButton(image: NSImage(systemSymbolName: "trash", accessibilityDescription: "Clear conversation")!, target: self, action: #selector(clearConversation))
-        clearButton.bezelStyle = .texturedRounded
-        clearButton.toolTip = "Clear conversation (Cmd+N)"
-
-        modelBox.font = .systemFont(ofSize: 12)
+        modelBox.font = .systemFont(ofSize: 11)
+        modelBox.controlSize = .small
         modelBox.placeholderString = "Model"
         modelBox.toolTip = "Model used for Ask. Default comes from Settings > Ask Model."
         modelBox.completes = true
-        modelBox.widthAnchor.constraint(equalToConstant: 170).isActive = true
+        modelBox.widthAnchor.constraint(equalToConstant: 150).isActive = true
 
-        let separator = NSBox()
-        separator.boxType = .separator
-        let inputRow = NSStackView(views: [modelBox, inputField, copyButton, clearButton])
-        inputRow.spacing = 6
+        let copyButton = Self.toolbarButton("doc.on.doc", tip: "Copy transcript", target: self, action: #selector(copyTranscript))
+        let clearButton = Self.toolbarButton("trash", tip: "Clear conversation (Cmd+N)", target: self, action: #selector(clearConversation))
+        let sendButton = Self.toolbarButton("arrow.up.circle.fill", tip: "Send (Return)", target: self, action: #selector(sendClicked), size: 20)
+        sendButton.contentTintColor = .controlAccentColor
 
-        for view in [contextLabel, separator, scroll, inputRow] as [NSView] {
+        let spacer = NSView()
+        spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        let toolbar = NSStackView(views: [modelBox, spacer, copyButton, clearButton, sendButton])
+        toolbar.spacing = 10
+        toolbar.alignment = .centerY
+
+        // Composer card: input on top, controls tucked into a quiet row underneath.
+        let card = ComposerCardView()
+        let cardStack = NSStackView(views: [inputScroll, toolbar])
+        cardStack.orientation = .vertical
+        cardStack.alignment = .leading
+        cardStack.spacing = 6
+        cardStack.translatesAutoresizingMaskIntoConstraints = false
+        card.addSubview(cardStack)
+        NSLayoutConstraint.activate([
+            cardStack.topAnchor.constraint(equalTo: card.topAnchor, constant: 8),
+            cardStack.bottomAnchor.constraint(equalTo: card.bottomAnchor, constant: -8),
+            cardStack.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: 10),
+            cardStack.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -10),
+            toolbar.widthAnchor.constraint(equalTo: cardStack.widthAnchor),
+            inputScroll.widthAnchor.constraint(equalTo: cardStack.widthAnchor),
+        ])
+
+        for view in [scroll, card] as [NSView] {
             view.translatesAutoresizingMaskIntoConstraints = false
             content.addSubview(view)
         }
         NSLayoutConstraint.activate([
-            contextLabel.topAnchor.constraint(equalTo: content.topAnchor, constant: 12),
-            contextLabel.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 16),
-            contextLabel.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -16),
-            separator.topAnchor.constraint(equalTo: contextLabel.bottomAnchor, constant: 10),
-            separator.leadingAnchor.constraint(equalTo: content.leadingAnchor),
-            separator.trailingAnchor.constraint(equalTo: content.trailingAnchor),
-            scroll.topAnchor.constraint(equalTo: separator.bottomAnchor),
+            scroll.topAnchor.constraint(equalTo: content.topAnchor),
             scroll.leadingAnchor.constraint(equalTo: content.leadingAnchor),
             scroll.trailingAnchor.constraint(equalTo: content.trailingAnchor),
-            inputRow.topAnchor.constraint(equalTo: scroll.bottomAnchor, constant: 10),
-            inputRow.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 12),
-            inputRow.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -12),
-            inputRow.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -12),
-            inputField.heightAnchor.constraint(greaterThanOrEqualToConstant: 28),
+            card.topAnchor.constraint(equalTo: scroll.bottomAnchor, constant: 8),
+            card.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 12),
+            card.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -12),
+            card.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -12),
+            inputHeight,
         ])
     }
 
-    /// Opens (or re-targets) the window. A new context starts a fresh conversation; `turns`
-    /// carries over whatever the popover pane already had.
-    func show(context: Context, turns: [QAPaneSection.Turn], draft: String = "") {
-        if self.context?.source != context.source || self.context?.result != context.result || !turns.isEmpty {
-            resetConversation()
-            turns.filter { !$0.isPending }.forEach {
-                section.appendQuestion($0.question, placeholder: "")
-                section.completeLastTurn(with: $0.answer, failed: $0.failed)
-            }
-        }
-        self.context = context
-        contextLabel.stringValue = context.result.isEmpty
-            ? "No translation context"
-            : "\(context.source)\n\u{2192} \(context.result)"
-        if !draft.isEmpty { inputField.stringValue = draft }
+    private static func toolbarButton(_ symbol: String, tip: String, target: AnyObject, action: Selector, size: CGFloat = 13) -> NSButton {
+        let image = NSImage(systemSymbolName: symbol, accessibilityDescription: tip)!
+            .withSymbolConfiguration(.init(pointSize: size, weight: .regular))!
+        let button = NSButton(image: image, target: target, action: action)
+        button.isBordered = false
+        button.contentTintColor = .secondaryLabelColor
+        button.toolTip = tip
+        return button
+    }
+
+    @objc private func sendClicked() { submit() }
+
+    /// Opens the window; the conversation persists across opens until cleared.
+    func show() {
         reloadModels()
         render()
         window?.makeKeyAndOrderFront(nil)
         window?.makeFirstResponder(inputField)
     }
 
-    @objc private func submit(_ sender: NSTextField) {
-        let question = sender.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !question.isEmpty, let context else { return }
+    func textView(_ textView: NSTextView, doCommandBy selector: Selector) -> Bool {
+        guard selector == #selector(NSResponder.insertNewline(_:)),
+              !(NSApp.currentEvent?.modifierFlags.contains(.shift) ?? false) else { return false }
+        submit()
+        return true
+    }
+
+    func textDidChange(_ notification: Notification) {
+        guard let layout = inputField.layoutManager, let container = inputField.textContainer else { return }
+        layout.ensureLayout(for: container)
+        let lineHeight = layout.defaultLineHeight(for: inputField.font ?? .systemFont(ofSize: 14))
+        let textHeight = layout.usedRect(for: container).height + inputField.textContainerInset.height * 2 + 4
+        inputHeight.constant = min(max(textHeight, 28), lineHeight * 6 + 14)
+    }
+
+    private func submit() {
+        let question = inputField.string.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !question.isEmpty else { return }
         guard let translator else {
             section.appendQuestion(question, placeholder: "")
             section.completeLastTurn(with: "API key is not configured", failed: true)
@@ -156,17 +180,13 @@ final class QAWindowController: NSWindowController, NSWindowDelegate {
         let model = modelBox.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         if !model.isEmpty { rememberModel(model) }
         section.appendQuestion(question, placeholder: "Answering...")
-        sender.stringValue = ""
+        inputField.string = ""
+        textDidChange(Notification(name: NSText.didChangeNotification))
         render()
 
-        request = translator.ask(
+        request = translator.chat(
             question,
-            sourceText: context.source,
-            translatedText: context.result,
-            sourceLang: context.sourceLang,
-            targetLang: context.targetLang,
             history: history,
-            parentContext: context.parentContext,
             model: model.isEmpty ? nil : model,
             onPartial: { [weak self] partial in
                 Task { @MainActor in
@@ -261,5 +281,17 @@ final class AskWindow: NSWindow {
             return true
         }
         return super.performKeyEquivalent(with: event)
+    }
+}
+
+/// Rounded composer background; drawn rather than layer-backed so system colors follow light/dark.
+private final class ComposerCardView: NSView {
+    override func draw(_ dirtyRect: NSRect) {
+        let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: 12, yRadius: 12)
+        NSColor.controlBackgroundColor.setFill()
+        path.fill()
+        NSColor.separatorColor.setStroke()
+        path.lineWidth = 1
+        path.stroke()
     }
 }
