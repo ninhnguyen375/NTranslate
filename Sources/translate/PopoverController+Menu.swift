@@ -8,10 +8,10 @@ extension PopoverController {
         let appMenu = NSMenu(title: "NTranslate")
         appMenu.addItem(withTitle: "About NTranslate", action: #selector(showAboutPanel), keyEquivalent: "")
         appMenu.addItem(NSMenuItem.separator())
-        appMenu.addItem(withTitle: "Settings…", action: #selector(openSettingsMenu), keyEquivalent: ",")
+        appMenu.addItem(withTitle: "Settings…", action: #selector(openSettingsMenu), keyEquivalent: "")
         appMenu.addItem(withTitle: "Check for Updates…", action: #selector(checkForUpdatesClicked), keyEquivalent: "")
         appMenu.addItem(NSMenuItem.separator())
-        appMenu.addItem(withTitle: "Quit NTranslate", action: #selector(quitApp), keyEquivalent: "q")
+        appMenu.addItem(withTitle: "Quit NTranslate", action: #selector(quitApp), keyEquivalent: "")
         appMenu.items.forEach { $0.target = self }
         // Hide walks the responder chain to NSApp, so it must not be retargeted at the controller.
         appMenu.addItem(withTitle: "Hide NTranslate", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
@@ -62,21 +62,22 @@ extension PopoverController {
         statusMenu.addItem(versionItem)
         statusMenu.addItem(NSMenuItem.separator())
 
-        let openPanelItem = NSMenuItem(title: "Open Translate Panel", action: #selector(openTranslatePanelMenu), keyEquivalent: "t")
+        let openPanelItem = NSMenuItem(title: "Open Translate Panel", action: #selector(openTranslatePanelMenu), keyEquivalent: "")
+        openPanelItem.tag = Self.openPanelMenuItemTag
         openPanelItem.image = NSImage(systemSymbolName: "translate", accessibilityDescription: "Open Translate Panel")
         statusMenu.addItem(openPanelItem)
 
-        let reviewItem = NSMenuItem(title: "Spaced Repetition", action: #selector(openReviewWindow), keyEquivalent: "r")
+        let reviewItem = NSMenuItem(title: "Spaced Repetition", action: #selector(openReviewWindow), keyEquivalent: "")
         reviewItem.image = Self.reviewMenuIcon
         reviewItem.tag = Self.reviewMenuItemTag
         statusMenu.addItem(reviewItem)
 
-        let askItem = NSMenuItem(title: "Ask in Window", action: #selector(openQAWindow), keyEquivalent: "k")
-        askItem.keyEquivalentModifierMask = .option
+        let askItem = NSMenuItem(title: "Ask in Window", action: #selector(openQAWindow), keyEquivalent: "")
+        askItem.tag = Self.askMenuItemTag
         askItem.image = NSImage(systemSymbolName: "text.bubble", accessibilityDescription: "Ask in Window")
         statusMenu.addItem(askItem)
 
-        let historyItem = NSMenuItem(title: "Translation History", action: #selector(openTranslationHistory), keyEquivalent: "h")
+        let historyItem = NSMenuItem(title: "Translation History", action: #selector(openTranslationHistory), keyEquivalent: "")
         historyItem.image = NSImage(systemSymbolName: "clock.arrow.circlepath", accessibilityDescription: "Translation History")
         statusMenu.addItem(historyItem)
 
@@ -86,7 +87,7 @@ extension PopoverController {
         syncPromptsItem.isHidden = true
         statusMenu.addItem(syncPromptsItem)
 
-        let updateItem = NSMenuItem(title: "Check for Updates...", action: #selector(checkForUpdatesClicked), keyEquivalent: "u")
+        let updateItem = NSMenuItem(title: "Check for Updates...", action: #selector(checkForUpdatesClicked), keyEquivalent: "")
         updateItem.image = NSImage(systemSymbolName: "arrow.triangle.2.circlepath", accessibilityDescription: "Check for Updates")
         statusMenu.addItem(updateItem)
 
@@ -97,13 +98,13 @@ extension PopoverController {
         accessibilityItem.tag = Self.accessibilityMenuItemTag
         statusMenu.addItem(accessibilityItem)
 
-        let settingsItem = NSMenuItem(title: "Settings…", action: #selector(openSettingsMenu), keyEquivalent: ",")
+        let settingsItem = NSMenuItem(title: "Settings…", action: #selector(openSettingsMenu), keyEquivalent: "")
         settingsItem.image = NSImage(systemSymbolName: "gearshape", accessibilityDescription: "Settings")
         statusMenu.addItem(settingsItem)
 
         statusMenu.addItem(NSMenuItem.separator())
 
-        let quitItem = NSMenuItem(title: "Quit", action: #selector(quitApp), keyEquivalent: "q")
+        let quitItem = NSMenuItem(title: "Quit", action: #selector(quitApp), keyEquivalent: "")
         quitItem.image = NSImage(systemSymbolName: "power", accessibilityDescription: "Quit")
         statusMenu.addItem(quitItem)
         statusMenu.items.forEach {
@@ -123,6 +124,8 @@ extension PopoverController {
     static let accessibilityMenuItemTag = 9001
     static let reviewMenuItemTag = 9002
     static let syncPromptsMenuItemTag = 9004
+    static let openPanelMenuItemTag = 9005
+    static let askMenuItemTag = 9006
     static let attentionDotLayerName = "ntranslate.attentionDot"
 
     func menuWillOpen(_ menu: NSMenu) {
@@ -133,6 +136,19 @@ extension PopoverController {
             item.isHidden = !config.hasOutOfSyncPrompts
         }
         updateReviewBadge()
+        // Mirror the global hotkeys so the menu shows what actually works system-wide.
+        for (tag, hotkey) in [(Self.openPanelMenuItemTag, config.hotkey),
+                              (Self.reviewMenuItemTag, config.studyHotkey),
+                              (Self.askMenuItemTag, Self.askWindowHotkey)] {
+            guard let item = menu.item(withTag: tag) else { continue }
+            item.keyEquivalent = hotkey.key.count == 1 ? hotkey.key.lowercased() : ""
+            var mask: NSEvent.ModifierFlags = []
+            if hotkey.command { mask.insert(.command) }
+            if hotkey.option { mask.insert(.option) }
+            if hotkey.control { mask.insert(.control) }
+            if hotkey.shift { mask.insert(.shift) }
+            item.keyEquivalentModifierMask = mask
+        }
     }
 
     func updateReviewBadge() {
