@@ -183,6 +183,15 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
         newWordsView.delegate = self
         passagesView.delegate = self
         sessionView.readingChatView.onSpeak = { [weak self] line, isSlow in self?.speakReadingLine(line, slow: isSlow) }
+        sessionView.readingChatView.onWillRecord = { [weak self] in self?.stopAudio() }
+        sessionView.readingChatView.onAssess = { [weak self] line, url, done in
+            guard let translator = self?.translator else {
+                return done(.failure(NSError(domain: "Pronunciation", code: 4, userInfo: [NSLocalizedDescriptionKey: "Translator unavailable"])))
+            }
+            _ = translator.assessPronunciation(fileURL: url, reference: line) { result in
+                Task { @MainActor in done(result) }
+            }
+        }
         sessionView.readingChatView.onWord = { [weak self] word in self?.openTranslateForWord(word) }
         sessionView.readingChatView.onLearn = { [weak self] line in
             guard let self else { return }

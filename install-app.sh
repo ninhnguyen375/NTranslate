@@ -116,7 +116,7 @@ fi
 if [ -f "$PROJECT_DIR/Resources/vocab-en-vi.json" ]; then
   cp "$PROJECT_DIR/Resources/vocab-en-vi.json" "$APP_DST/Contents/Resources/vocab-en-vi.json"
 fi
-codesign --force --deep --options runtime --sign "$SIGN_IDENTITY" "$APP_DST"
+codesign --force --deep --options runtime --entitlements "$PROJECT_DIR/NTranslate.entitlements" --sign "$SIGN_IDENTITY" "$APP_DST"
 codesign -vv "$APP_DST"
 codesign -dv --verbose=4 "$APP_DST" 2>&1 | grep -E 'Identifier=|Authority=|TeamIdentifier=|flags=' || true
 FLAGS=$(codesign -dv --verbose=4 "$APP_DST" 2>&1 | grep 'flags=' || true)

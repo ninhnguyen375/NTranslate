@@ -60,7 +60,7 @@ final class Translator: @unchecked Sendable {
     /// sites so the inheritance rule lives in one place.
     let speechAPIKey: String
 
-    private var effectiveSpeechKey: String {
+    var effectiveSpeechKey: String {
         let trimmed = speechAPIKey.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? apiKey : trimmed
     }
@@ -382,7 +382,7 @@ final class Translator: @unchecked Sendable {
         }
     }
 
-    private static func httpError(status: Int, body: Data) -> NSError {
+    static func httpError(status: Int, body: Data) -> NSError {
         NSError(domain: "HTTP", code: status, userInfo: [NSLocalizedDescriptionKey: httpErrorDescription(status: status)])
     }
 

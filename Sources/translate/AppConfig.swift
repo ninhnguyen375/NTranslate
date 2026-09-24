@@ -125,6 +125,8 @@ struct AppConfig: Codable {
     var model: String
     /// Model for the Ask window only; empty falls back to `model`. Independent from Settings "Model".
     var askModel: String = ""
+    /// Model for dictation and LLM pronunciation scoring; empty falls back to `Translator.transcriptionModel`.
+    var transcriptionModel: String = ""
     var sourceLang: String
     var targetLang: String
     var nativeLang: String
@@ -179,7 +181,7 @@ struct AppConfig: Codable {
     static let defaultCopyTranslateHotkey = Hotkey(key: "D", option: true, command: false, control: true, shift: false)
     static let defaultLearnHotkey = Hotkey(key: "L", option: true, command: false, control: false, shift: false)
     static let defaultProofreadHotkey = Hotkey(key: "P", option: true, command: false, control: false, shift: false)
-    static let defaultOCRHotkey = Hotkey(key: "A", option: true, command: false, control: true, shift: false)
+    static let defaultOCRHotkey = Hotkey(key: "A", option: true, command: false, control: false, shift: true)
     static let defaultStudyHotkey = Hotkey(key: "H", option: true, command: false, control: false, shift: false)
 
     var historyDirectoryURL: URL {
@@ -322,6 +324,7 @@ struct AppConfig: Codable {
         apiBaseURL = try container.decode(String.self, forKey: .apiBaseURL)
         model = try container.decode(String.self, forKey: .model)
         askModel = try container.decodeIfPresent(String.self, forKey: .askModel) ?? ""
+        transcriptionModel = try container.decodeIfPresent(String.self, forKey: .transcriptionModel) ?? ""
         sourceLang = try container.decode(String.self, forKey: .sourceLang)
         targetLang = try container.decode(String.self, forKey: .targetLang)
         nativeLang = try container.decodeIfPresent(String.self, forKey: .nativeLang) ?? "Vietnamese"

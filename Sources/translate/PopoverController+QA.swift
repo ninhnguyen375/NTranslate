@@ -37,6 +37,15 @@ extension PopoverController: NSTextFieldDelegate {
         qaInputField.addSubview(popOut)
     }
 
+    /// Ask hotkey: opens the window; when Ask is focused it starts dictation, or cancels a running one.
+    @objc func askHotKeyPressed() {
+        if let controller = _qaWindowController, controller.window?.isKeyWindow == true, NSApp.isActive {
+            controller.dictationHotkeyPressed()
+        } else {
+            openQAWindow()
+        }
+    }
+
     /// Opens the standalone Ask window: a plain chat, independent of the popover's translation.
     @objc func openQAWindow() {
         let controller = _qaWindowController ?? QAWindowController()

@@ -1,4 +1,5 @@
 import AppKit
+import AVFoundation
 
 /// The reading passage drawn as a conversation: one bubble per turn, the first speaker on the left
 /// and the other on the right, each bubble carrying its own source, translation and speak buttons
@@ -19,7 +20,15 @@ final class ReadingChatView: NSStackView {
     var onLearn: ((String) -> Void)?
     /// Called with the line to open in the translate panel's Translate mode.
     var onTranslate: ((String) -> Void)?
+    /// Called right before the microphone opens, so playback does not bleed into the recording.
+    var onWillRecord: (() -> Void)?
+    /// Scores a recorded WAV of the line; the completion runs on main.
+    var onAssess: ((String, URL, @escaping @MainActor (Result<PronunciationResult, Error>) -> Void) -> Void)?
 
+    private let recorder = DictationRecorder()
+    /// Plays back a line's last recording; one at a time.
+    private var player: AVAudioPlayer?
+    private weak var recordingBubble: BubbleView?
     private var bubbles: [BubbleView] = []
     private var globalMode: Mode = .both
     private let selectionBar = ReadingSelectionBar()
@@ -79,6 +88,11 @@ final class ReadingChatView: NSStackView {
             bubble.onSpeak = { [weak self] isSlow in self?.onSpeak?(turn.source, isSlow) }
             bubble.onWord = { [weak self] word in self?.onWord?(word) }
             bubble.onLearn = { [weak self] in self?.onLearn?(turn.source) }
+            bubble.onReplay = { [weak self] url in self?.playRecording(url) }
+            bubble.onRecord = { [weak self, weak bubble] in
+                guard let bubble else { return }
+                self?.toggleRecording(bubble)
+            }
             bubbles.append(bubble)
 
             // A spacer opposite the bubble is what pushes each speaker to their own side.
@@ -133,6 +147,39 @@ final class ReadingChatView: NSStackView {
 
     var currentMode: Mode { globalMode }
 
+    /// One recording at a time: any mic click while recording stops it and scores that line.
+    private func toggleRecording(_ bubble: BubbleView) {
+        if recorder.isRecording {
+            guard let active = recordingBubble, let url = recorder.stop() else { return }
+            recordingBubble = nil
+            active.setRecording(.scoring)
+            // The recorder reuses one file, so each line keeps its own copy for replay.
+            let copy = FileManager.default.temporaryDirectory.appendingPathComponent("ntranslate-reading-\(UUID().uuidString).wav")
+            if (try? FileManager.default.copyItem(at: url, to: copy)) != nil { active.setRecordingURL(copy) }
+            onAssess?(active.source, url) { [weak active] result in active?.showAssessment(result) }
+            return
+        }
+        player?.stop()
+        onWillRecord?()
+        recorder.start(wav: true) { [weak self, weak bubble] started in
+            guard let bubble else { return }
+            if started {
+                self?.recordingBubble = bubble
+                bubble.setRecording(.recording)
+            } else {
+                bubble.showAssessment(.failure(NSError(domain: "Pronunciation", code: 3, userInfo: [
+                    NSLocalizedDescriptionKey: "Microphone unavailable. Allow access in System Settings > Privacy & Security.",
+                ])))
+            }
+        }
+    }
+
+    private func playRecording(_ url: URL) {
+        player?.stop()
+        player = try? AVAudioPlayer(contentsOf: url)
+        player?.play()
+    }
+
     /// Loading, playing and paused belong to one line at one speed; every other button is idle.
     func updateSpeech(line: String?, isSlow: Bool, action: SpeechButtonAction) {
         for bubble in bubbles {
@@ -146,6 +193,9 @@ final class ReadingChatView: NSStackView {
     private final class BubbleView: NSView {
         var onSpeak: ((Bool) -> Void)?
         var onLearn: (() -> Void)?
+        var onRecord: (() -> Void)?
+        var onReplay: ((URL) -> Void)?
+        private var recordingURL: URL?
         var onWord: ((String) -> Void)? {
             didSet { sourceLabel.onWord = onWord }
         }
@@ -170,6 +220,13 @@ final class ReadingChatView: NSStackView {
         private let speakButton: NSButton
         private let slowButton: NSButton
         private let learnButton: NSButton
+        private let recordButton: NSButton
+        private let replayButton: NSButton
+        private weak var pill: NSStackView?
+        /// Score and per-word feedback from the last reading; hidden until the first one.
+        private let assessmentLabel = NSTextField(wrappingLabelWithString: "")
+        /// The source as first drawn, so each new score recolors from a clean slate.
+        private var baseSource = NSAttributedString()
         private let isFirstSpeaker: Bool
         private var globalMode: Mode = .both
 
@@ -180,6 +237,8 @@ final class ReadingChatView: NSStackView {
             speakButton = Self.smallButton(title: "")
             slowButton = Self.smallButton(title: "")
             learnButton = Self.smallButton(title: "")
+            recordButton = Self.smallButton(title: "")
+            replayButton = Self.smallButton(title: "")
             super.init(frame: .zero)
             translatesAutoresizingMaskIntoConstraints = false
             wantsLayer = true
@@ -194,6 +253,7 @@ final class ReadingChatView: NSStackView {
                 color: .labelColor,
                 linked: true
             )
+            baseSource = sourceLabel.attributedStringValue
             sourceLabel.allowsEditingTextAttributes = true
             sourceLabel.isSelectable = true
             translationLabel.stringValue = turn.translation
@@ -210,6 +270,17 @@ final class ReadingChatView: NSStackView {
             learnButton.target = self
             learnButton.action = #selector(learnClicked)
             symbolize(learnButton, symbol: "brain.head.profile", title: "Learn this line")
+            recordButton.target = self
+            recordButton.action = #selector(recordClicked)
+            setRecording(.idle)
+            replayButton.target = self
+            replayButton.action = #selector(replayClicked)
+            symbolize(replayButton, symbol: "play.circle", title: "Play back your recording")
+            replayButton.isEnabled = false
+            assessmentLabel.font = .systemFont(ofSize: TextZoom.size(11), weight: .regular)
+            assessmentLabel.textColor = .secondaryLabelColor
+            assessmentLabel.isSelectable = true
+            assessmentLabel.isHidden = true
             // Each symbol has its own intrinsic width, so the buttons only line up once every cell
             // is the same square. Thin dividers give each action room to breathe.
             let buttonList = [speakButton, slowButton, bothButton, learnButton]
@@ -244,11 +315,34 @@ final class ReadingChatView: NSStackView {
             separator.boxType = .separator
             separator.translatesAutoresizingMaskIntoConstraints = false
 
-            let stack = NSStackView(views: [sourceLabel, textDivider, translationLabel, separator, controlsRow])
+            // Record and replay share a pill beside the line they score.
+            let pill = NSStackView(views: [recordButton, replayButton])
+            pill.orientation = .horizontal
+            pill.spacing = 2
+            pill.edgeInsets = NSEdgeInsets(top: 1, left: 6, bottom: 1, right: 6)
+            pill.wantsLayer = true
+            pill.layer?.cornerRadius = 11
+            // NSStackView sizes itself by its own hugging, not content hugging; without this the
+            // row hands its spare width to the pill instead of the text.
+            pill.setHuggingPriority(.required, for: .horizontal)
+            pill.setContentCompressionResistancePriority(.required, for: .horizontal)
+            self.pill = pill
+            for button in [recordButton, replayButton] {
+                button.widthAnchor.constraint(equalToConstant: Self.buttonSide).isActive = true
+                button.heightAnchor.constraint(equalToConstant: Self.buttonSide).isActive = true
+            }
+            sourceLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+            sourceLabel.setContentHuggingPriority(.init(1), for: .horizontal)
+            let sourceRow = NSStackView(views: [sourceLabel, pill])
+            sourceRow.orientation = .horizontal
+            sourceRow.alignment = .top
+            sourceRow.spacing = 8
+
+            let stack = NSStackView(views: [sourceRow, assessmentLabel, textDivider, translationLabel, separator, controlsRow])
             stack.orientation = .vertical
             stack.alignment = .leading
             stack.spacing = 5
-            stack.setCustomSpacing(6, after: sourceLabel)
+            stack.setCustomSpacing(6, after: sourceRow)
             stack.setCustomSpacing(6, after: textDivider)
             stack.setCustomSpacing(7, after: translationLabel)
             stack.setCustomSpacing(4, after: separator)
@@ -259,7 +353,8 @@ final class ReadingChatView: NSStackView {
                 stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -Self.padding),
                 stack.topAnchor.constraint(equalTo: topAnchor, constant: 9),
                 stack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -7),
-                sourceLabel.widthAnchor.constraint(equalTo: stack.widthAnchor),
+                sourceRow.widthAnchor.constraint(equalTo: stack.widthAnchor),
+                assessmentLabel.widthAnchor.constraint(equalTo: stack.widthAnchor),
                 textDivider.widthAnchor.constraint(equalTo: stack.widthAnchor),
                 translationLabel.widthAnchor.constraint(equalTo: stack.widthAnchor),
                 separator.widthAnchor.constraint(equalTo: stack.widthAnchor),
@@ -281,6 +376,7 @@ final class ReadingChatView: NSStackView {
                 layer?.borderColor = (isFirstSpeaker
                     ? NSColor.adaptive(light: .black.withAlphaComponent(0.06), dark: .separatorColor)
                     : NSColor.controlAccentColor.withAlphaComponent(isDark ? 0.35 : 0.18)).cgColor
+                pill?.layer?.backgroundColor = NSColor.labelColor.withAlphaComponent(isDark ? 0.1 : 0.06).cgColor
             }
         }
 
@@ -302,7 +398,8 @@ final class ReadingChatView: NSStackView {
         func preferredWidth(cap: CGFloat) -> CGFloat {
             let chrome = Self.padding * 2
             let textCap = max(cap - chrome, 60)
-            let widest = max(Self.measure(sourceLabel.attributedStringValue, cap: textCap),
+            let pillWidth = Self.buttonSide * 2 + 2 + 12 + 8
+            let widest = max(Self.measure(sourceLabel.attributedStringValue, cap: textCap - pillWidth) + pillWidth,
                              Self.measure(translationLabel.attributedStringValue, cap: textCap))
             // 4 buttons + 3 dividers (1pt each) + 6 gaps
             let buttons = Self.buttonSide * 4 + 3 * 1 + Self.buttonGap * 6
@@ -394,6 +491,65 @@ final class ReadingChatView: NSStackView {
         }
 
         @objc private func learnClicked() { onLearn?() }
+        @objc private func recordClicked() { onRecord?() }
+        @objc private func replayClicked() { if let recordingURL { onReplay?(recordingURL) } }
+
+        func setRecordingURL(_ url: URL) {
+            if let old = recordingURL { try? FileManager.default.removeItem(at: old) }
+            recordingURL = url
+            replayButton.isEnabled = true
+        }
+
+        enum RecordingState { case idle, recording, scoring }
+
+        func setRecording(_ state: RecordingState) {
+            switch state {
+            case .idle:
+                symbolize(recordButton, symbol: "mic", title: "Read this line aloud for a pronunciation score")
+                recordButton.contentTintColor = .secondaryLabelColor
+            case .recording:
+                symbolize(recordButton, symbol: "stop.circle.fill", title: "Stop and score")
+                recordButton.contentTintColor = .systemRed
+            case .scoring:
+                symbolize(recordButton, symbol: "ellipsis", title: "Scoring")
+                recordButton.contentTintColor = .secondaryLabelColor
+            }
+            recordButton.isEnabled = state != .scoring
+        }
+
+        /// Colors each word by its accuracy and lists the weak sounds under the line.
+        func showAssessment(_ result: Result<PronunciationResult, Error>) {
+            setRecording(.idle)
+            assessmentLabel.isHidden = false
+            switch result {
+            case let .failure(error):
+                assessmentLabel.textColor = .systemRed
+                assessmentLabel.stringValue = error.localizedDescription
+            case let .success(assessment):
+                let colored = NSMutableAttributedString(attributedString: baseSource)
+                // Tint the whole line by the overall score: LLM scoring lists only faulty words (and
+                // sometimes the whole line, which matches no word), so the score is what the rest
+                // of the line says. Faults recolor their own words below.
+                let base: NSColor = assessment.score < 60 ? .systemRed : assessment.score < 80 ? .systemOrange : .systemGreen
+                colored.addAttribute(.foregroundColor, value: base, range: NSRange(location: 0, length: colored.length))
+                for (range, word) in PronunciationHighlight.ranges(of: assessment.words, in: source) {
+                    colored.addAttribute(.foregroundColor, value: Self.color(for: word), range: range)
+                    if word.isOmitted {
+                        colored.addAttribute(.strikethroughStyle, value: NSUnderlineStyle.single.rawValue, range: range)
+                    }
+                }
+                sourceLabel.attributedStringValue = colored
+                let header = assessment.header
+                let feedback = assessment.feedbackLines
+                assessmentLabel.textColor = feedback.isEmpty && assessment.score >= 80 ? .systemGreen : .secondaryLabelColor
+                assessmentLabel.stringValue = ([header] + (feedback.isEmpty ? ["All words clear."] : feedback)).joined(separator: "\n")
+            }
+        }
+
+        private static func color(for word: PronunciationResult.Word) -> NSColor {
+            // ponytail: the model lists only faulty words, so every listed word is red.
+            .systemRed
+        }
 
         @objc private func speakClicked() { onSpeak?(false) }
         @objc private func speakSlowClicked() { onSpeak?(true) }

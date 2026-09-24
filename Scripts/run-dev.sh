@@ -10,5 +10,5 @@ BUNDLE_ID="local.ninh.ntranslate"
 
 swift build
 BIN="$(swift build --show-bin-path)/translate"
-codesign --force -i "$BUNDLE_ID" --options runtime --sign "$SIGN_IDENTITY" "$BIN"
+codesign --force -i "$BUNDLE_ID" --options runtime --entitlements "$(dirname "$0")/../NTranslate.entitlements" --sign "$SIGN_IDENTITY" "$BIN"
 exec "$BIN" "$@"

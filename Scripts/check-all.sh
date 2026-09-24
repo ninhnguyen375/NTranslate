@@ -34,6 +34,7 @@ checks=(
   "square-tool-button|$S/SquareToolButton.swift"
   "bubble-width|$S/ReadingBubbleWidth.swift"
   "reading-dialogue|$S/ReadingDialogue.swift"
+  "pronunciation|$S/PronunciationAssessment.swift"
   "reading-underline|$S/ReadingHighlight.swift"
   "weave-cache|$S/WeaveCache.swift"
   "weave-scenario|$S/WeaveCache.swift"

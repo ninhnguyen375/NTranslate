@@ -21,6 +21,11 @@ final class QAWindowController: NSWindowController, NSWindowDelegate, NSTextView
     /// PNG data of images pasted into the composer, sent with the next question.
     private var attachments: [Data] = []
     private var request: RequestHandle?
+    private let recorder = DictationRecorder()
+    private var dictationRequest: RequestHandle?
+    private let micHint = NSTextField(labelWithString: "")
+    private static let hotkey = PopoverController.askWindowHotkey.displayString
+    private lazy var micButton = Self.toolbarButton("mic", tip: "Dictate (Option+K to start or cancel, Return to stop and send)", target: self, action: #selector(toggleDictation))
     private var generation = 0
 
     init() {
@@ -33,6 +38,8 @@ final class QAWindowController: NSWindowController, NSWindowDelegate, NSTextView
         window.title = "Ask"
         window.minSize = NSSize(width: 380, height: 360)
         window.isReleasedWhenClosed = false
+        // Reopening follows the current Space instead of jumping back to the one it was first shown on.
+        window.collectionBehavior = [.moveToActiveSpace]
         window.center()
         super.init(window: window)
         window.delegate = self
@@ -102,15 +109,20 @@ final class QAWindowController: NSWindowController, NSWindowDelegate, NSTextView
         webSearchBox.target = self
         webSearchBox.action = #selector(webSearchToggled)
 
+        micHint.font = .systemFont(ofSize: 9)
+        micHint.textColor = .tertiaryLabelColor
+        setMic(.idle)
+
         attachmentStrip.orientation = .horizontal
         attachmentStrip.spacing = 6
         attachmentStrip.isHidden = true
 
         let spacer = NSView()
         spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        let toolbar = NSStackView(views: [modelBox, webSearchBox, spacer, copyButton, clearButton, sendButton])
+        let toolbar = NSStackView(views: [modelBox, webSearchBox, spacer, copyButton, clearButton, micHint, micButton, sendButton])
         toolbar.spacing = 10
         toolbar.alignment = .centerY
+        toolbar.setCustomSpacing(2, after: micHint)
 
         // Composer card: input on top, controls tucked into a quiet row underneath.
         let card = ComposerCardView()
@@ -219,16 +231,93 @@ final class QAWindowController: NSWindowController, NSWindowDelegate, NSTextView
 
     /// Opens the window; the conversation persists across opens until cleared.
     func show() {
+        if window?.isVisible != true { placeAtMouse() }
         reloadModels()
         render()
         window?.makeKeyAndOrderFront(nil)
         window?.makeFirstResponder(inputField)
     }
 
+    /// Centers the window on the cursor, clamped to the visible frame of the screen under it.
+    private func placeAtMouse() {
+        guard let window else { return }
+        let mouse = NSEvent.mouseLocation
+        guard let screen = NSScreen.screens.first(where: { NSMouseInRect(mouse, $0.frame, false) }) ?? NSScreen.main else { return }
+        let area = screen.visibleFrame
+        var frame = window.frame
+        frame.size.width = min(frame.width, area.width)
+        frame.size.height = min(frame.height, area.height)
+        frame.origin.x = min(max(mouse.x - frame.width / 2, area.minX), area.maxX - frame.width)
+        frame.origin.y = min(max(mouse.y - frame.height / 2, area.minY), area.maxY - frame.height)
+        window.setFrame(frame, display: false)
+    }
+
+    @objc private func toggleDictation() {
+        if recorder.isRecording { stopDictation(thenSend: false) } else { startDictation() }
+    }
+
+    /// Hotkey while Ask is focused: start recording, or discard the one in progress.
+    func dictationHotkeyPressed() {
+        if recorder.isRecording {
+            _ = recorder.stop()
+            setMic(.idle)
+        } else {
+            startDictation()
+        }
+    }
+
+    private func startDictation() {
+        guard !recorder.isRecording, dictationRequest == nil else { return }
+        recorder.start { [weak self] started in
+            if started { self?.setMic(.recording) } else { NSSound.beep() }
+        }
+    }
+
+    /// Transcribes the recording into the composer; `thenSend` submits it right after.
+    private func stopDictation(thenSend: Bool) {
+        guard let file = recorder.stop(), let translator else { return setMic(.idle) }
+        setMic(.busy)
+        dictationRequest = translator.transcribe(fileURL: file) { [weak self] result in
+            Task { @MainActor in
+                guard let self else { return }
+                self.dictationRequest = nil
+                self.setMic(.idle)
+                switch result {
+                case let .success(text) where !text.isEmpty:
+                    self.inputField.insertText(text, replacementRange: self.inputField.selectedRange())
+                    self.window?.makeFirstResponder(self.inputField)
+                    if thenSend { self.submit() }
+                case .success:
+                    if thenSend { self.submit() }
+                case let .failure(error):
+                    self.micButton.toolTip = "Dictation failed: \(PopoverFeedback.userFacingError(error))"
+                    NSSound.beep()
+                }
+            }
+        }
+    }
+
+    private enum MicState { case idle, recording, busy }
+
+    private func setMic(_ state: MicState) {
+        let symbol = switch state { case .idle: "mic"; case .recording: "mic.fill"; case .busy: "ellipsis" }
+        micButton.image = NSImage(systemSymbolName: symbol, accessibilityDescription: "Dictate")?
+            .withSymbolConfiguration(.init(pointSize: 13, weight: .regular))
+        micButton.contentTintColor = state == .recording ? .systemRed : .secondaryLabelColor
+        micButton.isEnabled = state != .busy
+        micHint.stringValue = switch state {
+        case .idle: Self.hotkey
+        case .recording: "\(Self.hotkey) cancel, Return send"
+        case .busy: "Transcribing..."
+        }
+        if state == .recording { micButton.toolTip = "Stop and transcribe" }
+        else if state == .idle, micButton.toolTip == "Stop and transcribe" { micButton.toolTip = "Dictate (Option+K to start or cancel, Return to stop and send)" }
+    }
+
     func textView(_ textView: NSTextView, doCommandBy selector: Selector) -> Bool {
         guard selector == #selector(NSResponder.insertNewline(_:)),
               !(NSApp.currentEvent?.modifierFlags.contains(.shift) ?? false) else { return false }
-        submit()
+        if recorder.isRecording { stopDictation(thenSend: true) } else if dictationRequest == nil { submit() }
         return true
     }
 
@@ -352,6 +441,10 @@ final class QAWindowController: NSWindowController, NSWindowDelegate, NSTextView
     }
 
     func windowWillClose(_ notification: Notification) {
+        _ = recorder.stop()
+        dictationRequest?.cancel()
+        dictationRequest = nil
+        setMic(.idle)
         request?.cancel()
         request = nil
         generation += 1

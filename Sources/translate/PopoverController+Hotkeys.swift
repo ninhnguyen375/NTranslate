@@ -37,7 +37,7 @@ extension PopoverController {
             case .study:
                 controller.perform(#selector(PopoverController.openReviewWindow), on: .main, with: nil, waitUntilDone: false)
             case .askWindow:
-                controller.perform(#selector(PopoverController.openQAWindow), on: .main, with: nil, waitUntilDone: false)
+                controller.perform(#selector(PopoverController.askHotKeyPressed), on: .main, with: nil, waitUntilDone: false)
             case nil: break
             }
             return noErr
