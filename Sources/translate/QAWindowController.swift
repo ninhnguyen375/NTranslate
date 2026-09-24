@@ -10,11 +10,16 @@ final class QAWindowController: NSWindowController, NSWindowDelegate, NSTextView
     var onWindowClosed: (() -> Void)?
 
     private let section = QAPaneSection()
-    private let inputField = NSTextView(frame: .zero)
+    private let inputField = AskInputView(frame: .zero)
     private let inputScroll = NSScrollView()
     private lazy var inputHeight = inputScroll.heightAnchor.constraint(equalToConstant: 28)
     private let modelBox = NSComboBox()
     private static let recentModelsKey = "local.ninh.ntranslate.askRecentModels"
+    private static let webSearchKey = "local.ninh.ntranslate.askWebSearch"
+    private let webSearchBox = NSButton(checkboxWithTitle: "Web search", target: nil, action: nil)
+    private let attachmentStrip = NSStackView()
+    /// PNG data of images pasted into the composer, sent with the next question.
+    private var attachments: [Data] = []
     private var request: RequestHandle?
     private var generation = 0
 
@@ -71,6 +76,7 @@ final class QAWindowController: NSWindowController, NSWindowDelegate, NSTextView
         inputField.autoresizingMask = [.width]
         inputField.textContainer?.widthTracksTextView = true
         inputField.delegate = self
+        inputField.onPasteImages = { [weak self] images in self?.addAttachments(images) }
         inputScroll.documentView = inputField
         inputScroll.hasVerticalScroller = true
         inputScroll.autohidesScrollers = true
@@ -89,15 +95,26 @@ final class QAWindowController: NSWindowController, NSWindowDelegate, NSTextView
         let sendButton = Self.toolbarButton("arrow.up.circle.fill", tip: "Send (Return)", target: self, action: #selector(sendClicked), size: 20)
         sendButton.contentTintColor = .controlAccentColor
 
+        webSearchBox.font = .systemFont(ofSize: 11)
+        webSearchBox.controlSize = .small
+        webSearchBox.toolTip = "Let the model search and read the web when it needs to"
+        webSearchBox.state = UserDefaults.standard.bool(forKey: Self.webSearchKey) ? .on : .off
+        webSearchBox.target = self
+        webSearchBox.action = #selector(webSearchToggled)
+
+        attachmentStrip.orientation = .horizontal
+        attachmentStrip.spacing = 6
+        attachmentStrip.isHidden = true
+
         let spacer = NSView()
         spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        let toolbar = NSStackView(views: [modelBox, spacer, copyButton, clearButton, sendButton])
+        let toolbar = NSStackView(views: [modelBox, webSearchBox, spacer, copyButton, clearButton, sendButton])
         toolbar.spacing = 10
         toolbar.alignment = .centerY
 
         // Composer card: input on top, controls tucked into a quiet row underneath.
         let card = ComposerCardView()
-        let cardStack = NSStackView(views: [inputScroll, toolbar])
+        let cardStack = NSStackView(views: [attachmentStrip, inputScroll, toolbar])
         cardStack.orientation = .vertical
         cardStack.alignment = .leading
         cardStack.spacing = 6
@@ -140,6 +157,66 @@ final class QAWindowController: NSWindowController, NSWindowDelegate, NSTextView
 
     @objc private func sendClicked() { submit() }
 
+    @objc private func webSearchToggled() {
+        UserDefaults.standard.set(webSearchBox.state == .on, forKey: Self.webSearchKey)
+    }
+
+    private func addAttachments(_ images: [NSImage]) {
+        attachments += images.compactMap(Self.pngData)
+        renderAttachments()
+    }
+
+    @objc private func removeAttachment(_ sender: NSButton) {
+        guard attachments.indices.contains(sender.tag) else { return }
+        attachments.remove(at: sender.tag)
+        renderAttachments()
+    }
+
+    private func renderAttachments() {
+        attachmentStrip.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        for (index, data) in attachments.enumerated() {
+            let thumb = NSImageView(image: NSImage(data: data) ?? NSImage())
+            thumb.imageScaling = .scaleProportionallyUpOrDown
+            thumb.wantsLayer = true
+            thumb.layer?.cornerRadius = 6
+            thumb.layer?.masksToBounds = true
+            thumb.translatesAutoresizingMaskIntoConstraints = false
+            let remove = Self.toolbarButton("xmark.circle.fill", tip: "Remove image", target: self, action: #selector(removeAttachment(_:)), size: 14)
+            remove.tag = index
+            remove.translatesAutoresizingMaskIntoConstraints = false
+            let cell = NSView()
+            cell.addSubview(thumb)
+            cell.addSubview(remove)
+            NSLayoutConstraint.activate([
+                cell.widthAnchor.constraint(equalToConstant: 56),
+                cell.heightAnchor.constraint(equalToConstant: 56),
+                thumb.topAnchor.constraint(equalTo: cell.topAnchor, constant: 4),
+                thumb.leadingAnchor.constraint(equalTo: cell.leadingAnchor),
+                thumb.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -4),
+                thumb.bottomAnchor.constraint(equalTo: cell.bottomAnchor),
+                remove.topAnchor.constraint(equalTo: cell.topAnchor),
+                remove.trailingAnchor.constraint(equalTo: cell.trailingAnchor),
+            ])
+            attachmentStrip.addArrangedSubview(cell)
+        }
+        attachmentStrip.isHidden = attachments.isEmpty
+    }
+
+    /// PNG capped at 2048 px on the long side; full-size Retina screenshots only waste tokens.
+    private static func pngData(_ image: NSImage) -> Data? {
+        guard var cg = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return nil }
+        let scale = min(1, 2048 / CGFloat(max(cg.width, cg.height)))
+        if scale < 1,
+           let context = CGContext(data: nil, width: Int(CGFloat(cg.width) * scale), height: Int(CGFloat(cg.height) * scale),
+                                   bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(),
+                                   bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) {
+            context.interpolationQuality = .high
+            context.draw(cg, in: CGRect(x: 0, y: 0, width: context.width, height: context.height))
+            cg = context.makeImage() ?? cg
+        }
+        return NSBitmapImageRep(cgImage: cg).representation(using: .png, properties: [:])
+    }
+
     /// Opens the window; the conversation persists across opens until cleared.
     func show() {
         reloadModels()
@@ -165,9 +242,13 @@ final class QAWindowController: NSWindowController, NSWindowDelegate, NSTextView
 
     private func submit() {
         let question = inputField.string.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !question.isEmpty else { return }
+        let images = attachments
+        let webSearch = webSearchBox.state == .on
+        guard !question.isEmpty || !images.isEmpty else { return }
+        let shown = images.isEmpty ? question
+            : question + (question.isEmpty ? "" : "\n") + "[\(images.count) image\(images.count == 1 ? "" : "s")]"
         guard let translator else {
-            section.appendQuestion(question, placeholder: "")
+            section.appendQuestion(shown, placeholder: "")
             section.completeLastTurn(with: "API key is not configured", failed: true)
             render()
             return
@@ -179,23 +260,21 @@ final class QAWindowController: NSWindowController, NSWindowDelegate, NSTextView
         let history = section.completedTurns
         let model = modelBox.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         if !model.isEmpty { rememberModel(model) }
-        section.appendQuestion(question, placeholder: "Answering...")
+        section.appendQuestion(shown, placeholder: "Answering...")
         inputField.string = ""
+        attachments = []
+        renderAttachments()
         textDidChange(Notification(name: NSText.didChangeNotification))
         render()
 
-        request = translator.chat(
-            question,
-            history: history,
-            model: model.isEmpty ? nil : model,
-            onPartial: { [weak self] partial in
-                Task { @MainActor in
-                    guard let self, self.generation == current else { return }
-                    self.section.updateLastAnswer(partial)
-                    self.render()
-                }
+        let onPartial: @Sendable (String) -> Void = { [weak self] partial in
+            Task { @MainActor in
+                guard let self, self.generation == current else { return }
+                self.section.updateLastAnswer(partial)
+                self.render()
             }
-        ) { [weak self] result in
+        }
+        let completion: @Sendable (Result<String, Error>) -> Void = { [weak self] result in
             Task { @MainActor in
                 guard let self, self.generation == current else { return }
                 self.request = nil
@@ -208,6 +287,17 @@ final class QAWindowController: NSWindowController, NSWindowDelegate, NSTextView
                 }
                 self.render()
             }
+        }
+        // Plain text keeps streaming; images or web tools go through the non-streaming tool loop.
+        if images.isEmpty && !webSearch {
+            request = translator.chat(question, history: history, model: model.isEmpty ? nil : model,
+                                      onPartial: onPartial, completion: completion)
+        } else {
+            request = translator.chatWithTools(
+                question.isEmpty ? "Describe the attached image." : question,
+                images: images, history: history, model: model.isEmpty ? nil : model,
+                webTools: webSearch, onStatus: { onPartial("\($0)...") }, completion: completion
+            )
         }
     }
 
@@ -281,6 +371,25 @@ final class AskWindow: NSWindow {
             return true
         }
         return super.performKeyEquivalent(with: event)
+    }
+}
+
+/// Composer input that turns pasted images into attachments instead of inline text.
+final class AskInputView: NSTextView {
+    var onPasteImages: (([NSImage]) -> Void)?
+
+    override func paste(_ sender: Any?) {
+        let pasteboard = NSPasteboard.general
+        // Copied files also carry their icon as an image; only take real image content.
+        let isFile = pasteboard.canReadObject(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true])
+        let images = pasteboard.readObjects(forClasses: [NSImage.self]) as? [NSImage] ?? []
+        let fileImages = (pasteboard.readObjects(forClasses: [NSURL.self], options: [
+            .urlReadingFileURLsOnly: true,
+            .urlReadingContentsConformToTypes: ["public.image"],
+        ]) as? [URL] ?? []).compactMap(NSImage.init(contentsOf:))
+        let picked = isFile ? fileImages : images
+        guard !picked.isEmpty else { return super.paste(sender) }
+        onPasteImages?(picked)
     }
 }
 
