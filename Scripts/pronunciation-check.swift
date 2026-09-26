@@ -15,6 +15,13 @@ struct PronunciationCheck {
         let words = ["the", "weather", "he"].map { PronunciationResult.Word(text: $0, errorType: "Mispronunciation") }
         let ranges = PronunciationHighlight.ranges(of: words, in: "The weather, he said.")
         assert(ranges.map { $0.0 } == [NSRange(location: 0, length: 3), NSRange(location: 4, length: 7), NSRange(location: 13, length: 2)], "\(ranges.map { $0.0 })")
+        // Out-of-order errors still highlight; a repeated word takes the next free occurrence.
+        let unordered = ["weather", "the", "the"].map { PronunciationResult.Word(text: $0, errorType: "Mispronunciation") }
+        let unorderedRanges = PronunciationHighlight.ranges(of: unordered, in: "The weather, the rain.").map { $0.0 }
+        assert(unorderedRanges == [NSRange(location: 4, length: 7), NSRange(location: 0, length: 3), NSRange(location: 13, length: 3)], "\(unorderedRanges)")
+        // Full-sentence error (unintelligible reading) covers the sentence despite the trailing period.
+        let sentence = [PronunciationResult.Word(text: "I think it.", errorType: "Mispronunciation")]
+        assert(PronunciationHighlight.ranges(of: sentence, in: "I think it.").map { $0.0 } == [NSRange(location: 0, length: 10)])
         // Loudness gate: a whisper-level clip is rejected, normal speech level passes.
         func clip(amplitude: Float) -> URL {
             let url = FileManager.default.temporaryDirectory.appendingPathComponent("level-\(amplitude).wav")

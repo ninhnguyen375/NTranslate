@@ -6,6 +6,8 @@ extension PopoverController {
     // ponytail: fixed combo, not in config/Settings; move to AppConfig if users want to rebind it.
     static let askWindowHotkey = AppConfig.Hotkey(key: "k", option: true, command: false, control: false, shift: false)
 
+    static let blankPanelHotkey = AppConfig.Hotkey(key: "D", option: true, command: false, control: false, shift: true)
+
     static func hotKeyModifiers(_ hotkey: AppConfig.Hotkey) -> UInt32 {
         var flags: UInt32 = 0
         if hotkey.option { flags |= UInt32(optionKey) }
@@ -38,6 +40,8 @@ extension PopoverController {
                 controller.perform(#selector(PopoverController.openReviewWindow), on: .main, with: nil, waitUntilDone: false)
             case .askWindow:
                 controller.perform(#selector(PopoverController.askHotKeyPressed), on: .main, with: nil, waitUntilDone: false)
+            case .blankPanel:
+                controller.perform(#selector(PopoverController.blankPanelHotKeyPressed), on: .main, with: nil, waitUntilDone: false)
             case nil: break
             }
             return noErr
@@ -56,6 +60,7 @@ extension PopoverController {
             (name: "OCR Translate", hotkey: config.ocrHotkey, id: 5),
             (name: "Study", hotkey: config.studyHotkey, id: 6),
             (name: "Ask in Window", hotkey: Self.askWindowHotkey, id: 7),
+            (name: "Blank Translate", hotkey: Self.blankPanelHotkey, id: 8),
         ])
         var failed: [String] = []
         for entry in register {
@@ -76,6 +81,12 @@ extension PopoverController {
         if !failed.isEmpty { notes.append("Failed to register: \(failed.joined(separator: ", "))") }
         if !skipped.isEmpty { notes.append("Duplicate hotkey ignored: \(skipped.joined(separator: ", "))") }
         if !notes.isEmpty { setStatus(notes.joined(separator: " · ")) }
+    }
+
+    /// Opens an empty translate panel ready for typing or dictation.
+    @objc func blankPanelHotKeyPressed() {
+        showEmptySelectionPanel(message: "Type or dictate (Option+K), then Translate.")
+        panel.makeFirstResponder(inputTextView)
     }
 
     @objc func hotKeyPressed() {

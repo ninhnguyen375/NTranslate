@@ -43,13 +43,15 @@ final class DictationRecorder {
 }
 
 extension Translator {
-    /// Default when Settings leaves "Speech-to-Text Model" empty; beat Whisper on accuracy in a 2026-09 test.
+    /// Default when Settings leaves "Pronunciation Model" empty; beat Whisper on accuracy in a 2026-09 test.
     static let transcriptionModel = "9r-gemini-low"
+    /// Default when Settings leaves "Dictation Model" empty.
+    static let dictationModel = "groq/whisper-large-v3"
     private var sttModel: String { config.transcriptionModel.isEmpty ? Self.transcriptionModel : config.transcriptionModel }
 
-    /// Sends the recording as `input_audio` to /v1/chat/completions and asks for a verbatim transcript.
+    /// Sends the recording to the OpenAI-compatible /v1/audio/transcriptions on the same host as `apiBaseURL`.
     func transcribe(fileURL: URL, completion: @escaping @Sendable (Result<String, Error>) -> Void) -> RequestHandle {
-        guard let url = URL(string: config.apiBaseURL), let audio = try? Data(contentsOf: fileURL) else {
+        guard var parts = URLComponents(string: config.apiBaseURL), let audio = try? Data(contentsOf: fileURL) else {
             completion(.failure(NSError(domain: "Dictation", code: 1, userInfo: [NSLocalizedDescriptionKey: "Recording unavailable"])))
             return RequestHandle()
         }
@@ -57,24 +59,30 @@ extension Translator {
             completion(.failure(quiet))
             return RequestHandle()
         }
-        let payload: [String: Any] = [
-            "model": sttModel,
-            "stream": false,
-            "messages": [[
-                "role": "user",
-                "content": [
-                    ["type": "text", "text": "Transcribe this audio verbatim. Output only the transcript."],
-                    ["type": "input_audio", "input_audio": ["data": audio.base64EncodedString(), "format": fileURL.pathExtension.lowercased()]]
-                ]
-            ]]
-        ]
+        // ponytail: assumes apiBaseURL ends in /v1/chat/completions (as documented in Settings).
+        parts.path = parts.path.replacingOccurrences(of: "chat/completions", with: "audio/transcriptions")
+        guard let url = parts.url else {
+            completion(.failure(NSError(domain: "Dictation", code: 1, userInfo: [NSLocalizedDescriptionKey: "Invalid API Base URL"])))
+            return RequestHandle()
+        }
+        let model = config.dictationModel.isEmpty ? Self.dictationModel : config.dictationModel
+        let boundary = "ntranslate-\(UUID().uuidString)"
+        var body = Data()
+        func field(_ name: String, _ value: String) {
+            body.append(Data("--\(boundary)\r\nContent-Disposition: form-data; name=\"\(name)\"\r\n\r\n\(value)\r\n".utf8))
+        }
+        field("model", model)
+        field("response_format", "json")
+        body.append(Data("--\(boundary)\r\nContent-Disposition: form-data; name=\"file\"; filename=\"\(fileURL.lastPathComponent)\"\r\nContent-Type: application/octet-stream\r\n\r\n".utf8))
+        body.append(audio)
+        body.append(Data("\r\n--\(boundary)--\r\n".utf8))
 
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
         req.timeoutInterval = Self.requestTimeoutInterval
-        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
         req.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-        req.httpBody = try? JSONSerialization.data(withJSONObject: payload)
+        req.httpBody = body
         let handle = RequestHandle()
         let task = URLSession.shared.dataTask(with: req) { data, response, error in
             handle.clear()
@@ -86,8 +94,7 @@ extension Translator {
                 return completion(.failure(Self.httpError(status: http.statusCode, body: data)))
             }
             let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-            let message = (json?["choices"] as? [[String: Any]])?.first?["message"] as? [String: Any]
-            guard let text = message?["content"] as? String else {
+            guard let text = json?["text"] as? String else {
                 return completion(.failure(NSError(domain: "Dictation", code: 2, userInfo: [NSLocalizedDescriptionKey: "Empty transcription"])))
             }
             completion(.success(text.trimmingCharacters(in: .whitespacesAndNewlines)))
@@ -118,6 +125,8 @@ extension Translator {
         let payload: [String: Any] = [
             "model": sttModel,
             "stream": false,
+            // Same clip, same score: sampling noise otherwise moves the score by 10-20 points.
+            "temperature": 0,
             "response_format": ["type": "json_object"],
             "messages": [
                 ["role": "system", "content": Self.pronunciationPrompt],

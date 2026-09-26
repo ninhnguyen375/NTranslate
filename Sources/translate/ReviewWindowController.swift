@@ -207,6 +207,7 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
         // field says attributes are its own. Without this the reading underlines vanish on click.
         sessionView.resultLabel.allowsEditingTextAttributes = true
         sessionView.onRegenerateCard = { [weak self] in self?.regenerateCurrentCard() }
+        sessionView.onRespeakCard = { [weak self] in self?.respeakCurrentCard() }
         imageFetcher.onImagesChanged = { [weak self] in
             guard let self else { return }
             self.sessionView.setImages(self.imageFetcher.loadedImages)
@@ -871,6 +872,7 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
             sessionView.resultLabel.isHidden = false
             // Old-format cards need regenerating most, so the button stays on the flat path too.
             sessionView.regenerateCardButton.isHidden = sessionView.onRegenerateCard == nil
+            sessionView.respeakCardButton.isHidden = sessionView.onRespeakCard == nil
         }
         sessionView.revealButton.isHidden = true
         // A card back for relearning offers its earlier grade on Enter; the buttons still override it.
@@ -1001,7 +1003,11 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
     /// learner to judge the same recall a second time. The three buttons stay live as an override.
     private func autoGrade(correct: Bool, nearMiss: Bool) {
         let elapsed = Date().timeIntervalSince(questionShownAt ?? Date())
-        let grade = ReviewPlanner.autoGrade(correct: correct, nearMiss: nearMiss, elapsed: elapsed)
+        var grade = ReviewPlanner.autoGrade(correct: correct, nearMiss: nearMiss, elapsed: elapsed)
+        // A relearning pass is a reminder: the first attempt's grade stands. The buttons still override.
+        if currentIndex < recordsToReview.count, let earlier = sessionGrades[recordsToReview[currentIndex].id] {
+            grade = earlier
+        }
         pendingAutoGrade = grade
         let name = ["Again", "Hard", "Easy"][grade.rawValue]
         let interval = currentIndex < recordsToReview.count
@@ -1961,6 +1967,14 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
     }
 
     private func speakCurrentSource() { handleSpeechPlay(speed: 1.0) }
+
+    /// Drops the stored clip so the next play asks the speech API again.
+    private func respeakCurrentCard() {
+        guard currentIndex < recordsToReview.count else { return }
+        stopAudio()
+        try? store.removeAudio(recordID: recordsToReview[currentIndex].id)
+        handleSpeechPlay(speed: 1.0)
+    }
 
     private func speakCurrentSourceSlow() {
         handleSpeechPlay(speed: config?.speechSlowRate ?? 0.4)

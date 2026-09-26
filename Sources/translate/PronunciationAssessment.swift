@@ -61,21 +61,25 @@ struct PronunciationResult: Sendable, Equatable {
     }
 }
 
-/// Word-to-character mapping for coloring the source line. The model may change case and drop
-/// punctuation, so each word is searched case-insensitively from where the previous one ended.
+/// Word-to-character mapping for coloring the source line. The model may change case, drop
+/// punctuation, and list errors out of order, so each word takes its first case-insensitive match
+/// that an earlier word has not already claimed.
 enum PronunciationHighlight {
     static func ranges(of words: [PronunciationResult.Word], in source: String) -> [(NSRange, PronunciationResult.Word)] {
-        let text = source as NSString
-        var cursor = 0
+        let whole = NSRange(location: 0, length: (source as NSString).length)
         var result: [(NSRange, PronunciationResult.Word)] = []
-        for word in words where !word.text.isEmpty {
+        for word in words {
+            // Trimming edge punctuation lets the closing \b match "idea." when the model reports the full sentence.
+            let text = word.text.trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
+            guard !text.isEmpty else { continue }
             // Word boundaries stop "he" from matching inside "the".
-            let pattern = "\\b" + NSRegularExpression.escapedPattern(for: word.text) + "\\b"
+            let pattern = "\\b" + NSRegularExpression.escapedPattern(for: text) + "\\b"
             guard let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive),
-                  let range = regex.firstMatch(in: source, range: NSRange(location: cursor, length: text.length - cursor))?.range
+                  let match = regex.matches(in: source, range: whole).first(where: { m in
+                      !result.contains { NSIntersectionRange($0.0, m.range).length > 0 }
+                  })
             else { continue }
-            result.append((range, word))
-            cursor = range.location + range.length
+            result.append((match.range, word))
         }
         return result
     }

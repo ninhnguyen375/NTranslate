@@ -127,11 +127,17 @@ struct DeckStatsCheck {
             DeckStats.streak(reviewDays: studiedToday, currentDate: now, calendar: calendar) == 4,
             "studying today must extend the streak"
         )
-        // A whole missed day ends it.
-        let gap = Set([day(-2), day(-3)].map { calendar.startOfDay(for: $0) })
+        // Two missed days in a row are forgiven.
+        let gap = Set([day(-3), day(-4), day(-7)].map { calendar.startOfDay(for: $0) })
         expect(
-            DeckStats.streak(reviewDays: gap, currentDate: now, calendar: calendar) == 0,
-            "a full missed day must end the streak"
+            DeckStats.streak(reviewDays: gap, currentDate: now, calendar: calendar) == 3,
+            "up to two missed days in a row must keep the streak"
+        )
+        // A third missed day in a row ends it.
+        let lost = Set([day(-4), day(-5)].map { calendar.startOfDay(for: $0) })
+        expect(
+            DeckStats.streak(reviewDays: lost, currentDate: now, calendar: calendar) == 0,
+            "three missed days in a row must end the streak"
         )
 
         let week = DeckStats.last7Days(

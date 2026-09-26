@@ -158,6 +158,10 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     let speakResultButton = PointerButton(frame: .zero)
     let speakResultSlowButton = PointerButton(frame: .zero)
     let retryButton = PointerButton(frame: .zero)
+    let respeakButton = PointerButton(frame: .zero)
+    let dictateSourceButton = PointerButton(frame: .zero)
+    let sourceDictation = DictationRecorder()
+    var sourceDictationRequest: RequestHandle?
     var splitDividerGradient: CAGradientLayer?
     var translator: Translator?
     var registeredHotKeys: [EventHotKeyRef] = []

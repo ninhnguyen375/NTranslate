@@ -125,8 +125,10 @@ struct AppConfig: Codable {
     var model: String
     /// Model for the Ask window only; empty falls back to `model`. Independent from Settings "Model".
     var askModel: String = ""
-    /// Model for dictation and LLM pronunciation scoring; empty falls back to `Translator.transcriptionModel`.
+    /// Model for LLM pronunciation scoring; empty falls back to `Translator.transcriptionModel`.
     var transcriptionModel: String = ""
+    /// Whisper-style model for dictation via /v1/audio/transcriptions; empty falls back to `Translator.dictationModel`.
+    var dictationModel: String = ""
     var sourceLang: String
     var targetLang: String
     var nativeLang: String
@@ -325,6 +327,7 @@ struct AppConfig: Codable {
         model = try container.decode(String.self, forKey: .model)
         askModel = try container.decodeIfPresent(String.self, forKey: .askModel) ?? ""
         transcriptionModel = try container.decodeIfPresent(String.self, forKey: .transcriptionModel) ?? ""
+        dictationModel = try container.decodeIfPresent(String.self, forKey: .dictationModel) ?? ""
         sourceLang = try container.decode(String.self, forKey: .sourceLang)
         targetLang = try container.decode(String.self, forKey: .targetLang)
         nativeLang = try container.decodeIfPresent(String.self, forKey: .nativeLang) ?? "Vietnamese"

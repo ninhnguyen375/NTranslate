@@ -83,6 +83,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
     private let modelField = NSTextField()
     private let askModelField = NSTextField()
     private let transcriptionModelField = NSTextField()
+    private let dictationModelField = NSTextField()
     private let themePopup = NSPopUpButton()
     private let sourceLanguagePopup = NSPopUpButton()
     private let targetLanguagePopup = NSPopUpButton()
@@ -461,7 +462,8 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
             ("API Key", apiKeyField),
             ("Model", modelField),
             ("Ask Model", askModelField),
-            ("Speech-to-Text Model", transcriptionModelField),
+            ("Dictation Model", dictationModelField),
+            ("Pronunciation Model", transcriptionModelField),
             ("Connection", testRow),
         ])
     }
@@ -744,6 +746,8 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         askModelField.placeholderString = "Same as Model"
         transcriptionModelField.stringValue = config.transcriptionModel
         transcriptionModelField.placeholderString = Translator.transcriptionModel
+        dictationModelField.stringValue = config.dictationModel
+        dictationModelField.placeholderString = Translator.dictationModel
         themePopup.selectItem(withTitle: config.theme.displayName)
         maxTranslateLengthField.integerValue = config.maxTranslateLength
         dailyReviewLimitField.integerValue = config.learning.dailyReviewLimit
@@ -888,6 +892,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         config.model = modelField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         config.askModel = askModelField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         config.transcriptionModel = transcriptionModelField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        config.dictationModel = dictationModelField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         let selectedThemeTitle = themePopup.titleOfSelectedItem ?? AppTheme.system.displayName
         config.theme = AppTheme.allCases.first(where: { $0.displayName == selectedThemeTitle }) ?? .system
         config.sourceLang = sourceLanguagePopup.titleOfSelectedItem ?? ""
@@ -994,6 +999,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         snapshot.model = modelField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         snapshot.askModel = askModelField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         snapshot.transcriptionModel = transcriptionModelField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        snapshot.dictationModel = dictationModelField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         let key = apiKeyField.stringValue
         let translator = Translator(config: snapshot, apiKey: key, speechAPIKey: speechAPIKeyField.stringValue)
         translator.testConnection { [weak self] result in

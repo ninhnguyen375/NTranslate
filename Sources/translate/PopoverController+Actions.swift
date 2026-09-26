@@ -224,6 +224,12 @@ extension PopoverController {
         }
     }
 
+    /// Drops the stored clips for this record and speaks the source again from the API.
+    @objc func respeak() {
+        clearAudioCache(recordID: currentRecordID)
+        speakInput()
+    }
+
     @objc func retryRequest() {
         clearAudioCache(recordID: currentRecordID)
         // An opened card (e.g. from Study) keeps its id and schedule; the lookup by source text

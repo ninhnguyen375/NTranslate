@@ -55,6 +55,8 @@ final class ReviewSessionView: NSView {
     let regenerateCardButton = SquareToolButton()
     let pronunciationLabel = NSTextField(labelWithString: "")
     var onRegenerateCard: (() -> Void)?
+    let respeakCardButton = SquareToolButton()
+    var onRespeakCard: (() -> Void)?
     /// Speak, slow, translate, regenerate. Sits beside the term on the front and moves into the
     /// card's headword row on the back, so one set of buttons keeps the speech state.
     let audioStack = NSStackView()
@@ -301,6 +303,8 @@ final class ReviewSessionView: NSView {
         ReviewControls.toolButton(regenerateCardButton, symbol: "arrow.clockwise", label: "Regenerate this card with the current Learn prompt", target: self, action: #selector(tapRegenerateCard))
         regenerateCardButton.contentTintColor = .controlAccentColor
         regenerateCardButton.isHidden = true
+        ReviewControls.toolButton(respeakCardButton, symbol: "speaker.badge.exclamationmark", label: "Fetch new speech for this card", target: self, action: #selector(tapRespeakCard))
+        respeakCardButton.isHidden = true
 
         for label in [speakShortcutLabel, speakSlowShortcutLabel, openTranslateShortcutLabel] {
             label.font = .systemFont(ofSize: 10, weight: .bold)
@@ -312,7 +316,8 @@ final class ReviewSessionView: NSView {
             Self.pair(speakSourceButton, speakShortcutLabel),
             Self.pair(speakSlowSourceButton, speakSlowShortcutLabel),
             Self.pair(openTranslateButton, openTranslateShortcutLabel),
-            regenerateCardButton
+            regenerateCardButton,
+            respeakCardButton
         ] {
             audioStack.addArrangedSubview(view)
         }
@@ -745,6 +750,7 @@ final class ReviewSessionView: NSView {
     @objc private func tapSpeakSlow() { delegate?.sessionView(self, didRequestSpeechSlow: true) }
     @objc private func tapTranslate() { delegate?.sessionViewDidRequestTranslate(self) }
     @objc private func tapRegenerateCard() { onRegenerateCard?() }
+    @objc private func tapRespeakCard() { onRespeakCard?() }
     @objc private func submitAnswer() { delegate?.sessionViewDidSubmitAnswer(self) }
     @objc private func chooseFirst() { delegate?.sessionView(self, didChooseAt: 0) }
     @objc private func chooseSecond() { delegate?.sessionView(self, didChooseAt: 1) }
@@ -773,6 +779,7 @@ final class ReviewSessionView: NSView {
         learnDetailView.applyChromeReserve(-14)
         learnCardView.showsHero = true
         regenerateCardButton.isHidden = onRegenerateCard == nil
+        respeakCardButton.isHidden = onRespeakCard == nil
         learnCardView.heroAccessory = audioStack
         sourceContainer.isHidden = true
         frontRow.isHidden = true
@@ -786,6 +793,7 @@ final class ReviewSessionView: NSView {
     func hideStructuredAnswer() {
         learnCardView.heroAccessory = nil
         regenerateCardButton.isHidden = true
+        respeakCardButton.isHidden = true
         restoreAudioStack()
         frontRow.isHidden = false
         answerRow.isHidden = true

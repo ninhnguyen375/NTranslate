@@ -39,7 +39,9 @@ extension PopoverController: NSTextFieldDelegate {
 
     /// Ask hotkey: opens the window; when Ask is focused it starts dictation, or cancels a running one.
     @objc func askHotKeyPressed() {
-        if let controller = _qaWindowController, controller.window?.isKeyWindow == true, NSApp.isActive {
+        if panel.isKeyWindow, NSApp.isActive {
+            toggleSourceDictation()
+        } else if let controller = _qaWindowController, controller.window?.isKeyWindow == true, NSApp.isActive {
             controller.dictationHotkeyPressed()
         } else {
             openQAWindow()

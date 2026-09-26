@@ -1,0 +1,10 @@
+[
+  {"target": "I think this is the best idea.", "spoken": "I sink this is the best idea.", "expect": ["think"]},
+  {"target": "I think this is the best idea.", "spoken": "I think this is the best idea.", "expect": []},
+  {"target": "She booked a ship to the island.", "spoken": "She book a sheep to the island.", "expect": ["booked", "ship"]},
+  {"target": "They walked three miles yesterday.", "spoken": "Dey walk tree miles yesterday.", "expect": ["they", "walked", "three"]},
+  {"target": "I want to get it next day, and pick it up.", "spoken": "I wanna get it nex day, an pick it up.", "expect": []},
+  {"target": "The rice is on the right side.", "spoken": "The lice is on the light side.", "expect": ["rice", "right"]},
+  {"target": "Please close the window before you leave.", "spoken": "Please close the window before you live.", "expect": ["leave"]},
+  {"target": "He fixed the car this morning.", "spoken": "He fix the car this morning.", "expect": ["fixed"]}
+]

@@ -95,8 +95,8 @@ struct DeckStats: Equatable, Sendable {
         return stats
     }
 
-    /// Counts back from today. A day that has not been studied yet does not break the streak,
-    /// so opening the app in the morning never shows the chain as already lost.
+    /// Counts studied days back from today. A day that has not been studied yet does not break
+    /// the streak, and up to two missed days in a row are forgiven; the third one ends it.
     static func streak(reviewDays: Set<Date>, currentDate: Date, calendar: Calendar) -> Int {
         var day = calendar.startOfDay(for: currentDate)
         if !reviewDays.contains(day) {
@@ -104,8 +104,14 @@ struct DeckStats: Equatable, Sendable {
             day = yesterday
         }
         var streak = 0
-        while reviewDays.contains(day) {
-            streak += 1
+        var missed = 0
+        while missed < 3 {
+            if reviewDays.contains(day) {
+                streak += 1
+                missed = 0
+            } else {
+                missed += 1
+            }
             guard let previous = calendar.date(byAdding: .day, value: -1, to: day) else { break }
             day = previous
         }

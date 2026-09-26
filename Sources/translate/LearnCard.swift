@@ -60,7 +60,8 @@ struct LearnCard: Equatable, Sendable {
         }
 
         /// The prompt with the bare "___" replaced by the answer's shape: first letter, then one
-        /// underscore per remaining character. A blank of unknown length is a guessing game.
+        /// underscore per remaining character, thin-spaced so the count reads at a glance. Words are
+        /// split by a wider gap. A blank of unknown length is a guessing game.
         var hintedPrompt: String {
             guard prompt.contains("___"), !answer.isEmpty else { return prompt }
             return prompt.replacingOccurrences(of: "___", with: Self.hint(for: answer))
@@ -70,8 +71,8 @@ struct LearnCard: Equatable, Sendable {
             answer.split(separator: " ").map { word -> String in
                 guard let first = word.first else { return "" }
                 let rest = word.dropFirst().map { $0.isLetter || $0.isNumber ? "_" : String($0) }
-                return ([String(first)] + rest).joined()
-            }.joined(separator: " ")
+                return ([String(first)] + rest).joined(separator: "\u{2009}")
+            }.joined(separator: "   ")
         }
     }
 

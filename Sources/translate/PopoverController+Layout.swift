@@ -130,7 +130,7 @@ extension PopoverController {
             headerLabel: sourceHeaderLabel,
             scrollView: inputScrollView,
             textView: inputTextView,
-            trailingIcons: [speakSourceButton, speakSourceSlowButton],
+            trailingIcons: [dictateSourceButton, speakSourceButton, speakSourceSlowButton],
             paneWidth: panes.left,
             bodyHeight: bodyHeight
         )
@@ -139,7 +139,7 @@ extension PopoverController {
             headerLabel: resultHeaderLabel,
             scrollView: textScrollView,
             textView: textView,
-            trailingIcons: [speakResultButton, speakResultSlowButton, retryButton, copyButton, saveWordButton],
+            trailingIcons: [speakResultButton, speakResultSlowButton, retryButton, respeakButton, copyButton, saveWordButton],
             paneWidth: panes.right,
             bodyHeight: bodyHeight,
             badgeView: learnBadgeView

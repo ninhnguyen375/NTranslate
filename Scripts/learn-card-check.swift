@@ -99,7 +99,7 @@ struct LearnCardCheck {
         expect(card.cloze?.answer == "abandon", "cloze answer parsed")
         expect(card.cloze?.prompt.contains("___") == true, "cloze prompt keeps its blank")
         expect(card.minedCloze(from: "They abandon the ___ quickly.") == nil, "a sentence that already has a blank is not mined")
-expect(card.cloze?.hintedPrompt.contains("a______") == true,
+expect(card.cloze?.hintedPrompt.contains("a\u{2009}_\u{2009}_\u{2009}_\u{2009}_\u{2009}_\u{2009}_") == true,
                "cloze blank becomes a first letter plus one underscore per remaining character")
         expect(card.synonyms.map(\.form) == ["desert", "leave"], "synonyms parsed from Từ đồng nghĩa")
         expect(card.antonyms.map(\.form) == ["keep"], "antonyms parsed from Từ trái nghĩa")
@@ -138,8 +138,8 @@ expect(card.cloze?.hintedPrompt.contains("a______") == true,
         expect(glossedRelated.antonyms.first?.gloss == "hạ cánh", "colon antonym keeps the gloss")
         expect(card.mnemonic.contains("a ban donner"),
                "Nhớ nhanh is kept as mnemonic, got \(card.mnemonic)")
-        expect(LearnCard.ClozeQuestion.hint(for: "give up") == "g___ u_", "multi-word hint keeps word boundaries")
-        expect(LearnCard.ClozeQuestion.hint(for: "well-known") == "w___-_____", "punctuation stays visible")
+        expect(LearnCard.ClozeQuestion.hint(for: "give up") == "g\u{2009}_\u{2009}_\u{2009}_   u\u{2009}_", "multi-word hint keeps word boundaries")
+        expect(LearnCard.ClozeQuestion.hint(for: "well-known") == "w\u{2009}_\u{2009}_\u{2009}_\u{2009}-\u{2009}_\u{2009}_\u{2009}_\u{2009}_\u{2009}_", "punctuation stays visible")
 
         let legacy = LearnCard.parse(legacyCard)
         expect(legacy.examples.count == 2, "pre-change card still yields examples")

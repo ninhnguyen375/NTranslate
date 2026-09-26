@@ -22,6 +22,7 @@ enum PopoverIntegrationPolicy {
         case ocr
         case study
         case askWindow
+        case blankPanel
     }
 
     static func hotkeyIntent(id: UInt32) -> HotkeyIntent? {
@@ -33,6 +34,7 @@ enum PopoverIntegrationPolicy {
         case 5: .ocr
         case 6: .study
         case 7: .askWindow
+        case 8: .blankPanel
         default: nil
         }
     }
