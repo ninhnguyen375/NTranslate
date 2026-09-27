@@ -92,6 +92,7 @@ extension PopoverController {
         }
         setResultText(PopoverFeedback.learning)
         reflowLayout()
+        if let imageTerm = LearnRelatedImage.selectionTerm(text) { learnRelatedImageStrip.refresh(term: imageTerm, rewriteSource: text) }
         // The source is known now, so its speech fetches alongside the model call.
         prefetchSpeech(sourceSpeechIdentity(recordID: nil), translationGeneration: generation)
         mainRequest = translator.learn(text, sourceLang: pair.source, targetLang: pair.target, onPartial: { [weak self] partial in

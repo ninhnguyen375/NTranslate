@@ -50,6 +50,7 @@ extension PopoverController {
             showEmptySelectionPanel(message: PopoverFeedback.accessibilityRequired)
             return
         }
+        translator?.prewarm()
         previousApp = NSWorkspace.shared.frontmostApplication
         let pointer = NSEvent.mouseLocation
         if !panel.isVisible {
@@ -235,17 +236,13 @@ extension PopoverController {
         ) {
             prefetchSpeech(sourceSpeechIdentity(recordID: nil), translationGeneration: generation)
         }
-        // Recent same-pair translations keep terminology and tone consistent across a document.
-        let context = historyStore.recentContext(
-            sourceLanguage: effectiveSourceLanguage(for: text),
-            targetLanguage: pair.target,
-            excludingText: text
-        ).reversed().map { ContextPair(source: $0.sourceText, target: $0.resultText) }
+        let requestSource = pair.source == LanguageDetector.autoDetect
+            ? LanguageDetector.confidentSourceLanguage(text, target: pair.target, candidates: config.languages) ?? pair.source
+            : pair.source
         mainRequest = translator.translate(
             text,
-            sourceLang: pair.source,
+            sourceLang: requestSource,
             targetLang: pair.target,
-            context: context,
             onPartial: { [weak self] partial in
                 Task { @MainActor in
                     self?.appendStreamedResult(partial, generation: generation, scope: .main)

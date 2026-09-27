@@ -6,6 +6,9 @@ import Foundation
 final class DictationRecorder {
     private var recorder: AVAudioRecorder?
     private var url: URL?
+    private var silenceTimer: Timer?
+    /// Set before `start` to stop hands-free: fires once speech is followed by ~1.2s of silence.
+    var onSilence: (() -> Void)?
 
     var isRecording: Bool { recorder?.isRecording ?? false }
 
@@ -28,17 +31,69 @@ final class DictationRecorder {
                 }
                 self.recorder = try? AVAudioRecorder(url: url, settings: settings)
                 self.url = url
-                completion(self.recorder?.record() ?? false)
+                let started = self.recorder?.record() ?? false
+                if started, self.onSilence != nil { self.watchSilence() }
+                completion(started)
             }
         }
     }
 
     /// Stops and returns the recorded file, or nil when nothing was recorded.
     func stop() -> URL? {
+        silenceTimer?.invalidate()
+        silenceTimer = nil
         guard let recorder else { return nil }
         recorder.stop()
         self.recorder = nil
         return url
+    }
+
+    // ponytail: thresholds relative to the room's noise floor, since mic gain varies a lot between setups.
+    private func watchSilence() {
+        recorder?.isMeteringEnabled = true
+        var smoothed: Float?
+        var floor: Float = 0
+        var heardSpeech = false
+        var quietTicks = 0
+        var ticks = 0
+        silenceTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, let recorder = self.recorder else { return }
+                recorder.updateMeters()
+                let raw = recorder.averagePower(forChannel: 0)
+                // The mic reads near -50 dB while warming up; seeding the floor there hides all later silence.
+                ticks += 1
+                if ticks <= 3 { return }
+                let level = smoothed.map { $0 * 0.5 + raw * 0.5 } ?? raw
+                smoothed = level
+                floor = min(floor, level)
+                // With macOS voice processing the gaps read as digital silence, so the floor sinks to -160;
+                // absolute limits keep stray clicks from counting as speech there.
+                if level > max(floor + 10, -45) { heardSpeech = true; quietTicks = 0 }
+                else if heardSpeech, level < max(floor + 8, -50) { quietTicks += 1 } else { quietTicks = 0 }
+                if quietTicks >= 12 { self.onSilence?() }
+            }
+        }
+    }
+
+    /// Scales a 16-bit PCM WAV so its peak sits near full scale; quiet mics become audible on replay.
+    static func normalizedCopy(of url: URL) -> URL? {
+        guard let input = try? AVAudioFile(forReading: url),
+              let buffer = AVAudioPCMBuffer(pcmFormat: input.processingFormat, frameCapacity: AVAudioFrameCount(input.length)),
+              (try? input.read(into: buffer)) != nil,
+              let samples = buffer.floatChannelData?[0] else { return nil }
+        let count = Int(buffer.frameLength)
+        var peak: Float = 0
+        for i in 0..<count { peak = max(peak, abs(samples[i])) }
+        if peak > 0 {
+            let gain = min(0.95 / peak, 20)
+            for i in 0..<count { samples[i] *= gain }
+        }
+        let out = FileManager.default.temporaryDirectory.appendingPathComponent("ntranslate-reading-\(UUID().uuidString).wav")
+        guard let file = try? AVAudioFile(forWriting: out, settings: input.fileFormat.settings,
+                                           commonFormat: input.processingFormat.commonFormat, interleaved: input.processingFormat.isInterleaved),
+              (try? file.write(from: buffer)) != nil else { return nil }
+        return out
     }
 }
 

@@ -78,6 +78,30 @@ enum LanguageDetector {
         return candidates.first { $0 != autoDetect && $0.caseInsensitiveCompare(display) == .orderedSame }
     }
 
+    /// Source language to send instead of Auto when the recognizer is sure enough. A concrete
+    /// source lets the model skip the `<source_lang>` tag, so the first visible words stream
+    /// sooner. Nil keeps Auto: short text, low confidence, a language outside `candidates`, or
+    /// one equal to `target` (the model then has to decide what to do with it).
+    static func confidentSourceLanguage(
+        _ text: String,
+        target: String,
+        candidates: [String] = defaultLanguages,
+        minConfidence: Double = 0.9,
+        minLength: Int = 20
+    ) -> String? {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.count >= minLength else { return nil }
+        let recognizer = NLLanguageRecognizer()
+        recognizer.processString(trimmed)
+        guard let (language, confidence) = recognizer.languageHypotheses(withMaximum: 1).first,
+              confidence >= minConfidence,
+              let display = Locale(identifier: "en_US").localizedString(forLanguageCode: language.rawValue),
+              let match = canonicalLanguage(display, supportedLanguages: candidates),
+              match != target
+        else { return nil }
+        return match
+    }
+
     static func canonicalLanguage(_ candidate: String, supportedLanguages: [String]) -> String? {
         let trimmed = candidate.trimmingCharacters(in: .whitespacesAndNewlines)
         return supportedLanguages.first {

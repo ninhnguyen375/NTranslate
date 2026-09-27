@@ -154,13 +154,18 @@ final class ReadingChatView: NSStackView {
             recordingBubble = nil
             active.setRecording(.scoring)
             // The recorder reuses one file, so each line keeps its own copy for replay.
-            let copy = FileManager.default.temporaryDirectory.appendingPathComponent("ntranslate-reading-\(UUID().uuidString).wav")
-            if (try? FileManager.default.copyItem(at: url, to: copy)) != nil { active.setRecordingURL(copy) }
+            // Boosted for replay only; scoring gets the raw file.
+            if let copy = DictationRecorder.normalizedCopy(of: url) { active.setRecordingURL(copy) }
             onAssess?(active.source, url) { [weak active] result in active?.showAssessment(result) }
             return
         }
         player?.stop()
         onWillRecord?()
+        // Finishing the line sends it for scoring without a second click.
+        recorder.onSilence = { [weak self, weak bubble] in
+            guard let self, let bubble, self.recordingBubble === bubble else { return }
+            self.toggleRecording(bubble)
+        }
         recorder.start(wav: true) { [weak self, weak bubble] started in
             guard let bubble else { return }
             if started {

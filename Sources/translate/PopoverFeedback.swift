@@ -96,20 +96,6 @@ enum PopoverFeedback {
         return raw
     }
 
-    /// Tooltip body for the context indicator: one `source → target` line per reference pair, each
-    /// side clipped so a long paragraph can't blow the tooltip up.
-    static func contextTooltip(_ pairs: [(source: String, target: String)], sideLimit: Int = 60) -> String? {
-        guard !pairs.isEmpty else { return nil }
-        let lines = pairs.map { "• \(clip($0.source, sideLimit)) → \(clip($0.target, sideLimit))" }
-        return "Context sent with Translate (\(pairs.count)):\n" + lines.joined(separator: "\n")
-    }
-
-    private static func clip(_ text: String, _ limit: Int) -> String {
-        let flat = text.trimmingCharacters(in: .whitespacesAndNewlines)
-            .replacingOccurrences(of: "\n", with: " ")
-        return flat.count <= limit ? flat : String(flat.prefix(limit)) + "…"
-    }
-
     static func accessibilityFallbackNote(source: TranslatableTextSource) -> String {
         let sourceName = source == .simulatedCopy ? "simulated copy" : "clipboard"
         return "Used \(sourceName) (selection read failed)"

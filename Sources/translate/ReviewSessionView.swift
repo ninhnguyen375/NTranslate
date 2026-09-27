@@ -86,6 +86,9 @@ final class ReviewSessionView: NSView {
     let choiceStack = NSStackView()
     let firstChoiceButton = NSButton()
     let secondChoiceButton = NSButton()
+    /// The glass bezel keeps reporting the empty title's width after a retitle, so the stack sized
+    /// to its 140pt floor and truncated both choices. Sized from the text instead.
+    private lazy var choiceWidth = firstChoiceButton.widthAnchor.constraint(greaterThanOrEqualToConstant: 0)
     let sourceContainer = NSStackView()
     let scrollView = NSScrollView()
     let documentView = ReviewFlippedView()
@@ -371,6 +374,7 @@ final class ReviewSessionView: NSView {
         choiceStack.distribution = .fillEqually
         choiceStack.addArrangedSubview(firstChoiceButton)
         choiceStack.addArrangedSubview(secondChoiceButton)
+        choiceWidth.isActive = true
         choiceStack.isHidden = true
         choiceStack.translatesAutoresizingMaskIntoConstraints = false
         choiceStack.widthAnchor.constraint(greaterThanOrEqualToConstant: 140).isActive = true
@@ -752,6 +756,15 @@ final class ReviewSessionView: NSView {
     @objc private func tapRegenerateCard() { onRegenerateCard?() }
     @objc private func tapRespeakCard() { onRespeakCard?() }
     @objc private func submitAnswer() { delegate?.sessionViewDidSubmitAnswer(self) }
+    func setChoices(_ first: String, _ second: String) {
+        firstChoiceButton.title = "  " + first
+        secondChoiceButton.title = "  " + second
+        let font = firstChoiceButton.font ?? .systemFont(ofSize: 13, weight: .medium)
+        let text = [first, second].map { ("  " + $0 as NSString).size(withAttributes: [.font: font]).width }.max() ?? 0
+        // ponytail: fixed allowance for the symbol and bezel padding, measured on the glass bezel.
+        choiceWidth.constant = ceil(text) + 56
+    }
+
     @objc private func chooseFirst() { delegate?.sessionView(self, didChooseAt: 0) }
     @objc private func chooseSecond() { delegate?.sessionView(self, didChooseAt: 1) }
     @objc private func readingModeChanged() {

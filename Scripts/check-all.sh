@@ -42,6 +42,7 @@ checks=(
   "layout-measure-cache|$S/PopoverLayoutMath.swift"
   "vocab-pack|$S/VocabPack.swift Scripts/VocabWork.swift"
   "vocab-discovery|$S/VocabPack.swift $S/WeaveCache.swift $S/VocabDiscovery.swift"
+  "language-detector|$S/LanguageDetector.swift"
   "learn-card|$S/LearnCard.swift"
   "learn-badge|$S/VocabPack.swift $S/WeaveCache.swift $S/VocabDiscovery.swift $S/LearnBadgeView.swift"
   "review-planner|$S/LearnCard.swift $S/ReviewPlanner.swift"

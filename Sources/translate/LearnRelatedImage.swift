@@ -80,6 +80,25 @@ enum LearnRelatedImage {
         }
     }
 
+    /// Short selections are close enough to the headword to search before the card arrives.
+    /// Covers most idioms and short proverbs ("don't count your chickens before they hatch" is 7).
+    static let prefetchWordLimit = 8
+
+    /// The selection itself when it is short enough to search, trimmed of stray quotes and dots.
+    static func selectionTerm(_ selection: String) -> String? {
+        let term = selection.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines.union(.punctuationCharacters))
+        let words = term.split(whereSeparator: \.isWhitespace)
+        return !words.isEmpty && words.count <= prefetchWordLimit ? term : nil
+    }
+
+    /// Image search term: a short selection wins over the headword, so the lookup started
+    /// before the card arrives is the one the card keeps.
+    static func imageSeed(card: LearnCard, selection: String) -> String {
+        if let term = selectionTerm(selection) { return term }
+        let headword = searchTerm(from: card)
+        return headword.isEmpty ? selection : headword
+    }
+
     static func needsRefetch(seed: String, resolved: String) -> Bool {
         LearnCard.normalizeAnswer(seed) != LearnCard.normalizeAnswer(resolved)
     }
@@ -165,20 +184,28 @@ enum LearnRelatedImage {
         imageURLs(from: data, limit: 1).first
     }
 
+    /// Downloads all URLs in parallel; results keep the input order, failures are dropped.
+    /// Prefers the URL cache so a repeat lookup shows its thumbnails without the network.
     static func fetchImageData(from urls: [URL], completion: @escaping @Sendable ([Data]) -> Void) {
-        fetchImageData(urls, acc: [], completion: completion)
-    }
-
-    private static func fetchImageData(_ urls: [URL], acc: [Data], completion: @escaping @Sendable ([Data]) -> Void) {
-        guard let url = urls.first else {
-            completion(acc)
-            return
+        let lock = NSLock()
+        nonisolated(unsafe) var slots = [Data?](repeating: nil, count: urls.count)
+        let group = DispatchGroup()
+        for (index, url) in urls.enumerated() {
+            group.enter()
+            let request = URLRequest(url: url, cachePolicy: .returnCacheDataElseLoad, timeoutInterval: 8)
+            URLSession.shared.dataTask(with: request) { data, _, _ in
+                lock.lock()
+                if let data, !data.isEmpty { slots[index] = data }
+                lock.unlock()
+                group.leave()
+            }.resume()
         }
-        URLSession.shared.dataTask(with: url) { data, _, _ in
-            var next = acc
-            if let data, !data.isEmpty { next.append(data) }
-            fetchImageData(Array(urls.dropFirst()), acc: next, completion: completion)
-        }.resume()
+        group.notify(queue: .global()) {
+            lock.lock()
+            let result = slots.compactMap { $0 }
+            lock.unlock()
+            completion(result)
+        }
     }
 
     static func fittedSize(of image: NSImage, maxWidth: CGFloat, maxHeight: CGFloat) -> NSSize {
@@ -266,6 +293,8 @@ final class LearnRelatedImageStrip: NSView {
     private let buttons: [NSButton]
     private(set) var loadedImages: [NSImage] = []
     private var term = ""
+    /// The seed query's images are loading or shown, so a rewrite that returns the seed can keep them.
+    private var seedFetched = false
     private var resolvedQueries: [String] = []
     private var openedIndex = 0
     private var seedQuery = ""
@@ -308,6 +337,9 @@ final class LearnRelatedImageStrip: NSView {
         tasks.forEach { $0.cancel() }
     }
 
+    /// Cached sense queries first (no model). Otherwise wait for the model's sense queries:
+    /// showing the raw term first only to replace it made the tiles jump. The raw term is
+    /// searched only when no rewriter is bound.
     func refresh(term: String, rewriteSource: String? = nil) {
         let key = LearnCard.normalizeAnswer(term)
         guard !key.isEmpty else {
@@ -321,14 +353,20 @@ final class LearnRelatedImageStrip: NSView {
         self.term = key
         seedQuery = LearnRelatedImage.searchQuery(for: term)
         resolvedQueries = [seedQuery]
+        seedFetched = false
         tasks.forEach { $0.cancel() }
         rewriteCancel?()
+        rewriteCancel = nil
         apply(images: [])
-        let rewrite = LearnRelatedImage.rewriteSource(term: seedQuery, sourceText: rewriteSource ?? "")
-        if let query = LearnRelatedImage.thumbnailQuery(seed: seedQuery, hasRewriter: onResolveQuery != nil, rewrite: nil) {
-            fetchImages(queries: [query], token: token)
+        if let cached = (UserDefaults.standard.dictionary(forKey: Self.rewriteCacheKey) as? [String: String])?[key] {
+            applyRewrite(.success(cached), token: token)
+            return
         }
-        startRewrite(source: rewrite, token: token)
+        if onResolveQuery == nil {
+            seedFetched = true
+            fetchImages(queries: [seedQuery], token: token)
+        }
+        startRewrite(source: LearnRelatedImage.rewriteSource(term: seedQuery, sourceText: rewriteSource ?? ""), token: token)
     }
 
     func clear() {
@@ -339,6 +377,7 @@ final class LearnRelatedImageStrip: NSView {
         rewriteCancel?()
         rewriteCancel = nil
         term = ""
+        seedFetched = false
         seedQuery = ""
         resolvedQueries = []
         apply(images: [])
@@ -348,12 +387,10 @@ final class LearnRelatedImageStrip: NSView {
 
     private func startRewrite(source: String, token: Int) {
         guard let onResolveQuery else { return }
-        let cacheKey = LearnCard.normalizeAnswer(source)
-        // The model rewrite is stable per source, so later refreshes go straight to DuckDuckGo.
-        if let cached = (UserDefaults.standard.dictionary(forKey: Self.rewriteCacheKey) as? [String: String])?[cacheKey] {
-            applyRewrite(.success(cached), token: token)
-            return
-        }
+        // Keyed by the term, not the rewrite source: the source carries the card's meanings, which
+        // are still partial when a streaming card triggers this, and the encounter sentence, which
+        // changes every time the word is met. The term makes a repeat lookup skip the model.
+        let cacheKey = term
         rewriteCancel = onResolveQuery(source) { [weak self] result in
             Task { @MainActor in
                 if case .success(let query) = result,
@@ -379,7 +416,9 @@ final class LearnRelatedImageStrip: NSView {
                 return
             }
         }
-        guard let query = LearnRelatedImage.thumbnailQuery(seed: seedQuery, hasRewriter: true, rewrite: result) else { return }
+        guard let query = LearnRelatedImage.thumbnailQuery(seed: seedQuery, hasRewriter: true, rewrite: result),
+              !seedFetched || LearnRelatedImage.needsRefetch(seed: seedQuery, resolved: query)
+        else { return }
         fetchImages(queries: [query], token: token)
     }
 
@@ -392,6 +431,15 @@ final class LearnRelatedImageStrip: NSView {
         guard !queries.isEmpty else { return }
         resolvedQueries = queries
         tasks.forEach { $0.cancel() }
+        tasks = []
+        let cacheKey = queries.map(LearnCard.normalizeAnswer).joined(separator: "\n")
+        if let cached = (UserDefaults.standard.dictionary(forKey: Self.urlCacheKey) as? [String: [String]])?[cacheKey] {
+            let picks = cached.compactMap(URL.init(string:))
+            if !picks.isEmpty {
+                loadPicks(picks, token: token, fetchToken: fetchToken)
+                return
+            }
+        }
         let perQuery = queries.count == 1 ? LearnRelatedImage.thumbnailCount : 2
         let lock = NSLock()
         nonisolated(unsafe) var candidates = [[URL]](repeating: [], count: queries.count)
@@ -412,12 +460,26 @@ final class LearnRelatedImageStrip: NSView {
             let picks = queries.count == 1 ? (candidates.first ?? []) : LearnRelatedImage.distinctPicks(candidates)
             lock.unlock()
             guard !picks.isEmpty else { return }
-            LearnRelatedImage.fetchImageData(from: picks) { [weak self] payloads in
-                Task { @MainActor in
-                    guard let self, token == self.generation, fetchToken == self.fetchGeneration else { return }
-                    self.apply(images: payloads.compactMap { NSImage(data: $0) })
-                    self.onImagesChanged?()
-                }
+            var cache = UserDefaults.standard.dictionary(forKey: Self.urlCacheKey) as? [String: [String]] ?? [:]
+            // ponytail: wipe when full, same as the rewrite cache.
+            if cache.count >= 2000 { cache.removeAll() }
+            cache[cacheKey] = picks.map(\.absoluteString)
+            UserDefaults.standard.set(cache, forKey: Self.urlCacheKey)
+            self?.loadPicks(picks, token: token, fetchToken: fetchToken)
+        }
+    }
+
+    private static let urlCacheKey = "relatedImageURLCache"
+
+    private func loadPicks(_ picks: [URL], token: Int, fetchToken: Int) {
+        LearnRelatedImage.fetchImageData(from: picks) { [weak self] payloads in
+            Task { @MainActor in
+                guard let self, token == self.generation, fetchToken == self.fetchGeneration else { return }
+                let images = payloads.compactMap { NSImage(data: $0) }
+                // A dead cached URL leaves nothing to show: skip rather than blank the strip.
+                guard !images.isEmpty else { return }
+                self.apply(images: images)
+                self.onImagesChanged?()
             }
         }
     }

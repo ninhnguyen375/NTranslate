@@ -11,12 +11,6 @@ struct QATurn: Equatable, Sendable {
     let answer: String
 }
 
-/// One earlier translation handed to the model as reference context.
-struct ContextPair: Equatable, Sendable {
-    let source: String
-    let target: String
-}
-
 /// One outstanding request. Each caller keeps its own handle, so the main pane, the subtranslate
 /// pane and Q&A can be in flight at the same time and cancel only their own work.
 final class RequestHandle: @unchecked Sendable {
@@ -71,7 +65,7 @@ final class Translator: @unchecked Sendable {
     }
 
     private enum RequestMode {
-        case translate(sourceLang: String, targetLang: String, context: [ContextPair], parentContext: String?)
+        case translate(sourceLang: String, targetLang: String, parentContext: String?)
         case learn(sourceLang: String, targetLang: String)
         case proofread(lang: String)
         case ask(question: String, sourceText: String, translatedText: String, sourceLang: String, targetLang: String, history: [QATurn], parentContext: String?)
@@ -84,6 +78,16 @@ final class Translator: @unchecked Sendable {
         self.config = config
         self.apiKey = apiKey
         self.speechAPIKey = speechAPIKey
+    }
+
+    /// Opens the TCP/TLS connection to the API host while the hotkey is still reading the
+    /// selection, so the real request goes out on a warm connection. The response is ignored.
+    func prewarm() {
+        guard let url = URL(string: config.apiBaseURL) else { return }
+        var req = URLRequest(url: url)
+        req.httpMethod = "HEAD"
+        req.timeoutInterval = 5
+        StreamingHTTP.session.dataTask(with: req) { _, _, _ in }.resume()
     }
 
     private func renderSystemPrompt(sourceLang: String, targetLang: String) -> String {
@@ -145,36 +149,8 @@ final class Translator: @unchecked Sendable {
             .replacingOccurrences(of: "{{config.targetLang}}", with: targetLang)
     }
 
-    /// Each side is capped so a long history can't crowd out the actual instructions.
-    static let contextEntryCharacterLimit = 200
-
-    /// Reference block appended to the translate system prompt. Empty when there is no history.
-    static func contextBlock(_ pairs: [ContextPair]) -> String {
-        guard !pairs.isEmpty else { return "" }
-        let lines = pairs.enumerated().map { index, pair in
-            "\(index + 1). \(truncate(pair.source)) => \(truncate(pair.target))"
-        }.joined(separator: "\n")
-        return """
-
-
-        <translation-context>
-        \(lines)
-        </translation-context>
-
-        The block above lists earlier translations from this same session, oldest meaning last. It is REFERENCE ONLY — it is not part of the text to translate.
-        Use it to keep terminology, named entities, register, tone, and forms of address consistent with those earlier translations, so this translation reads naturally as a continuation of the same material.
-        Never translate, quote, summarize, or otherwise include any content from this block in your output. Translate only the text inside <selected-text>. If the context conflicts with the selected text, the selected text wins.
-        """
-    }
-
-    private static func truncate(_ text: String) -> String {
-        let flattened = text
-            .components(separatedBy: .newlines)
-            .joined(separator: " ")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        guard flattened.count > contextEntryCharacterLimit else { return flattened }
-        return flattened.prefix(contextEntryCharacterLimit) + "…"
-    }
+    /// A short search query needs no reasoning, so the lite model is enough and answers sooner.
+    static let imageQueryModel = "9r-gemini-lite"
 
     static let imageSearchPrompt = "Return only a short, concrete English query for Google Images. No quotes, no markdown, no filler."
     static let imageSensesPrompt = "Return exactly 2 lines. Each line is a short, concrete English query for Google Images that shows a DIFFERENT meaning of the word or phrase; follow the listed meanings when given. If it has only one meaning, return 2 queries showing different concrete uses of it. One query per line. No numbering, no quotes, no markdown, no filler."
@@ -241,10 +217,9 @@ final class Translator: @unchecked Sendable {
         switch mode {
         case let .proofread(lang):
             systemPrompt = renderGrammarPrompt(lang: lang)
-        case let .translate(sourceLang, targetLang, context, parentContext):
+        case let .translate(sourceLang, targetLang, parentContext):
             systemPrompt = renderSystemPrompt(sourceLang: sourceLang, targetLang: targetLang)
                 + (sourceLang == LanguageDetector.autoDetect ? Self.autoDetectResponseContract(languages: config.languages) : "")
-                + Self.contextBlock(context)
                 + Self.parentContextBlock(parentContext)
         case .imageSearch:
             systemPrompt = Self.imageSearchPrompt
@@ -307,7 +282,7 @@ final class Translator: @unchecked Sendable {
         completion: @escaping @Sendable (Result<String, Error>) -> Void
     ) -> RequestHandle {
         let handle = RequestHandle()
-        let task = URLSession.shared.dataTask(with: req) { data, response, error in
+        let task = StreamingHTTP.session.dataTask(with: req) { data, response, error in
             handle.clear()
             Self.finishHTTP(data: data, response: response, error: error, completion: completion)
         }
@@ -594,7 +569,6 @@ final class Translator: @unchecked Sendable {
         _ text: String,
         sourceLang: String,
         targetLang: String,
-        context: [ContextPair] = [],
         parentContext: String? = nil,
         stream: Bool = true,
         onPartial: (@Sendable (String) -> Void)? = nil,
@@ -611,7 +585,7 @@ final class Translator: @unchecked Sendable {
         }
         return request(
             text,
-            mode: .translate(sourceLang: sourceLang, targetLang: targetLang, context: context, parentContext: parentContext),
+            mode: .translate(sourceLang: sourceLang, targetLang: targetLang, parentContext: parentContext),
             stream: stream,
             onPartial: streamPartial
         ) { [config] result in
@@ -782,13 +756,13 @@ final class Translator: @unchecked Sendable {
 
     @discardableResult
     func imageSearchQuery(_ text: String, completion: @escaping @Sendable (Result<String, Error>) -> Void) -> RequestHandle {
-        request(text, mode: .imageSearch, stream: false, completion: completion)
+        request(text, mode: .imageSearch, stream: false, model: Self.imageQueryModel, completion: completion)
     }
 
     /// One image query per line, each for a different sense. Feeds the Learn thumbnail strip.
     @discardableResult
     func imageSenseQueries(_ text: String, completion: @escaping @Sendable (Result<String, Error>) -> Void) -> RequestHandle {
-        request(text, mode: .imageSenses, stream: false, completion: completion)
+        request(text, mode: .imageSenses, stream: false, model: Self.imageQueryModel, completion: completion)
     }
 
     func testConnection(completion: @escaping @Sendable (Result<Void, Error>) -> Void) {
@@ -884,7 +858,7 @@ final class Translator: @unchecked Sendable {
         }
         req.httpBody = try? JSONSerialization.data(withJSONObject: jsonPayload)
         let handle = RequestHandle()
-        let task = URLSession.shared.dataTask(with: req) { data, response, error in
+        let task = StreamingHTTP.session.dataTask(with: req) { data, response, error in
             handle.clear()
             if let error { completion(.failure(error)); return }
             guard let http = response as? HTTPURLResponse, let data else {

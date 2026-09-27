@@ -265,9 +265,11 @@ extension PopoverController {
             let card = LearnCard.parse(raw)
             section.learnCardView.applyUsage(from: raw, live: true)
             section.learnCardView.display(card)
-            let imageTerm = LearnRelatedImage.searchTerm(from: card)
-            let seed = imageTerm.isEmpty ? section.sourceText : imageTerm
-            section.relatedImageStrip.refresh(term: seed, rewriteSource: LearnRelatedImage.senseSource(card: card, sourceText: section.sourceText))
+            let seed = LearnRelatedImage.imageSeed(card: card, selection: section.sourceText)
+            section.relatedImageStrip.refresh(
+                term: seed,
+                rewriteSource: LearnRelatedImage.senseSource(card: card, sourceText: section.sourceText)
+            )
         } else if section.isShowingStructuredLearnCard {
             section.learnCardView.resetScrollState()
             section.learnCardView.applyUsage(from: "", live: false)
@@ -451,6 +453,7 @@ extension PopoverController {
         }
         setSubResultText(section, waitingText)
         reflowLayout()
+        if mode == .learn, let imageTerm = LearnRelatedImage.selectionTerm(text) { section.relatedImageStrip.refresh(term: imageTerm, rewriteSource: text) }
         // The sub source is known now, so its speech fetches alongside the model call.
         prefetchSpeech(subSpeechIdentity(kind: .source), translationGeneration: nil)
 
@@ -500,16 +503,10 @@ extension PopoverController {
         } else if mode == .learn {
             subRequest = translator.learn(text, sourceLang: displaySource, targetLang: pair.target, onPartial: onPartial, completion: handler)
         } else {
-            let context = historyStore.recentContext(
-                sourceLanguage: displaySource,
-                targetLanguage: pair.target,
-                excludingText: text
-            ).reversed().map { ContextPair(source: $0.sourceText, target: $0.resultText) }
             subRequest = translator.translate(
                 text,
                 sourceLang: displaySource,
                 targetLang: pair.target,
-                context: context,
                 parentContext: inputTextView.string,
                 onPartial: onPartial
             ) { result in
@@ -923,12 +920,7 @@ extension PopoverController {
         }
 
         setFloatingResult(PopoverFeedback.translating)
-        let context = historyStore.recentContext(
-            sourceLanguage: displaySource,
-            targetLanguage: target,
-            excludingText: text
-        ).reversed().map { ContextPair(source: $0.sourceText, target: $0.resultText) }
-        translator.translate(text, sourceLang: displaySource, targetLang: target, context: context, parentContext: inputTextView.string, stream: false) { [weak self] result in
+        translator.translate(text, sourceLang: displaySource, targetLang: target, parentContext: inputTextView.string, stream: false) { [weak self] result in
             Task { @MainActor in
                 guard let self, self.floatingRequestGeneration == generation,
                       self.currentFloatingSelectedText == text else { return }

@@ -18,13 +18,19 @@ extension PopoverController {
         let font = NSFont.systemFont(ofSize: ChromeLayout.bodyFontSize)
         let wasBadgeHidden = learnBadgeView.isHidden
         let textToDisplay = learnBadgeView.apply(to: value, live: resolved != .error)
-        // Placeholder/error strings are literal; only real model output gets markdown.
-        let display: NSAttributedString = resolved == .normal
-            ? .markdownDisplay(textToDisplay, font: font, color: color)
-            : .plainDisplay(textToDisplay, font: font, color: color)
-        textView.textStorage?.setAttributedString(display)
+        // While a Learn card streams, the plain text view sits hidden behind it; the final
+        // non-loading call still fills it.
+        let showCard = LearnCard.shouldPresentStructured(value, isError: resolved == .error)
+        let textViewHidden = resolved == .loading && showCard && isShowingStructuredLearnCard
+        if !textViewHidden {
+            // Placeholder/error strings are literal; only real model output gets markdown.
+            let display: NSAttributedString = resolved == .normal
+                ? .markdownDisplay(textToDisplay, font: font, color: color)
+                : .plainDisplay(textToDisplay, font: font, color: color)
+            textView.textStorage?.setAttributedString(display)
+        }
         textView.toolTip = nil
-        applyStructuredLearnCard(raw: value, style: resolved)
+        applyStructuredLearnCard(raw: value, style: resolved, show: showCard)
         if wasBadgeHidden != learnBadgeView.isHidden, panel.contentView != nil {
             reflowLayout()
         }
@@ -40,8 +46,7 @@ extension PopoverController {
     }
 
     /// Hiện thẻ có cấu trúc khi parse đủ phiên âm cùng một dòng nghĩa, mọi mode.
-    func applyStructuredLearnCard(raw: String, style: PopoverFeedback.ResultStyle) {
-        let show = LearnCard.shouldPresentStructured(raw, isError: style == .error)
+    func applyStructuredLearnCard(raw: String, style: PopoverFeedback.ResultStyle, show: Bool) {
         pinLearnCardToTop = show
         // Parsing and rebuilding the card is the most expensive thing a chunk can trigger, and the
         // stream delivers many chunks a second. While the card is already up and still loading,
@@ -57,9 +62,11 @@ extension PopoverController {
             learnCardView.applyUsage(from: raw, live: false)
             learnCardView.display(card)
             if style == .normal { prefetchChipWords(card) }
-            let imageTerm = LearnRelatedImage.searchTerm(from: card)
-            let seed = imageTerm.isEmpty ? inputTextView.string : imageTerm
-            learnRelatedImageStrip.refresh(term: seed, rewriteSource: LearnRelatedImage.senseSource(card: card, sourceText: inputTextView.string))
+            let seed = LearnRelatedImage.imageSeed(card: card, selection: inputTextView.string)
+            learnRelatedImageStrip.refresh(
+                term: seed,
+                rewriteSource: LearnRelatedImage.senseSource(card: card, sourceText: inputTextView.string)
+            )
         } else if isShowingStructuredLearnCard {
             learnCardView.resetScrollState()
             learnCardView.applyUsage(from: "", live: false)
@@ -222,19 +229,34 @@ extension PopoverController {
         cancelRequest(scope: .sub)
     }
 
+    /// Each chunk carries the whole answer so far, so only the newest one needs rendering. A burst
+    /// of chunks used to rebuild the attributed text once per chunk; now it renders once per
+    /// main-queue turn.
     func appendStreamedResult(_ text: String, generation: Int, scope: RequestScope = .main) {
         switch scope {
         case .main:
             guard generation == requestGeneration else { return }
             lastStreamedMain = text
-            setResultText(text, style: .loading)
         case .sub:
-            guard generation == subGeneration, let section = subSection else { return }
+            guard generation == subGeneration, subSection != nil else { return }
             lastStreamedSub = text
-            setSubResultText(section, text, streaming: true)
         }
-        throttleStreamReflow(scope: scope)
-        updateCopyButtonEnabled()
+        guard pendingStreamRender.insert(scope).inserted else { return }
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.pendingStreamRender.remove(scope)
+            // The completion may have run in between; its final text must not be overwritten.
+            switch scope {
+            case .main:
+                guard generation == self.requestGeneration, self.isRequestInFlight else { return }
+                self.setResultText(self.lastStreamedMain, style: .loading)
+            case .sub:
+                guard generation == self.subGeneration, let section = self.subSection, section.requestInFlight else { return }
+                self.setSubResultText(section, self.lastStreamedSub, streaming: true)
+            }
+            self.throttleStreamReflow(scope: scope)
+            self.updateCopyButtonEnabled()
+        }
     }
 
     /// Streaming used to measure the pane on every chunk and reflow whenever the height moved by a
@@ -354,29 +376,9 @@ extension PopoverController {
         updateSpeakButtons()
         updateCopyButtonEnabled()
         updateSaveWordButton()
-        updateContextButton()
         if let sub = subSection {
             updateSubButtons(sub)
         }
-    }
-
-    /// Hover tooltip on the source pane language code, only when Translate would carry reference pairs.
-    func updateContextButton() {
-        let text = inputTextView.string.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard pendingImage == nil, !text.isEmpty else {
-            sourceHeaderLabel.toolTip = nil
-            return
-        }
-        let pair = previewLanguagePair(for: text)
-        let tooltip = PopoverFeedback.contextTooltip(
-            historyStore.recentContext(
-                sourceLanguage: effectiveSourceLanguage(for: text),
-                targetLanguage: pair.target,
-                excludingText: text
-            ).reversed().map { (source: $0.sourceText, target: $0.resultText) }
-        )
-        sourceHeaderLabel.toolTip = tooltip
-        sourceHeaderLabel.setAccessibilityLabel(tooltip ?? sourceHeaderLabel.stringValue)
     }
 
     func updateCopyButtonEnabled() {

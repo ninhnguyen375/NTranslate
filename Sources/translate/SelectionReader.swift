@@ -68,16 +68,22 @@ struct SelectionReader {
     }
 
     static func resolveTranslatableInputWithDiagnostics(simulateCopy: Bool = false, forceCopy: Bool = false) throws -> TranslatableInputResolution? {
+        #if DEBUG
         let started = DispatchTime.now()
         defer { NSLog("[NTranslate][timing] selection read total=\(ms(since: started))") }
+        #endif
         var accessibilityError: String?
         // `simulateCopy` means "skip the accessibility read entirely"; `forceCopy` is the
         // dedicated copy-and-translate hotkey.
         if !forceCopy, !simulateCopy, AXIsProcessTrusted() {
             do {
+                #if DEBUG
                 let axStart = DispatchTime.now()
+                #endif
                 let probe = try accessibilityText()
+                #if DEBUG
                 NSLog("[NTranslate][timing] accessibility read=\(ms(since: axStart)) probe=\(probe)")
+                #endif
                 switch probe {
                 case let .text(text):
                     return TranslatableInputResolution(input: .text(text), source: .selection, accessibilityError: nil)
@@ -249,12 +255,16 @@ struct SelectionReader {
         try simulatedCopyInput(from: .general) { previousChangeCount in
             // The hotkey's Control+Option are still down when Carbon fires. Wait for release,
             // then use private state so only Command reaches the target app.
+            #if DEBUG
             let waitStart = DispatchTime.now()
+            #endif
             releaseHeldModifiers()
             waitForModifierRelease()
+            #if DEBUG
             NSLog("[NTranslate][timing] modifier release wait=\(ms(since: waitStart))")
             let copyStart = DispatchTime.now()
             defer { NSLog("[NTranslate][timing] pasteboard poll=\(ms(since: copyStart))") }
+            #endif
             guard let source = CGEventSource(stateID: .privateState),
                   let keyDown = CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(kVK_ANSI_C), keyDown: true),
                   let keyUp = CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(kVK_ANSI_C), keyDown: false)

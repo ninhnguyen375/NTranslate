@@ -633,7 +633,7 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
         setPills(for: record, kind: asked.kind)
         updateGradeIntervals(for: record)
         refreshSessionChrome()
-        showHint(asked.note ?? leechNote(for: record))
+        showHint(asked.note)
         loadImages(for: record)
 
         // Auto play source speech ONLY if cached locally. In a question mode the source word is
@@ -827,8 +827,7 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
             sessionView.termLabel.font = .systemFont(ofSize: 17, weight: .regular)
             sessionView.answerField.isHidden = true
             sessionView.choiceStack.isHidden = false
-            sessionView.firstChoiceButton.title = "  " + (choices.first ?? "")
-            sessionView.secondChoiceButton.title = "  " + (choices.last ?? "")
+            sessionView.setChoices(choices.first ?? "", choices.last ?? "")
             setSourceGiveaways(hidden: true)
         }
     }
@@ -990,13 +989,6 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
     private func showHint(_ text: String?) {
         sessionView.hintLabel.stringValue = text ?? ""
         sessionView.hintLabel.isHidden = (text ?? "").isEmpty
-    }
-
-    /// A card missed this often is not being learnt, and saying so is more useful than showing it
-    /// again tomorrow.
-    private func leechNote(for record: TranslationRecord) -> String? {
-        guard ReviewPlanner.isLeech(lapses: record.lapses) else { return nil }
-        return "Missed \(Plural.count(record.lapses, "time")). Consider removing it and learning it from a fresh card."
     }
 
     /// The question knew whether the answer was right, so it grades itself instead of asking the
@@ -1637,8 +1629,7 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
         if isAwaitingWeave, preferredReadingMode == nil {
             sessionView.termLabel.isHidden = true
             sessionView.titleRefreshButton.isHidden = true
-            sessionView.firstChoiceButton.title = "  English first (EN to VI)"
-            sessionView.secondChoiceButton.title = "  Vietnamese first (VI to EN)"
+            sessionView.setChoices("English first (EN to VI)", "Vietnamese first (VI to EN)")
             sessionView.choiceStack.isHidden = false
             sessionView.hintLabel.stringValue = readingModeHint()
             sessionView.hintLabel.isHidden = false

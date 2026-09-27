@@ -179,7 +179,36 @@ final class TranslationHistoryStore {
     let devicesDirectoryURL: URL
     let audioDirectoryURL: URL
     let deviceID: String
-    private(set) var records: [TranslationRecord] = []
+    private(set) var records: [TranslationRecord] = [] {
+        didSet { learnIndexCache = nil }
+    }
+    /// Learn records keyed the ways `reusableRecord` matches them, built on the first lookup after
+    /// `records` changes. Chip prefetch looks up a dozen words per card, and a linear scan
+    /// re-parsed every stored card for each of them.
+    private var learnIndexCache: LearnIndex?
+
+    private struct LearnIndex {
+        /// `lookupKey` of the stored term.
+        var byTerm: [String: [TranslationRecord]] = [:]
+        /// `lookupKey` of the whole stored text and of its encounter sentence.
+        var byMatch: [String: [TranslationRecord]] = [:]
+    }
+
+    private var learnIndex: LearnIndex {
+        if let learnIndexCache { return learnIndexCache }
+        var index = LearnIndex()
+        for record in records where record.mode == .learn {
+            let parts = LearnCard.Encounter.split(record.sourceText)
+            index.byTerm[LearnCard.lookupKey(parts.term), default: []].append(record)
+            let whole = LearnCard.lookupKey(record.sourceText)
+            index.byMatch[whole, default: []].append(record)
+            if let context = parts.context.map(LearnCard.lookupKey), context != whole {
+                index.byMatch[context, default: []].append(record)
+            }
+        }
+        learnIndexCache = index
+        return index
+    }
     private var tombstonedRecords: [TranslationRecord] = []
     private(set) var loadError: String?
     private(set) var writeError: String?
@@ -275,38 +304,23 @@ final class TranslationHistoryStore {
         sourceIsAutoDetect: Bool
     ) -> TranslationRecord? {
         let sourceText = Self.trim(sourceText)
-        let candidates = records.lazy.filter {
-            $0.mode == mode
-                && $0.targetLanguage == targetLanguage
-                && (sourceIsAutoDetect || $0.sourceLanguage == sourceLanguage)
+        let pairMatches = { (record: TranslationRecord) in
+            record.targetLanguage == targetLanguage
+                && (sourceIsAutoDetect || record.sourceLanguage == sourceLanguage)
         }
         // A Learn card is keyed by the term alone: the same word met in another sentence reuses the
         // card instead of paying for a second one. The encounter sentence still rides along in the
         // stored source text, it just no longer splits the cache.
         if mode == .learn {
+            let index = learnIndex
             let key = LearnCard.lookupKey(LearnCard.Encounter.split(sourceText).term)
-            if let exact = candidates.first(where: {
-                LearnCard.lookupKey(LearnCard.Encounter.split($0.sourceText).term) == key
-            }) { return exact }
+            if let exact = index.byTerm[key]?.first(where: pairMatches) { return exact }
+            // Same rule as `sourceMatches` for Learn, answered from the index.
+            return index.byMatch[LearnCard.lookupKey(sourceText)]?.first(where: pairMatches)
         }
-        return candidates.first { Self.sourceMatches($0.sourceText, sourceText, mode: mode) }
-    }
-
-    /// Recent translations for the same language pair, newest first, used as translation context.
-    func recentContext(
-        sourceLanguage: String,
-        targetLanguage: String,
-        excludingText: String,
-        limit: Int = 10
-    ) -> [TranslationRecord] {
-        let excluded = Self.trim(excludingText)
-        // Lazy so the scan stops at `limit` matches instead of filtering the whole history first.
-        return Array(records.lazy.filter {
-            $0.mode == .translate
-                && $0.sourceLanguage == sourceLanguage
-                && $0.targetLanguage == targetLanguage
-                && Self.trim($0.sourceText) != excluded
-        }.prefix(limit))
+        return records.first {
+            $0.mode == mode && pairMatches($0) && Self.sourceMatches($0.sourceText, sourceText, mode: mode)
+        }
     }
 
     @discardableResult

@@ -177,7 +177,15 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     var audioPlayer: AVAudioPlayer?
     var speechState = SpeechPlaybackState()
     var activeSpeechRate: Float = 1.0
-    var speechCache: [SpeechIdentity: Data] = [:]
+    var speechCache: [SpeechIdentity: Data] = [:] {
+        didSet {
+            // ponytail: wipe when full, keeping the open record and not-yet-recorded clips. Other
+            // records' audio is already stored on disk; LRU if replays ever miss noticeably.
+            guard speechCache.count > Self.speechCacheLimit else { return }
+            speechCache = speechCache.filter { $0.key.recordID == nil || $0.key.recordID == currentRecordID }
+        }
+    }
+    static let speechCacheLimit = 50
     var speechTrim: [SpeechIdentity: SpeechTrim.Bounds] = [:]
     var prefetchGeneration = 0
     var prefetchingSpeech: Set<SpeechIdentity> = []
@@ -249,6 +257,8 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     var pendingReflow: DispatchWorkItem?
     var lastStreamedMain = ""
     var lastStreamedSub = ""
+    /// Scopes with a stream render already queued on main; later chunks just replace the text.
+    var pendingStreamRender: Set<RequestScope> = []
     /// Last style passed to `setResultText`. Callers set this explicitly for errors; do not re-infer
     /// from result text prefixes (a real translation can start with "The request…").
     var lastResultStyle: PopoverFeedback.ResultStyle = .normal
