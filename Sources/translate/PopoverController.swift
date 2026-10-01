@@ -421,6 +421,10 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
                 self.copyResult()
                 return nil
             }
+            if flags == .option, event.keyCode == UInt16(kVK_ANSI_I), event.window === self.panel {
+                self.toggleSourceDictation()
+                return nil
+            }
             if flags == .command, event.keyCode == UInt16(kVK_ANSI_K) {
                 self.askButtonClicked()
                 return nil

@@ -179,7 +179,7 @@ extension PopoverController {
         updateShortcutLabels()
         configureIconButton(speakSourceButton, symbol: "speaker.wave.2", action: #selector(speakInput), label: "Speak source")
         configureIconButton(speakSourceSlowButton, symbol: "tortoise", action: #selector(speakInputSlow), label: "Speak source slowly")
-        configureIconButton(dictateSourceButton, symbol: "mic", action: #selector(toggleSourceDictation as () -> Void), label: "Dictate source (Option+K)")
+        configureIconButton(dictateSourceButton, symbol: "mic", action: #selector(toggleSourceDictation as () -> Void), label: "Dictate source (Option+I)")
         configureIconButton(speakResultButton, symbol: "speaker.wave.2", action: #selector(speakResult), label: "Speak translation")
         configureIconButton(speakResultSlowButton, symbol: "tortoise", action: #selector(speakResultSlow), label: "Speak translation slowly")
         configureIconButton(retryButton, symbol: "arrow.clockwise", action: #selector(retryRequest), label: "Retry / Fetch fresh")

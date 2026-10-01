@@ -21,6 +21,10 @@ struct WeavePassage: Codable, Sendable {
     /// The scene the learner asked for, so reopening the passage can still show it and Regenerate
     /// can ask for the same setting. Absent in files written before scenarios were kept.
     var scenario: String?
+    /// Free-text label to sort imported dialogues into sets. Absent for generated passages.
+    var group: String?
+    /// How many times the learner has opened the passage from the list.
+    var count: Int?
 }
 
 @MainActor
@@ -121,6 +125,43 @@ enum WeaveCache {
 
     static func delete(key: String) {
         try? FileManager.default.removeItem(at: url(for: key))
+    }
+
+    /// Bulk import of hand-made dialogues: a JSON array shaped like `WeavePassage`, where only
+    /// `text` is required. Keyed by the text, so importing the same file twice adds nothing.
+    static func importPassages(from data: Data) throws -> Int {
+        struct Item: Decodable {
+            let text: String
+            let words: [String]?
+            let promptVersion: String?
+            let generatedAt: Date?
+            let title: String?
+            let isDone: Bool?
+            let scenario: String?
+            let group: String?
+            let count: Int?
+        }
+        let items = try JSONDecoder().decode([Item].self, from: data)
+        let now = Date()
+        for (index, item) in items.enumerated() {
+            var passage = WeavePassage(
+                words: item.words ?? [],
+                text: item.text,
+                promptVersion: item.promptVersion ?? "import",
+                // Keeps file order in the newest-first list when the file gives no dates.
+                generatedAt: item.generatedAt ?? now.addingTimeInterval(-Double(index)),
+                title: item.title,
+                isDone: item.isDone,
+                scenario: item.scenario,
+                group: item.group,
+                count: item.count
+            )
+            let key = SHA256.hash(data: Data(item.text.utf8)).map { String(format: "%02x", $0) }.joined()
+            // Re-importing the same file must not wipe progress already made in the app.
+            if item.count == nil, let existing = load(key: key)?.count { passage.count = existing }
+            store(passage, key: key)
+        }
+        return items.count
     }
 
     static func store(_ passage: WeavePassage, key: String) {

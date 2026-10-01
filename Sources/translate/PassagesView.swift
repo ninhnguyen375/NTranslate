@@ -15,9 +15,14 @@ final class PassagesView: NSView, NSTableViewDataSource, NSTableViewDelegate {
     weak var delegate: PassagesViewDelegate?
 
     private var entries: [(key: String, passage: WeavePassage)] = []
+    private var allEntries: [(key: String, passage: WeavePassage)] = []
+    private let groupPopup = NSPopUpButton()
+    private static let allGroupsTitle = "All Groups"
     private let table = NSTableView()
     private let backButton = NSButton()
     private let createButton = NSButton()
+    private let importButton = NSButton()
+    private let skillButton = NSButton()
     private let titleLabel = NSTextField(labelWithString: "Saved Passages")
     private let countLabel = NSTextField(labelWithString: "")
     private let emptyLabel = NSTextField(labelWithString: "No saved passages yet.")
@@ -33,6 +38,19 @@ final class PassagesView: NSView, NSTableViewDataSource, NSTableViewDelegate {
     // MARK: - Data
 
     func reload(entries: [(key: String, passage: WeavePassage)]) {
+        allEntries = entries
+        let selected = groupPopup.titleOfSelectedItem ?? Self.allGroupsTitle
+        let groups = Set(entries.compactMap { $0.passage.group }.filter { !$0.isEmpty }).sorted()
+        groupPopup.removeAllItems()
+        groupPopup.addItems(withTitles: [Self.allGroupsTitle] + groups)
+        groupPopup.selectItem(withTitle: groups.contains(selected) ? selected : Self.allGroupsTitle)
+        groupPopup.isHidden = groups.isEmpty
+        applyFilter()
+    }
+
+    private func applyFilter() {
+        let selected = groupPopup.titleOfSelectedItem ?? Self.allGroupsTitle
+        let entries = selected == Self.allGroupsTitle ? allEntries : allEntries.filter { $0.passage.group == selected }
         self.entries = entries
         table.reloadData()
         emptyLabel.isHidden = !entries.isEmpty
@@ -78,12 +96,33 @@ final class PassagesView: NSView, NSTableViewDataSource, NSTableViewDelegate {
             .init(paletteColors: [.white])
         )
 
+        ReviewControls.actionButton(
+            importButton,
+            title: "Import",
+            symbol: "square.and.arrow.down",
+            target: self,
+            action: #selector(tapImport)
+        )
+
+        ReviewControls.actionButton(
+            skillButton,
+            title: "Add Skill",
+            symbol: "wand.and.stars",
+            target: self,
+            action: #selector(tapAddSkill)
+        )
+        skillButton.toolTip = "Install the Claude Code skill that builds dialogues from your project"
+
+        groupPopup.target = self
+        groupPopup.action = #selector(changeGroup)
+        groupPopup.toolTip = "Filter by group"
+
         let headerLeading = NSStackView(views: [backButton, titleLabel, countLabel])
         headerLeading.orientation = .horizontal
         headerLeading.spacing = 10
         headerLeading.alignment = .centerY
 
-        let header = NSStackView(views: [headerLeading, NSView(), createButton])
+        let header = NSStackView(views: [headerLeading, NSView(), groupPopup, skillButton, importButton, createButton])
         header.orientation = .horizontal
         header.spacing = 12
         header.alignment = .centerY
@@ -172,6 +211,52 @@ final class PassagesView: NSView, NSTableViewDataSource, NSTableViewDelegate {
         delegate?.passagesViewDidRequestCreate(self)
     }
 
+    @objc private func changeGroup() {
+        applyFilter()
+    }
+
+    @objc private func tapImport() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.json]
+        panel.message = "Choose a JSON array of passages"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        let alert = NSAlert()
+        do {
+            let count = try WeaveCache.importPassages(from: Data(contentsOf: url))
+            reload(entries: WeaveCache.entries())
+            alert.messageText = "Imported \(count) passages."
+        } catch {
+            alert.messageText = "Could not import passages."
+            alert.informativeText = error.localizedDescription
+        }
+        alert.runModal()
+    }
+
+    @objc private func tapAddSkill() {
+        let alert = NSAlert()
+        do {
+            try ExtractDialogSkill.install()
+            alert.messageText = "Skill installed."
+            alert.informativeText = """
+            Saved to \(ExtractDialogSkill.fileURL.path).
+
+            1. Open Claude Code in your project folder.
+            2. Run /\(ExtractDialogSkill.name) and approve the lesson list.
+            3. The lessons land in Saved Passages automatically. Reopen this screen to see them.
+            """
+            alert.addButton(withTitle: "Copy Command")
+            alert.addButton(withTitle: "Done")
+            if alert.runModal() == .alertFirstButtonReturn {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString("/\(ExtractDialogSkill.name)", forType: .string)
+            }
+        } catch {
+            alert.messageText = "Could not install the skill."
+            alert.informativeText = error.localizedDescription
+            alert.runModal()
+        }
+    }
+
     @objc private func tapRow() {
         let row = table.selectedRow
         guard row >= 0, row < entries.count else { return }
@@ -211,7 +296,11 @@ final class PassageRowCell: NSTableCellView {
         titleLabel.textColor = isDone ? .systemGreen : .labelColor
 
         let date = DateFormatter.localizedString(from: entry.passage.generatedAt, dateStyle: .medium, timeStyle: .short)
-        subtitleLabel.stringValue = "\(entry.passage.words.count) words · \(date)"
+        var parts = ["\(entry.passage.words.count) words", date]
+        if let group = entry.passage.group, !group.isEmpty { parts.insert(group, at: 0) }
+        let count = entry.passage.count ?? 0
+        parts.append(count == 1 ? "Studied 1 time" : "Studied \(count) times")
+        subtitleLabel.stringValue = parts.joined(separator: " · ")
 
         let doneSymbol = isDone ? "checkmark.circle.fill" : "circle"
         let doneConfig = NSImage.SymbolConfiguration(pointSize: 15, weight: .semibold)

@@ -85,7 +85,7 @@ extension PopoverController {
 
     /// Opens an empty translate panel ready for typing or dictation.
     @objc func blankPanelHotKeyPressed() {
-        showEmptySelectionPanel(message: "Type or dictate (Option+K), then Translate.")
+        showEmptySelectionPanel(message: "Type or dictate (Option+I), then Translate.")
         panel.makeFirstResponder(inputTextView)
     }
 
