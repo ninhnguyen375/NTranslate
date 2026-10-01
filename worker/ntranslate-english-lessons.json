@@ -1,0 +1,632 @@
+[
+  {
+    "words": [
+      "end-to-end flow",
+      "falls back to",
+      "next to the cursor"
+    ],
+    "text": "Topic: The core translate flow\n\nA: Walk me through the translate flow, end to end.\nB: Sure. The user selects text in any app.\nB: Then they press Option+D.\nA: Where does the text come from?\nB: NTranslate reads the selection through Accessibility.\nB: If that fails, it falls back to the clipboard.\nA: And what does the user see?\nB: A popup opens right next to the cursor.\nB: The source sits on the left, the translation on the right.\nA: Does it replace the selected text?\nB: No. It never touches the original text.\nA: Where do the action buttons sit?\nB: In one row: Translate, Learn, Proofread, Images, Ask.\nA: What happens after a successful translation?\nB: The app saves it to Translation History.\nA: Good. Keep that flow as the baseline.\nB: Got it. I'll check every change against it.\n\nA: Giải thích cho tôi luồng dịch, từ đầu tới cuối.\nB: Được. Người dùng chọn text trong bất kỳ app nào.\nB: Rồi họ bấm Option+D.\nA: Text lấy từ đâu?\nB: NTranslate đọc vùng chọn qua Accessibility.\nB: Nếu thất bại, nó chuyển sang dùng clipboard.\nA: Còn người dùng thấy gì?\nB: Một popup mở ngay cạnh con trỏ.\nB: Văn bản gốc nằm bên trái, bản dịch bên phải.\nA: Nó có thay thế text đã chọn không?\nB: Không. Nó không bao giờ đụng vào text gốc.\nA: Các nút thao tác nằm ở đâu?\nB: Trên một hàng: Translate, Learn, Proofread, Images, Ask.\nA: Sau khi dịch thành công thì sao?\nB: App lưu nó vào Translation History.\nA: Tốt. Giữ luồng đó làm chuẩn.\nB: Rõ. Tôi sẽ đối chiếu mọi thay đổi với nó.\n\nPrompt pattern: Walk me through the <feature> flow, end to end: what the user does, what they see, and what gets saved.",
+    "promptVersion": "7",
+    "generatedAt": 812800000,
+    "title": "Translate flow in one sentence",
+    "scenario": "Understanding code",
+    "group": "Tier 1 - Core prompts",
+    "count": 0
+  },
+  {
+    "words": [
+      "right below",
+      "in this order",
+      "drops first"
+    ],
+    "text": "Topic: The popup action row\n\nA: Describe the action row in the popup.\nB: It sits right below the two panes.\nB: It holds five buttons in this order.\nB: Translate, Learn, Proofread, Images, Ask.\nA: Why is Translate first?\nB: It's the main action. It gets the accent color.\nA: What do the other four have in common?\nB: They all send the text to the model.\nB: Thin lines separate them.\nA: What if the popup is narrow?\nB: Images drops first, then Proofread.\nA: And Translate?\nB: Translate never drops.\nA: Good. Don't add more buttons to this row.\nB: Understood. New actions go somewhere else.\n\nA: Mô tả hàng thao tác trong popup.\nB: Nó nằm ngay bên dưới hai pane.\nB: Nó chứa năm nút theo thứ tự này.\nB: Translate, Learn, Proofread, Images, Ask.\nA: Tại sao Translate đứng đầu?\nB: Nó là thao tác chính. Nó được tô màu nhấn.\nA: Bốn nút còn lại có gì chung?\nB: Chúng đều gửi text tới model.\nB: Các đường mảnh ngăn cách chúng.\nA: Nếu popup hẹp thì sao?\nB: Images bị ẩn trước, rồi tới Proofread.\nA: Còn Translate?\nB: Translate không bao giờ bị ẩn.\nA: Tốt. Đừng thêm nút nào vào hàng này.\nB: Đã hiểu. Thao tác mới sẽ đặt chỗ khác.\n\nPrompt pattern: Describe the <area>: where it sits, what it holds, and in what order.",
+    "promptVersion": "7",
+    "generatedAt": 812801000,
+    "title": "Where the action row sits",
+    "scenario": "Building UI",
+    "group": "Tier 1 - Core prompts",
+    "count": 0
+  },
+  {
+    "words": [
+      "in its own language",
+      "instead of",
+      "a quick way to"
+    ],
+    "text": "Topic: What Proofread does\n\nA: What's the difference between Proofread and Translate?\nB: Translate changes the language.\nB: Proofread keeps the text in its own language.\nA: So what does Proofread return?\nB: A corrected version, with grammar fixes.\nA: How does the user start it?\nB: Two ways. Press Option+P after selecting text.\nB: Or click Proofread in the action row.\nA: Which prompt does it use?\nB: The Grammar Prompt in Settings.\nA: Does it show up in Translation History?\nB: Yes. History marks it in orange.\nA: Nice. It's a quick way to check an email before I send it.\nB: Exactly. Select the draft and press Option+P.\nA: Clear. Thanks.\n\nA: Proofread và Translate khác nhau thế nào?\nB: Translate đổi ngôn ngữ.\nB: Proofread giữ text ở chính ngôn ngữ của nó.\nA: Vậy Proofread trả về gì?\nB: Một bản đã sửa, kèm các lỗi ngữ pháp được sửa.\nA: Người dùng bắt đầu nó thế nào?\nB: Hai cách. Bấm Option+P sau khi chọn text.\nB: Hoặc bấm Proofread trên hàng thao tác.\nA: Nó dùng prompt nào?\nB: Grammar Prompt trong Settings.\nA: Nó có hiện trong Translation History không?\nB: Có. History đánh dấu nó màu cam.\nA: Hay. Đó là cách nhanh để kiểm tra email trước khi gửi.\nB: Đúng vậy. Chọn bản nháp rồi bấm Option+P.\nA: Rõ rồi. Cảm ơn.\n\nPrompt pattern: What's the difference between <feature A> and <feature B> from the user's point of view?",
+    "promptVersion": "7",
+    "generatedAt": 812802000,
+    "title": "Proofread vs Translate",
+    "scenario": "Understanding code",
+    "group": "Tier 1 - Core prompts",
+    "count": 0
+  },
+  {
+    "words": [
+      "depending on",
+      "a single word",
+      "more than one word"
+    ],
+    "text": "Topic: How Learn chooses its prompt\n\nA: How does Learn decide which prompt to use?\nB: It depends on what the user selected.\nB: For a single word, it uses the Learn Word Prompt.\nB: For more than one word, it uses the Learn Sentence Prompt.\nA: What counts as a single word?\nB: One token without spaces.\nA: What does the user see for a word?\nB: A structured card in the result pane.\nB: Pronunciation first, then MEANING, then SYNONYMS.\nA: Can they start Learn without the popup?\nB: Yes. Option+L runs Learn on the selection directly.\nA: Where do I edit these prompts?\nB: In the Prompts tab of Settings.\nA: Great. That's all I needed.\nB: Happy to help.\n\nA: Learn quyết định dùng prompt nào thế nào?\nB: Nó phụ thuộc vào thứ người dùng đã chọn.\nB: Với một từ đơn, nó dùng Learn Word Prompt.\nB: Với nhiều hơn một từ, nó dùng Learn Sentence Prompt.\nA: Thế nào được tính là một từ đơn?\nB: Một token không có khoảng trắng.\nA: Với một từ, người dùng thấy gì?\nB: Một thẻ có cấu trúc trong pane kết quả.\nB: Phát âm trước, rồi MEANING, rồi SYNONYMS.\nA: Họ có thể mở Learn mà không cần popup không?\nB: Có. Option+L chạy Learn trực tiếp trên vùng chọn.\nA: Tôi sửa các prompt này ở đâu?\nB: Trong tab Prompts của Settings.\nA: Tuyệt. Tôi chỉ cần vậy.\nB: Rất vui được giúp.\n\nPrompt pattern: How does <feature> decide between <option A> and <option B>?",
+    "promptVersion": "7",
+    "generatedAt": 812803000,
+    "title": "Learn picks a prompt",
+    "scenario": "Understanding code",
+    "group": "Tier 1 - Core prompts",
+    "count": 0
+  },
+  {
+    "words": [
+      "toggle on and off",
+      "right away",
+      "show up in"
+    ],
+    "text": "Topic: Saving a word\n\nA: Let's talk about Save Word.\nA: When the user clicks it, the current translation becomes a bookmark.\nB: Got it. Where does the bookmark show up?\nA: In Translation History, under the saved filter.\nA: It also joins the review deck.\nB: What if they click it again?\nA: It should toggle on and off.\nA: The tooltip changes to Remove Saved Word.\nB: Should the icon change too?\nA: Yes. A filled bookmark means saved.\nB: And if the user edits the text first?\nA: Then they need a new translation before saving.\nB: Understood. It only saves an unchanged result.\nA: Right. The change should show right away.\nB: I'll update the icon the moment the save succeeds.\n\nA: Nói về Save Word nhé.\nA: Khi người dùng bấm nó, bản dịch hiện tại thành một bookmark.\nB: Rõ. Bookmark hiện ở đâu?\nA: Trong Translation History, dưới bộ lọc đã lưu.\nA: Nó cũng vào bộ thẻ ôn tập.\nB: Nếu họ bấm lần nữa thì sao?\nA: Nó phải bật và tắt qua lại.\nA: Tooltip đổi thành Remove Saved Word.\nB: Icon có đổi luôn không?\nA: Có. Bookmark tô đặc nghĩa là đã lưu.\nB: Còn nếu người dùng sửa text trước?\nA: Thì họ cần dịch lại trước khi lưu.\nB: Đã hiểu. Nó chỉ lưu kết quả chưa bị sửa.\nA: Đúng. Thay đổi phải hiện ngay lập tức.\nB: Tôi sẽ cập nhật icon ngay khi lưu thành công.\n\nPrompt pattern: When the user clicks <button>, <what happens>. Clicking it again should <undo>.",
+    "promptVersion": "7",
+    "generatedAt": 812804000,
+    "title": "Save Word toggles a bookmark",
+    "scenario": "Building features",
+    "group": "Tier 1 - Core prompts",
+    "count": 0
+  },
+  {
+    "words": [
+      "turns off",
+      "on purpose",
+      "stays available"
+    ],
+    "text": "Topic: Translating a clipboard image\n\nA: Explain how image translation works.\nB: The user copies a PNG or TIFF image.\nB: Then they open the popup.\nB: The app sends the image to a vision model.\nA: What changes in the popup?\nB: Several things turn off on purpose.\nB: The source language button, Learn, and source speech.\nA: Why turn off Learn?\nB: There is no source text to learn from.\nA: Does it save to Translation History?\nB: No. Image mode never records history.\nA: What stays available?\nB: Result speech stays available.\nA: Good. Keep these rules when you change the popup.\nB: Will do. I'll check image mode after every layout change.\n\nA: Giải thích cách dịch ảnh hoạt động.\nB: Người dùng copy một ảnh PNG hoặc TIFF.\nB: Rồi họ mở popup.\nB: App gửi ảnh tới một model hỗ trợ hình ảnh.\nA: Popup thay đổi gì?\nB: Một số thứ bị tắt có chủ đích.\nB: Nút ngôn ngữ nguồn, Learn, và đọc văn bản nguồn.\nA: Tại sao tắt Learn?\nB: Không có văn bản nguồn để học.\nA: Nó có lưu vào Translation History không?\nB: Không. Chế độ ảnh không bao giờ ghi lịch sử.\nA: Cái gì vẫn dùng được?\nB: Nghe bản dịch vẫn dùng được.\nA: Tốt. Giữ các quy tắc này khi sửa popup.\nB: Sẽ làm. Tôi sẽ kiểm tra chế độ ảnh sau mỗi lần sửa bố cục.\n\nPrompt pattern: Which parts of <screen> turn off in <mode>, and why?",
+    "promptVersion": "7",
+    "generatedAt": 812805000,
+    "title": "Image translation rules",
+    "scenario": "Understanding code",
+    "group": "Tier 1 - Core prompts",
+    "count": 0
+  },
+  {
+    "words": [
+      "in the header",
+      "side by side",
+      "at a slower pace"
+    ],
+    "text": "Topic: The speak buttons\n\nA: Describe the speak buttons in the popup.\nB: Each pane has its own pair in the header.\nB: The speaker icon reads at normal speed.\nB: The tortoise icon reads at a slower pace.\nA: So they sit side by side?\nB: Yes. Source pane on the left, result pane on the right.\nA: What else is in the source header?\nB: A mic button for dictation, Option+I.\nA: And the result header?\nB: Retry, Fetch new speech, Copy, and Save Word.\nA: Can the user pause speech?\nB: Yes. Clicking again pauses, then resumes.\nA: Does the app download audio every time?\nB: No. It caches audio for saved records.\nA: Got it. Keep this layout as is.\n\nA: Mô tả các nút đọc trong popup.\nB: Mỗi pane có một cặp nút riêng trên phần đầu.\nB: Icon loa đọc ở tốc độ thường.\nB: Icon con rùa đọc chậm hơn.\nA: Vậy chúng nằm cạnh nhau?\nB: Đúng. Pane nguồn bên trái, pane kết quả bên phải.\nA: Phần đầu pane nguồn còn gì nữa?\nB: Một nút mic để đọc chính tả, Option+I.\nA: Còn phần đầu pane kết quả?\nB: Retry, Fetch new speech, Copy, và Save Word.\nA: Người dùng có tạm dừng được không?\nB: Có. Bấm lần nữa để tạm dừng, rồi tiếp tục.\nA: App có tải audio mỗi lần không?\nB: Không. Nó lưu đệm audio cho các bản ghi đã lưu.\nA: Rõ. Giữ nguyên bố cục này.\n\nPrompt pattern: Describe the <buttons> on each pane: where they sit and what each one does.",
+    "promptVersion": "7",
+    "generatedAt": 812806000,
+    "title": "Speak normal vs slowly",
+    "scenario": "Building UI",
+    "group": "Tier 1 - Core prompts",
+    "count": 0
+  },
+  {
+    "words": [
+      "move up",
+      "just below",
+      "in the status menu"
+    ],
+    "text": "Topic: Reordering the status menu\n\nA: Let's look at the status menu.\nB: Current order: the version line, then Open Translate Panel.\nB: Then Spaced Repetition, Ask in Window, Translation History.\nB: Then Sync All Prompts with App and Check for Updates.\nA: I open Translation History more than Spaced Repetition.\nA: Move it up, just below Open Translate Panel.\nB: Sure. Should I keep the separators where they are?\nA: Yes. Don't touch the bottom group.\nB: That's Grant Accessibility Access, Settings, and Quit.\nA: Right. Those stay at the end.\nB: Should the hotkey labels move with the items?\nA: Yes, they belong to the item.\nB: Done. History now sits second in the status menu.\nA: Perfect.\nB: Nothing else moved.\n\nA: Xem menu trạng thái nhé.\nB: Thứ tự hiện tại: dòng phiên bản, rồi Open Translate Panel.\nB: Rồi Spaced Repetition, Ask in Window, Translation History.\nB: Rồi Sync All Prompts with App và Check for Updates.\nA: Tôi mở Translation History nhiều hơn Spaced Repetition.\nA: Đưa nó lên, ngay dưới Open Translate Panel.\nB: Được. Tôi giữ các đường phân cách như cũ chứ?\nA: Đúng. Đừng đụng vào nhóm dưới cùng.\nB: Đó là Grant Accessibility Access, Settings, và Quit.\nA: Đúng. Chúng ở cuối.\nB: Nhãn hotkey có đi theo các mục không?\nA: Có, chúng thuộc về mục đó.\nB: Xong. History giờ nằm thứ hai trong menu trạng thái.\nA: Hoàn hảo.\nB: Không có gì khác bị dịch chuyển.\n\nPrompt pattern: Move <menu item> to just below <other item> in the <menu>. Keep the separators where they are.",
+    "promptVersion": "7",
+    "generatedAt": 812807000,
+    "title": "Move a menu bar item",
+    "scenario": "Building UI",
+    "group": "Tier 1 - Core prompts",
+    "count": 0
+  },
+  {
+    "words": [
+      "in English",
+      "no emoji",
+      "stay consistent"
+    ],
+    "text": "Topic: Renaming a label on the UI\n\nA: Rename Weave into a passage to Make a Passage.\nB: Sure. It appears on the session summary screen.\nB: Should I add an icon, like a book emoji?\nA: No emoji, ever. Use an SF Symbol if you need one.\nB: Got it. And the language?\nA: All UI text stays in English.\nB: Should the tooltip change too?\nA: Yes. Labels and tooltips should stay consistent.\nB: Does the name appear anywhere else?\nA: Check the Saved Passages screen and Keyboard Shortcuts.\nB: Only the summary screen uses it.\nA: Good. Then change only that one.\nB: Done. The button now reads Make a Passage.\nA: Thanks. Short and clear.\nB: It also fits better on narrow windows.\n\nA: Đổi tên Weave into a passage thành Make a Passage.\nB: Được. Nó xuất hiện trên màn tổng kết phiên học.\nB: Tôi có nên thêm icon, như emoji cuốn sách không?\nA: Không bao giờ dùng emoji. Cần thì dùng SF Symbol.\nB: Rõ. Còn ngôn ngữ?\nA: Mọi text trên UI đều bằng tiếng Anh.\nB: Tooltip có đổi luôn không?\nA: Có. Nhãn và tooltip phải nhất quán.\nB: Tên đó có xuất hiện ở chỗ nào khác không?\nA: Kiểm tra màn Saved Passages và Keyboard Shortcuts.\nB: Chỉ màn tổng kết dùng nó.\nA: Tốt. Vậy chỉ đổi chỗ đó.\nB: Xong. Nút giờ ghi Make a Passage.\nA: Cảm ơn. Ngắn và rõ.\nB: Nó cũng vừa hơn trên cửa sổ hẹp.\n\nPrompt pattern: Rename <label> to <new label> everywhere it appears. Keep it in English, no emoji.",
+    "promptVersion": "7",
+    "generatedAt": 812808000,
+    "title": "Rename a button label",
+    "scenario": "Building UI",
+    "group": "Tier 1 - Core prompts",
+    "count": 0
+  },
+  {
+    "words": [
+      "the first time",
+      "walk through",
+      "grant access"
+    ],
+    "text": "Topic: First-run setup\n\nA: Walk me through the first run for a new user.\nB: They open NTranslate from Applications.\nB: The app lives in the menu bar, with no Dock icon.\nA: What happens the first time they press Option+D?\nB: The app can't read the selection yet.\nB: The result pane shows a Grant Accessibility button.\nA: What does that button do?\nB: It opens the Accessibility settings in System Settings.\nA: And if the API key is missing?\nB: The pane shows Open Settings instead.\nA: Where do they enter the key?\nB: In the API tab. Then they click Test connection.\nA: Can they reach this from the menu bar too?\nB: Yes. Grant Accessibility Access is in the status menu.\nA: Good. That covers the first run.\n\nA: Dẫn tôi qua lần chạy đầu cho người dùng mới.\nB: Họ mở NTranslate từ Applications.\nB: App nằm trên menu bar, không có icon ở Dock.\nA: Lần đầu họ bấm Option+D thì sao?\nB: App chưa đọc được vùng chọn.\nB: Pane kết quả hiện nút Grant Accessibility.\nA: Nút đó làm gì?\nB: Nó mở phần cài đặt Accessibility trong System Settings.\nA: Còn nếu thiếu API key?\nB: Pane hiện nút Open Settings thay vào đó.\nA: Họ nhập key ở đâu?\nB: Trong tab API. Rồi họ bấm Test connection.\nA: Họ có vào được từ menu bar không?\nB: Có. Grant Accessibility Access nằm trong menu trạng thái.\nA: Tốt. Vậy là đủ cho lần chạy đầu.\n\nPrompt pattern: Walk me through what a new user sees the first time they <action>.",
+    "promptVersion": "7",
+    "generatedAt": 812809000,
+    "title": "Grant Accessibility first",
+    "scenario": "Project setup",
+    "group": "Tier 1 - Core prompts",
+    "count": 0
+  },
+  {
+    "words": [
+      "take effect",
+      "pick up",
+      "in memory"
+    ],
+    "text": "Topic: Applying config changes\n\nA: I changed the target language in config.json.\nA: The popup still uses the old one.\nB: The app keeps the config in memory.\nB: It doesn't pick up file changes on its own.\nA: So how do I apply it?\nB: Quit the app, edit the file, then open it again.\nA: Can't I just edit it while the app runs?\nB: Risky. The app may write its copy back over yours.\nA: Is there an easier way?\nB: Yes. Change it in Settings instead.\nB: Settings saves and applies it right away.\nA: Where is the target language in Settings?\nB: In the Translation tab, under Target Language.\nA: Great. I'll use Settings from now on.\nB: Good call. Changes take effect without a restart.\n\nA: Tôi đã đổi ngôn ngữ đích trong config.json.\nA: Popup vẫn dùng cái cũ.\nB: App giữ config trong bộ nhớ.\nB: Nó không tự nhận thay đổi trong file.\nA: Vậy tôi áp dụng thế nào?\nB: Thoát app, sửa file, rồi mở lại.\nA: Tôi không thể sửa khi app đang chạy à?\nB: Rủi ro. App có thể ghi bản của nó đè lên bản của bạn.\nA: Có cách nào dễ hơn không?\nB: Có. Đổi nó trong Settings.\nB: Settings lưu và áp dụng ngay.\nA: Ngôn ngữ đích nằm ở đâu trong Settings?\nB: Trong tab Translation, mục Target Language.\nA: Tuyệt. Từ giờ tôi sẽ dùng Settings.\nB: Quyết định đúng. Thay đổi có hiệu lực mà không cần khởi động lại.\n\nPrompt pattern: I changed <setting> in <file>. How do I make it take effect without <side effect>?",
+    "promptVersion": "7",
+    "generatedAt": 812810000,
+    "title": "Reload config after editing",
+    "scenario": "Running the app",
+    "group": "Tier 1 - Core prompts",
+    "count": 0
+  },
+  {
+    "words": [
+      "clash with",
+      "by default",
+      "free up"
+    ],
+    "text": "Topic: Changing a global hotkey\n\nA: Option+D clashes with a shortcut in my editor.\nA: Can I move Translate to another hotkey?\nB: Yes. Go to the Shortcuts tab in Settings.\nB: Click the Translate field and press the new keys.\nA: Which keys are already taken by default?\nB: Option+L for Learn, Option+P for Proofread.\nB: Option+H for Study and Option+K for the Ask window.\nB: Option+A runs screen text capture.\nA: What if I pick a key that's already used?\nB: Settings shows an orange Hotkey Conflicts warning.\nA: Let's use Option+T.\nB: Option+T is free. The status menu label updates too.\nA: Does that free up Option+D?\nB: Yes. Your editor gets it back.\nA: Perfect.\n\nA: Option+D trùng với một phím tắt trong editor của tôi.\nA: Tôi có thể chuyển Translate sang hotkey khác không?\nB: Được. Vào tab Shortcuts trong Settings.\nB: Bấm vào ô Translate rồi bấm tổ hợp phím mới.\nA: Phím nào đã bị chiếm sẵn theo mặc định?\nB: Option+L cho Learn, Option+P cho Proofread.\nB: Option+H cho Study và Option+K cho cửa sổ Ask.\nB: Option+A chạy chụp text trên màn hình.\nA: Nếu tôi chọn phím đã được dùng thì sao?\nB: Settings hiện cảnh báo Hotkey Conflicts màu cam.\nA: Dùng Option+T đi.\nB: Option+T còn trống. Nhãn trong menu trạng thái cũng cập nhật.\nA: Vậy Option+D được giải phóng chứ?\nB: Đúng. Editor của bạn lấy lại nó.\nA: Hoàn hảo.\n\nPrompt pattern: Change the default <hotkey> from <old> to <new>. Check that it doesn't clash with <other hotkeys>.",
+    "promptVersion": "7",
+    "generatedAt": 812811000,
+    "title": "Change the default hotkey",
+    "scenario": "Building features",
+    "group": "Tier 1 - Core prompts",
+    "count": 0
+  },
+  {
+    "words": [
+      "stay open",
+      "click outside",
+      "remember the state"
+    ],
+    "text": "Topic: Pinning the popup\n\nA: The popup closes when I click outside it.\nA: Sometimes I want it to stay open.\nB: That's what the pin button is for.\nA: Where is it?\nB: In the top bar, next to the close button.\nB: The history and review buttons sit to its left.\nA: What happens when I pin it?\nB: The popup stays open when you click outside.\nA: Does the app remember the state?\nB: Yes. It stays pinned after a restart.\nA: Is it stored in config.json?\nB: No. It's stored separately, so it never overwrites your prompts.\nA: Smart. How do I close a pinned popup?\nB: Click the close button or press Escape.\nA: Good. That's all I need.\n\nA: Popup đóng khi tôi bấm ra ngoài.\nA: Đôi khi tôi muốn nó mở nguyên.\nB: Nút pin dùng cho việc đó.\nA: Nó ở đâu?\nB: Trên thanh trên cùng, cạnh nút đóng.\nB: Nút history và review nằm bên trái nó.\nA: Khi tôi ghim thì sao?\nB: Popup mở nguyên khi bạn bấm ra ngoài.\nA: App có nhớ trạng thái không?\nB: Có. Nó vẫn được ghim sau khi khởi động lại.\nA: Nó lưu trong config.json à?\nB: Không. Nó lưu riêng, để không bao giờ đè lên prompt của bạn.\nA: Khéo đấy. Đóng popup đã ghim thế nào?\nB: Bấm nút đóng hoặc bấm Escape.\nA: Tốt. Tôi cần vậy thôi.\n\nPrompt pattern: When <toggle> is on, <behavior>. Remember the state across <sessions/restarts>.",
+    "promptVersion": "7",
+    "generatedAt": 812812000,
+    "title": "Pin the popup",
+    "scenario": "Building UI",
+    "group": "Tier 1 - Core prompts",
+    "count": 0
+  },
+  {
+    "words": [
+      "mark as done",
+      "keep track of",
+      "at a glance"
+    ],
+    "text": "Topic: Tracking passages\n\nA: I have many saved passages now.\nA: I need to keep track of which ones I finished.\nB: The Saved Passages screen has a Toggle Done action.\nA: Where is it on each row?\nB: On the right, next to Open passage and Delete passage.\nA: What changes when I mark one as done?\nB: The row shows a check, so you see progress at a glance.\nA: Does it delete the passage?\nB: No. Done only marks it. The passage stays.\nA: Can I undo it?\nB: Yes. Click Toggle Done again.\nA: How do I get to this screen?\nB: From the Spaced Repetition home, click Saved Passages.\nA: And to go back?\nB: Press Escape to go back to home.\n\nA: Giờ tôi có nhiều bài đọc đã lưu.\nA: Tôi cần theo dõi bài nào tôi đã học xong.\nB: Màn Saved Passages có thao tác Toggle Done.\nA: Nó nằm ở đâu trên mỗi hàng?\nB: Bên phải, cạnh Open passage và Delete passage.\nA: Khi đánh dấu xong một bài thì có gì thay đổi?\nB: Hàng đó hiện dấu tích, để bạn thấy tiến độ ngay.\nA: Nó có xóa bài đọc không?\nB: Không. Done chỉ đánh dấu. Bài đọc vẫn còn.\nA: Tôi hoàn tác được không?\nB: Được. Bấm Toggle Done lần nữa.\nA: Tôi vào màn này thế nào?\nB: Từ trang chủ Spaced Repetition, bấm Saved Passages.\nA: Còn quay lại?\nB: Bấm Escape để về trang chủ.\n\nPrompt pattern: Add a way to mark <item> as done, so the user can see progress at a glance. Don't delete anything.",
+    "promptVersion": "7",
+    "generatedAt": 812813000,
+    "title": "Mark a passage done",
+    "scenario": "Building features",
+    "group": "Tier 1 - Core prompts",
+    "count": 0
+  },
+  {
+    "words": [
+      "at the top",
+      "split into",
+      "every way into"
+    ],
+    "text": "Topic: The Spaced Repetition home screen\n\nA: Explain the Spaced Repetition home screen, top to bottom.\nB: At the top, you see how the deck looks today.\nB: A ring shows cards split into buckets, like Due and Mastered.\nA: Can I click a bucket?\nB: Yes. It filters the next session to that bucket.\nB: The start button then reads Start Due, for example.\nA: What's below the ring?\nB: Session goal, with tiles for how many cards.\nB: Then Question type: Auto, Flip, Cloze, Recall, and more.\nA: And the buttons at the bottom?\nB: They are every way into the deck.\nB: Start Learning, Learn New Words, Reading Passage, Saved Passages.\nB: Plus Review All and Review All (Shuffled).\nA: Does it remember my filter and limit?\nB: Yes. The next visit starts with the same choices.\nA: Clear. That's a good map of the screen.\n\nA: Giải thích trang chủ Spaced Repetition, từ trên xuống dưới.\nB: Trên cùng, bạn thấy bộ thẻ hôm nay ra sao.\nB: Một vòng tròn chia thẻ thành các nhóm, như Due và Mastered.\nA: Tôi bấm vào một nhóm được không?\nB: Được. Nó lọc phiên tiếp theo theo nhóm đó.\nB: Khi đó nút bắt đầu ghi Start Due chẳng hạn.\nA: Bên dưới vòng tròn là gì?\nB: Session goal, với các ô chọn số lượng thẻ.\nB: Rồi Question type: Auto, Flip, Cloze, Recall, và nữa.\nA: Còn các nút dưới cùng?\nB: Đó là mọi lối vào bộ thẻ.\nB: Start Learning, Learn New Words, Reading Passage, Saved Passages.\nB: Cộng thêm Review All và Review All (Shuffled).\nA: Nó có nhớ bộ lọc và giới hạn của tôi không?\nB: Có. Lần sau mở vẫn giữ các lựa chọn đó.\nA: Rõ. Đó là bản đồ màn hình tốt.\n\nPrompt pattern: Explain the <screen> from top to bottom: what each section shows and what each button opens.",
+    "promptVersion": "7",
+    "generatedAt": 812814000,
+    "title": "Explain one screen",
+    "scenario": "Understanding code",
+    "group": "Tier 1 - Core prompts",
+    "count": 0
+  },
+  {
+    "words": [
+      "once per session",
+      "counts as",
+      "right below"
+    ],
+    "text": "Topic: Spaced Repetition review flow\n\nA: I want to tighten the review flow in Spaced Repetition.\nA: Context: the user opens Review All and sees one card at a time.\nA: They try to recall the word, then press Flip.\nA: The grade buttons appear right below the card: Again, Hard, Easy.\nA: Requirement one: each card gets a grade once per session.\nA: Requirement two: a flip without an answer counts as Again.\nA: Constraint: don't change how intervals are calculated.\nB: Understood. Let me restate the rules first.\nB: A card can come back in the same session for relearning.\nB: In that case, I show its earlier grade instead of asking again.\nB: The user just presses Continue.\nA: Exactly. What about Redrill missed cards?\nB: Redrill reuses the session grades. No new grades get saved.\nB: Heads-up: the summary screen will show fewer grades than flips.\nA: That's fine. It reflects real recall.\nB: Here's what changed: grading now locks per card per session.\nB: Intervals stay the same. I'd recommend a quick manual run-through.\n\nA: Tôi muốn siết lại luồng ôn tập trong Spaced Repetition.\nA: Bối cảnh: người dùng mở Review All và thấy từng thẻ một.\nA: Họ cố nhớ lại từ, rồi bấm Flip.\nA: Các nút chấm điểm hiện ngay bên dưới thẻ: Again, Hard, Easy.\nA: Yêu cầu một: mỗi thẻ chỉ được chấm một lần mỗi phiên.\nA: Yêu cầu hai: lật thẻ mà không trả lời thì tính là Again.\nA: Ràng buộc: không đổi cách tính khoảng lặp lại.\nB: Đã hiểu. Để tôi nhắc lại quy tắc trước.\nB: Một thẻ có thể quay lại trong cùng phiên để học lại.\nB: Khi đó, tôi hiện điểm đã chấm trước đó thay vì hỏi lại.\nB: Người dùng chỉ cần bấm Continue.\nA: Chính xác. Còn Redrill missed cards thì sao?\nB: Redrill dùng lại điểm của phiên. Không lưu điểm mới.\nB: Lưu ý: màn tổng kết sẽ hiện ít điểm hơn số lần lật.\nA: Không sao. Nó phản ánh đúng mức nhớ thật.\nB: Đây là thay đổi: việc chấm điểm giờ khóa theo từng thẻ mỗi phiên.\nB: Khoảng lặp giữ nguyên. Tôi đề xuất chạy thử nhanh bằng tay.\n\nPrompt pattern: Context: <what the user does on screen>. Requirement: <business rule>. Constraint: <what must not change>. Restate the rules before you change anything.",
+    "promptVersion": "7",
+    "generatedAt": 812815000,
+    "title": "Review session grading rule",
+    "scenario": "Building features",
+    "group": "Tier 2 - Full prompts",
+    "count": 0
+  },
+  {
+    "words": [
+      "end-to-end flow",
+      "falls back to",
+      "out of scope"
+    ],
+    "text": "Topic: Planning a change to the translate flow\n\nA: I want the popup to show results faster.\nA: Before you change anything, map the end-to-end flow.\nB: Sure. Step one: the user presses Option+D.\nB: Step two: the app reads the selection, or falls back to the clipboard.\nB: Step three: the popup opens next to the cursor with the source text.\nB: Step four: the model streams the translation into the result pane.\nB: Step five: the app saves the record to Translation History.\nA: Which step is slow?\nB: Step four. With Auto detect, the model first decides the source language.\nB: I'd recommend detecting the language on the Mac first.\nA: What if the detection is wrong?\nB: We only use it when it's confident. Otherwise we keep Auto.\nA: Does this change what gets saved?\nB: No. History stays the same. Saving is out of scope.\nA: Good. Go ahead with step four only.\nB: On it. I'll report the first-word delay before and after.\n\nA: Tôi muốn popup hiện kết quả nhanh hơn.\nA: Trước khi sửa gì, hãy vẽ lại luồng từ đầu tới cuối.\nB: Được. Bước một: người dùng bấm Option+D.\nB: Bước hai: app đọc vùng chọn, hoặc chuyển sang clipboard.\nB: Bước ba: popup mở cạnh con trỏ cùng văn bản nguồn.\nB: Bước bốn: model truyền dần bản dịch vào pane kết quả.\nB: Bước năm: app lưu bản ghi vào Translation History.\nA: Bước nào chậm?\nB: Bước bốn. Với Auto detect, model phải xác định ngôn ngữ nguồn trước.\nB: Tôi đề xuất xác định ngôn ngữ ngay trên máy Mac trước.\nA: Nếu xác định sai thì sao?\nB: Chỉ dùng khi nó chắc chắn. Nếu không thì giữ Auto.\nA: Việc này có đổi thứ được lưu không?\nB: Không. History giữ nguyên. Phần lưu nằm ngoài phạm vi.\nA: Tốt. Chỉ làm bước bốn thôi.\nB: Đang làm. Tôi sẽ báo độ trễ của chữ đầu tiên trước và sau.\n\nPrompt pattern: Before you change <feature>, map the end-to-end flow: trigger, input, screen, result, saved data. Then tell me which step you will touch.",
+    "promptVersion": "7",
+    "generatedAt": 812816000,
+    "title": "End-to-end translate journey",
+    "scenario": "Planning",
+    "group": "Tier 2 - Full prompts",
+    "count": 0
+  },
+  {
+    "words": [
+      "sorted by",
+      "narrow down",
+      "sink to the bottom"
+    ],
+    "text": "Topic: The Translation History window\n\nA: Let's review the Translation History window.\nA: Context: each record shows as a card in a list.\nA: Describe how the list is sorted and filtered today.\nB: It's sorted by the last time you opened a record.\nB: Ties fall back to the time it was created.\nB: A search box sits at the top.\nB: You can narrow down by saved words only and by time.\nB: Time options: All, Today, 24 hours, Week, Month.\nA: What about cards the app prefetched for me?\nB: Prefetched cards sink to the bottom until you open them.\nA: Requirement: Proofread records should be easy to spot.\nB: They already carry an orange tag.\nA: Good. Then no change there.\nA: Constraint: don't change the sort order.\nB: Understood. I'll leave sorting and filters as they are.\nB: Heads-up: saved words also show a filled bookmark here.\n\nA: Xem lại cửa sổ Translation History nhé.\nA: Bối cảnh: mỗi bản ghi hiện dưới dạng một thẻ trong danh sách.\nA: Mô tả danh sách đang được sắp xếp và lọc thế nào.\nB: Nó sắp theo lần cuối bạn mở một bản ghi.\nB: Bằng nhau thì xét theo thời gian tạo.\nB: Ô tìm kiếm nằm ở trên cùng.\nB: Bạn có thể lọc chỉ từ đã lưu và theo thời gian.\nB: Tùy chọn thời gian: All, Today, 24 hours, Week, Month.\nA: Còn các thẻ app tự tải trước cho tôi?\nB: Thẻ tải trước nằm dưới cùng cho tới khi bạn mở chúng.\nA: Yêu cầu: bản ghi Proofread phải dễ nhận ra.\nB: Chúng đã có nhãn màu cam.\nA: Tốt. Vậy không cần đổi chỗ đó.\nA: Ràng buộc: không đổi thứ tự sắp xếp.\nB: Đã hiểu. Tôi giữ nguyên sắp xếp và bộ lọc.\nB: Lưu ý: từ đã lưu cũng hiện bookmark tô đặc ở đây.\n\nPrompt pattern: Describe how <list screen> is sorted and filtered, then change <one rule>. Keep the rest of the layout.",
+    "promptVersion": "7",
+    "generatedAt": 812817000,
+    "title": "History list layout",
+    "scenario": "Building UI",
+    "group": "Tier 2 - Full prompts",
+    "count": 0
+  },
+  {
+    "words": [
+      "inside the result",
+      "a smaller phrase",
+      "on its own"
+    ],
+    "text": "Topic: The Subtranslate pane\n\nA: Let's talk about Subtranslate.\nA: Context: the popup already shows a translation.\nA: The user selects a smaller phrase inside the text.\nB: A small bar appears over the selection.\nB: It offers Quick Translate, Learn Phrase, Speak Phrase, and Copy Phrase.\nA: What happens on Quick Translate?\nB: A second pane opens under the main one.\nB: It shows the phrase and its translation on its own.\nA: Requirement: the main result must stay visible.\nB: It does. The popup grows taller instead.\nA: Can the user save the phrase?\nB: Yes. The second pane has its own save, copy, and speak buttons.\nA: How do they close it?\nB: With the close button in its header.\nA: Constraint: closing it must not clear the main result.\nB: Agreed. Closing only removes the second pane.\n\nA: Nói về Subtranslate nhé.\nA: Bối cảnh: popup đã hiện một bản dịch.\nA: Người dùng chọn một cụm nhỏ hơn bên trong text.\nB: Một thanh nhỏ hiện trên vùng chọn.\nB: Nó có Quick Translate, Learn Phrase, Speak Phrase, và Copy Phrase.\nA: Bấm Quick Translate thì sao?\nB: Một pane thứ hai mở dưới pane chính.\nB: Nó hiện cụm từ và bản dịch riêng của nó.\nA: Yêu cầu: kết quả chính phải luôn hiển thị.\nB: Có. Popup cao thêm thay vì che.\nA: Người dùng có lưu cụm từ được không?\nB: Được. Pane thứ hai có nút lưu, copy, và đọc riêng.\nA: Họ đóng nó thế nào?\nB: Bằng nút đóng trên phần đầu của nó.\nA: Ràng buộc: đóng nó không được xóa kết quả chính.\nB: Đồng ý. Đóng chỉ gỡ pane thứ hai.\n\nPrompt pattern: When the user <action> inside <area>, show <secondary result> under <main result>. Each part keeps its own <actions>.",
+    "promptVersion": "7",
+    "generatedAt": 812818000,
+    "title": "Subtranslate a phrase",
+    "scenario": "Building features",
+    "group": "Tier 2 - Full prompts",
+    "count": 0
+  },
+  {
+    "words": [
+      "from top to bottom",
+      "only when",
+      "comes last"
+    ],
+    "text": "Topic: Order of sections on a Learn card\n\nA: I want to check the order of sections on a Learn card.\nA: List them from top to bottom.\nB: First, the word with its pronunciation.\nB: Then MEANING, SYNONYMS, and ANTONYMS.\nB: That's the summary part.\nB: The details follow: EXAMPLES, EASILY CONFUSED, WORD FAMILY.\nB: Then COLLOCATIONS and MNEMONIC.\nB: SELF-CHECK comes last.\nA: What if a word has no antonyms?\nB: The section shows only when it has content.\nA: Is it the same card in Study?\nB: Yes. The flipped Study card uses the same layout.\nA: Requirement: move EXAMPLES right after MEANING.\nB: Heads-up: that moves it into the summary part.\nB: The summary view will get taller.\nA: Hmm. Then leave the order as it is.\n\nA: Tôi muốn kiểm tra thứ tự các mục trên thẻ Learn.\nA: Liệt kê từ trên xuống dưới.\nB: Đầu tiên là từ cùng phát âm.\nB: Rồi MEANING, SYNONYMS, và ANTONYMS.\nB: Đó là phần tóm tắt.\nB: Phần chi tiết tiếp theo: EXAMPLES, EASILY CONFUSED, WORD FAMILY.\nB: Rồi COLLOCATIONS và MNEMONIC.\nB: SELF-CHECK nằm cuối cùng.\nA: Nếu một từ không có từ trái nghĩa thì sao?\nB: Mục chỉ hiện khi có nội dung.\nA: Trong Study có dùng cùng thẻ đó không?\nB: Có. Thẻ lật trong Study dùng cùng bố cục.\nA: Yêu cầu: chuyển EXAMPLES lên ngay sau MEANING.\nB: Lưu ý: việc đó đưa nó vào phần tóm tắt.\nB: Phần tóm tắt sẽ cao hơn.\nA: Hừm. Vậy giữ nguyên thứ tự.\n\nPrompt pattern: List the sections of <card> from top to bottom. Show a section only when it has content. Keep <section> last.",
+    "promptVersion": "7",
+    "generatedAt": 812819000,
+    "title": "Learn card sections order",
+    "scenario": "Building UI",
+    "group": "Tier 2 - Full prompts",
+    "count": 0
+  },
+  {
+    "words": [
+      "one card at a time",
+      "what comes next",
+      "worth doing next"
+    ],
+    "text": "Topic: From Start Learning to the summary screen\n\nA: Describe a full review session, start to finish.\nB: The user clicks Start Learning on the home screen.\nB: The window shows one card at a time.\nA: What does each card ask?\nB: It depends on the question type.\nB: Auto starts new cards with recognition.\nB: Later it moves to Cloze, Recall, or Listen.\nA: And after the user answers?\nB: They flip the card and grade it: Again, Hard, or Easy.\nB: The grade decides what comes next and when.\nA: What's on the summary screen?\nB: How the session went, plus two things worth doing next.\nB: Redrill missed cards, and Weave into a passage.\nB: Continue and Back to home sit there too.\nA: Great. That's the flow I want to keep.\nB: Noted. I'll treat it as the baseline for review changes.\n\nA: Mô tả một phiên ôn tập đầy đủ, từ đầu tới cuối.\nB: Người dùng bấm Start Learning trên trang chủ.\nB: Cửa sổ hiện từng thẻ một.\nA: Mỗi thẻ hỏi gì?\nB: Tùy vào loại câu hỏi.\nB: Auto bắt đầu thẻ mới bằng dạng nhận biết.\nB: Sau đó nó chuyển sang Cloze, Recall, hoặc Listen.\nA: Còn sau khi người dùng trả lời?\nB: Họ lật thẻ và chấm: Again, Hard, hoặc Easy.\nB: Điểm quyết định thẻ tiếp theo và khi nào gặp lại.\nA: Màn tổng kết có gì?\nB: Phiên học diễn ra thế nào, cộng hai việc nên làm tiếp.\nB: Redrill missed cards, và Weave into a passage.\nB: Continue và Back to home cũng nằm ở đó.\nA: Tuyệt. Đó là luồng tôi muốn giữ.\nB: Đã ghi nhận. Tôi sẽ coi nó là chuẩn cho các thay đổi ôn tập.\n\nPrompt pattern: Describe the full <session> flow: how it starts, what each step asks, and what the user sees at the end.",
+    "promptVersion": "7",
+    "generatedAt": 812820000,
+    "title": "Review session flow",
+    "scenario": "Planning",
+    "group": "Tier 2 - Full prompts",
+    "count": 0
+  },
+  {
+    "words": [
+      "make sense",
+      "by default",
+      "type the answer"
+    ],
+    "text": "Topic: Choosing a question type\n\nA: Explain each question type on the home screen.\nB: Flip: see the word, then grade yourself.\nB: Cloze: fill in the missing word in a sentence.\nB: Recall: see the meaning and type the answer.\nB: Listen: hear the word and type it.\nB: Contrast: pick the right word between two look-alikes.\nB: Collocation: type the common partner word.\nB: Family: type a related form of the word.\nA: Which one is the default?\nB: Auto, by default.\nA: Why Auto?\nB: It picks a type that makes sense for each card.\nB: New cards start easy, then get harder.\nA: Does a typed answer grade itself?\nB: Yes. The user just presses Continue.\nA: Good. Keep Auto as the default.\n\nA: Giải thích từng loại câu hỏi trên trang chủ.\nB: Flip: xem từ, rồi tự chấm.\nB: Cloze: điền từ còn thiếu trong câu.\nB: Recall: xem nghĩa rồi gõ đáp án.\nB: Listen: nghe từ rồi gõ lại.\nB: Contrast: chọn đúng từ giữa hai từ dễ nhầm.\nB: Collocation: gõ từ hay đi kèm.\nB: Family: gõ một dạng khác cùng họ của từ.\nA: Cái nào là mặc định?\nB: Mặc định là Auto.\nA: Tại sao là Auto?\nB: Nó chọn loại phù hợp cho từng thẻ.\nB: Thẻ mới bắt đầu dễ, rồi khó dần.\nA: Câu trả lời gõ vào có tự chấm không?\nB: Có. Người dùng chỉ cần bấm Continue.\nA: Tốt. Giữ Auto làm mặc định.\n\nPrompt pattern: Explain each <option> in one line, then tell me which one is the default and why.",
+    "promptVersion": "7",
+    "generatedAt": 812821000,
+    "title": "Question types on the home screen",
+    "scenario": "Building features",
+    "group": "Tier 2 - Full prompts",
+    "count": 0
+  },
+  {
+    "words": [
+      "one word at a time",
+      "add to the deck",
+      "decide whether"
+    ],
+    "text": "Topic: Browsing new words\n\nA: Walk me through Learn New Words.\nB: The user opens it from the Spaced Repetition home.\nB: It shows words from the built-in pack, one word at a time.\nB: The user reads the card, hears it, and decides whether to keep it.\nA: What are the choices?\nB: Known, Learn, and Skip.\nB: Each has a number key: 1, 2, and 3.\nA: What does Learn do?\nB: It adds the word to the deck for review today.\nA: And Skip?\nB: It moves the word to the end of the queue.\nB: Unseen words come first.\nA: How do I listen?\nB: Press 4 for normal speed, 5 for slow.\nA: And to leave?\nB: Press Escape to go back to home.\n\nA: Dẫn tôi qua Learn New Words.\nB: Người dùng mở nó từ trang chủ Spaced Repetition.\nB: Nó hiện từ trong gói có sẵn, từng từ một.\nB: Người dùng đọc thẻ, nghe, rồi quyết định có giữ không.\nA: Có những lựa chọn nào?\nB: Known, Learn, và Skip.\nB: Mỗi cái có một phím số: 1, 2, và 3.\nA: Learn làm gì?\nB: Nó thêm từ vào bộ thẻ để ôn ngay hôm nay.\nA: Còn Skip?\nB: Nó đẩy từ về cuối hàng đợi.\nB: Từ chưa xem được ưu tiên trước.\nA: Tôi nghe thế nào?\nB: Bấm 4 để nghe thường, 5 để nghe chậm.\nA: Còn thoát ra?\nB: Bấm Escape để về trang chủ.\n\nPrompt pattern: In <screen>, the user sees <item> one at a time and decides <choices>. Each choice has a number key.",
+    "promptVersion": "7",
+    "generatedAt": 812822000,
+    "title": "Learn New Words flow",
+    "scenario": "Building features",
+    "group": "Tier 2 - Full prompts",
+    "count": 0
+  },
+  {
+    "words": [
+      "weave into",
+      "for one exact set",
+      "pay for it twice"
+    ],
+    "text": "Topic: Generating a reading passage\n\nA: Let's look at Weave into a passage.\nA: Context: the user finishes a review session.\nA: The summary screen offers Weave into a passage.\nB: Right. It takes the words from that session.\nB: The model writes a short passage that uses all of them.\nA: Where does the user read it?\nB: In the reading view, as a conversation.\nA: Requirement: reopening the same session must be instant.\nB: Each passage is cached for one exact set of words.\nB: So the user never pays for it twice.\nA: What if I edit the Reading Passage Prompt?\nB: The cache key includes the prompt.\nB: So a new prompt makes a fresh passage.\nA: Where do old passages go?\nB: They stay in Saved Passages until you delete them.\nA: Good. That's the behavior I want.\n\nA: Xem Weave into a passage nhé.\nA: Bối cảnh: người dùng học xong một phiên ôn tập.\nA: Màn tổng kết có nút Weave into a passage.\nB: Đúng. Nó lấy các từ của phiên đó.\nB: Model viết một bài đọc ngắn dùng tất cả các từ.\nA: Người dùng đọc nó ở đâu?\nB: Trong màn đọc, dưới dạng hội thoại.\nA: Yêu cầu: mở lại cùng phiên phải hiện ngay.\nB: Mỗi bài được lưu đệm cho đúng một bộ từ.\nB: Nên người dùng không phải trả phí hai lần.\nA: Nếu tôi sửa Reading Passage Prompt thì sao?\nB: Khóa đệm có chứa prompt.\nB: Nên prompt mới sẽ tạo bài mới.\nA: Bài cũ đi đâu?\nB: Chúng nằm trong Saved Passages tới khi bạn xóa.\nA: Tốt. Đó là hành vi tôi muốn.\n\nPrompt pattern: After <event>, offer <action> that uses <data>. Cache the result so reopening it costs nothing.",
+    "promptVersion": "7",
+    "generatedAt": 812823000,
+    "title": "Weave words into a passage",
+    "scenario": "Building features",
+    "group": "Tier 2 - Full prompts",
+    "count": 0
+  },
+  {
+    "words": [
+      "on the left",
+      "on the right",
+      "tap a word"
+    ],
+    "text": "Topic: The reading view layout\n\nA: Describe the reading view layout.\nB: It draws the passage as a conversation.\nB: One bubble per turn.\nB: The first speaker sits on the left, the other on the right.\nA: What's inside each bubble?\nB: The source line, its translation, and speak buttons.\nB: There's also Learn this line.\nA: What if I select just a few words?\nB: A floating bar appears over the selection.\nB: It has the same buttons, but for the selected text.\nA: Can I tap a word to look it up?\nB: Yes. Words you're studying are clickable.\nA: Can I zoom the text?\nB: Yes. The text starts at 14 points and zooms.\nA: Great. Keep the bubbles narrow enough to read.\nB: Will do. Long lines wrap inside the bubble.\n\nA: Mô tả bố cục màn đọc.\nB: Nó hiển thị bài đọc như một cuộc hội thoại.\nB: Mỗi lượt nói là một bong bóng.\nB: Người nói đầu tiên ở bên trái, người kia ở bên phải.\nA: Mỗi bong bóng có gì?\nB: Câu gốc, bản dịch, và các nút đọc.\nB: Còn có Learn this line.\nA: Nếu tôi chỉ chọn vài từ thì sao?\nB: Một thanh nổi hiện lên trên vùng chọn.\nB: Nó có cùng các nút, nhưng cho phần text đã chọn.\nA: Tôi có thể bấm một từ để tra không?\nB: Được. Các từ bạn đang học có thể bấm được.\nA: Tôi phóng to chữ được không?\nB: Được. Chữ bắt đầu ở cỡ 14 và có thể phóng to.\nA: Tuyệt. Giữ bong bóng đủ hẹp để dễ đọc.\nB: Sẽ làm. Câu dài sẽ xuống dòng trong bong bóng.\n\nPrompt pattern: Lay out <content> as <format>: who sits where, what each bubble holds, and what a selection does.",
+    "promptVersion": "7",
+    "generatedAt": 812824000,
+    "title": "Reading passage as a dialogue",
+    "scenario": "Building UI",
+    "group": "Tier 2 - Full prompts",
+    "count": 0
+  },
+  {
+    "words": [
+      "read aloud",
+      "stop and score",
+      "play back"
+    ],
+    "text": "Topic: Scoring a read-aloud line\n\nA: I want to practice speaking in the reading view.\nB: Each bubble has a button: Read this line aloud for a pronunciation score.\nA: What happens when I click it?\nB: The app starts recording your voice.\nB: The button changes to Stop and score.\nA: And after I stop?\nB: The label shows Scoring while the model listens.\nB: Then you get a score and the words you missed.\nA: Can I hear myself?\nB: Yes. Play back your recording sits next to the score.\nA: Requirement: highlight the weak words in the line.\nB: Heads-up: that needs word positions from the model.\nB: I'd recommend matching the words by text instead.\nA: Fine. Keep it simple.\nB: Here's what changed: weak words now show in orange.\nB: Score and playback work the same as before.\n\nA: Tôi muốn luyện nói trong màn đọc.\nB: Mỗi bong bóng có nút: Read this line aloud for a pronunciation score.\nA: Bấm vào thì sao?\nB: App bắt đầu ghi âm giọng bạn.\nB: Nút đổi thành Stop and score.\nA: Còn sau khi tôi dừng?\nB: Nhãn hiện Scoring trong lúc model nghe.\nB: Rồi bạn nhận điểm và các từ bạn đọc sai.\nA: Tôi nghe lại giọng mình được không?\nB: Được. Play back your recording nằm cạnh điểm số.\nA: Yêu cầu: tô sáng các từ yếu trong câu.\nB: Lưu ý: việc đó cần vị trí từng từ từ model.\nB: Tôi đề xuất so khớp từ theo nội dung chữ.\nA: Được. Giữ đơn giản.\nB: Đây là thay đổi: từ yếu giờ hiện màu cam.\nB: Điểm và nghe lại vẫn hoạt động như trước.\n\nPrompt pattern: Let the user <action>, then show <feedback>. Keep <recording> so they can compare.",
+    "promptVersion": "7",
+    "generatedAt": 812825000,
+    "title": "Pronunciation scoring",
+    "scenario": "Building features",
+    "group": "Tier 2 - Full prompts",
+    "count": 0
+  },
+  {
+    "words": [
+      "in a separate window",
+      "pin with a star",
+      "as context"
+    ],
+    "text": "Topic: The Ask window and quick questions\n\nA: Explain the two ways to ask questions.\nB: First, the Ask button in the popup action row.\nB: It asks about the current translation.\nB: Second, Ask in Window, or Option+K.\nB: It opens in a separate window and stays open.\nA: Does the window see my translation?\nB: No. It's plain chat. It never uses the popup as context.\nA: What are quick questions?\nB: Ready-made questions in the popup's Ask pane.\nB: You can pin your favorites with a star.\nA: Pinned ones go first?\nB: Yes, pinned questions stay at the top.\nA: Does the window use the same model?\nB: No. It has its own model setting.\nA: Good. Keep the two separate.\nB: Agreed. No shared context between them.\n\nA: Giải thích hai cách đặt câu hỏi.\nB: Thứ nhất, nút Ask trên hàng thao tác của popup.\nB: Nó hỏi về bản dịch hiện tại.\nB: Thứ hai, Ask in Window, hoặc Option+K.\nB: Nó mở trong một cửa sổ riêng và giữ mở.\nA: Cửa sổ đó có thấy bản dịch của tôi không?\nB: Không. Nó là chat thuần. Nó không dùng popup làm ngữ cảnh.\nA: Quick questions là gì?\nB: Các câu hỏi soạn sẵn trong pane Ask của popup.\nB: Bạn có thể ghim câu yêu thích bằng ngôi sao.\nA: Câu được ghim lên đầu à?\nB: Đúng, câu đã ghim luôn ở trên cùng.\nA: Cửa sổ có dùng cùng model không?\nB: Không. Nó có cài đặt model riêng.\nA: Tốt. Giữ hai cái tách biệt.\nB: Đồng ý. Không chia sẻ ngữ cảnh giữa chúng.\n\nPrompt pattern: <Feature A> uses <context>, <feature B> does not. Keep them separate and explain the difference on screen.",
+    "promptVersion": "7",
+    "generatedAt": 812826000,
+    "title": "Ask window with quick questions",
+    "scenario": "Building features",
+    "group": "Tier 2 - Full prompts",
+    "count": 0
+  },
+  {
+    "words": [
+      "hands-free",
+      "press Return to",
+      "speak instead of type"
+    ],
+    "text": "Topic: Dictating source text\n\nA: I want to speak instead of type in the popup.\nB: There's a mic button in the source header.\nB: Or press Option+I.\nA: What happens while I talk?\nB: The button shows it's recording.\nA: How do I finish?\nB: Press Option+I again to just transcribe.\nB: Or press Return to transcribe and translate.\nA: So it's fully hands-free?\nB: Yes. Return does both steps in one go.\nA: Does the Ask window have the same?\nB: Yes. There, Option+K starts or cancels dictation.\nB: Return stops and sends.\nA: What if the mic is blocked?\nB: macOS asks you to allow microphone access first.\nA: Good. Keep the shortcuts the same in both places.\n\nA: Tôi muốn nói thay vì gõ trong popup.\nB: Có một nút mic trên phần đầu pane nguồn.\nB: Hoặc bấm Option+I.\nA: Khi tôi nói thì sao?\nB: Nút hiện trạng thái đang ghi âm.\nA: Tôi kết thúc thế nào?\nB: Bấm Option+I lần nữa để chỉ chép lời.\nB: Hoặc bấm Return để chép lời và dịch luôn.\nA: Vậy là hoàn toàn rảnh tay?\nB: Đúng. Return làm cả hai bước một lần.\nA: Cửa sổ Ask có giống vậy không?\nB: Có. Ở đó, Option+K bắt đầu hoặc hủy đọc chính tả.\nB: Return dừng và gửi.\nA: Nếu mic bị chặn thì sao?\nB: macOS hỏi bạn cho phép truy cập micro trước.\nA: Tốt. Giữ phím tắt giống nhau ở cả hai nơi.\n\nPrompt pattern: Let the user <action> with <hotkey>. Return should <finish action>. Show the state on the button.",
+    "promptVersion": "7",
+    "generatedAt": 812827000,
+    "title": "Dictation in the popup",
+    "scenario": "Building features",
+    "group": "Tier 2 - Full prompts",
+    "count": 0
+  },
+  {
+    "words": [
+      "belongs in",
+      "grouped by",
+      "search for"
+    ],
+    "text": "Topic: How Settings is organized\n\nA: List the tabs in Settings and what each one holds.\nB: General holds the theme, panel size, and copy options.\nB: Translation holds the default source, target, and native language.\nB: Languages holds the lists you pick from.\nB: API holds the URL, key, models, and Test connection.\nB: Speech, Shortcuts, and Prompts come next.\nB: History & Sync comes last.\nA: How are the prompts grouped?\nB: By feature: System, Learn Word, Learn Sentence, Grammar.\nB: Then Image, Q&A, and Reading Passage.\nA: Where does the Ask window model live?\nB: In the API tab, right below the main model.\nB: The Dictation and Pronunciation models sit there too.\nA: Can users search for a setting?\nB: Yes. Each tab has keywords, so search finds it.\nA: Good. Any new field goes into the keywords too.\n\nA: Liệt kê các tab trong Settings và nội dung của từng tab.\nB: General chứa giao diện, kích thước panel, và tùy chọn copy.\nB: Translation chứa ngôn ngữ nguồn, đích, và ngôn ngữ mẹ đẻ mặc định.\nB: Languages chứa các danh sách để bạn chọn.\nB: API chứa URL, key, các model, và Test connection.\nB: Tiếp theo là Speech, Shortcuts, và Prompts.\nB: History & Sync nằm cuối cùng.\nA: Các prompt được nhóm thế nào?\nB: Theo tính năng: System, Learn Word, Learn Sentence, Grammar.\nB: Rồi Image, Q&A, và Reading Passage.\nA: Model của cửa sổ Ask nằm ở đâu?\nB: Trong tab API, ngay dưới model chính.\nB: Model Dictation và Pronunciation cũng nằm ở đó.\nA: Người dùng có tìm kiếm cài đặt được không?\nB: Có. Mỗi tab có từ khóa, nên ô tìm kiếm tìm ra được.\nA: Tốt. Trường mới nào cũng phải thêm vào từ khóa.\n\nPrompt pattern: List the tabs in <window> and what each one holds. Tell me where <new setting> belongs.",
+    "promptVersion": "7",
+    "generatedAt": 812828000,
+    "title": "Settings tabs layout",
+    "scenario": "Building UI",
+    "group": "Tier 2 - Full prompts",
+    "count": 0
+  },
+  {
+    "words": [
+      "in three steps",
+      "stop at",
+      "sync with the app"
+    ],
+    "text": "Topic: Changing a prompt the right way\n\nA: I want Learn to give shorter examples.\nA: Constraint: do the prompt change in three steps.\nB: Understood. Step one: update the default Learn Word Prompt.\nB: Step two: quit the app and update the same prompt in config.json.\nB: Step three: build and install the new version.\nA: Why not stop at step one?\nB: The app reads the prompt from config.json.\nB: The old prompt would keep running.\nA: And why quit the app first?\nB: The app keeps config in memory and may write it back.\nA: What if a user has their own copy?\nB: They can use Sync with app prompt in Settings.\nB: Or Sync All Prompts with App from the status menu.\nA: Good. Report the new version when you're done.\nB: Done. All three steps are complete.\nB: The new prompt is live in the installed app.\n\nA: Tôi muốn Learn đưa ví dụ ngắn hơn.\nA: Ràng buộc: sửa prompt theo ba bước.\nB: Đã hiểu. Bước một: sửa Learn Word Prompt mặc định.\nB: Bước hai: thoát app và sửa cùng prompt đó trong config.json.\nB: Bước ba: build và cài phiên bản mới.\nA: Tại sao không dừng ở bước một?\nB: App đọc prompt từ config.json.\nB: Prompt cũ sẽ tiếp tục chạy.\nA: Còn tại sao phải thoát app trước?\nB: App giữ config trong bộ nhớ và có thể ghi đè lại.\nA: Nếu người dùng có bản riêng thì sao?\nB: Họ có thể dùng Sync with app prompt trong Settings.\nB: Hoặc Sync All Prompts with App từ menu trạng thái.\nA: Tốt. Báo phiên bản mới khi xong.\nB: Xong. Đã hoàn tất cả ba bước.\nB: Prompt mới đã chạy trong app đã cài.\n\nPrompt pattern: Change <prompt> in all three places: the app default, the user's config, and the installed app. Don't stop at step one.",
+    "promptVersion": "7",
+    "generatedAt": 812829000,
+    "title": "Prompt change three-step rule",
+    "scenario": "Controlling the agent",
+    "group": "Tier 2 - Full prompts",
+    "count": 0
+  },
+  {
+    "words": [
+      "confident enough",
+      "keep Auto",
+      "too short to"
+    ],
+    "text": "Topic: When to trust language detection\n\nA: Let's review how Auto detect works.\nA: Context: the source language button shows Auto by default.\nB: Right. The Mac guesses the language before calling the model.\nB: If it's confident enough, we send that language.\nB: The first words then show up sooner.\nA: When do we keep Auto?\nB: Four cases.\nB: The text is too short to judge, under 20 characters.\nB: The confidence is below 90 percent.\nB: The language isn't in the user's list.\nB: Or it's the same as the target language.\nA: What does the button show then?\nB: It stays on Auto. The model decides.\nA: Requirement: don't change the user's choice when they pick a language.\nB: Agreed. Detection only runs when the button says Auto.\n\nA: Xem lại cách Auto detect hoạt động.\nA: Bối cảnh: nút ngôn ngữ nguồn mặc định hiện Auto.\nB: Đúng. Máy Mac đoán ngôn ngữ trước khi gọi model.\nB: Nếu đủ chắc chắn, ta gửi ngôn ngữ đó.\nB: Khi đó những chữ đầu tiên hiện ra sớm hơn.\nA: Khi nào thì giữ Auto?\nB: Bốn trường hợp.\nB: Text quá ngắn để đánh giá, dưới 20 ký tự.\nB: Độ tin cậy dưới 90 phần trăm.\nB: Ngôn ngữ không có trong danh sách của người dùng.\nB: Hoặc nó trùng với ngôn ngữ đích.\nA: Lúc đó nút hiện gì?\nB: Nó giữ Auto. Model tự quyết.\nA: Yêu cầu: không đổi lựa chọn khi người dùng đã chọn ngôn ngữ.\nB: Đồng ý. Việc nhận diện chỉ chạy khi nút đang là Auto.\n\nPrompt pattern: Use <local result> only when it's confident enough. Otherwise keep <default>. List the cases that keep the default.",
+    "promptVersion": "7",
+    "generatedAt": 812830000,
+    "title": "Source language auto detect",
+    "scenario": "Backend and data",
+    "group": "Tier 2 - Full prompts",
+    "count": 0
+  },
+  {
+    "words": [
+      "in batches",
+      "by default",
+      "ship with the app"
+    ],
+    "text": "Topic: Growing the built-in vocabulary pack\n\nA: I want more words in Learn New Words.\nB: Those words come from the vocabulary pack.\nB: The pack ships with the app.\nA: How do we add more?\nB: We generate cards in batches with the daily script.\nB: Each batch is 500 words by default.\nA: What happens after a batch?\nB: The script folds the new cards into the pack file.\nA: Do users get them right away?\nB: After the next install, yes.\nA: What about words made with an older prompt?\nB: They stay in the pack until those words are generated again.\nA: Does a pack card behave like a normal Learn result?\nB: Yes. Audio, Save Word, and review all work the same.\nA: Good. Run one batch today.\nB: On it. I'll report how many words were added.\n\nA: Tôi muốn thêm từ trong Learn New Words.\nB: Các từ đó đến từ gói từ vựng.\nB: Gói đó đi kèm app.\nA: Thêm bằng cách nào?\nB: Ta sinh thẻ theo từng đợt bằng script hằng ngày.\nB: Mỗi đợt mặc định 500 từ.\nA: Sau mỗi đợt thì sao?\nB: Script gộp thẻ mới vào file gói.\nA: Người dùng có nhận ngay không?\nB: Có, sau lần cài kế tiếp.\nA: Còn các từ làm bằng prompt cũ?\nB: Chúng nằm trong gói cho tới khi từ đó được sinh lại.\nA: Thẻ trong gói có hoạt động như kết quả Learn bình thường không?\nB: Có. Audio, Save Word, và ôn tập đều như nhau.\nA: Tốt. Chạy một đợt hôm nay.\nB: Đang làm. Tôi sẽ báo đã thêm bao nhiêu từ.\n\nPrompt pattern: Run <job> in batches of <size>. After each batch, fold the result into <shipped file>. Tell me what changes for users.",
+    "promptVersion": "7",
+    "generatedAt": 812831000,
+    "title": "Vocab pack daily batch",
+    "scenario": "Backend and data",
+    "group": "Tier 2 - Full prompts",
+    "count": 0
+  },
+  {
+    "words": [
+      "sync across",
+      "per device",
+      "one file per month"
+    ],
+    "text": "Topic: Where history lives\n\nA: I use NTranslate on two Macs.\nA: Can my history sync across them?\nB: Yes. Point both Macs at a shared folder.\nB: iCloud Drive, Dropbox, or Syncthing all work.\nA: Where do I set that?\nB: In the History & Sync tab of Settings, under History Folder.\nA: How is the data split?\nB: Each device writes its own subfolder.\nB: Inside it, there's one file per month.\nA: Why per device?\nB: Two Macs never write the same file, so nothing conflicts.\nA: Does Translation History show both?\nB: Yes. It merges all devices into one list.\nA: Constraint: don't change the file format.\nB: Understood. Older versions must still read it.\n\nA: Tôi dùng NTranslate trên hai máy Mac.\nA: Lịch sử của tôi có đồng bộ giữa chúng được không?\nB: Được. Cho cả hai máy trỏ tới một thư mục chung.\nB: iCloud Drive, Dropbox, hay Syncthing đều được.\nA: Tôi cài ở đâu?\nB: Trong tab History & Sync của Settings, mục History Folder.\nA: Dữ liệu được chia thế nào?\nB: Mỗi thiết bị ghi vào thư mục con riêng.\nB: Bên trong có một file cho mỗi tháng.\nA: Tại sao lại theo từng thiết bị?\nB: Hai máy không bao giờ ghi cùng một file, nên không xung đột.\nA: Translation History có hiện cả hai không?\nB: Có. Nó gộp mọi thiết bị vào một danh sách.\nA: Ràng buộc: không đổi định dạng file.\nB: Đã hiểu. Các bản cũ vẫn phải đọc được.\n\nPrompt pattern: Explain where <data> is stored, how it's split, and how it syncs across devices. Don't change the format.",
+    "promptVersion": "7",
+    "generatedAt": 812832000,
+    "title": "History across devices",
+    "scenario": "Backend and data",
+    "group": "Tier 2 - Full prompts",
+    "count": 0
+  },
+  {
+    "words": [
+      "no duplicates",
+      "by hand",
+      "straight into"
+    ],
+    "text": "Topic: Bringing dialogues into Saved Passages\n\nA: Let's walk through the buttons on Saved Passages.\nB: The top bar has Import, Add Skill, and Create Dialogue.\nA: What does Create Dialogue do?\nB: You enter some words and an optional scenario.\nB: The model writes a dialogue that uses them.\nA: And Import?\nB: It loads a JSON file of ready-made dialogues.\nA: What if I import the same file twice?\nB: No duplicates. Each dialogue is keyed by its text.\nB: Your practice count stays as it was.\nA: What's Add Skill for?\nB: It installs a coding agent skill on your Mac.\nB: The skill turns any project into dialogue lessons.\nA: Do I still import them by hand?\nB: No. The skill writes them straight into Saved Passages.\nA: Great. Reopen the screen and they appear.\n\nA: Xem qua các nút trên Saved Passages nhé.\nB: Thanh trên cùng có Import, Add Skill, và Create Dialogue.\nA: Create Dialogue làm gì?\nB: Bạn nhập vài từ và một tình huống tùy chọn.\nB: Model viết một đoạn hội thoại dùng các từ đó.\nA: Còn Import?\nB: Nó tải một file JSON chứa các hội thoại soạn sẵn.\nA: Nếu tôi import cùng file hai lần thì sao?\nB: Không trùng. Mỗi hội thoại được định danh theo nội dung.\nB: Số lần luyện của bạn giữ nguyên.\nA: Add Skill dùng để làm gì?\nB: Nó cài một skill cho coding agent trên máy Mac.\nB: Skill đó biến bất kỳ project nào thành bài hội thoại.\nA: Tôi vẫn phải import bằng tay à?\nB: Không. Skill ghi thẳng vào Saved Passages.\nA: Tuyệt. Mở lại màn hình là chúng hiện ra.\n\nPrompt pattern: Let the user bring <content> into <screen> by <way>. Importing twice must not create duplicates or reset progress.",
+    "promptVersion": "7",
+    "generatedAt": 812833000,
+    "title": "Import dialogues and Add Skill",
+    "scenario": "Building features",
+    "group": "Tier 2 - Full prompts",
+    "count": 0
+  },
+  {
+    "words": [
+      "from the user's point of view",
+      "compare link",
+      "ship a release"
+    ],
+    "text": "Topic: Writing release notes\n\nA: Let's ship a release today.\nB: Sure. The release script builds, packs a DMG, and uploads it.\nA: Requirement: write the release notes in plain Vietnamese.\nB: Should I list the commits?\nA: No. Write from the user's point of view.\nA: What's new, what's better, what's fixed.\nB: Got it. For example: you can now import dialogues into Saved Passages.\nB: And: Option+I lets you dictate in the popup.\nA: Good. What else goes in?\nB: A compare link from the last tag to this one.\nA: And the README?\nB: The script updates the Latest line to the new DMG.\nB: I'll commit and push that change too.\nA: Perfect. Send me the release link when it's live.\nB: Will do, with the version and the DMG name.\n\nA: Hôm nay phát hành một bản nhé.\nB: Được. Script release build, đóng gói DMG, và tải lên.\nA: Yêu cầu: viết release notes bằng tiếng Việt dễ hiểu.\nB: Tôi có nên liệt kê các commit không?\nA: Không. Viết theo góc nhìn người dùng.\nA: Có gì mới, gì tốt hơn, gì được sửa.\nB: Rõ. Ví dụ: giờ bạn có thể import hội thoại vào Saved Passages.\nB: Và: Option+I cho phép đọc chính tả trong popup.\nA: Tốt. Còn gì nữa?\nB: Một link so sánh từ tag trước tới tag này.\nA: Còn README?\nB: Script cập nhật dòng Latest theo DMG mới.\nB: Tôi cũng sẽ commit và push thay đổi đó.\nA: Hoàn hảo. Gửi tôi link release khi đã lên.\nB: Sẽ làm, kèm phiên bản và tên file DMG.\n\nPrompt pattern: Write the release notes for <version> from the user's point of view, in <language>. Add a compare link to the last tag.",
+    "promptVersion": "7",
+    "generatedAt": 812834000,
+    "title": "Release notes in plain Vietnamese",
+    "scenario": "Shipping",
+    "group": "Tier 2 - Full prompts",
+    "count": 0
+  },
+  {
+    "words": [
+      "sits next to",
+      "belongs with",
+      "drop first"
+    ],
+    "text": "Topic: Correcting a layout mistake\n\nA: Add Save Word to the translate popup.\nB: Done. I added a Save Word button to the action row.\nB: It sits after Ask, at the end of the row.\nA: Hmm, that's not what I meant.\nA: The action row is for actions that call the model.\nA: Save Word doesn't call the model. It's a bookmark.\nB: Got it. So where does it belong?\nA: It belongs with Copy and the speak buttons, in the result header.\nA: Use the bookmark icon, not a text label.\nB: Understood. Should the icon change after saving?\nA: Yes. The tooltip switches to Remove Saved Word.\nB: And on a narrow popup, which items drop first?\nA: In the action row, Images drops first, then Proofread.\nA: Icon buttons always stay.\nB: Here's the fix: I moved it to the result header, after Copy.\nB: The action row is back to five buttons.\nA: Perfect. That's the layout I want.\n\nA: Thêm Save Word vào popup dịch.\nB: Xong. Tôi đã thêm nút Save Word vào hàng thao tác.\nB: Nó nằm sau Ask, ở cuối hàng.\nA: Hừm, ý tôi không phải vậy.\nA: Hàng thao tác dành cho các thao tác gọi model.\nA: Save Word không gọi model. Nó là một bookmark.\nB: Rõ. Vậy nó thuộc về chỗ nào?\nA: Nó đi cùng Copy và các nút đọc, trên phần đầu pane kết quả.\nA: Dùng icon bookmark, không dùng nhãn chữ.\nB: Đã hiểu. Icon có đổi sau khi lưu không?\nA: Có. Tooltip đổi thành Remove Saved Word.\nB: Còn khi popup hẹp, mục nào bị ẩn trước?\nA: Trong hàng thao tác, Images ẩn trước, rồi tới Proofread.\nA: Các nút icon luôn được giữ lại.\nB: Đây là bản sửa: tôi đã chuyển nó lên phần đầu pane kết quả, sau Copy.\nB: Hàng thao tác trở lại năm nút.\nA: Hoàn hảo. Đó là bố cục tôi muốn.\n\nPrompt pattern: That's not what I meant. <Item> belongs with <group>, <position>, because <business reason>. Move it and keep <other area> unchanged.",
+    "promptVersion": "7",
+    "generatedAt": 812835000,
+    "title": "Save Word in the wrong place",
+    "scenario": "Reviewing results",
+    "group": "Tier 3 - Multi-turn",
+    "count": 0
+  },
+  {
+    "words": [
+      "once per session",
+      "comes back",
+      "that's not the rule"
+    ],
+    "text": "Topic: Fixing a broken grading rule\n\nA: My review summary shows more grades than cards.\nB: I checked. A missed card comes back in the same session.\nB: The second time, I record a new grade.\nA: That's not the rule.\nA: Each card gets a grade once per session.\nB: Understood. So what should the second visit do?\nA: Show the earlier grade and a Continue button.\nA: The user just presses Return to move on.\nB: Can they still pick a different grade?\nA: Yes, but it replaces the first one.\nB: Got it. One grade per card, the last choice wins.\nB: Here's the fix. I tried a session with three missed cards.\nB: The summary now shows ten grades for ten cards.\nA: What about Redrill missed cards?\nB: Redrill follows the same rule. No extra grades.\nA: Good. That matches the rule.\n\nA: Màn tổng kết ôn tập hiện nhiều điểm hơn số thẻ.\nB: Tôi đã kiểm tra. Thẻ bị sai quay lại trong cùng phiên.\nB: Lần thứ hai, tôi ghi một điểm mới.\nA: Quy tắc không phải vậy.\nA: Mỗi thẻ chỉ được chấm một lần mỗi phiên.\nB: Đã hiểu. Vậy lần gặp thứ hai nên làm gì?\nA: Hiện điểm cũ và một nút Continue.\nA: Người dùng chỉ cần bấm Return để đi tiếp.\nB: Họ vẫn có thể chọn điểm khác không?\nA: Có, nhưng nó thay thế điểm đầu tiên.\nB: Rõ. Mỗi thẻ một điểm, lựa chọn cuối cùng được giữ.\nB: Đây là bản sửa. Tôi đã thử một phiên với ba thẻ sai.\nB: Màn tổng kết giờ hiện mười điểm cho mười thẻ.\nA: Còn Redrill missed cards?\nB: Redrill theo cùng quy tắc. Không thêm điểm.\nA: Tốt. Đúng với quy tắc.\n\nPrompt pattern: That's not the rule. The rule is <business rule>. Show me the steps that break it, then fix only that path.",
+    "promptVersion": "7",
+    "generatedAt": 812836000,
+    "title": "A card graded twice",
+    "scenario": "Debugging",
+    "group": "Tier 3 - Multi-turn",
+    "count": 0
+  },
+  {
+    "words": [
+      "only in one place",
+      "still uses",
+      "all three steps"
+    ],
+    "text": "Topic: The agent forgets the prompt rule\n\nA: Did you update the grammar prompt?\nB: Yes. I changed the default Grammar Prompt.\nA: I just ran Proofread. Nothing changed.\nB: Hmm. Let me check.\nB: You're right. The app still uses the prompt in config.json.\nA: You changed it only in one place.\nA: Please finish all three steps.\nB: Sure. I'll quit the app first.\nB: Then I'll update the Grammar Prompt in config.json.\nB: Then I'll install the new build.\nA: Why quit first?\nB: Otherwise the app may write its old copy back.\nB: Done. All three steps are complete.\nA: Let me try again.\nA: Proofread now keeps my line breaks. Good.\nB: Noted. I'll do all three steps for every prompt change.\n\nA: Bạn đã sửa grammar prompt chưa?\nB: Rồi. Tôi đã sửa Grammar Prompt mặc định.\nA: Tôi vừa chạy Proofread. Không có gì thay đổi.\nB: Hừm. Để tôi kiểm tra.\nB: Bạn đúng. App vẫn dùng prompt trong config.json.\nA: Bạn chỉ sửa có một chỗ.\nA: Hãy làm đủ cả ba bước.\nB: Được. Tôi sẽ thoát app trước.\nB: Rồi tôi sửa Grammar Prompt trong config.json.\nB: Rồi tôi cài bản build mới.\nA: Tại sao phải thoát trước?\nB: Nếu không, app có thể ghi đè bản cũ trở lại.\nB: Xong. Đã làm đủ ba bước.\nA: Để tôi thử lại.\nA: Proofread giờ giữ nguyên xuống dòng. Tốt.\nB: Đã ghi nhận. Tôi sẽ làm đủ ba bước cho mọi lần sửa prompt.\n\nPrompt pattern: You changed <thing> only in one place. Finish all three steps: <step 1>, <step 2>, <step 3>. Then confirm in the app.",
+    "promptVersion": "7",
+    "generatedAt": 812837000,
+    "title": "Prompt edited in one place only",
+    "scenario": "Controlling the agent",
+    "group": "Tier 3 - Multi-turn",
+    "count": 0
+  },
+  {
+    "words": [
+      "the first fix",
+      "still happens",
+      "on the second screen"
+    ],
+    "text": "Topic: A fix that fails, then a retry\n\nA: The popup opens far from the cursor.\nB: I'll clamp it so it stays near the cursor.\nB: Done. Can you try again?\nA: It still happens.\nA: But only on my second screen.\nB: Thanks. That's an important detail.\nB: The first fix assumed one screen.\nA: Here are the exact steps.\nA: Select text on the right screen, press Option+D.\nA: The popup appears on the left screen.\nB: Got it. The popup uses the main screen's edges.\nB: It should use the screen under the cursor.\nA: Find the root cause before you change anything else.\nB: That is the root cause. I'll fix only that.\nB: I'll also remove my first clamp.\nA: Good. Now it opens next to the cursor on both screens.\n\nA: Popup mở cách xa con trỏ.\nB: Tôi sẽ giới hạn để nó luôn gần con trỏ.\nB: Xong. Bạn thử lại được không?\nA: Vẫn bị.\nA: Nhưng chỉ trên màn hình thứ hai.\nB: Cảm ơn. Đó là chi tiết quan trọng.\nB: Bản sửa đầu giả định chỉ có một màn hình.\nA: Đây là các bước chính xác.\nA: Chọn text trên màn hình bên phải, bấm Option+D.\nA: Popup hiện trên màn hình bên trái.\nB: Rõ. Popup đang dùng mép của màn hình chính.\nB: Nó phải dùng màn hình nằm dưới con trỏ.\nA: Tìm nguyên nhân gốc trước khi sửa thêm gì.\nB: Đó chính là nguyên nhân gốc. Tôi chỉ sửa chỗ đó.\nB: Tôi cũng sẽ gỡ phần giới hạn đầu tiên.\nA: Tốt. Giờ nó mở cạnh con trỏ trên cả hai màn hình.\n\nPrompt pattern: The first fix didn't work: <what I still see>. Here are the exact steps. Find the root cause before you change anything else.",
+    "promptVersion": "7",
+    "generatedAt": 812838000,
+    "title": "Popup far from the cursor",
+    "scenario": "Debugging",
+    "group": "Tier 3 - Multi-turn",
+    "count": 0
+  },
+  {
+    "words": [
+      "push back",
+      "follow the rule",
+      "for consistency"
+    ],
+    "text": "Topic: Pushing back on a UI change\n\nB: Here's what changed on the summary screen.\nB: I added a fire emoji next to your streak.\nB: It makes the streak feel more fun.\nA: I have to push back on that.\nA: Our rule is no emoji on the UI.\nB: Sorry. What should I use instead?\nA: An SF Symbol, like flame.\nA: And keep the label in English.\nB: Got it. Should it have a color?\nA: Use the same orange as the other streak numbers.\nB: Understood. I'll follow the rule for consistency.\nA: Check the rest of the review screens too.\nB: I found one more emoji in a tooltip.\nB: I replaced it with plain text.\nA: Thanks. Now the screens look consistent.\nB: No emoji left anywhere on the UI.\n\nB: Đây là thay đổi trên màn tổng kết.\nB: Tôi thêm emoji ngọn lửa cạnh chuỗi ngày học.\nB: Nó làm chuỗi ngày học vui hơn.\nA: Tôi phải phản đối việc đó.\nA: Quy tắc của chúng ta là không dùng emoji trên UI.\nB: Xin lỗi. Tôi nên dùng gì thay thế?\nA: Một SF Symbol, như flame.\nA: Và giữ nhãn bằng tiếng Anh.\nB: Rõ. Nó có cần màu không?\nA: Dùng cùng màu cam như các số chuỗi khác.\nB: Đã hiểu. Tôi sẽ theo quy tắc để nhất quán.\nA: Kiểm tra luôn các màn ôn tập khác.\nB: Tôi tìm thấy thêm một emoji trong tooltip.\nB: Tôi đã thay bằng chữ thường.\nA: Cảm ơn. Giờ các màn trông nhất quán.\nB: Không còn emoji nào trên UI.\n\nPrompt pattern: Please don't <change>. Our rule is <rule>. Use <alternative> instead, and check the rest of <area> for consistency.",
+    "promptVersion": "7",
+    "generatedAt": 812839000,
+    "title": "Agent adds an emoji",
+    "scenario": "Reviewing results",
+    "group": "Tier 3 - Multi-turn",
+    "count": 0
+  },
+  {
+    "words": [
+      "mix up",
+      "keep the data",
+      "that's a different action"
+    ],
+    "text": "Topic: Correcting a misunderstanding about Done\n\nA: Can you hide finished passages from the list?\nB: Sure. When the user clicks Toggle Done, I'll delete the passage.\nA: Wait. You mixed up Done and Delete.\nA: Done only marks a passage as finished.\nA: Delete is a different action.\nB: Sorry. So we must keep the data.\nA: Yes. I might want to read it again.\nB: Then how should hiding work?\nA: Add a filter at the top: All or Not done.\nB: Should the filter remember my choice?\nA: Yes, like the filter on the home screen.\nB: Got it. Here's the plan.\nB: Toggle Done stays as it is.\nB: A new filter hides done passages without deleting them.\nA: Perfect. Go ahead.\nB: On it.\n\nA: Bạn ẩn các bài đã xong khỏi danh sách được không?\nB: Được. Khi người dùng bấm Toggle Done, tôi sẽ xóa bài đọc.\nA: Khoan. Bạn nhầm giữa Done và Delete.\nA: Done chỉ đánh dấu bài đọc là đã xong.\nA: Delete là một thao tác khác.\nB: Xin lỗi. Vậy ta phải giữ dữ liệu.\nA: Đúng. Tôi có thể muốn đọc lại.\nB: Vậy việc ẩn nên hoạt động thế nào?\nA: Thêm bộ lọc ở trên cùng: All hoặc Not done.\nB: Bộ lọc có nhớ lựa chọn không?\nA: Có, giống bộ lọc trên trang chủ.\nB: Rõ. Đây là kế hoạch.\nB: Toggle Done giữ nguyên.\nB: Bộ lọc mới ẩn bài đã xong mà không xóa.\nA: Hoàn hảo. Làm đi.\nB: Đang làm.\n\nPrompt pattern: You mixed up <action A> and <action B>. <Action A> only <effect>. Undo <wrong change> and keep the user's data.",
+    "promptVersion": "7",
+    "generatedAt": 812840000,
+    "title": "Done is not delete",
+    "scenario": "Controlling the agent",
+    "group": "Tier 3 - Multi-turn",
+    "count": 0
+  },
+  {
+    "words": [
+      "trace the flow",
+      "should never",
+      "rule out"
+    ],
+    "text": "Topic: Tracing a business rule violation\n\nA: I found an image translation in Translation History.\nA: Image mode should never record history.\nB: Let me trace the flow.\nB: You copy an image, open the popup, and translate.\nB: Image mode skips the history step. That part works.\nA: Then where does the record come from?\nB: Did you click Retry after the result?\nA: Yes, once.\nB: That's it. Retry runs the text path, not the image path.\nB: So it saves the recognized text as a normal record.\nA: Can you rule out other buttons too?\nB: I checked Copy and result speech. They don't save anything.\nA: Good. Fix Retry so it stays in image mode.\nB: Done. Retry now repeats the image request.\nB: History stays empty after three retries.\nA: Great. That matches the rule.\n\nA: Tôi thấy một bản dịch ảnh trong Translation History.\nA: Chế độ ảnh không bao giờ được ghi lịch sử.\nB: Để tôi lần theo luồng xử lý.\nB: Bạn copy ảnh, mở popup, và dịch.\nB: Chế độ ảnh bỏ qua bước lưu lịch sử. Phần đó vẫn đúng.\nA: Vậy bản ghi đó từ đâu ra?\nB: Bạn có bấm Retry sau khi có kết quả không?\nA: Có, một lần.\nB: Đúng rồi. Retry chạy luồng text, không phải luồng ảnh.\nB: Nên nó lưu text nhận dạng như một bản ghi thường.\nA: Bạn loại trừ luôn các nút khác được không?\nB: Tôi đã kiểm tra Copy và đọc bản dịch. Chúng không lưu gì.\nA: Tốt. Sửa Retry để nó giữ chế độ ảnh.\nB: Xong. Retry giờ lặp lại yêu cầu ảnh.\nB: History vẫn trống sau ba lần thử lại.\nA: Tuyệt. Đúng với quy tắc.\n\nPrompt pattern: <Rule> is broken: <symptom>. Trace the flow from <trigger> to <saved data> and tell me where it breaks.",
+    "promptVersion": "7",
+    "generatedAt": 812841000,
+    "title": "Image mode records history",
+    "scenario": "Debugging",
+    "group": "Tier 3 - Multi-turn",
+    "count": 0
+  },
+  {
+    "words": [
+      "I'm blocked",
+      "on your side",
+      "grant it again"
+    ],
+    "text": "Topic: The agent can't test without a permission\n\nA: Can you test the new popup position?\nB: I'm blocked.\nB: The test sends fake mouse clicks.\nB: The terminal needs Accessibility permission for that.\nA: Can't you turn it on yourself?\nB: No. Only you can grant it on your side.\nA: OK. What exactly should I do?\nB: Open System Settings, then Privacy and Security.\nB: Under Accessibility, turn on your terminal.\nA: Done. Anything else?\nB: Restart the terminal so it picks up the change.\nA: What if NTranslate itself loses permission later?\nB: Quit it, reset the permission, open it, and grant it again.\nA: OK. The terminal is ready.\nB: Thanks. I'll continue with the popup test now.\nB: If you'd rather skip it, I can run the other checks only.\n\nA: Bạn test vị trí popup mới được không?\nB: Tôi bị chặn.\nB: Bài test gửi các cú click chuột giả.\nB: Terminal cần quyền Accessibility để làm việc đó.\nA: Bạn không tự bật được à?\nB: Không. Chỉ bạn mới cấp được ở phía bạn.\nA: OK. Chính xác tôi phải làm gì?\nB: Mở System Settings, rồi Privacy and Security.\nB: Trong Accessibility, bật terminal của bạn.\nA: Xong. Còn gì nữa không?\nB: Khởi động lại terminal để nó nhận thay đổi.\nA: Nếu sau này chính NTranslate mất quyền thì sao?\nB: Thoát nó, reset quyền, mở lại, và cấp quyền lần nữa.\nA: OK. Terminal đã sẵn sàng.\nB: Cảm ơn. Giờ tôi tiếp tục test popup.\nB: Nếu bạn muốn bỏ qua, tôi chỉ chạy các bài kiểm tra khác.\n\nPrompt pattern: I'm blocked on <permission/step>. Here is what I need you to do on your side, then I'll continue with <next step>.",
+    "promptVersion": "7",
+    "generatedAt": 812842000,
+    "title": "Blocked by Accessibility",
+    "scenario": "Running the app",
+    "group": "Tier 3 - Multi-turn",
+    "count": 0
+  },
+  {
+    "words": [
+      "the whole loop",
+      "before the demo",
+      "feeds into"
+    ],
+    "text": "Topic: Rehearsing a demo of the learning loop\n\nA: I have a demo tomorrow.\nA: Walk me through the whole study loop before the demo.\nB: Step one: translate or Learn a word in the popup.\nB: Step two: click Save Word. It feeds into the deck.\nA: What if I don't have words yet?\nB: Use Learn New Words to add some from the pack.\nB: Step three: press Option+H to open Study.\nB: Step four: click Start Learning and review the cards.\nB: Step five: on the summary, click Weave into a passage.\nB: Step six: read the passage and score your pronunciation.\nA: How long does the whole loop take?\nB: About five minutes with ten cards.\nA: Any risk during the demo?\nB: Generating the passage needs the network.\nB: I'd recommend making one passage tonight.\nA: Good idea. It will open from the cache.\n\nA: Mai tôi có buổi demo.\nA: Dẫn tôi qua toàn bộ vòng học trước buổi demo.\nB: Bước một: dịch hoặc Learn một từ trong popup.\nB: Bước hai: bấm Save Word. Nó đưa từ vào bộ thẻ.\nA: Nếu tôi chưa có từ nào thì sao?\nB: Dùng Learn New Words để thêm từ trong gói.\nB: Bước ba: bấm Option+H để mở Study.\nB: Bước bốn: bấm Start Learning và ôn các thẻ.\nB: Bước năm: ở màn tổng kết, bấm Weave into a passage.\nB: Bước sáu: đọc bài và chấm phát âm.\nA: Cả vòng mất bao lâu?\nB: Khoảng năm phút với mười thẻ.\nA: Có rủi ro gì trong buổi demo không?\nB: Sinh bài đọc cần mạng.\nB: Tôi đề xuất tạo sẵn một bài tối nay.\nA: Ý hay. Nó sẽ mở từ bộ đệm.\n\nPrompt pattern: Before <event>, walk me through the whole loop: <step 1> to <step N>. Point out how each step feeds into the next.",
+    "promptVersion": "7",
+    "generatedAt": 812843000,
+    "title": "Walk through the study loop",
+    "scenario": "Planning",
+    "group": "Tier 3 - Multi-turn",
+    "count": 0
+  },
+  {
+    "words": [
+      "wrap up",
+      "what changed for users",
+      "left out"
+    ],
+    "text": "Topic: Ending a work session\n\nA: Let's wrap up for today.\nA: Summarize what changed for users.\nB: Three things.\nB: Save Word now sits in the result header, after Copy.\nB: Each card gets one grade per review session.\nB: The popup opens next to the cursor on every screen.\nA: Anything you left out?\nB: The Not done filter in Saved Passages.\nB: I'd do it in a separate change.\nA: Fine. What should I test?\nB: One review session with a missed card.\nB: And Option+D on your second screen.\nA: OK. Install it and tell me the version.\nB: Installed. The build number is in the status menu.\nA: Great. Write the release notes tomorrow.\nB: Will do, in plain Vietnamese.\n\nA: Kết thúc hôm nay nhé.\nA: Tóm tắt những gì thay đổi với người dùng.\nB: Ba điều.\nB: Save Word giờ nằm trên phần đầu pane kết quả, sau Copy.\nB: Mỗi thẻ chỉ được chấm một lần mỗi phiên ôn tập.\nB: Popup mở cạnh con trỏ trên mọi màn hình.\nA: Có gì bạn bỏ lại không?\nB: Bộ lọc Not done trong Saved Passages.\nB: Tôi muốn làm nó trong một thay đổi riêng.\nA: Được. Tôi nên test gì?\nB: Một phiên ôn tập có một thẻ bị sai.\nB: Và Option+D trên màn hình thứ hai.\nA: OK. Cài đặt và báo tôi phiên bản.\nB: Đã cài. Số build nằm trong menu trạng thái.\nA: Tuyệt. Mai viết release notes.\nB: Sẽ làm, bằng tiếng Việt dễ hiểu.\n\nPrompt pattern: Let's wrap up. Summarize what changed for users, what you left out, and what I should test. Then ship it.",
+    "promptVersion": "7",
+    "generatedAt": 812844000,
+    "title": "Wrap up the session",
+    "scenario": "Shipping",
+    "group": "Tier 3 - Multi-turn",
+    "count": 0
+  }
+]

@@ -31,15 +31,18 @@ I learn English to work with coding agents. Create a JSON file of dialogue lesso
 - Read README, CLAUDE.md (if any), package.json / pyproject / equivalent.
 - Scan the folder structure, main pages/screens, API routes, database schema, tests, CI config.
 - Read the last ~30 git commits (`git log --oneline -30`) to see real recent work.
-- List: tech stack, key features, real file/component/function names, common tasks, known pain points.
+- Open the UI code and list every screen, window, menu, tab, button label and hotkey the user sees, in on-screen order.
+- List: key features, user journeys (start to finish), business rules (limits, states, who/when/what happens), screen layout, known pain points. Tech stack only as background.
 
 ## Step 2: Plan the lessons
 - Create 40-50 lessons, split into 3 groups:
   - `Tier 1 - Core prompts` (~15): short, single-intent prompts (add, change, move, remove, fix, explain, run, commit...).
   - `Tier 2 - Full prompts` (~20): prompts with context + requirements + constraints; realistic agent replies ("Here's what changed", "heads-up", "side effect", "I'd recommend").
   - `Tier 3 - Multi-turn` (~15): agent misunderstands → I correct; fix fails → retry; agent blocked; review diff; wrap up session.
-- Every lesson MUST use real names from this project (files, components, routes, tables, features). No generic examples.
-- Cover the full workflow: setup, UI changes, features, backend/data, debugging, refactor, tests, git/CI, deploy, reviewing agent reports.
+- Focus on business and process, not code. About 70% of lessons describe what the user does and sees: end-to-end user journeys, business rules, screen layout (which area sits where, button order, what opens what). About 30% cover controlling the agent (correcting, reviewing results, shipping), still phrased as user behavior ('when the user clicks X, Y should happen'), not file edits.
+- Every lesson MUST use real names from this project: screen titles, menu items, button labels, hotkeys, feature names, data the user saves. Mention file or function names only when the lesson really needs them. No generic examples.
+- Across all lessons, cover every major user journey and every main screen at least once, so the set doubles as a spoken description of how the product works and how its UI is arranged.
+- Teach phrases for describing process and layout: 'sits next to', 'right below', 'opens in a separate window', 'end-to-end flow', 'once per session', 'falls back to', 'only when'.
 - Show me the lesson list (title + scenario + group) and wait for my OK before writing.
 
 ## Step 3: Write lessons
