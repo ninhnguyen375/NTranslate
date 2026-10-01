@@ -2196,6 +2196,9 @@ extension ReviewWindowController: PassagesViewDelegate {
 
     func passagesView(_ view: PassagesView, didSelectPassage passage: WeavePassage, key: String) {
         stopAudio()
+        var passage = passage
+        passage.count = (passage.count ?? 0) + 1
+        WeaveCache.store(passage, key: key)
         presentReading(passage.text, words: passage.words, entry: (key, passage), returnScreen: .passages)
     }
 

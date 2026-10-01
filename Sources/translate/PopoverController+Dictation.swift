@@ -1,4 +1,4 @@
-// Dictation into the translate panel's source pane (mic button, Option+K while the panel is focused).
+// Dictation into the translate panel's source pane (mic button, Option+I while the panel is focused).
 import AppKit
 
 extension PopoverController {
@@ -50,6 +50,6 @@ extension PopoverController {
             .withSymbolConfiguration(paneIconSymbolConfiguration)
         dictateSourceButton.contentTintColor = state == .recording ? .systemRed : Palette.iconTint
         dictateSourceButton.isEnabled = state != .busy
-        dictateSourceButton.toolTip = state == .recording ? "Option+K to transcribe, Return to transcribe and translate" : "Dictate source (Option+K)"
+        dictateSourceButton.toolTip = state == .recording ? "Option+I to transcribe, Return to transcribe and translate" : "Dictate source (Option+I)"
     }
 }

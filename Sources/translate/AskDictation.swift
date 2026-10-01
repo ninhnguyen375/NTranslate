@@ -7,7 +7,7 @@ final class DictationRecorder {
     private var recorder: AVAudioRecorder?
     private var url: URL?
     private var silenceTimer: Timer?
-    /// Set before `start` to stop hands-free: fires once speech is followed by ~1.2s of silence.
+    /// Set before `start` to stop hands-free: fires once speech is followed by ~1.0s of silence.
     var onSilence: (() -> Void)?
 
     var isRecording: Bool { recorder?.isRecording ?? false }
@@ -71,7 +71,7 @@ final class DictationRecorder {
                 // absolute limits keep stray clicks from counting as speech there.
                 if level > max(floor + 10, -45) { heardSpeech = true; quietTicks = 0 }
                 else if heardSpeech, level < max(floor + 8, -50) { quietTicks += 1 } else { quietTicks = 0 }
-                if quietTicks >= 12 { self.onSilence?() }
+                if quietTicks >= 10 { self.onSilence?() }
             }
         }
     }
@@ -128,6 +128,9 @@ extension Translator {
         }
         field("model", model)
         field("response_format", "json")
+        // Vietnamese by default; the mixed-language prompt keeps English terms spelled as English.
+        field("language", "vi")
+        field("prompt", "Mình đang dùng NTranslate để dịch, deploy lên server rồi check lại API và UI nhé.")
         body.append(Data("--\(boundary)\r\nContent-Disposition: form-data; name=\"file\"; filename=\"\(fileURL.lastPathComponent)\"\r\nContent-Type: application/octet-stream\r\n\r\n".utf8))
         body.append(audio)
         body.append(Data("\r\n--\(boundary)--\r\n".utf8))
