@@ -56,7 +56,7 @@ final class ActionChipButton: NSButton {
     }
 }
 
-/// The five primary action buttons (Translate | Learn | Proofread | Images | Ask). Shared by the
+/// The five primary action buttons (Translate | Learn | Proofread | Ask). Shared by the
 /// main pane and the subtranslate pane — each instance is wired to its own selectors by
 /// `PopoverController.configureActionRow`, and laid out by `layoutActionRow`.
 @MainActor
@@ -69,21 +69,21 @@ final class ActionRowSection {
     /// Holds the chips that do not fit the row; hidden while everything fits.
     let overflowButton = ActionChipButton(frame: .zero)
 
-    /// Hairlines drawn between the plain text actions (Learn | Proofread | Images | Ask).
-    let dividers: [NSView] = (0..<3).map { _ in
+    /// Hairlines drawn between the plain text actions (Learn | Proofread | Ask).
+    let dividers: [NSView] = (0..<2).map { _ in
         let view = NSView(frame: .zero)
         view.wantsLayer = true
         return view
     }
 
     /// Plain text buttons — no bezel, separated by `dividers`.
-    var secondaryButtons: [NSButton] { [learnButton, proofreadButton, imagesButton, askButton] }
+    var secondaryButtons: [NSButton] { [learnButton, proofreadButton, askButton] }
 
     /// Left-to-right visual order. Each chip hugs its icon + title.
-    var buttons: [NSButton] { [translateButton, learnButton, proofreadButton, imagesButton, askButton] }
+    var buttons: [NSButton] { [translateButton, learnButton, proofreadButton, askButton] }
 
-    /// Drop these first when the row is too narrow (Images, then Proofread).
-    var overflowHideOrder: [NSButton] { [imagesButton, proofreadButton] }
+    /// Drop these first when the row is too narrow.
+    var overflowHideOrder: [NSButton] { [proofreadButton] }
 
     func applyEnabled(canRun: Bool, copyable: Bool, imagesEnabled: Bool, textActionsEnabled: Bool? = nil) {
         let textOK = textActionsEnabled ?? canRun
