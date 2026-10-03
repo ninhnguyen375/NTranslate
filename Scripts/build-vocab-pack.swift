@@ -33,9 +33,12 @@ enum BuildError: LocalizedError {
     case missingAPIKey
     case quotaExhausted(Int, Int)
     case serviceDown(Int, Int, String)
+    case lowQuality(String, Double)
 
     var errorDescription: String? {
         switch self {
+        case let .lowQuality(word, score):
+            return String(format: "Judge rejected the card for %@ (%.2f)", word, score)
         case let .missingWordList(path):
             return "Word list not found at \(path)"
         case .missingAPIKey:
@@ -174,6 +177,11 @@ struct BuildVocabPack {
         for attempt in 0..<3 {
             do {
                 let text = try await learn(word, translator: translator, sourceLang: sourceLang, targetLang: targetLang)
+                // A card the judge flags gets regenerated; an unreachable judge passes it through.
+                if attempt < 2, let score = await judgeCard(word, card: text, translator: translator), score < 0.5 {
+                    lastError = BuildError.lowQuality(word, score)
+                    continue
+                }
                 return WordOutcome(word: word, result: .success(text))
             } catch {
                 lastError = error
@@ -191,6 +199,15 @@ struct BuildVocabPack {
             _ = translator.learn(word, sourceLang: sourceLang, targetLang: targetLang) { result in
                 continuation.resume(with: result)
             }
+        }
+    }
+
+    static func judgeCard(_ word: String, card: String, translator: Translator) async -> Double? {
+        await withCheckedContinuation { continuation in
+            translator.judge(
+                state: "Word: \(word)\nCard:\n\(card)",
+                question: "Is this English-Vietnamese learning card accurate: correct Vietnamese meanings, valid IPA, and natural, grammatical examples?"
+            ) { continuation.resume(returning: $0) }
         }
     }
 

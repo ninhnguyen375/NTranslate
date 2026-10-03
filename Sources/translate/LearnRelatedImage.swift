@@ -383,7 +383,7 @@ final class LearnRelatedImageStrip: NSView {
         apply(images: [])
     }
 
-    private static let rewriteCacheKey = "relatedImageSenseQueryCache"
+    static let rewriteCacheKey = "relatedImageSenseQueryCache"
 
     private func startRewrite(source: String, token: Int) {
         guard let onResolveQuery else { return }
@@ -469,7 +469,7 @@ final class LearnRelatedImageStrip: NSView {
         }
     }
 
-    private static let urlCacheKey = "relatedImageURLCache"
+    static let urlCacheKey = "relatedImageURLCache"
 
     private func loadPicks(_ picks: [URL], token: Int, fetchToken: Int) {
         LearnRelatedImage.fetchImageData(from: picks) { [weak self] payloads in
@@ -485,7 +485,7 @@ final class LearnRelatedImageStrip: NSView {
     }
 
     /// Token page, then `i.js`. Always calls `done` once; returns nil when the query has no URL.
-    private nonisolated static func lookup(query: String, limit: Int, done: @escaping @Sendable ([URL]) -> Void) -> URLSessionDataTask? {
+    nonisolated static func lookup(query: String, limit: Int, done: @escaping @Sendable ([URL]) -> Void) -> URLSessionDataTask? {
         guard let tokenURL = LearnRelatedImage.tokenPageURL(for: query) else { return nil }
         var request = URLRequest(url: tokenURL)
         request.timeoutInterval = 8

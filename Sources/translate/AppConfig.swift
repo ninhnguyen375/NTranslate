@@ -125,6 +125,10 @@ struct AppConfig: Codable {
     var model: String
     /// Model for the Ask window only; empty falls back to `model`. Independent from Settings "Model".
     var askModel: String = ""
+    /// Model for translate requests; empty falls back to `model`.
+    var translateModel: String = "9r-gemini-lite"
+    /// Model for learn cards; empty falls back to `model`.
+    var learnModel: String = "9r-gemini-low"
     /// Model for LLM pronunciation scoring; empty falls back to `Translator.transcriptionModel`.
     var transcriptionModel: String = ""
     /// Whisper-style model for dictation via /v1/audio/transcriptions; empty falls back to `Translator.dictationModel`.
@@ -326,6 +330,8 @@ struct AppConfig: Codable {
         apiBaseURL = try container.decode(String.self, forKey: .apiBaseURL)
         model = try container.decode(String.self, forKey: .model)
         askModel = try container.decodeIfPresent(String.self, forKey: .askModel) ?? ""
+        translateModel = try container.decodeIfPresent(String.self, forKey: .translateModel) ?? ""
+        learnModel = try container.decodeIfPresent(String.self, forKey: .learnModel) ?? ""
         transcriptionModel = try container.decodeIfPresent(String.self, forKey: .transcriptionModel) ?? ""
         dictationModel = try container.decodeIfPresent(String.self, forKey: .dictationModel) ?? ""
         sourceLang = try container.decode(String.self, forKey: .sourceLang)

@@ -90,6 +90,15 @@ struct LearnCard: Equatable, Sendable {
     /// "Từ đồng nghĩa" / "Từ trái nghĩa" — comma-separated on one line, optional Vietnamese gloss.
     var synonyms: [FamilyForm] = []
     var antonyms: [FamilyForm] = []
+    /// Sentence Learn sections. A word card leaves them empty.
+    var naturalMeaning: String = ""
+    var grammar: [String] = []
+    var phrases: [Collocation] = []
+    var chunks: [Collocation] = []
+    var variation: String = ""
+
+    /// A sentence card has no headword; it is ready once the natural meaning arrives.
+    var isSentence: Bool { headword.isEmpty && !naturalMeaning.isEmpty }
 
     /// Derived forms only, so existing call sites that just need the spelling keep working.
     var wordFamily: [String] { familyForms.map(\.form) }
@@ -205,7 +214,7 @@ struct LearnCard: Equatable, Sendable {
         let card = parse(text)
         let head = card.headword.trimmingCharacters(in: .whitespacesAndNewlines)
         let ipa = card.pronunciation.trimmingCharacters(in: .whitespacesAndNewlines)
-        return !head.isEmpty && !ipa.isEmpty && !card.meanings.isEmpty
+        return (!head.isEmpty && !ipa.isEmpty && !card.meanings.isEmpty) || card.isSentence
     }
 
     /// Structured card is the result UI whenever the text parses — Translate, Learn, or a
@@ -224,7 +233,7 @@ struct LearnCard: Equatable, Sendable {
     }
 
     private enum Section {
-        case none, examples, confusables, family, collocations, cloze, mnemonic
+        case none, examples, confusables, family, collocations, cloze, mnemonic, grammar, phrases, chunks
     }
 
     private static let headings: [String: Section] = [
@@ -234,6 +243,9 @@ struct LearnCard: Equatable, Sendable {
         "Đi kèm thường gặp": .collocations,
         "Tự kiểm tra": .cloze,
         "Nhớ nhanh": .mnemonic,
+        "Important grammar and structure": .grammar,
+        "Useful phrases in context": .phrases,
+        "Pronunciation and memory chunks": .chunks,
     ]
 
     static func parse(_ text: String) -> LearnCard {
@@ -277,6 +289,18 @@ struct LearnCard: Equatable, Sendable {
                     }
                 case .mnemonic:
                     appendMnemonic(&card, item)
+                case .grammar:
+                    if !isEmptyMarker(item) { card.grammar.append(item) }
+                case .phrases:
+                    if let pair = parseCollocation(item) {
+                        card.phrases.append(Collocation(phrase: pair.phrase, meaning: pair.meaning.replacingOccurrences(of: " | ", with: " · ")))
+                    }
+                case .chunks:
+                    // "phrase | /IPA/ | meaning | Memory: cue"
+                    let parts = item.split(separator: "|").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+                    if let first = parts.first {
+                        card.chunks.append(Collocation(phrase: first, meaning: parts.dropFirst().joined(separator: " · ")))
+                    }
                 case .none:
                     break
                 }
@@ -317,6 +341,11 @@ struct LearnCard: Equatable, Sendable {
                 card.synonyms = parseGlossedList(value)
             } else if card.antonyms.isEmpty, let value = value(of: "Từ trái nghĩa", in: line) {
                 card.antonyms = parseGlossedList(value)
+            } else if card.naturalMeaning.isEmpty, let value = value(of: "Natural meaning", in: line) {
+                card.naturalMeaning = value
+            } else if card.variation.isEmpty, let value = value(of: "Natural variation", in: line) {
+                card.variation = value
+                section = .none
             }
         }
 

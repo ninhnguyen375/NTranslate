@@ -16,6 +16,7 @@ struct QATurn: Equatable, Sendable {
 final class RequestHandle: @unchecked Sendable {
     private let lock = NSLock()
     private var task: URLSessionTask?
+    private var inner: RequestHandle?
     private var isCancelled = false
 
     /// Adopts the task once it exists; a handle cancelled before then cancels it immediately.
@@ -31,9 +32,29 @@ final class RequestHandle: @unchecked Sendable {
         lock.lock()
         isCancelled = true
         let task = self.task
+        let inner = self.inner
         self.task = nil
+        self.inner = nil
         lock.unlock()
         task?.cancel()
+        inner?.cancel()
+    }
+
+    /// Hands the cancel button over to a request started after an async pre-step.
+    func chain(_ inner: RequestHandle) {
+        lock.lock()
+        let cancelled = isCancelled
+        if !cancelled { self.inner = inner }
+        lock.unlock()
+        if cancelled { inner.cancel() }
+    }
+
+    /// Runs `body` unless the handle was cancelled while the pre-step ran.
+    func finishWithoutTask(_ body: () -> Void) {
+        lock.lock()
+        let cancelled = isCancelled
+        lock.unlock()
+        if !cancelled { body() }
     }
 
     func clear() {
@@ -66,7 +87,7 @@ final class Translator: @unchecked Sendable {
 
     private enum RequestMode {
         case translate(sourceLang: String, targetLang: String, parentContext: String?)
-        case learn(sourceLang: String, targetLang: String)
+        case learn(sourceLang: String, targetLang: String, asTerm: Bool)
         case proofread(lang: String)
         case ask(question: String, sourceText: String, translatedText: String, sourceLang: String, targetLang: String, history: [QATurn], parentContext: String?)
         case imageSearch
@@ -142,8 +163,15 @@ final class Translator: @unchecked Sendable {
         return words.count >= 1 && words.count <= 3
     }
 
-    static func renderLearnPrompt(for text: String, sourceLang: String, targetLang: String, config: AppConfig) -> String {
-        let template = isDictionaryTerm(text) ? config.learnPrompt : config.sentenceLearnPrompt
+    /// 4-6 plain words: too long for the word-count rule, but may still be an idiom or phrasal verb.
+    static func isTermCandidate(_ text: String) -> Bool {
+        guard text.count <= dictionaryTermCharacterLimit, !text.contains(where: { $0.isNewline }) else { return false }
+        guard text.unicodeScalars.allSatisfy({ !dictionaryTermPunctuation.contains($0) }) else { return false }
+        return (4...6).contains(text.split(whereSeparator: { $0.isWhitespace }).count)
+    }
+
+    static func renderLearnPrompt(for text: String, sourceLang: String, targetLang: String, config: AppConfig, asTerm: Bool = false) -> String {
+        let template = asTerm || isDictionaryTerm(text) ? config.learnPrompt : config.sentenceLearnPrompt
         return template
             .replacingOccurrences(of: "{{config.sourceLang}}", with: sourceLang)
             .replacingOccurrences(of: "{{config.targetLang}}", with: targetLang)
@@ -241,19 +269,20 @@ final class Translator: @unchecked Sendable {
                 sourceLang: sourceLang,
                 targetLang: targetLang
             ) + Self.qaParentContextBlock(parentContext) + Self.qaHistoryBlock(history)
-        case let .learn(sourceLang, targetLang):
+        case let .learn(sourceLang, targetLang, asTerm):
             // ponytail: no context block here on purpose - a learn card covers every sense of the
             // word, so surrounding text would narrow it to one meaning.
             systemPrompt = Self.renderLearnPrompt(
                 for: text,
                 sourceLang: sourceLang,
                 targetLang: targetLang,
-                config: config
+                config: config,
+                asTerm: asTerm
             )
         }
         do {
             req.httpBody = try Self.requestPayload(
-                model: model ?? config.model,
+                model: model ?? Self.defaultModel(for: mode, config: config),
                 systemPrompt: systemPrompt,
                 userContent: wrappedText,
                 stream: stream
@@ -263,6 +292,16 @@ final class Translator: @unchecked Sendable {
             return RequestHandle()
         }
         return perform(req, stream: stream, onPartial: onPartial, completion: completion)
+    }
+
+    private static func defaultModel(for mode: RequestMode, config: AppConfig) -> String {
+        let specific: String
+        switch mode {
+        case .translate: specific = config.translateModel
+        case .learn: specific = config.learnModel
+        default: specific = ""
+        }
+        return specific.isEmpty ? config.model : specific
     }
 
     @discardableResult
@@ -610,12 +649,66 @@ final class Translator: @unchecked Sendable {
         onPartial: (@Sendable (String) -> Void)? = nil,
         completion: @escaping @Sendable (Result<String, Error>) -> Void
     ) -> RequestHandle {
-        request(
-            text,
-            mode: .learn(sourceLang: sourceLang, targetLang: targetLang),
-            onPartial: onPartial,
-            completion: completion
-        )
+        guard Self.isTermCandidate(text) else {
+            return request(text, mode: .learn(sourceLang: sourceLang, targetLang: targetLang, asTerm: false), onPartial: onPartial, completion: completion)
+        }
+        // A 4-6 word idiom ("go back to square one") deserves the dictionary card, not the sentence one.
+        let handle = RequestHandle()
+        judge(
+            state: "Phrase: \(text)",
+            question: "Is this a fixed dictionary entry (idiom, phrasal verb, set expression) rather than a free sentence?"
+        ) { score in
+            let inner = self.request(
+                text,
+                mode: .learn(sourceLang: sourceLang, targetLang: targetLang, asTerm: (score ?? 0) >= 0.8),
+                onPartial: onPartial,
+                completion: completion
+            )
+            handle.chain(inner)
+        }
+        return handle
+    }
+
+    // MARK: - Judge (9Router /v1/systemone)
+
+    static let judgeModel = "oc/jev-1.13-free"
+    /// The judge only saves work; a slow answer costs more than it saves, so it gives up fast.
+    static let judgeTimeout: TimeInterval = 4
+
+    /// `/v1/chat/completions` -> `/v1/systemone` on the same 9Router host.
+    static func judgeURL(from apiBaseURL: String) -> URL? {
+        guard let range = apiBaseURL.range(of: "/chat/completions") else { return nil }
+        return URL(string: apiBaseURL.replacingCharacters(in: range, with: "/systemone"))
+    }
+
+    static func judgeScore(from data: Data) -> Double? {
+        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let answers = object["answers"] as? [String: Any],
+              let answer = answers["q"] as? [String: Any]
+        else { return nil }
+        return (answer["noul"] as? NSNumber)?.doubleValue
+    }
+
+    /// Probability (0...1) that the answer to `question` about `state` is yes. Nil on any failure,
+    /// so every caller falls back to what it did before the judge existed.
+    func judge(state: String, question: String, completion: @escaping @Sendable (Double?) -> Void) {
+        guard let url = Self.judgeURL(from: config.apiBaseURL),
+              let body = try? JSONSerialization.data(withJSONObject: [
+                  "model": Self.judgeModel,
+                  "state": state,
+                  "questions": ["q": ["type": "noul", "instructions": question]]
+              ])
+        else { completion(nil); return }
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.timeoutInterval = Self.judgeTimeout
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        req.httpBody = body
+        StreamingHTTP.session.dataTask(with: req) { data, response, _ in
+            guard let data, (response as? HTTPURLResponse)?.statusCode == 200 else { completion(nil); return }
+            completion(Self.judgeScore(from: data))
+        }.resume()
     }
 
     /// One short reading passage containing every supplied word. The list is capped because a
@@ -686,7 +779,20 @@ final class Translator: @unchecked Sendable {
         onPartial: (@Sendable (String) -> Void)? = nil,
         completion: @escaping @Sendable (Result<String, Error>) -> Void
     ) -> RequestHandle {
-        request(text, mode: .proofread(lang: lang), onPartial: onPartial, completion: completion)
+        // A sentence the judge is sure is clean comes back unchanged, the same shape the grammar
+        // prompt returns for correct text, without a full model call.
+        let handle = RequestHandle()
+        judge(
+            state: "Language: \(lang)\nText: \(text)",
+            question: "Does this text contain any grammar, spelling, or word-choice mistake?"
+        ) { score in
+            if let score, score < 0.05 {
+                handle.finishWithoutTask { completion(.success(text)) }
+                return
+            }
+            handle.chain(self.request(text, mode: .proofread(lang: lang), onPartial: onPartial, completion: completion))
+        }
+        return handle
     }
 
     @discardableResult

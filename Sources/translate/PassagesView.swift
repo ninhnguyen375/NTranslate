@@ -7,6 +7,7 @@ protocol PassagesViewDelegate: AnyObject {
     func passagesView(_ view: PassagesView, didSelectPassage passage: WeavePassage, key: String)
     func passagesView(_ view: PassagesView, didToggleDone key: String)
     func passagesView(_ view: PassagesView, didDeletePassage key: String)
+    func passagesView(_ view: PassagesView, didResetCount key: String)
     func passagesViewDidRequestCreate(_ view: PassagesView)
 }
 
@@ -18,6 +19,7 @@ final class PassagesView: NSView, NSTableViewDataSource, NSTableViewDelegate {
     private var allEntries: [(key: String, passage: WeavePassage)] = []
     private let groupPopup = NSPopUpButton()
     private static let allGroupsTitle = "All Groups"
+    private static let groupKey = "local.ninh.ntranslate.passageGroup"
     private let table = NSTableView()
     private let backButton = NSButton()
     private let createButton = NSButton()
@@ -39,7 +41,7 @@ final class PassagesView: NSView, NSTableViewDataSource, NSTableViewDelegate {
 
     func reload(entries: [(key: String, passage: WeavePassage)]) {
         allEntries = entries
-        let selected = groupPopup.titleOfSelectedItem ?? Self.allGroupsTitle
+        let selected = groupPopup.titleOfSelectedItem ?? UserDefaults.standard.string(forKey: Self.groupKey) ?? Self.allGroupsTitle
         let groups = Set(entries.compactMap { $0.passage.group }.filter { !$0.isEmpty }).sorted()
         groupPopup.removeAllItems()
         groupPopup.addItems(withTitles: [Self.allGroupsTitle] + groups)
@@ -190,6 +192,10 @@ final class PassagesView: NSView, NSTableViewDataSource, NSTableViewDelegate {
             guard let self else { return }
             self.delegate?.passagesView(self, didToggleDone: key)
         }
+        cellView.onResetCount = { [weak self] in
+            guard let self else { return }
+            self.delegate?.passagesView(self, didResetCount: key)
+        }
         cellView.onDelete = { [weak self] in
             guard let self else { return }
             self.delegate?.passagesView(self, didDeletePassage: key)
@@ -212,6 +218,7 @@ final class PassagesView: NSView, NSTableViewDataSource, NSTableViewDelegate {
     }
 
     @objc private func changeGroup() {
+        UserDefaults.standard.set(groupPopup.titleOfSelectedItem, forKey: Self.groupKey)
         applyFilter()
     }
 
@@ -271,12 +278,14 @@ final class PassagesView: NSView, NSTableViewDataSource, NSTableViewDelegate {
 final class PassageRowCell: NSTableCellView {
     var onToggleDone: (() -> Void)?
     var onDelete: (() -> Void)?
+    var onResetCount: (() -> Void)?
     var onOpen: (() -> Void)?
 
     private let titleLabel = NSTextField(labelWithString: "")
     private let subtitleLabel = NSTextField(labelWithString: "")
     private let doneButton = NSButton()
     private let deleteButton = NSButton()
+    private let resetCountButton = NSButton()
     private let openButton = NSButton()
 
     override init(frame frameRect: NSRect) {
@@ -301,6 +310,7 @@ final class PassageRowCell: NSTableCellView {
         let count = entry.passage.count ?? 0
         parts.append(count == 1 ? "Studied 1 time" : "Studied \(count) times")
         subtitleLabel.stringValue = parts.joined(separator: " · ")
+        resetCountButton.isHidden = count == 0
 
         let doneSymbol = isDone ? "checkmark.circle.fill" : "circle"
         let doneConfig = NSImage.SymbolConfiguration(pointSize: 15, weight: .semibold)
@@ -329,6 +339,15 @@ final class PassageRowCell: NSTableCellView {
         )
 
         ReviewControls.iconButton(
+            resetCountButton,
+            symbol: "arrow.counterclockwise",
+            label: "Reset study count",
+            target: self,
+            action: #selector(tapResetCount)
+        )
+        resetCountButton.toolTip = "Reset study count"
+
+        ReviewControls.iconButton(
             deleteButton,
             symbol: "trash",
             label: "Delete passage",
@@ -351,7 +370,7 @@ final class PassageRowCell: NSTableCellView {
         textStack.alignment = .leading
         textStack.translatesAutoresizingMaskIntoConstraints = false
 
-        let actionStack = NSStackView(views: [doneButton, deleteButton, openButton])
+        let actionStack = NSStackView(views: [doneButton, resetCountButton, deleteButton, openButton])
         actionStack.orientation = .horizontal
         actionStack.spacing = 8
         actionStack.alignment = .centerY
@@ -374,5 +393,6 @@ final class PassageRowCell: NSTableCellView {
 
     @objc private func tapDone() { onToggleDone?() }
     @objc private func tapDelete() { onDelete?() }
+    @objc private func tapResetCount() { onResetCount?() }
     @objc private func tapOpen() { onOpen?() }
 }

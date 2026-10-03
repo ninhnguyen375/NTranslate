@@ -164,6 +164,11 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
     var sourceDictationRequest: RequestHandle?
     var splitDividerGradient: CAGradientLayer?
     var translator: Translator?
+    lazy var phoneStudyServer = PhoneStudyServer(
+        store: { [weak self] in self?.historyStore },
+        translator: { [weak self] in self?.translator },
+        config: { [weak self] in self?.config }
+    )
     var registeredHotKeys: [EventHotKeyRef] = []
     var hotKeyEventHandlerRef: EventHandlerRef?
     var ocrPollTimer: Timer?
@@ -378,6 +383,7 @@ final class PopoverController: NSObject, NSApplicationDelegate, NSTextViewDelega
         buildPopover()
         buildMenu()
         updateReviewBadge()
+        phoneStudyServer.startIfPossible()
         performUpdateCheck(silent: true)
         Task { @MainActor [weak self] in
             try? await Task.sleep(nanoseconds: 250_000_000)
