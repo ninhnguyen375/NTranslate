@@ -305,6 +305,7 @@ final class LearnStructuredCardView: NSView {
         let known: Set<String> = [
             "MEANING", "SYNONYMS", "ANTONYMS", "EXAMPLES", "EASILY CONFUSED",
             "WORD FAMILY", "COLLOCATIONS", "MNEMONIC", "SELF-CHECK",
+            "GRAMMAR", "USEFUL PHRASES", "PRONUNCIATION", "NATURAL VARIATION",
         ]
         var titles: [String] = []
         func walk(_ view: NSView) {
@@ -336,12 +337,13 @@ final class LearnStructuredCardView: NSView {
         let summary = scope != .details
         let details = scope != .summary
         if summary {
-            if showsHero {
+            if showsHero, !card.headword.isEmpty {
                 addSection(makeHero())
             } else if !card.pronunciation.isEmpty {
                 addSection(makePronunciationOnly())
             }
             if !card.meanings.isEmpty { addSection(makeMeanings()) }
+            if !card.naturalMeaning.isEmpty { addSection(makeTextBox(title: "MEANING", lines: [card.naturalMeaning])) }
             if !card.synonyms.isEmpty { addSection(makeWordList(title: "SYNONYMS", words: card.synonyms)) }
             if !card.antonyms.isEmpty { addSection(makeWordList(title: "ANTONYMS", words: card.antonyms)) }
         }
@@ -349,10 +351,19 @@ final class LearnStructuredCardView: NSView {
             applyExampleFilter()
             return
         }
+        if !card.grammar.isEmpty { addSection(makeTextBox(title: "GRAMMAR", lines: card.grammar.map { "• " + $0 })) }
+        if !card.phrases.isEmpty { addSection(makePairs(title: "USEFUL PHRASES", items: card.phrases)) }
         if !card.examples.isEmpty { addSection(makeExamples()) }
-        if !card.confusables.isEmpty { addSection(makeConfusables()) }
+        if card.headword.isEmpty, !card.confusables.isEmpty {
+            // A sentence card has no headword for the left column, so each pair is one row.
+            addSection(makePairs(title: "EASILY CONFUSED", items: card.confusables.map {
+                LearnCard.Collocation(phrase: $0.other, meaning: [$0.difference, $0.contrastSentence].filter { !$0.isEmpty }.joined(separator: "\n"))
+            }))
+        } else if !card.confusables.isEmpty { addSection(makeConfusables()) }
         if !card.familyForms.isEmpty { addSection(makeFamily()) }
-        if !card.collocations.isEmpty { addSection(makeCollocations()) }
+        if !card.collocations.isEmpty { addSection(makePairs(title: "COLLOCATIONS", items: card.collocations)) }
+        if !card.chunks.isEmpty { addSection(makePairs(title: "PRONUNCIATION", items: card.chunks)) }
+        if !card.variation.isEmpty { addSection(makeTextBox(title: "NATURAL VARIATION", lines: [card.variation])) }
         if !card.mnemonic.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             addSection(makeMnemonic())
         }
@@ -597,15 +608,34 @@ final class LearnStructuredCardView: NSView {
         return section
     }
 
-    private func makeCollocations() -> NSView {
-        let section = sectionStack(title: "COLLOCATIONS")
+    private func makeTextBox(title: String, lines: [String]) -> NSView {
+        let section = sectionStack(title: title)
+        let cardBox = RoundedBox()
+        let rows = NSStackView()
+        rows.orientation = .vertical
+        rows.alignment = .leading
+        rows.spacing = 6
+        rows.translatesAutoresizingMaskIntoConstraints = false
+        for line in lines {
+            let field = wrappingLabel(line, size: 13, color: .labelColor)
+            rows.addArrangedSubview(field)
+            field.widthAnchor.constraint(equalTo: rows.widthAnchor).isActive = true
+        }
+        cardBox.fill(rows)
+        section.addArrangedSubview(cardBox)
+        pinWidth(cardBox, to: section)
+        return section
+    }
+
+    private func makePairs(title: String, items: [LearnCard.Collocation]) -> NSView {
+        let section = sectionStack(title: title)
         let cardBox = RoundedBox()
         let rows = NSStackView()
         rows.orientation = .vertical
         rows.alignment = .leading
         rows.spacing = 0
         rows.translatesAutoresizingMaskIntoConstraints = false
-        for (index, item) in card.collocations.enumerated() {
+        for (index, item) in items.enumerated() {
             let row = CollocationRow(phrase: item.phrase, meaning: item.meaning, showDivider: index > 0)
             rows.addArrangedSubview(row)
             row.widthAnchor.constraint(equalTo: rows.widthAnchor).isActive = true

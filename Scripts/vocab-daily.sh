@@ -18,7 +18,7 @@ SOURCES=(
   Sources/translate/Translator.swift Sources/translate/AppConfig.swift
   Sources/translate/AppConfigPrompts.swift Sources/translate/LanguageDetector.swift
   Sources/translate/AppTheme.swift Sources/translate/APIKeyStore.swift
-  Sources/translate/NativeSpeechEngine.swift
+  Sources/translate/NativeSpeechEngine.swift Sources/translate/StreamSession.swift
   Scripts/VocabWork.swift Scripts/build-vocab-pack.swift
 )
 

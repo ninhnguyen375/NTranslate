@@ -2,6 +2,7 @@
 import AppKit
 import ApplicationServices
 import Carbon.HIToolbox
+import CoreImage
 
 extension PopoverController {
     func buildMenu() {
@@ -80,6 +81,10 @@ extension PopoverController {
         let historyItem = NSMenuItem(title: "Translation History", action: #selector(openTranslationHistory), keyEquivalent: "")
         historyItem.image = NSImage(systemSymbolName: "clock.arrow.circlepath", accessibilityDescription: "Translation History")
         statusMenu.addItem(historyItem)
+
+        let phoneItem = NSMenuItem(title: "Phone Study QR Code", action: #selector(showPhoneStudyQR), keyEquivalent: "")
+        phoneItem.image = NSImage(systemSymbolName: "iphone", accessibilityDescription: "Phone Study QR Code")
+        statusMenu.addItem(phoneItem)
 
         let syncPromptsItem = NSMenuItem(title: "Sync All Prompts with App", action: #selector(syncAllPromptsMenu), keyEquivalent: "")
         syncPromptsItem.image = NSImage(systemSymbolName: "arrow.triangle.2.circlepath.doc.on.clipboard", accessibilityDescription: "Sync All Prompts with App")
@@ -451,6 +456,41 @@ extension PopoverController {
 
     @objc func quitApp() {
         NSApp.terminate(nil)
+    }
+
+    /// Tailscale may come up after launch, so the menu retries the listener before showing the QR.
+    @objc func showPhoneStudyQR() {
+        phoneStudyServer.startIfPossible()
+        let alert = NSAlert()
+        guard let link = phoneStudyServer.link else {
+            alert.messageText = "Tailscale is not connected"
+            alert.informativeText = "Connect Tailscale on this Mac, then try again."
+            alert.runModal()
+            return
+        }
+        alert.messageText = "Scan to Study on Phone"
+        alert.informativeText = link
+        let qrView = NSImageView(frame: NSRect(x: 0, y: 0, width: 240, height: 240))
+        qrView.image = Self.qrImage(for: link)
+        qrView.imageScaling = .scaleProportionallyUpOrDown
+        alert.accessoryView = qrView
+        alert.addButton(withTitle: "Done")
+        alert.addButton(withTitle: "Copy Link")
+        NSApp.activate(ignoringOtherApps: true)
+        if alert.runModal() == .alertSecondButtonReturn {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(link, forType: .string)
+        }
+    }
+
+    static func qrImage(for text: String) -> NSImage? {
+        guard let filter = CIFilter(name: "CIQRCodeGenerator") else { return nil }
+        filter.setValue(Data(text.utf8), forKey: "inputMessage")
+        guard let output = filter.outputImage?.transformed(by: CGAffineTransform(scaleX: 10, y: 10)) else { return nil }
+        let rep = NSCIImageRep(ciImage: output)
+        let image = NSImage(size: rep.size)
+        image.addRepresentation(rep)
+        return image
     }
 
     @objc func reloadConfig() {

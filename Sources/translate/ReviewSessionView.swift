@@ -738,15 +738,6 @@ final class ReviewSessionView: NSView {
     @objc private func tapMarkDone() { delegate?.sessionViewDidTogglePassageDone(self) }
     @objc private func tapRegenerate() { delegate?.sessionViewDidRequestPassageRegenerate(self) }
 
-    /// Shows whether the open passage is already done, and which way the button will flip it.
-    func setPassageDone(_ isDone: Bool) {
-        markDoneButton.title = isDone ? "  Done" : "  Mark Done"
-        markDoneButton.image = NSImage(
-            systemSymbolName: isDone ? "checkmark" : "checkmark.circle",
-            accessibilityDescription: markDoneButton.title
-        )
-        ReviewControls.tint(markDoneButton, .systemGreen)
-    }
     @objc private func tapTitleRefresh() { delegate?.sessionViewDidRequestPassageTitle(self) }
 
     @objc private func tapReadMore() { delegate?.sessionViewDidToggleContext(self) }

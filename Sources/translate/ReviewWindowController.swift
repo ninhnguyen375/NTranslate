@@ -1012,12 +1012,34 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
         guard case let .typed(question, kind) = activeQuestion, !isAnswerRevealed else { return }
         let typed = sessionView.answerField.stringValue
         guard !typed.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-        let correct = question.matches(typed)
-        let nearMiss = !correct && ReviewPlanner.isNearMiss(typed: typed, answer: question.answer)
+        let exact = question.matches(typed)
+        let nearMiss = !exact && ReviewPlanner.isNearMiss(typed: typed, answer: question.answer)
+        guard !exact, !nearMiss, kind == .cloze, let translator else {
+            finishTypedAnswer(question, kind: kind, typed: typed, correct: exact, nearMiss: nearMiss)
+            return
+        }
+        // A different word can still fill the blank correctly ("goes" for "walks"); the judge
+        // decides, and any failure keeps the strict verdict.
+        sessionView.answerField.isEnabled = false
+        translator.judge(
+            state: "Cloze: \(question.prompt)\nExpected answer: \(question.answer)\nLearner typed: \(typed)",
+            question: "Is the learner answer an acceptable, grammatical fill for the blank with the same meaning as the expected answer?"
+        ) { score in
+            Task { @MainActor in
+                self.sessionView.answerField.isEnabled = true
+                guard case let .typed(current, _) = self.activeQuestion, current == question, !self.isAnswerRevealed else { return }
+                self.finishTypedAnswer(question, kind: kind, typed: typed, correct: (score ?? 0) >= 0.85, nearMiss: false)
+            }
+        }
+    }
+
+    private func finishTypedAnswer(_ question: LearnCard.ClozeQuestion, kind: ReviewPlanner.QuestionKind, typed: String, correct: Bool, nearMiss: Bool) {
         // Seeing the wrong attempt next to the answer is where the mistake is actually learnt.
         let typedBack = typed.trimmingCharacters(in: .whitespacesAndNewlines)
         let note: String
-        if nearMiss {
+        if correct, !question.matches(typed) {
+            note = "Also accepted. Expected: \(question.answer)"
+        } else if nearMiss {
             note = "Just a typo: \(question.answer) (you typed \(typedBack))"
         } else if correct {
             note = "Answer: \(question.answer)"
@@ -1623,7 +1645,6 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
         sessionView.markDoneButton.isHidden = entry == nil
         sessionView.regenerateButton.isHidden = entry == nil
         sessionView.regenerateButton.isEnabled = !isAwaitingWeave
-        sessionView.setPassageDone(entry?.passage.isDone == true)
         // The wait is dead time otherwise, so it buys the one setting the passage needs. The
         // passage has no title yet, so the header would only say "Untitled" over the question.
         if isAwaitingWeave, preferredReadingMode == nil {
@@ -1718,18 +1739,16 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
         words.filter { ReadingHighlight.ranges(in: text, words: [$0]).isEmpty }
     }
 
-    /// Flips the Done flag on the open passage and writes it back to its cache file.
-    private func togglePassageDone() {
+    /// Marks the open passage done and counts one study of it. Opening a passage no longer
+    /// counts; un-marking happens from the Passages list.
+    private func markPassageDone() {
         guard let entry = currentPassage else { return }
         var passage = entry.passage
-        let newStatus = !(passage.isDone ?? false)
-        passage.isDone = newStatus
+        passage.isDone = true
+        passage.count = (passage.count ?? 0) + 1
         WeaveCache.store(passage, key: entry.key)
         currentPassage = (entry.key, passage)
-        sessionView.setPassageDone(newStatus)
-        if newStatus {
-            showPassages()
-        }
+        showPassages()
     }
 
     private func hideReadingChat() {
@@ -2131,7 +2150,7 @@ extension ReviewWindowController: ReviewSessionViewDelegate {
     func sessionViewDidRequestPassageRegenerate(_ view: ReviewSessionView) { regeneratePassage() }
 
     func sessionViewDidTapBack(_ view: ReviewSessionView) { leaveReading() }
-    func sessionViewDidTogglePassageDone(_ view: ReviewSessionView) { togglePassageDone() }
+    func sessionViewDidTogglePassageDone(_ view: ReviewSessionView) { markPassageDone() }
     func sessionView(_ view: ReviewSessionView, didGrade grade: SRSGrade) { applyGrade(grade) }
     func sessionView(_ view: ReviewSessionView, didChooseAt index: Int) {
         // While the passage is being written the same two buttons pick the language it opens in.
@@ -2196,15 +2215,19 @@ extension ReviewWindowController: PassagesViewDelegate {
 
     func passagesView(_ view: PassagesView, didSelectPassage passage: WeavePassage, key: String) {
         stopAudio()
-        var passage = passage
-        passage.count = (passage.count ?? 0) + 1
-        WeaveCache.store(passage, key: key)
         presentReading(passage.text, words: passage.words, entry: (key, passage), returnScreen: .passages)
     }
 
     func passagesView(_ view: PassagesView, didToggleDone key: String) {
         guard var passage = WeaveCache.load(key: key) else { return }
         passage.isDone = !(passage.isDone ?? false)
+        WeaveCache.store(passage, key: key)
+        passagesView.reload(entries: WeaveCache.entries())
+    }
+
+    func passagesView(_ view: PassagesView, didResetCount key: String) {
+        guard var passage = WeaveCache.load(key: key) else { return }
+        passage.count = 0
         WeaveCache.store(passage, key: key)
         passagesView.reload(entries: WeaveCache.entries())
     }

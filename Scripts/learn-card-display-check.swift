@@ -47,6 +47,7 @@ enum LearnCardDisplayCheck {
     static func main() {
         NSApplication.shared.setActivationPolicy(.accessory)
         testStructuredGate()
+        testSentenceCard()
         testHighlight()
         testMeaningSplit()
         testHeightStability()
@@ -126,6 +127,35 @@ enum LearnCardDisplayCheck {
                "no highlight when the headword is absent")
         expect(ConfusableDrillItem.highlightRanges(of: "", in: sentence).isEmpty,
                "an empty headword highlights nothing")
+    }
+
+    private static func testSentenceCard() {
+        let text = """
+        Natural meaning: Tôi sẽ xem xét việc đó.
+        Important grammar and structure
+        - will + V: dự định
+        Useful phrases in context
+        - look into: xem xét | Mức dùng: neutral
+        Dễ nhầm với
+        - look into vs look at: into là điều tra
+          → I looked at the photo.
+        Pronunciation and memory chunks
+        - look into | /lʊk ˈɪntuː/ | xem xét | Memory: nhìn vào trong
+        Natural variation: I'll check it out.
+        Tự kiểm tra
+        - We need to ___ the problem.
+        - Đáp án: look into
+        """
+        let card = LearnCard.parse(text)
+        expect(LearnCard.shouldDisplayStructured(text), "a sentence card is structured")
+        expect(card.naturalMeaning == "Tôi sẽ xem xét việc đó.", "natural meaning parsed")
+        expect(card.grammar == ["will + V: dự định"], "grammar parsed")
+        expect(card.phrases.first?.meaning == "xem xét · Mức dùng: neutral", "phrase parsed")
+        expect(card.chunks.first?.phrase == "look into" && card.chunks.first?.meaning == "/lʊk ˈɪntuː/ · xem xét · Memory: nhìn vào trong", "chunk parsed")
+        expect(card.variation == "I'll check it out.", "variation parsed")
+        expect(card.confusables.first?.contrastSentence == "I looked at the photo.", "confusable parsed")
+        expect(card.cloze?.answer == "look into", "cloze parsed")
+        expect(!LearnCard.shouldDisplayStructured("Từ gốc: x\nNatural meaning: y"), "a word card stays on the word gate")
     }
 
     private static func testMeaningSplit() {
