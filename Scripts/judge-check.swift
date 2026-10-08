@@ -24,6 +24,8 @@ enum JudgeCheck {
         expect(Translator.judgeScore(from: Data("{}".utf8)) == nil, "missing answer yields nil")
         expect(!Translator.isTermCandidate("go"), "short words skip the judge")
         expect(Translator.isTermCandidate("go back to square one"), "a 5-word phrase asks the judge")
+        expect(Translator.isTermCandidate("Broader loyalty front-end"), "a 3-word phrase asks the judge")
+        expect(!Translator.isDictionaryTerm("Broader loyalty front-end"), "a 3-word phrase skips the word card")
         expect(!Translator.isTermCandidate("I went home, then slept."), "sentence punctuation skips the judge")
         exit(failures == 0 ? 0 : 1)
     }

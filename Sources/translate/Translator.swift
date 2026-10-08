@@ -160,14 +160,15 @@ final class Translator: @unchecked Sendable {
         guard !text.contains(where: { $0.isNewline }) else { return false }
         guard text.unicodeScalars.allSatisfy({ !dictionaryTermPunctuation.contains($0) }) else { return false }
         let words = text.split(whereSeparator: { $0.isWhitespace })
-        return words.count >= 1 && words.count <= 3
+        return words.count >= 1 && words.count <= 2
     }
 
-    /// 4-6 plain words: too long for the word-count rule, but may still be an idiom or phrasal verb.
+    /// 3-6 plain words: may be an idiom or phrasal verb, or a free phrase like "broader loyalty front-end"
+    /// that the single-word card would collapse into one unrelated word. The judge decides.
     static func isTermCandidate(_ text: String) -> Bool {
         guard text.count <= dictionaryTermCharacterLimit, !text.contains(where: { $0.isNewline }) else { return false }
         guard text.unicodeScalars.allSatisfy({ !dictionaryTermPunctuation.contains($0) }) else { return false }
-        return (4...6).contains(text.split(whereSeparator: { $0.isWhitespace }).count)
+        return (3...6).contains(text.split(whereSeparator: { $0.isWhitespace }).count)
     }
 
     static func renderLearnPrompt(for text: String, sourceLang: String, targetLang: String, config: AppConfig, asTerm: Bool = false) -> String {
@@ -652,7 +653,7 @@ final class Translator: @unchecked Sendable {
         guard Self.isTermCandidate(text) else {
             return request(text, mode: .learn(sourceLang: sourceLang, targetLang: targetLang, asTerm: false), onPartial: onPartial, completion: completion)
         }
-        // A 4-6 word idiom ("go back to square one") deserves the dictionary card, not the sentence one.
+        // A 3-6 word idiom ("go back to square one") deserves the dictionary card, not the sentence one.
         let handle = RequestHandle()
         judge(
             state: "Phrase: \(text)",

@@ -16,7 +16,7 @@ enum PhoneStudyPage {
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="NTranslate">
-<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#f2f2f7" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
@@ -31,17 +31,28 @@ enum PhoneStudyPage {
 * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
 html, body { overflow-x:clip; touch-action:pan-x pan-y; }
 /* iOS Safari ignores user-scalable=no; pan-only touch-action blocks pinch and double-tap zoom. */
-/* iOS only (touch-callout rules out Android and desktop, coarse pointer rules out Safari on Mac): no rubber-band bounce. */
-@supports (-webkit-touch-callout: none) { @media (pointer: coarse) { html, body, * { overscroll-behavior:none; } } }
 body { margin:0; background:var(--bg); color:var(--text); font:17px/1.47 -apple-system, system-ui, sans-serif; -webkit-font-smoothing:antialiased; padding-bottom:calc(150px + env(safe-area-inset-bottom)); }
-header { position:sticky; top:0; z-index:2; background:var(--blur); -webkit-backdrop-filter:saturate(180%) blur(20px); backdrop-filter:saturate(180%) blur(20px); padding:calc(14px + env(safe-area-inset-top)) 16px 10px; display:flex; align-items:center; gap:8px; }
+header { position:fixed; top:0; left:0; right:0; z-index:2; background:linear-gradient(#000 0 env(safe-area-inset-top), var(--blur) 0); -webkit-backdrop-filter:saturate(180%) blur(20px); backdrop-filter:saturate(180%) blur(20px); padding:calc(14px + env(safe-area-inset-top)) 16px 10px; display:flex; align-items:center; gap:8px; }
 header h1 { transition:font-size .2s; font-size:28px; font-weight:700; letter-spacing:-.02em; margin:0; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 header .icon + h1, header.compact h1 { font-size:19px; letter-spacing:0; }
 #meta { background:var(--card); border-radius:999px; padding:3px 10px; font-variant-numeric:tabular-nums; }
 #meta:empty { display:none; }
 main { padding:4px 16px 0; max-width:640px; margin:0 auto; }
-button { font:inherit; border:0; border-radius:12px; padding:13px 14px; background:var(--card); color:var(--text); cursor:pointer; transition:transform .12s, opacity .12s; display:inline-flex; align-items:center; justify-content:center; gap:6px; }
-button:active { transform:scale(.97); opacity:.85; }
+button { font:inherit; border:0; border-radius:12px; padding:13px 14px; background:var(--card); color:var(--text); cursor:pointer; transition:transform .18s cubic-bezier(.34,1.56,.64,1), opacity .15s, background-color .2s, color .2s, box-shadow .2s; display:inline-flex; align-items:center; justify-content:center; gap:6px; }
+button:active { transform:scale(.93); opacity:.85; }
+@keyframes pop { from { opacity:0; transform:scale(.85) translateY(10px); } }
+.dock button, .grades button, .sbar button, .card .icon.round { animation:pop .38s cubic-bezier(.34,1.56,.64,1) backwards; }
+.dock button:nth-child(2), .grades button:nth-child(2), .sbar button:nth-child(2) { animation-delay:.06s; }
+.dock button:nth-child(3), .grades button:nth-child(3) { animation-delay:.12s; }
+nav button svg { transition:transform .25s cubic-bezier(.34,1.56,.64,1); }
+nav button.on svg { transform:scale(1.15) translateY(-1px); }
+nav button:active svg { transform:scale(.82); }
+.seg button, .list button, .pills button { transition:background-color .2s, color .2s, box-shadow .2s, transform .18s; }
+.seg button:active, .pills button:active { transform:scale(.94); }
+.sbar { position:fixed; left:16px; bottom:var(--sb, 80px); z-index:2; display:flex; flex-direction:column; gap:12px; }
+.sbar button.icon { width:51px; height:51px; padding:0; border-radius:999px; background:color-mix(in srgb, var(--card) 45%, transparent); color:var(--accent); border:1px solid var(--line); box-shadow:0 4px 14px rgba(0,0,0,.16); }
+.sbar button svg { width:24px; height:24px; }
+@media (prefers-reduced-motion: reduce) { * { animation:none !important; transition:none !important; } }
 button:disabled { opacity:.5; }
 button svg { width:18px; height:18px; flex:none; }
 .icon { background:none; padding:6px 8px; color:var(--accent); font-size:17px; }
@@ -54,7 +65,7 @@ button svg { width:18px; height:18px; flex:none; }
 @keyframes fade { from { opacity:0; transform:translateY(4px); } }
 .progress { height:4px; background:var(--line); border-radius:2px; overflow:hidden; margin:2px 0 10px; }
 .progress div { height:100%; background:var(--accent); transition:width .3s; }
-.dock { position:fixed; left:0; right:0; z-index:2; bottom:max(calc(82px + env(safe-area-inset-bottom)), var(--kb, 0px)); padding:10px 16px; display:flex; flex-direction:column; gap:8px; background:var(--blur); -webkit-backdrop-filter:blur(20px); backdrop-filter:blur(20px); }
+.dock { position:fixed; left:0; right:0; z-index:2; bottom:max(calc(max(8px, env(safe-area-inset-bottom) - 12px) + 84px), var(--kb, 0px)); padding:10px 16px; display:flex; flex-direction:column; gap:8px; background:var(--blur); -webkit-backdrop-filter:blur(20px); backdrop-filter:blur(20px); }
 .dock .row { margin:0; }
 .dock button { width:100%; }
 .tap-hint { text-align:center; margin-top:14px; }
@@ -62,7 +73,7 @@ button svg { width:18px; height:18px; flex:none; }
 .toast button { background:none; color:var(--accent); font-weight:600; min-height:40px; padding:8px 12px; }
 .toast button:empty { display:none; }
 #kbProxy { position:fixed; top:0; left:0; width:1px; height:1px; opacity:0; font-size:16px; border:0; padding:0; }
-.grades { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; position:fixed; left:0; right:0; bottom:calc(82px + env(safe-area-inset-bottom)); padding:10px 16px; background:var(--blur); -webkit-backdrop-filter:blur(20px); backdrop-filter:blur(20px); }
+.grades { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; position:fixed; left:0; right:0; bottom:calc(max(8px, env(safe-area-inset-bottom) - 12px) + 84px); padding:10px 16px; background:var(--blur); -webkit-backdrop-filter:blur(20px); backdrop-filter:blur(20px); }
 .grades button { color:#fff; font-weight:600; padding:15px 8px; border-radius:14px; }
 .reveal, .primary { width:100%; background:var(--accent); color:#fff; font-weight:600; }
 .done-state { text-align:center; padding:40px 18px; }
@@ -83,13 +94,13 @@ select { font:inherit; padding:11px 12px; border-radius:12px; border:0; backgrou
 .turn.b .bubble .tr { border-color:rgba(255,255,255,.25); }
 .hide-tr .tr { display:none; }
 .bubble.playing { box-shadow:0 0 0 3px var(--hard); }
-nav { position:fixed; left:12px; right:12px; bottom:calc(8px + env(safe-area-inset-bottom)); z-index:3; display:grid; grid-template-columns:1fr 1fr 1fr; background:var(--blur); -webkit-backdrop-filter:saturate(180%) blur(20px); backdrop-filter:saturate(180%) blur(20px); border:1px solid var(--line); border-radius:28px; padding:5px; box-shadow:0 6px 20px rgba(0,0,0,.12); }
-nav button { background:none; border-radius:22px; padding:5px 2px; color:var(--muted); font-size:12.5px; font-weight:650; flex-direction:column; gap:2px; }
+nav { position:fixed; left:12px; right:12px; bottom:max(8px, calc(env(safe-area-inset-bottom) - 12px)); z-index:3; display:grid; grid-template-columns:1fr 1fr 1fr; background:var(--blur); -webkit-backdrop-filter:saturate(180%) blur(20px); backdrop-filter:saturate(180%) blur(20px); border:1px solid var(--line); border-radius:28px; padding:5px; box-shadow:0 6px 20px rgba(0,0,0,.12); }
+nav button { background:none; border-radius:22px; padding:8px 2px; color:var(--muted); font-size:12.5px; font-weight:650; flex-direction:column; gap:2px; }
 nav button svg { width:24px; height:24px; }
 nav button.on { background:var(--card); color:var(--accent); font-weight:700; box-shadow:0 1px 6px rgba(0,0,0,.14); }
 nav button:active { transform:none; }
 .hidden { display:none !important; }
-#install { position:fixed; left:12px; right:12px; bottom:calc(76px + env(safe-area-inset-bottom)); z-index:4; background:var(--card); border-radius:20px; padding:16px 16px 14px; box-shadow:0 0 0 100vmax rgba(0,0,0,.45), 0 8px 30px rgba(0,0,0,.25); }
+#install { position:fixed; left:12px; right:12px; bottom:calc(62px + env(safe-area-inset-bottom)); z-index:4; background:var(--card); border-radius:20px; padding:16px 16px 14px; box-shadow:0 0 0 100vmax rgba(0,0,0,.45), 0 8px 30px rgba(0,0,0,.25); }
 #install h2 { font-size:17px; margin:0 32px 4px 0; }
 #install ol { margin:8px 0 0; padding-left:22px; font-size:15px; line-height:1.5; }
 #install li + li { margin-top:4px; }
@@ -111,7 +122,10 @@ textarea:focus { box-shadow:0 0 0 3px var(--accent-soft); }
 .hero { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
 .hero .hw { font-size:28px; font-weight:700; letter-spacing:-.02em; }
 .ipa { font:14px ui-monospace, Menlo, monospace; color:var(--muted); }
-.hero .sp { margin-left:auto; display:flex; gap:6px; }
+.spbar { position:sticky; bottom:0; display:flex; flex-direction:column; align-items:flex-start; gap:12px; padding:10px 0; pointer-events:none; }
+.spbar button, .sbar button { pointer-events:auto; }
+.spbar button.icon { width:51px; height:51px; padding:0; border-radius:999px; background:color-mix(in srgb, var(--card) 45%, transparent); color:var(--accent); border:1px solid var(--line); box-shadow:0 4px 14px rgba(0,0,0,.16); animation:pop .38s cubic-bezier(.34,1.56,.64,1) backwards; }
+.spbar button svg { width:24px; height:24px; }
 .chips { display:flex; flex-wrap:wrap; gap:6px; }
 .chip { background:var(--accent-soft); color:var(--text); border-radius:999px; padding:5px 11px; font-size:14px; }
 .chip i { color:var(--muted); font-style:normal; font-size:13px; }
@@ -246,7 +260,7 @@ html:has(.drawer.open), html:has(.drawer.open) body { overflow:hidden; }
 .scrim, .drawer .grab, .dhead { touch-action:none; }
 .drawer .grab { width:36px; height:5px; border-radius:3px; background:var(--line); margin:8px auto 4px; }
 .dhead { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:4px 0 8px; }
-#drawerBody { flex:1; min-height:0; overflow-y:auto; overscroll-behavior:none; touch-action:pan-y; -webkit-overflow-scrolling:touch; margin:0 -16px; padding:0 16px calc(24px + env(safe-area-inset-bottom)); }
+#drawerBody { flex:1; min-height:0; overflow-y:auto; touch-action:pan-y; -webkit-overflow-scrolling:touch; margin:0 -16px; padding:0 16px calc(24px + env(safe-area-inset-bottom)); }
 .dhead b { flex:1; }
 .hrow-wrap { display:flex; align-items:flex-start; background:var(--card); border-bottom:1px solid var(--line); }
 .hrow-wrap:last-child { border-bottom:0; }
@@ -294,6 +308,7 @@ html:has(.drawer.open), html:has(.drawer.open) body { overflow:hidden; }
 <div id="scrim" class="scrim"></div>
 <div id="drawer" class="drawer" role="dialog" aria-label="Translate"><div class="grab"></div><div class="dhead"><b>Translate</b><button id="drawerMark" class="icon round hidden" aria-label="Bookmark"></button><button id="drawerClose" class="icon round" aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div><div id="drawerBody"></div></div>
 <div id="dock" class="dock hidden"></div>
+<div id="sbar" class="sbar hidden"></div>
 <div id="toast" class="toast hidden"></div>
 <input id="kbProxy" aria-hidden="true" tabindex="-1">
 <div id="grades" class="grades hidden">
@@ -395,16 +410,26 @@ function play(text, id, lang, slow) {
   });
 }
 
+// Set after setHeader by screens mid-lesson; Back and tab switches ask before leaving.
+let leaveMsg = null;
+const leaveOk = () => !leaveMsg || confirm(leaveMsg);
 function setHeader(title, meta, back) {
-  navSeq++;
+  navSeq++; leaveMsg = null;
   $('title').textContent = title; $('meta').textContent = meta || '';
   $('back').classList.toggle('hidden', !back);
-  $('back').onclick = back || null;
+  $('back').onclick = back ? () => { if (leaveOk()) back(); } : null;
   $('grades').classList.add('hidden');
+  $('sbar').classList.add('hidden');
   setDock('');
 }
 
 // Bottom bar for each screen's main actions, so they sit under the thumb.
+function setSpeak(html) {
+  $('sbar').innerHTML = html || '';
+  $('sbar').classList.toggle('hidden', !html);
+  pad();
+}
+const SPK = '<button class="icon round" id="say" aria-label="Speak">' + SPEAKER + '</button><button class="icon round" id="saySlow" aria-label="Speak slowly">' + SLOW + '</button>';
 function setDock(html) {
   $('dock').innerHTML = html;
   $('dock').classList.toggle('hidden', !html);
@@ -414,6 +439,9 @@ function setDock(html) {
 function pad() {
   const bar = [$('dock'), $('grades')].find(b => !b.classList.contains('hidden'));
   $('view').style.paddingBottom = bar ? bar.offsetHeight + 'px' : '';
+  const nav = 'calc(max(8px, env(safe-area-inset-bottom) - 12px) + 84px)';
+  const base = bar === $('dock') ? 'max(' + nav + ', var(--kb, 0px))' : nav;
+  document.documentElement.style.setProperty('--sb', 'calc(' + base + ' + ' + (bar ? bar.offsetHeight : 0) + 'px + 10px)');
   return bar ? bar.offsetHeight : 0;
 }
 
@@ -484,7 +512,7 @@ function learnHTML(c, hero) {
   const pairs = list => '<div class="box">' + list.map(p => '<div class="col"><span>' + esc(p.text) + '</span><span>' + esc(p.gloss) + '</span></div>').join('') + '</div>';
   const lines = list => '<div class="box">' + list.map(l => '<div class="mean"><span>' + esc(l) + '</span></div>').join('') + '</div>';
   if (hero && c.headword) h += '<div class="hero"><span class="hw">' + esc(c.headword) + '</span>' + (c.pronunciation ? '<span class="ipa">' + esc(c.pronunciation) + '</span>' : '') +
-    '<span class="sp"><button class="icon round" data-say="1" aria-label="Speak">' + SPEAKER + '</button><button class="icon round" data-say="slow" aria-label="Speak slowly">' + SLOW + '</button></span></div>';
+    '</div>';
   else if (c.pronunciation) h += '<div class="ipa">' + esc(c.pronunciation) + '</div>';
   if (c.headword) h += '<div class="imgs" data-imgs="' + esc(c.headword) + '"></div>';
   if (c.meanings.length) h += sec('Meaning', '<div class="box">' + c.meanings.map(m => '<div class="mean">' + (m.text ? '<span class="pos">' + esc(m.text) + '</span>' : '') + '<span>' + esc(m.gloss) + '</span></div>').join('') + '</div>');
@@ -629,19 +657,22 @@ function renderNewWord() {
   const known = nw.level === 'known';
   const w = nw.words[nw.index];
   setHeader('New Words', nw.total ? (nw.total - nw.index) + ' left' : '', loadReview);
+  leaveMsg = 'Leave new words?';
   const picker = '<select id="lvl">' + nw.levels.map(l => '<option value="' + l.id + '"' + (l.id === nw.level ? ' selected' : '') + '>' + esc(l.label) + ' (' + l.count + ')</option>').join('') + '</select>' +
     (nw.learned ? '<p class="muted" style="margin:0 0 8px">' + nw.learned + ' added to the deck this session.</p>' : '');
   if (!w) {
     if (nw.total > nw.words.length) return loadNewWords();
+    setSpeak('');
     $('view').innerHTML = picker + '<div class="card done-state">' + CHECK + '<p class="muted">' + (known ? 'No words in the Known list yet.' : 'No more words at this level. Choose another level.') + '</p></div>';
   } else {
     $('view').innerHTML = picker + '<div class="card" id="nwCard"><div style="text-align:center"><span class="lvtag">' + esc(w.level) + '</span></div>' +
-      '<div class="term" style="margin-top:8px">' + esc(w.word) + ' <button class="icon round" id="say" aria-label="Speak">' + SPEAKER + '</button><button class="icon round" id="saySlow" aria-label="Speak slowly">' + SLOW + '</button></div>' +
+      '<div class="term" style="margin-top:8px">' + esc(w.word) + '</div>' +
       '<p id="nwHint" class="muted tap-hint">Tap to show the card. Swipe right to learn, left to ' + (known ? 'go next' : 'skip') + '.</p>' +
       '<div id="nwBack" class="back hidden">' + (w.card ? learnHTML(w.card, false) : esc(w.back)) + '</div></div>';
     const skip = known ? 'next' : 'skip';
     setDock('<div class="row"><button data-d="' + (known ? 'unknown' : 'known') + '" class="green">' + (known ? IC.undo + 'Unmark' : IC.check + 'Known') + '</button>' +
       '<button data-d="learn" class="primary">' + IC.plus + 'Learn</button><button data-d="' + skip + '" class="gray">' + (known ? IC.next + 'Next' : IC.skip + 'Skip') + '</button></div>');
+    setSpeak(SPK);
     $('say').onclick = () => play(w.word, null, 'English');
     $('saySlow').onclick = () => play(w.word, null, 'English', true);
     const card = $('nwCard');
@@ -683,16 +714,15 @@ function renderCard() {
     return;
   }
   setHeader(state.practice ? 'Practice' : 'Review', (state.index + 1) + ' / ' + state.cards.length, loadReview);
+  leaveMsg = 'Leave this review?';
   const q = card.question && card.question.kind !== 'flip' ? card.question : null;
   const note = card.question && card.question.note ? '<p class="muted" style="text-align:center">' + esc(card.question.note) + '</p>' : '';
-  const termHTML = '<div class="term">' + esc(card.term) +
-    ' <button class="icon round" id="say" aria-label="Speak">' + SPEAKER + '</button><button class="icon round" id="saySlow" aria-label="Speak slowly">' + SLOW + '</button></div>' +
+  const termHTML = '<div class="term">' + esc(card.term) + '</div>' +
     (card.context ? '<div class="context">' + mark(esc(card.context), [card.term]) + '</div>' : '');
   // A question hides the term and its audio until the card is flipped, except Listen, which is the audio.
   let front = termHTML;
   if (q) {
     front = '<div class="qkind"><span class="lvtag">' + esc(q.kind.toUpperCase()) + '</span></div>' +
-      (q.kind === 'listen' ? '<div class="term"><button class="icon round" id="qsay" aria-label="Speak">' + SPEAKER + '</button><button class="icon round" id="qslow" aria-label="Speak slowly">' + SLOW + '</button></div>' : '') +
       '<div class="prompt">' + esc(q.prompt) + '</div>' +
       (q.choices ? ''
         : '<div class="answer"><input id="ans" placeholder="Type the answer" autocapitalize="off" autocorrect="off" autocomplete="off" enterkeyhint="done"><button id="check" class="primary" style="width:auto">' + IC.check + 'Check</button></div>') +
@@ -715,7 +745,7 @@ function renderCard() {
     if (revealed) return;
     revealed = true;
     if (q) $('front').innerHTML = termHTML;
-    if ($('say')) wireTerm();
+    setSpeak(SPK); wireTerm();
     if ($('tapHint')) $('tapHint').remove();
     $('backText').classList.remove('hidden');
     if ($('ans')) $('ans').blur();
@@ -745,7 +775,7 @@ function renderCard() {
   };
   swipeable(cardEl, ['var(--again)', () => gradeCard(0)], ['var(--easy)', () => gradeCard(2)]);
   if (!q) {
-    wireTerm();
+    setSpeak(SPK); wireTerm();
     cardEl.onclick = e => { if (!e.target.closest('button, a, input')) reveal(); };
   } else if (q.choices) {
     $('dock').querySelectorAll('[data-c]').forEach(b => b.onclick = () => {
@@ -764,8 +794,7 @@ function renderCard() {
     $('check').onclick = check;
     $('ans').onkeydown = e => { if (e.key === 'Enter') check(); };
     if (q.kind === 'listen') {
-      $('qsay').onclick = () => play(card.term, card.id);
-      $('qslow').onclick = () => play(card.term, card.id, null, true);
+      setSpeak(SPK); wireTerm();
       play(card.term, card.id);
     }
   }
@@ -879,6 +908,7 @@ let readMode = 'both';
 async function openPassage(key) {
   const p = await api('/api/passage?key=' + key).then(r => r.json());
   setHeader(p.title, '', () => { stop = true; player.pause(); loadDialogues(); });
+  if (!p.isDone) leaveMsg = 'Leave this dialogue?';
   let stop = false;
   const body = p.turns.length
     ? p.turns.map((t, i) => '<div class="turn ' + (t.speaker.toUpperCase() === 'A' ? 'a' : 'b') + '"><div class="bubble" data-i="' + i + '">' +
@@ -966,16 +996,6 @@ $('drawerMark').onclick = async () => {
   try { await post('/api/record', { id: r.id, action: r.isSaved ? 'unsave' : 'save' }); r.isSaved = !r.isSaved; paintMark(); if ($('hlist')) fetchHistory(); }
   catch (err) { fail(err); }
 };
-// iOS still drags the page when a hard flick hits drawerBody's top or bottom edge; CSS alone cannot stop that.
-{ let y0 = 0; const b = $('drawerBody');
-  b.addEventListener('touchstart', e => { y0 = e.touches[0].clientY; }, { passive: true });
-  b.addEventListener('touchmove', e => {
-    const dy = e.touches[0].clientY - y0;
-    if ((dy > 0 && b.scrollTop <= 0) || (dy < 0 && b.scrollTop + b.clientHeight >= b.scrollHeight - 1)) e.preventDefault();
-  }, { passive: false });
-  for (const el of [$('scrim'), $('drawer').querySelector('.dhead'), $('drawer').querySelector('.grab')])
-    el && el.addEventListener('touchmove', e => e.preventDefault(), { passive: false });
-}
 function closeDrawer() { $('drawer').classList.remove('open'); $('scrim').classList.remove('open'); document.activeElement.blur(); }
 
 function loadTranslate() {
@@ -1024,7 +1044,9 @@ function renderResult() {
   const r = tr.result, out = $('trOut'); paintMark();
   const structured = r.mode === 'learn' && r.card;
   out.innerHTML = '<div class="card">' + (structured ? learnHTML(r.card, true) : '<div class="rlang">' + esc(r.target) + '</div>' +
-    '<div class="rtext"><div>' + esc(r.text) + '</div><button id="speakOut" class="icon round" aria-label="Play result">' + SPEAKER + '</button></div>') + '</div>';
+    '<div class="rtext"><div>' + esc(r.text) + '</div></div>') + '</div>' +
+    '<div class="spbar">' + (structured ? '<button class="icon round" data-say="1" aria-label="Speak">' + SPEAKER + '</button><button class="icon round" data-say="slow" aria-label="Speak slowly">' + SLOW + '</button>'
+      : '<button id="speakOut" class="icon round" aria-label="Play result">' + SPEAKER + '</button>') + '</div>';
   out.insertAdjacentHTML('beforeend', askHTML());
   wireAsk(out, { source: r.source, result: r.text, target: r.target, sourceLang: r.sourceLanguage });
   if (structured) wireLearn(out, r.card, {});
@@ -1130,6 +1152,7 @@ async function openRecord(h) {
 // Each tab comes back where it was left; with cached data the page is already full height.
 const scrollPos = {};
 function switchTab(tab) {
+  if (!leaveOk()) return;
   scrollPos[state.tab] = scrollY;
   state.tab = tab; player.pause();
   $('tabReview').classList.toggle('on', tab === 'review');
@@ -1152,6 +1175,8 @@ function switchTab(tab) {
     edge = null;
   }, { passive:true });
 }
+// The header is fixed so it stays put during iOS rubber-band overscroll; body padding takes its place in the flow.
+new ResizeObserver(() => { document.body.style.paddingTop = document.querySelector('header').offsetHeight + 'px'; }).observe(document.querySelector('header'));
 addEventListener('scroll', () => document.querySelector('header').classList.toggle('compact', scrollY > 24), { passive:true });
 // Fixed bars ride above the on-screen keyboard instead of hiding behind it.
 if (window.visualViewport) {
