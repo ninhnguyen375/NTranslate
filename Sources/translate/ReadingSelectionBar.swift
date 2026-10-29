@@ -33,7 +33,7 @@ final class ReadingSelectionBar {
         background.translatesAutoresizingMaskIntoConstraints = false
 
         var views: [NSView] = []
-        for (index, button) in [speakButton, slowButton, translateButton, learnButton].enumerated() {
+        for (index, button) in [translateButton, learnButton, speakButton, slowButton].enumerated() {
             if index > 0 { views.append(Self.divider()) }
             button.target = self
             views.append(button)
