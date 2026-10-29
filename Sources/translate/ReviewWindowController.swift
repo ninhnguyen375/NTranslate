@@ -1656,6 +1656,9 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
             sessionView.hintLabel.isHidden = false
         }
         adjustWindowHeightForContentIfNeeded()
+        sessionView.layoutSubtreeIfNeeded()
+        sessionView.scrollView.contentView.scroll(to: .zero)
+        sessionView.scrollView.reflectScrolledClipView(sessionView.scrollView.contentView)
     }
 
     /// Names the passage on the reading screen. Without a title the header says so and offers the
