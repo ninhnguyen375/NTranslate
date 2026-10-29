@@ -14,13 +14,10 @@ enum PhoneStudyPage {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<meta name="apple-mobile-web-app-capable" content="yes">
+<!-- No manifest or apple-mobile-web-app-* status/capable metas: on iOS 26 they put a home-screen app on a legacy layout path that leaves a status-bar-high blank strip at the bottom. iOS 26 opens home-screen pages standalone without them. -->
 <meta name="apple-mobile-web-app-title" content="NTranslate">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#f2f2f7" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
-<link rel="manifest" href="/manifest.json?t=__TOKEN__">
 <link rel="apple-touch-icon" href="/icon.png?t=__TOKEN__">
 <link rel="icon" type="image/png" href="/icon.png?t=__TOKEN__">
 <title>NTranslate Study</title>
@@ -31,8 +28,8 @@ enum PhoneStudyPage {
 * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
 html, body { overflow-x:clip; touch-action:pan-x pan-y; }
 /* iOS Safari ignores user-scalable=no; pan-only touch-action blocks pinch and double-tap zoom. */
-body { margin:0; background:var(--bg); color:var(--text); font:17px/1.47 -apple-system, system-ui, sans-serif; -webkit-font-smoothing:antialiased; padding-bottom:calc(150px + env(safe-area-inset-bottom)); }
-header { position:fixed; top:0; left:0; right:0; z-index:2; background:linear-gradient(#000 0 env(safe-area-inset-top), var(--blur) 0); -webkit-backdrop-filter:saturate(180%) blur(20px); backdrop-filter:saturate(180%) blur(20px); padding:calc(14px + env(safe-area-inset-top)) 16px 10px; display:flex; align-items:center; gap:8px; }
+body { margin:0; background:var(--bg); color:var(--text); font:17px/1.47 -apple-system, system-ui, sans-serif; -webkit-font-smoothing:antialiased; }
+header { position:fixed; top:0; left:0; right:0; z-index:2; background:linear-gradient(var(--bg) 0 env(safe-area-inset-top), var(--blur) 0); -webkit-backdrop-filter:saturate(180%) blur(20px); backdrop-filter:saturate(180%) blur(20px); padding:calc(14px + env(safe-area-inset-top)) 16px 10px; display:flex; align-items:center; gap:8px; }
 header h1 { transition:font-size .2s; font-size:28px; font-weight:700; letter-spacing:-.02em; margin:0; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 header .icon + h1, header.compact h1 { font-size:19px; letter-spacing:0; }
 #meta { background:var(--card); border-radius:999px; padding:3px 10px; font-variant-numeric:tabular-nums; }
@@ -84,7 +81,7 @@ button svg { width:18px; height:18px; flex:none; }
 .list button::after { content:''; position:absolute; right:16px; top:50%; width:8px; height:8px; border:solid var(--muted); border-width:2px 2px 0 0; transform:translateY(-50%) rotate(45deg); opacity:.6; }
 .list button:active { transform:none; background:var(--line); }
 .list .done { color:var(--muted); }
-select { font:inherit; padding:11px 12px; border-radius:12px; border:0; background:var(--card); color:var(--text); width:100%; margin:4px 0 12px; box-shadow:var(--shadow); -webkit-appearance:none; appearance:none; background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%); background-position:calc(100% - 20px) 50%,calc(100% - 15px) 50%; background-size:5px 5px; background-repeat:no-repeat; }
+select { font:inherit; padding:11px 38px 11px 12px; text-overflow:ellipsis; white-space:nowrap; overflow:hidden; border-radius:12px; border:0; background:var(--card); color:var(--text); width:100%; margin:4px 0 12px; box-shadow:var(--shadow); -webkit-appearance:none; appearance:none; background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%); background-position:calc(100% - 20px) 50%,calc(100% - 15px) 50%; background-size:5px 5px; background-repeat:no-repeat; }
 .turn { display:flex; margin:10px 0; }
 .turn.b { justify-content:flex-end; }
 .bubble { max-width:84%; background:var(--card); border-radius:20px 20px 20px 6px; padding:10px 14px; box-shadow:var(--shadow); transition:box-shadow .2s; }
@@ -215,10 +212,6 @@ button.gray { background:rgba(142,142,147,.16); color:var(--text); font-weight:6
 button { min-height:44px; }
 .icon, .small, .chip, .pills button, .seg button, .bubble .tools button, nav button { min-height:0; }
 .primary, .reveal { box-shadow:0 4px 14px rgba(10,132,255,.3); }
-#group, #tier { flex-wrap:wrap; margin-bottom:12px; }
-#group button, #tier button { background:var(--card); color:var(--text); padding:8px 14px; font-size:14px; }
-#group button.on, #tier button.on { background:var(--accent); color:#fff; }
-.fhead { font-size:11px; font-weight:700; letter-spacing:.08em; color:var(--muted); margin:4px 0 6px; text-transform:uppercase; }
 #ptr { position:fixed; left:50%; top:calc(env(safe-area-inset-top) + 12px); transform:translate(-50%, -64px); z-index:4; background:var(--card); color:var(--accent); border-radius:999px; padding:7px 14px; font-size:13px; font-weight:600; display:flex; align-items:center; gap:6px; box-shadow:0 4px 16px rgba(0,0,0,.15); opacity:0; pointer-events:none; transition:transform .2s, opacity .2s; }
 #ptr.spin svg { animation:spin .8s linear infinite; }
 @keyframes spin { to { transform:rotate(360deg); } }
@@ -933,16 +926,16 @@ function renderDialogues(all) {
   const shown = byGroup.filter(i => !state.tier || i.tier === state.tier);
   $('meta').textContent = shown.length + ' passages';
   setDock('<button id="create" class="primary">' + IC.plus + 'Create Dialogue</button>');
-  $('view').innerHTML = (groups.length ? '<div class="fhead">Topic</div><div class="pills" id="group">' + ['', ...groups].map(g => '<button data-g="' + esc(g) + '"' + (g === state.filter ? ' class="on"' : '') + '>' + (g ? esc(g) : 'All Topics') + '</button>').join('') + '</div>' : '') +
-    (tiers.length ? '<div class="fhead">Tier</div><div class="pills" id="tier">' + ['', ...tiers].map(t => '<button data-t="' + esc(t) + '"' + (t === state.tier ? ' class="on"' : '') + '>' + (t ? esc(t) : 'All Tiers') + '</button>').join('') + '</div>' : '') +
+  $('view').innerHTML = (groups.length ? '<select id="group" aria-label="Topic">' + ['', ...groups].map(g => '<option value="' + esc(g) + '"' + (g === state.filter ? ' selected' : '') + '>' + (g ? esc(g) : 'All Topics') + '</option>').join('') + '</select>' : '') +
+    (tiers.length ? '<select id="tier" aria-label="Tier">' + ['', ...tiers].map(t => '<option value="' + esc(t) + '"' + (t === state.tier ? ' selected' : '') + '>' + (t ? esc(t) : 'All Tiers') + '</option>').join('') + '</select>' : '') +
     '<div class="plist">' + shown.map(i => '<div class="pwrap"><div class="pacts">' +
       '<button class="ok" data-a="' + (i.isDone ? 'undone' : 'done') + '">' + IC.check + (i.isDone ? 'Undone' : 'Done') + '</button>' +
       (i.count ? '<button class="rs" data-a="reset">' + IC.reset + 'Reset</button>' : '') +
       '<button class="danger" data-a="delete">' + IC.trash + 'Delete</button></div>' +
       '<div class="prow' + (i.isDone ? ' isdone' : '') + '" data-k="' + i.key + '"><span class="lead">' + (i.isDone ? IC.check : IC.chat) + '</span><div class="body"><div class="t">' + esc(i.title) + '</div>' +
       '<div class="muted">' + esc(i.subtitle) + '</div></div>' + (i.isDone ? '' : '<span class="dot"></span>') + '</div></div>').join('') + '</div>';
-  if ($('group')) $('group').onclick = e => { const b = e.target.closest('[data-g]'); if (!b) return; state.filter = b.dataset.g; store.set('dialogueGroup', state.filter); renderDialogues(all); };
-  if ($('tier')) $('tier').onclick = e => { const b = e.target.closest('[data-t]'); if (!b) return; state.tier = b.dataset.t; store.set('dialogueTier', state.tier); renderDialogues(all); };
+  if ($('group')) $('group').onchange = e => { state.filter = e.target.value; store.set('dialogueGroup', state.filter); renderDialogues(all); };
+  if ($('tier')) $('tier').onchange = e => { state.tier = e.target.value; store.set('dialogueTier', state.tier); renderDialogues(all); };
   $('create').onclick = showCreate;
   // Swipe a row left to reveal its actions; one row open at a time, any other tap closes it.
   let open = null;
