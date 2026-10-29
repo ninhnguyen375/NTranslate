@@ -23,6 +23,7 @@ struct WeavePassage: Codable, Sendable {
     var scenario: String?
     /// Free-text label to sort imported dialogues into sets. Absent for generated passages.
     var group: String?
+    var tier: String?
     /// How many times the learner has opened the passage from the list.
     var count: Int?
 }
@@ -139,6 +140,7 @@ enum WeaveCache {
             let isDone: Bool?
             let scenario: String?
             let group: String?
+            let tier: String?
             let count: Int?
         }
         let items = try JSONDecoder().decode([Item].self, from: data)
@@ -154,6 +156,7 @@ enum WeaveCache {
                 isDone: item.isDone,
                 scenario: item.scenario,
                 group: item.group,
+                tier: item.tier,
                 count: item.count
             )
             let key = SHA256.hash(data: Data(item.text.utf8)).map { String(format: "%02x", $0) }.joined()

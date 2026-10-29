@@ -2,6 +2,7 @@
 // with audio. Binds only to the Tailscale address (100.64.0.0/10), so nothing on the local Wi-Fi
 // can reach it, and every request must carry a random token kept in UserDefaults.
 import AppKit
+import Vision
 
 @MainActor
 final class PhoneStudyServer {
@@ -207,6 +208,8 @@ final class PhoneStudyServer {
             json(item, reply)
         case ("GET", "/api/audio"):
             audio(text: request.query["text"] ?? "", recordID: request.query["id"], language: request.query["lang"] ?? "English", reply)
+        case ("POST", "/api/ocr"):
+            ocr(request.body, reply)
         case ("POST", "/api/translate"):
             translate(request.body, reply)
         case ("GET", "/api/history"):
@@ -312,6 +315,9 @@ final class PhoneStudyServer {
         let phrases: [Pair]
         let chunks: [Pair]
         let variation: String
+        let usage: Usage?
+
+        struct Usage: Encodable { let frequency: String?; let frequencyLevel: Int; let cefr: String?; let register: String? }
 
         init?(_ text: String) {
             guard LearnCard.shouldDisplayStructured(text) else { return nil }
@@ -333,6 +339,9 @@ final class PhoneStudyServer {
             phrases = card.phrases.map { Pair(text: $0.phrase, gloss: $0.meaning) }
             chunks = card.chunks.map { Pair(text: $0.phrase, gloss: $0.meaning) }
             variation = card.variation
+            usage = text.components(separatedBy: .newlines).lazy.map { $0.trimmingCharacters(in: .whitespaces) }
+                .first { $0.hasPrefix("Mức dùng:") }
+                .map { let u = LearnUsageInfo.parseLine($0); return Usage(frequency: u.frequency, frequencyLevel: u.frequencyLevel, cefr: u.cefr, register: u.register) }
         }
     }
 
@@ -467,6 +476,7 @@ final class PhoneStudyServer {
         let key: String
         let title: String
         let group: String?
+        let tier: String?
         let isDone: Bool
         let subtitle: String
         let count: Int
@@ -496,8 +506,9 @@ final class PhoneStudyServer {
                 var parts = ["\(passage.words.count) words", DateFormatter.localizedString(from: passage.generatedAt, dateStyle: .medium, timeStyle: .short)]
                 if let group = passage.group, !group.isEmpty { parts.insert(group, at: 0) }
                 parts.append(count == 1 ? "Studied 1 time" : "Studied \(count) times")
-                return PassageSummary(key: entry.key, title: Self.title(of: passage), group: passage.group, isDone: passage.isDone ?? false,
-                                      subtitle: parts.joined(separator: " · "), count: count)
+                if let tier = passage.tier, !tier.isEmpty { parts.insert(tier, at: 0) }
+                return PassageSummary(key: entry.key, title: Self.title(of: passage), group: passage.group, tier: passage.tier, isDone: passage.isDone ?? false,
+                                      subtitle: parts.joined(separator: ", "), count: count)
             }
     }
 
@@ -559,6 +570,27 @@ final class PhoneStudyServer {
                     reply(502, "text/plain", Data(error.localizedDescription.utf8))
                 }
             }
+        }
+    }
+
+    // MARK: - OCR
+
+    /// Body is `{"image": base64 JPEG}`; replies `{"text": ...}` with the lines Vision read, top to bottom.
+    private func ocr(_ body: Data, _ reply: @escaping Reply) {
+        struct Payload: Decodable { let image: String }
+        struct Out: Encodable { let text: String }
+        guard let payload = try? JSONDecoder().decode(Payload.self, from: body),
+              let data = Data(base64Encoded: payload.image) else {
+            return reply(400, "text/plain", Data("Bad request".utf8))
+        }
+        DispatchQueue.global().async {
+            let request = VNRecognizeTextRequest()
+            request.recognitionLanguages = ["en-US", "vi-VN"]
+            request.usesLanguageCorrection = true
+            try? VNImageRequestHandler(data: data).perform([request])
+            let text = (request.results ?? []).compactMap { $0.topCandidates(1).first?.string }.joined(separator: "\n")
+            let out = (try? JSONEncoder().encode(Out(text: text))) ?? Data()
+            DispatchQueue.main.async { reply(200, "application/json", out) }
         }
     }
 

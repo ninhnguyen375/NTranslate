@@ -78,8 +78,8 @@ extension PopoverController {
         section.resultHeaderBar.addSubview(section.resultHeaderLabel)
         section.resultHeaderBar.addSubview(section.learnBadgeView)
         section.learnBadgeView.isHidden = true
-        section.learnCardView.onSpeak = { [weak self] in self?.speakSubSource() }
-        section.learnCardView.onSpeakSlow = { [weak self] in self?.speakSubSourceSlow() }
+        section.learnCardView.onSpeak = { [weak self] in self?.speakSubResult() }
+        section.learnCardView.onSpeakSlow = { [weak self] in self?.speakSubResultSlow() }
         section.learnCardView.onLearnWord = { [weak self] word in
             self?.runSubRequest(text: word, mode: .learn, bypassCache: true)
         }
@@ -317,10 +317,7 @@ extension PopoverController {
     /// overwrite the sub pane in place — they never spawn a third pane.
     func runSubMode(_ mode: TranslationMode) {
         guard let section = subSection, !section.sourceText.isEmpty, !section.requestInFlight else { return }
-        let resolved = (mode == .translate && Translator.isDictionaryTerm(section.sourceText))
-            ? TranslationMode.learn
-            : mode
-        runSubRequest(text: section.sourceText, mode: resolved, bypassCache: true)
+        runSubRequest(text: section.sourceText, mode: mode, bypassCache: true)
     }
 
     @objc func runSubTranslate() { runSubMode(.translate) }
@@ -571,15 +568,15 @@ extension PopoverController {
                 section.recordID = existingRecord.id
             } else {
                 let parent = self.inputTextView.string.trimmingCharacters(in: .whitespacesAndNewlines)
-                let recordedSource: String
-                if mode == .learn && !parent.isEmpty && parent != text {
-                    recordedSource = LearnCard.Encounter.encode(term: text, context: parent)
-                } else {
-                    recordedSource = text
+                let context = !parent.isEmpty && parent != text ? parent : nil
+                var stored = (text: text, source: pair.source, target: pair.target)
+                if mode == .learn {
+                    stored = swappedLearnStorage(selection: text, context: context, value: value, source: pair.source, target: pair.target)
+                        ?? (context.map { LearnCard.Encounter.encode(term: text, context: $0) } ?? text, pair.source, pair.target)
                 }
                 let record = TranslationRecord(
-                    id: UUID(), timestamp: Date(), mode: mode, sourceText: recordedSource, resultText: value,
-                    sourceLanguage: pair.source, targetLanguage: pair.target, isSaved: false
+                    id: UUID(), timestamp: Date(), mode: mode, sourceText: stored.text, resultText: value,
+                    sourceLanguage: stored.source, targetLanguage: stored.target, isSaved: false
                 )
                 do {
                     section.recordID = try historyStore.appendIfAbsent(record).id
@@ -627,8 +624,13 @@ extension PopoverController {
 
     @objc func speakSubSource() { playSpeech(subSpeechIdentity(kind: .source), speed: 1.0) }
     @objc func speakSubSourceSlow() { playSpeech(subSpeechIdentity(kind: .source), speed: config.speechSlowRate) }
-    @objc func speakSubResult() { playSpeech(subSpeechIdentity(kind: subSection?.mode == .learn ? .source : .result), speed: 1.0) }
-    @objc func speakSubResultSlow() { playSpeech(subSpeechIdentity(kind: subSection?.mode == .learn ? .source : .result), speed: config.speechSlowRate) }
+    @objc func speakSubResult() { playSpeech(subResultButtonSpeechIdentity(), speed: 1.0) }
+    @objc func speakSubResultSlow() { playSpeech(subResultButtonSpeechIdentity(), speed: config.speechSlowRate) }
+
+    func subResultButtonSpeechIdentity() -> SpeechIdentity? {
+        guard let section = subSection, section.mode == .learn else { return subSpeechIdentity(kind: .result) }
+        return learnHeadwordSpeechIdentity(result: section.resultText, recordID: section.recordID) ?? subSpeechIdentity(kind: .source)
+    }
 
     @objc func copySubResult() {
         guard let section = subSection, PopoverFeedback.isCopyableResult(section.lastResultRaw) else { return }

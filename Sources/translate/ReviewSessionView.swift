@@ -35,6 +35,42 @@ final class ReviewSessionView: NSView {
     let pillRow = NSStackView()
     private let wordsDetailLabel = NSTextField(labelWithString: "")
     private let pillContainer = NSStackView()
+    private let readingToolbar = NSStackView()
+    private let readingHomeButton = NSButton()
+    private let readingHeader = NSStackView()
+    private let readingMetadata = NSTextField(labelWithString: "")
+    private var sessionTopBar: NSStackView?
+    private var normalHeaderTop: NSLayoutConstraint?
+    private var readingHeaderTop: NSLayoutConstraint?
+    private let readingHeading = NSTextField(wrappingLabelWithString: "")
+
+    func setReadingToolbar(visible: Bool, title: String = "") {
+        readingToolbar.isHidden = !visible
+        readingHeader.isHidden = !visible
+        sessionTopBar?.isHidden = visible
+        normalHeaderTop?.isActive = !visible
+        readingHeaderTop?.isActive = visible
+        readingHeading.stringValue = title
+        readingHeading.toolTip = title
+        if visible {
+            readingHeading.font = .systemFont(ofSize: 15, weight: .semibold)
+            progressBar.isHidden = true
+            countsLabel.isHidden = true
+            undoButton.isHidden = true
+            hideButton.isHidden = true
+            pillContainer.isHidden = false
+            pillRow.isHidden = true
+            wordsDetailLabel.isHidden = true
+            learnBadgeView.isHidden = true
+            termStack.isHidden = true
+        } else {
+            progressBar.isHidden = false
+            countsLabel.isHidden = false
+            undoButton.isHidden = false
+            hideButton.isHidden = false
+            termStack.isHidden = false
+        }
+    }
     /// CEFR / frequency / register pulled out of the card's "Mức dùng:" line.
     let learnBadgeView = LearnBadgeView()
 
@@ -147,6 +183,8 @@ final class ReviewSessionView: NSView {
     }
 
     func setReadingPills(count: Int, words: [String], scenario: String? = nil) {
+        readingMetadata.stringValue = "Reading / \(count) words"
+        readingMetadata.toolTip = words.joined(separator: ", ")
         learnBadgeView.clear()
         let scene = scenario?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         // Words and the scene are the two things that made this passage, so the pill reveals both.
@@ -250,6 +288,7 @@ final class ReviewSessionView: NSView {
         countsLabel.setContentHuggingPriority(.defaultHigh, for: .horizontal)
 
         let topBar = NSStackView(views: [homeButton, undoButton, hideButton, progressBar, countsLabel])
+        sessionTopBar = topBar
         topBar.orientation = .horizontal
         topBar.spacing = 8
         topBar.alignment = .centerY
@@ -457,11 +496,33 @@ final class ReviewSessionView: NSView {
         innerStack.spacing = 16
         innerStack.alignment = .centerX
         innerStack.translatesAutoresizingMaskIntoConstraints = false
-        for view in [frontRow, hintLabel, readingModeControl, readingChatView, resultLabel, answerRow, learnDetailView] {
+        for view in [frontRow, hintLabel, readingChatView, resultLabel, answerRow, learnDetailView] {
             innerStack.addArrangedSubview(view)
         }
         // Card already pads its bottom, so no extra stack gap before the details.
         innerStack.setCustomSpacing(0, after: answerRow)
+
+        readingHeading.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        readingHeading.maximumNumberOfLines = 2
+        readingHeading.lineBreakMode = .byWordWrapping
+        ReviewControls.iconButton(readingHomeButton, symbol: "house", label: "Back to home (Esc)", target: self, action: #selector(tapHome))
+        readingMetadata.font = .systemFont(ofSize: 11.5)
+        readingMetadata.textColor = .secondaryLabelColor
+        readingHeader.setViews([readingHomeButton, readingHeading, readingMetadata], in: .leading)
+        readingHeader.spacing = 12
+        readingHeader.alignment = .centerY
+        readingHeader.isHidden = true
+        readingHeader.translatesAutoresizingMaskIntoConstraints = false
+        readingToolbar.setViews([readingModeControl, NSView(), readingChatView.playbackControls], in: .leading)
+        readingToolbar.translatesAutoresizingMaskIntoConstraints = false
+        readingToolbar.spacing = 12
+        readingToolbar.alignment = .centerY
+        readingToolbar.isHidden = true
+        pillContainer.addArrangedSubview(readingHeader)
+        pillContainer.addArrangedSubview(readingToolbar)
+        readingHeader.widthAnchor.constraint(equalTo: pillContainer.widthAnchor).isActive = true
+        readingToolbar.widthAnchor.constraint(equalTo: pillContainer.widthAnchor).isActive = true
+        pillContainer.alignment = .leading
 
         scrollView.borderType = .noBorder
         scrollView.drawsBackground = false
@@ -473,7 +534,7 @@ final class ReviewSessionView: NSView {
         scrollView.documentView = documentView
         documentView.addSubview(innerStack)
 
-        ReviewControls.actionButton(revealButton, title: "Show Answer (Space)", symbol: "eye", target: self, action: #selector(tapReveal))
+        ReviewControls.actionButton(revealButton, title: "Show Answer (Space / Return)", symbol: "eye", target: self, action: #selector(tapReveal))
         ReviewControls.actionButton(backButton, title: "Back", symbol: "chevron.backward", target: self, action: #selector(tapBack))
         backButton.isHidden = true
         ReviewControls.outline(backButton)
@@ -563,6 +624,9 @@ final class ReviewSessionView: NSView {
         addSubview(pillContainer)
         addSubview(scrollView)
         addSubview(actionStack)
+        normalHeaderTop = pillContainer.topAnchor.constraint(equalTo: topBar.bottomAnchor, constant: 10)
+        readingHeaderTop = pillContainer.topAnchor.constraint(equalTo: topAnchor, constant: 8)
+        normalHeaderTop?.isActive = true
 
         NSLayoutConstraint.activate([
             topBar.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 16),
@@ -570,9 +634,8 @@ final class ReviewSessionView: NSView {
             topBar.topAnchor.constraint(equalTo: topAnchor, constant: 12),
 
             pillContainer.centerXAnchor.constraint(equalTo: centerXAnchor),
-            pillContainer.topAnchor.constraint(equalTo: topBar.bottomAnchor, constant: 10),
-            pillContainer.leadingAnchor.constraint(greaterThanOrEqualTo: leadingAnchor, constant: 24),
-            pillContainer.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -24),
+            pillContainer.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 24),
+            pillContainer.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -24),
 
             scrollView.leadingAnchor.constraint(equalTo: leadingAnchor),
             scrollView.trailingAnchor.constraint(equalTo: trailingAnchor),

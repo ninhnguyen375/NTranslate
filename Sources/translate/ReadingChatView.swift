@@ -32,6 +32,73 @@ final class ReadingChatView: NSStackView {
     private var bubbles: [BubbleView] = []
     private var globalMode: Mode = .both
     private let selectionBar = ReadingSelectionBar()
+    private let autoPlayButton = NSButton(title: "Auto Play", target: nil, action: nil)
+    let playbackControls = NSStackView()
+    private var autoPlayIndex: Int?
+    private let speedPicker = NSPopUpButton(frame: .zero, pullsDown: false)
+    private let playbackRates: [Float] = [0.5, 0.75, 1, 1.25, 1.5, 2]
+    var autoPlayRate: Float? { autoPlayIndex == nil ? nil : playbackRates[speedPicker.indexOfSelectedItem] }
+    var onAutoPlayRateChanged: ((Float) -> Void)?
+    private(set) var isAutoPlayPaused = false
+    var onPauseAutoPlay: ((Bool) -> Void)?
+
+    @objc private func changeAutoPlayRate() {
+        if let autoPlayRate { onAutoPlayRateChanged?(autoPlayRate) }
+    }
+
+    func stopAutoPlay() {
+        autoPlayIndex = nil
+        isAutoPlayPaused = false
+        autoPlayButton.title = "Auto Play"
+        bubbles.forEach { $0.isAutoPlayActive = false }
+    }
+
+    func nextAutoPlayLine() -> String? {
+        guard let index = autoPlayIndex, index + 1 < bubbles.count else {
+            stopAutoPlay()
+            return nil
+        }
+        return selectAutoPlayLine(index + 1)
+    }
+
+    private func selectAutoPlayLine(_ index: Int) -> String {
+        autoPlayIndex = index
+        for (offset, bubble) in bubbles.enumerated() {
+            bubble.isAutoPlayActive = offset == index
+        }
+        let bubble = bubbles[index]
+        layoutSubtreeIfNeeded()
+        if let scroll = enclosingScrollView, let document = scroll.documentView {
+            let clip = scroll.contentView
+            let frame = bubble.convert(bubble.bounds, to: document)
+            let target = NSPoint(x: clip.bounds.minX, y: frame.midY - clip.bounds.height / 2)
+            let constrained = clip.constrainBoundsRect(NSRect(origin: target, size: clip.bounds.size)).origin
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? 0 : 0.35
+                context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                clip.animator().setBoundsOrigin(constrained)
+            }
+        }
+        if !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+            let animation = CABasicAnimation(keyPath: "opacity")
+            animation.fromValue = 0.55
+            animation.toValue = 1
+            animation.duration = 0.25
+            bubble.layer?.add(animation, forKey: "activeLine")
+        }
+        return bubble.source
+    }
+
+    @objc private func toggleAutoPlay() {
+        if autoPlayIndex != nil {
+            isAutoPlayPaused.toggle()
+            autoPlayButton.title = isAutoPlayPaused ? "Resume" : "Pause"
+            onPauseAutoPlay?(isAutoPlayPaused)
+        } else if !bubbles.isEmpty {
+            autoPlayButton.title = "Pause"
+            onSpeak?(selectAutoPlayLine(0), false)
+        }
+    }
 
     init() {
         super.init(frame: .zero)
@@ -39,7 +106,15 @@ final class ReadingChatView: NSStackView {
         spacing = 10
         alignment = .leading
         translatesAutoresizingMaskIntoConstraints = false
-        selectionBar.onSpeak = { [weak self] text, isSlow in self?.onSpeak?(text, isSlow) }
+        speedPicker.addItems(withTitles: playbackRates.map { "\($0)×" })
+        speedPicker.selectItem(at: 2)
+        speedPicker.target = self
+        speedPicker.action = #selector(changeAutoPlayRate)
+        speedPicker.setAccessibilityLabel("Auto Play speed")
+        selectionBar.onSpeak = { [weak self] text, isSlow in
+            self?.stopAutoPlay()
+            self?.onSpeak?(text, isSlow)
+        }
         selectionBar.onLearn = { [weak self] text in self?.onLearn?(text) }
         selectionBar.onTranslate = { [weak self] text in self?.onTranslate?(text) }
         NotificationCenter.default.addObserver(
@@ -79,13 +154,22 @@ final class ReadingChatView: NSStackView {
     }
 
     func show(_ dialogue: ReadingDialogue, words: [String]) {
+        stopAutoPlay()
         shown = (dialogue, words)
         selectionBar.hide()
         arrangedSubviews.forEach { $0.removeFromSuperview() }
+        autoPlayButton.target = self
+        autoPlayButton.action = #selector(toggleAutoPlay)
+        autoPlayButton.bezelStyle = .rounded
+        playbackControls.setViews([autoPlayButton, NSTextField(labelWithString: "Speed"), speedPicker], in: .leading)
+        playbackControls.spacing = 8
         bubbles = []
         for turn in dialogue.turns {
             let bubble = BubbleView(turn: turn, words: words)
-            bubble.onSpeak = { [weak self] isSlow in self?.onSpeak?(turn.source, isSlow) }
+            bubble.onSpeak = { [weak self] isSlow in
+                self?.stopAutoPlay()
+                self?.onSpeak?(turn.source, isSlow)
+            }
             bubble.onWord = { [weak self] word in self?.onWord?(word) }
             bubble.onLearn = { [weak self] in self?.onLearn?(turn.source) }
             bubble.onReplay = { [weak self] url in self?.playRecording(url) }
@@ -372,6 +456,10 @@ final class ReadingChatView: NSStackView {
             updateLayerColors()
         }
 
+        var isAutoPlayActive = false {
+            didSet { updateLayerColors() }
+        }
+
         private func updateLayerColors() {
             let isDark = effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
             effectiveAppearance.performAsCurrentDrawingAppearance {
@@ -381,6 +469,11 @@ final class ReadingChatView: NSStackView {
                 layer?.borderColor = (isFirstSpeaker
                     ? NSColor.adaptive(light: .black.withAlphaComponent(0.06), dark: .separatorColor)
                     : NSColor.controlAccentColor.withAlphaComponent(isDark ? 0.35 : 0.18)).cgColor
+                layer?.borderWidth = isAutoPlayActive ? 3 : 1
+                if isAutoPlayActive {
+                    layer?.backgroundColor = NSColor.controlAccentColor.withAlphaComponent(isDark ? 0.35 : 0.18).cgColor
+                    layer?.borderColor = NSColor.controlAccentColor.cgColor
+                }
                 pill?.layer?.backgroundColor = NSColor.labelColor.withAlphaComponent(isDark ? 0.1 : 0.06).cgColor
             }
         }
@@ -591,15 +684,21 @@ final class ReadingChatView: NSStackView {
         }
 
         private func word(at point: NSPoint) -> String? {
+            let textRect = cell?.drawingRect(forBounds: bounds) ?? bounds
             let storage = NSTextStorage(attributedString: attributedStringValue)
-            let container = NSTextContainer(size: NSSize(width: bounds.width, height: .greatestFiniteMagnitude))
+            let container = NSTextContainer(size: NSSize(width: textRect.width, height: .greatestFiniteMagnitude))
             container.lineFragmentPadding = 2
             let layout = NSLayoutManager()
             layout.addTextContainer(container)
             storage.addLayoutManager(layout)
             layout.ensureLayout(for: container)
-            let flipped = NSPoint(x: point.x, y: isFlipped ? point.y : bounds.height - point.y)
-            let index = layout.characterIndex(for: flipped, in: container, fractionOfDistanceBetweenInsertionPoints: nil)
+            let location = NSPoint(x: point.x - textRect.minX,
+                                   y: isFlipped ? point.y - textRect.minY : textRect.maxY - point.y)
+            let glyph = layout.glyphIndex(for: location, in: container)
+            guard glyph < layout.numberOfGlyphs,
+                  layout.boundingRect(forGlyphRange: NSRange(location: glyph, length: 1), in: container)
+                    .insetBy(dx: -2, dy: -2).contains(location) else { return nil }
+            let index = layout.characterIndexForGlyph(at: glyph)
             guard index < storage.length else { return nil }
             return storage.attribute(ReadingHighlight.wordAttribute, at: index, effectiveRange: nil) as? String
         }

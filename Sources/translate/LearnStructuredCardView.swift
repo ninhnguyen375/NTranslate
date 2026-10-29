@@ -226,6 +226,9 @@ final class LearnStructuredCardView: NSView {
             if let row = view as? ExampleRow {
                 row.syncWrapWidth()
             }
+            if let row = view as? MeaningRow {
+                row.syncWrapWidth()
+            }
             view.subviews.forEach(walk)
         }
         walk(self)
@@ -464,7 +467,7 @@ final class LearnStructuredCardView: NSView {
         rows.translatesAutoresizingMaskIntoConstraints = false
         for line in card.meanings {
             let parts = LearnCard.splitMeaning(line)
-            let row = NSStackView()
+            let row = MeaningRow()
             row.orientation = .horizontal
             row.alignment = .firstBaseline
             row.spacing = 7
@@ -476,7 +479,9 @@ final class LearnStructuredCardView: NSView {
                 enableLearnTextSelection(pos)
                 row.addArrangedSubview(pos)
             }
-            row.addArrangedSubview(wrappingLabel(parts.gloss.isEmpty ? line : parts.gloss, size: 13, color: .labelColor))
+            let gloss = wrappingLabel(parts.gloss.isEmpty ? line : parts.gloss, size: 13, color: .labelColor)
+            row.gloss = gloss
+            row.addArrangedSubview(gloss)
             rows.addArrangedSubview(row)
             row.widthAnchor.constraint(equalTo: rows.widthAnchor).isActive = true
         }
@@ -1029,6 +1034,26 @@ private final class SpoilerVeil: NSView {
                 attributes: attrs
             )
         }
+    }
+}
+
+/// Gloss sits beside the part-of-speech tag, so the card-wide wrap width is too wide:
+/// a two-line gloss measures as one line and scrolls inside its clipped frame.
+private final class MeaningRow: NSStackView {
+    weak var gloss: NSTextField?
+
+    override func layout() {
+        super.layout()
+        syncWrapWidth()
+    }
+
+    fileprivate func syncWrapWidth() {
+        guard let gloss, bounds.width > 0 else { return }
+        let tagWidth = arrangedSubviews.first { $0 !== gloss }.map { $0.fittingSize.width + spacing } ?? 0
+        let width = bounds.width - tagWidth
+        guard width > 0, abs(gloss.preferredMaxLayoutWidth - width) > 0.5 else { return }
+        gloss.preferredMaxLayoutWidth = width
+        gloss.invalidateIntrinsicContentSize()
     }
 }
 

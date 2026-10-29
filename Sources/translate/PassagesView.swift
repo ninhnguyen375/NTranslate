@@ -17,9 +17,15 @@ final class PassagesView: NSView, NSTableViewDataSource, NSTableViewDelegate {
 
     private var entries: [(key: String, passage: WeavePassage)] = []
     private var allEntries: [(key: String, passage: WeavePassage)] = []
+    private let groupLabel = NSTextField(labelWithString: "Topic")
     private let groupPopup = NSPopUpButton()
-    private static let allGroupsTitle = "All Groups"
+    private let tierLabel = NSTextField(labelWithString: "Tier")
+    private let tierPopup = NSPopUpButton()
+    private let filterBar = NSStackView()
+    private static let allGroupsTitle = "All Topics"
+    private static let allTiersTitle = "All Tiers"
     private static let groupKey = "local.ninh.ntranslate.passageGroup"
+    private static let tierKey = "local.ninh.ntranslate.passageTier"
     private let table = NSTableView()
     private let backButton = NSButton()
     private let createButton = NSButton()
@@ -46,17 +52,32 @@ final class PassagesView: NSView, NSTableViewDataSource, NSTableViewDelegate {
         groupPopup.removeAllItems()
         groupPopup.addItems(withTitles: [Self.allGroupsTitle] + groups)
         groupPopup.selectItem(withTitle: groups.contains(selected) ? selected : Self.allGroupsTitle)
+        groupLabel.isHidden = groups.isEmpty
         groupPopup.isHidden = groups.isEmpty
         applyFilter()
     }
 
     private func applyFilter() {
-        let selected = groupPopup.titleOfSelectedItem ?? Self.allGroupsTitle
-        let entries = selected == Self.allGroupsTitle ? allEntries : allEntries.filter { $0.passage.group == selected }
+        let selectedGroup = groupPopup.titleOfSelectedItem ?? Self.allGroupsTitle
+        let byGroup = selectedGroup == Self.allGroupsTitle ? allEntries : allEntries.filter { $0.passage.group == selectedGroup }
+        let selectedTier = tierPopup.titleOfSelectedItem ?? UserDefaults.standard.string(forKey: Self.tierKey) ?? Self.allTiersTitle
+        let tiers = Set(byGroup.compactMap { $0.passage.tier }.filter { !$0.isEmpty }).sorted()
+        tierPopup.removeAllItems()
+        tierPopup.addItems(withTitles: [Self.allTiersTitle] + tiers)
+        let activeTier = tiers.contains(selectedTier) ? selectedTier : Self.allTiersTitle
+        tierPopup.selectItem(withTitle: activeTier)
+        tierLabel.isHidden = tiers.isEmpty
+        tierPopup.isHidden = tiers.isEmpty
+        filterBar.isHidden = groups.isEmpty && tiers.isEmpty
+        let entries = activeTier == Self.allTiersTitle ? byGroup : byGroup.filter { $0.passage.tier == activeTier }
         self.entries = entries
         table.reloadData()
         emptyLabel.isHidden = !entries.isEmpty
         countLabel.stringValue = entries.isEmpty ? "" : "\(entries.count) passages"
+    }
+
+    private var groups: [String] {
+        Set(allEntries.compactMap { $0.passage.group }.filter { !$0.isEmpty }).sorted()
     }
 
     // MARK: - Layout
@@ -115,20 +136,44 @@ final class PassagesView: NSView, NSTableViewDataSource, NSTableViewDelegate {
         )
         skillButton.toolTip = "Install the Claude Code skill that builds dialogues from your project"
 
+        for label in [groupLabel, tierLabel] {
+            label.font = .systemFont(ofSize: 12, weight: .medium)
+            label.textColor = .secondaryLabelColor
+        }
+
         groupPopup.target = self
         groupPopup.action = #selector(changeGroup)
-        groupPopup.toolTip = "Filter by group"
+        groupPopup.toolTip = "Filter by topic"
+        groupPopup.setAccessibilityLabel("Topic")
+        groupPopup.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+
+        tierPopup.target = self
+        tierPopup.action = #selector(changeTier)
+        tierPopup.toolTip = "Filter by tier"
+        tierPopup.setAccessibilityLabel("Tier")
+        tierPopup.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
         let headerLeading = NSStackView(views: [backButton, titleLabel, countLabel])
         headerLeading.orientation = .horizontal
         headerLeading.spacing = 10
         headerLeading.alignment = .centerY
 
-        let header = NSStackView(views: [headerLeading, NSView(), groupPopup, skillButton, importButton, createButton])
+        let spacer = NSView()
+        spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        let header = NSStackView(views: [headerLeading, spacer, skillButton, importButton, createButton])
         header.orientation = .horizontal
-        header.spacing = 12
+        header.spacing = 10
         header.alignment = .centerY
         header.translatesAutoresizingMaskIntoConstraints = false
+
+        filterBar.setViews([groupLabel, groupPopup, tierLabel, tierPopup, NSView()], in: .leading)
+        filterBar.orientation = .horizontal
+        filterBar.spacing = 10
+        filterBar.alignment = .centerY
+        filterBar.translatesAutoresizingMaskIntoConstraints = false
+        filterBar.setCustomSpacing(6, after: groupLabel)
+        filterBar.setCustomSpacing(16, after: groupPopup)
+        filterBar.setCustomSpacing(6, after: tierLabel)
 
         let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("passage"))
         column.resizingMask = .autoresizingMask
@@ -154,17 +199,27 @@ final class PassagesView: NSView, NSTableViewDataSource, NSTableViewDelegate {
         emptyLabel.translatesAutoresizingMaskIntoConstraints = false
         emptyLabel.isHidden = true
 
-        addSubview(header)
+        let topStack = NSStackView(views: [header, filterBar])
+        topStack.orientation = .vertical
+        topStack.spacing = 10
+        topStack.alignment = .leading
+        topStack.translatesAutoresizingMaskIntoConstraints = false
+
+        addSubview(topStack)
         addSubview(scroll)
         addSubview(emptyLabel)
 
         NSLayoutConstraint.activate([
-            header.topAnchor.constraint(equalTo: topAnchor, constant: 14),
-            header.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 18),
-            header.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -18),
+            topStack.topAnchor.constraint(equalTo: topAnchor, constant: 14),
+            topStack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 18),
+            topStack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -18),
+            header.widthAnchor.constraint(equalTo: topStack.widthAnchor),
             header.heightAnchor.constraint(equalToConstant: 34),
+            filterBar.widthAnchor.constraint(equalTo: topStack.widthAnchor),
+            groupPopup.widthAnchor.constraint(lessThanOrEqualToConstant: 220),
+            tierPopup.widthAnchor.constraint(lessThanOrEqualToConstant: 240),
 
-            scroll.topAnchor.constraint(equalTo: header.bottomAnchor, constant: 12),
+            scroll.topAnchor.constraint(equalTo: topStack.bottomAnchor, constant: 10),
             scroll.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 14),
             scroll.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -14),
             scroll.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -14),
@@ -200,6 +255,25 @@ final class PassagesView: NSView, NSTableViewDataSource, NSTableViewDelegate {
             guard let self else { return }
             self.delegate?.passagesView(self, didDeletePassage: key)
         }
+        cellView.onSetTopic = { [weak self] in
+            guard let self else { return }
+            let alert = NSAlert()
+            alert.messageText = "Set Passage Topic"
+            alert.informativeText = "Use the same topic to keep related passages together. Leave empty to remove the topic."
+            let field = NSComboBox(frame: NSRect(x: 0, y: 0, width: 300, height: 26))
+            field.addItems(withObjectValues: Set(self.allEntries.compactMap { $0.passage.group }.filter { !$0.isEmpty }).sorted())
+            field.stringValue = passage.group ?? ""
+            field.setAccessibilityLabel("Topic")
+            alert.accessoryView = field
+            alert.addButton(withTitle: "Save")
+            alert.addButton(withTitle: "Cancel")
+            guard alert.runModal() == .alertFirstButtonReturn,
+                  var updated = WeaveCache.load(key: key) else { return }
+            let topic = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            updated.group = topic.isEmpty ? nil : topic
+            WeaveCache.store(updated, key: key)
+            self.reload(entries: WeaveCache.entries())
+        }
         cellView.onOpen = { [weak self] in
             guard let self else { return }
             self.delegate?.passagesView(self, didSelectPassage: passage, key: key)
@@ -219,6 +293,11 @@ final class PassagesView: NSView, NSTableViewDataSource, NSTableViewDelegate {
 
     @objc private func changeGroup() {
         UserDefaults.standard.set(groupPopup.titleOfSelectedItem, forKey: Self.groupKey)
+        applyFilter()
+    }
+
+    @objc private func changeTier() {
+        UserDefaults.standard.set(tierPopup.titleOfSelectedItem, forKey: Self.tierKey)
         applyFilter()
     }
 
@@ -280,6 +359,8 @@ final class PassageRowCell: NSTableCellView {
     var onDelete: (() -> Void)?
     var onResetCount: (() -> Void)?
     var onOpen: (() -> Void)?
+    var onSetTopic: (() -> Void)?
+    private let topicButton = NSButton()
 
     private let titleLabel = NSTextField(labelWithString: "")
     private let subtitleLabel = NSTextField(labelWithString: "")
@@ -309,7 +390,8 @@ final class PassageRowCell: NSTableCellView {
         if let group = entry.passage.group, !group.isEmpty { parts.insert(group, at: 0) }
         let count = entry.passage.count ?? 0
         parts.append(count == 1 ? "Studied 1 time" : "Studied \(count) times")
-        subtitleLabel.stringValue = parts.joined(separator: " · ")
+        if let tier = entry.passage.tier, !tier.isEmpty { parts.insert(tier, at: 0) }
+        subtitleLabel.stringValue = parts.joined(separator: ", ")
         resetCountButton.isHidden = count == 0
 
         let doneSymbol = isDone ? "checkmark.circle.fill" : "circle"
@@ -370,7 +452,8 @@ final class PassageRowCell: NSTableCellView {
         textStack.alignment = .leading
         textStack.translatesAutoresizingMaskIntoConstraints = false
 
-        let actionStack = NSStackView(views: [doneButton, resetCountButton, deleteButton, openButton])
+        ReviewControls.iconButton(topicButton, symbol: "folder", label: "Set topic", target: self, action: #selector(tapTopic))
+        let actionStack = NSStackView(views: [topicButton, doneButton, resetCountButton, deleteButton, openButton])
         actionStack.orientation = .horizontal
         actionStack.spacing = 8
         actionStack.alignment = .centerY
@@ -395,4 +478,5 @@ final class PassageRowCell: NSTableCellView {
     @objc private func tapDelete() { onDelete?() }
     @objc private func tapResetCount() { onResetCount?() }
     @objc private func tapOpen() { onOpen?() }
+    @objc private func tapTopic() { onSetTopic?() }
 }

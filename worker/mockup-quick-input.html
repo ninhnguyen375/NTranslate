@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Quick Input Options</title>
+<style>
+:root { --bg:#f2f2f7; --card:#fff; --text:#1c1c1e; --muted:#6e6e73; --line:rgba(60,60,67,.14); --accent:#0a84ff; --accent-soft:rgba(10,132,255,.12); color-scheme:light; }
+body { margin:0; background:#e5e5ea; color:var(--text); font:15px/1.45 -apple-system, system-ui, sans-serif; padding:24px 16px; }
+h1 { font-size:22px; margin:0 0 6px; } .lead { color:var(--muted); margin:0 0 24px; }
+.grid { display:flex; flex-wrap:wrap; gap:28px; justify-content:center; }
+.opt { width:340px; max-width:100%; } .opt h2 { font-size:17px; margin:0 0 4px; } .opt p { margin:0 0 10px; color:var(--muted); font-size:13.5px; }
+.phone { background:var(--bg); border-radius:36px; border:8px solid #1c1c1e; height:640px; position:relative; overflow:hidden; }
+.drawer { position:absolute; inset:40px 0 0; background:var(--card); border-radius:20px 20px 0 0; padding:10px 16px; box-shadow:0 -4px 20px rgba(0,0,0,.08); }
+.grab { width:36px; height:5px; border-radius:3px; background:#d1d1d6; margin:0 auto 10px; }
+.seg { display:flex; background:#eeeef0; border-radius:10px; padding:2px; margin-bottom:10px; } .seg span { flex:1; text-align:center; padding:6px; border-radius:8px; font-weight:600; font-size:14px; } .seg .on { background:#fff; box-shadow:0 1px 3px rgba(0,0,0,.12); }
+svg { width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; flex:none; }
+.hero { display:flex; align-items:center; gap:8px; flex-wrap:wrap; } .hw { font-size:28px; font-weight:700; } .ipa { font:13px ui-monospace, Menlo, monospace; color:var(--muted); }
+.ub { font-size:12px; font-weight:650; padding:2px 9px; border-radius:999px; background:rgba(52,199,89,.16); color:#248a3d; } .ub.c { background:var(--accent-soft); color:var(--accent); }
+.sec h3 { font-size:12px; letter-spacing:.06em; color:var(--muted); margin:14px 0 6px; text-transform:uppercase; } .box { background:#f6f6f8; border-radius:12px; padding:10px 12px; font-size:14px; }
+.input { display:flex; align-items:center; gap:8px; background:#eeeef0; border-radius:999px; padding:8px 12px; color:var(--muted); }
+.input b { color:var(--text); font-weight:500; flex:1; }
+.btn { display:inline-flex; align-items:center; justify-content:center; gap:6px; border-radius:999px; background:var(--accent); color:#fff; font-weight:600; padding:8px 14px; font-size:14px; }
+.rb { width:36px; height:36px; border-radius:999px; background:var(--accent-soft); color:var(--accent); display:inline-flex; align-items:center; justify-content:center; }
+.x { color:#8e8e93; }
+.bottom { position:absolute; left:0; right:0; bottom:0; padding:10px 16px 26px; background:rgba(255,255,255,.92); border-top:1px solid var(--line); backdrop-filter:blur(12px); }
+.compact { display:flex; align-items:center; gap:8px; padding:8px 0; border-bottom:1px solid var(--line); margin-bottom:6px; }
+.chips { display:flex; gap:6px; overflow:hidden; margin-top:8px; } .chip { background:var(--accent-soft); border-radius:999px; padding:4px 10px; font-size:13px; white-space:nowrap; }
+.fab { position:absolute; right:16px; bottom:30px; width:56px; height:56px; border-radius:999px; background:var(--accent); color:#fff; display:flex; align-items:center; justify-content:center; box-shadow:0 6px 18px rgba(10,132,255,.4); } .fab svg { width:24px; height:24px; }
+.tag { display:inline-block; font-size:12px; font-weight:700; color:var(--accent); margin-bottom:4px; }
+
+.top { display:flex; align-items:center; gap:8px; margin-bottom:8px; } .top h4 { flex:1; margin:0; font-size:19px; }
+.lbar { display:flex; justify-content:space-between; color:var(--accent); font-size:14px; margin:4px 0 6px; }
+.imgs { display:grid; grid-template-columns:1fr 1fr; gap:6px; margin:8px 0; } .imgs div { height:70px; border-radius:10px; background:linear-gradient(135deg,#cfe8c9,#9cc79a); } .imgs div+div { background:linear-gradient(135deg,#f6c1cf,#e993ab); }
+.reg { font-size:11.5px; font-weight:650; color:var(--muted); border:1px solid var(--line); border-radius:999px; padding:1px 8px; }
+.fl { position:absolute; left:16px; display:flex; flex-direction:column; gap:8px; } .fl .rb { width:40px; height:40px; background:rgba(255,255,255,.9); border:1.5px solid rgba(10,132,255,.5); }
+.drawer { overflow:hidden; }
+.thread { font-size:13.5px; } .thread .q { font-weight:600; margin-top:8px; }
+</style></head><body><h1>Option H</h1><p class="lead">One box for a word (Learn) or a question ending with "?" (Ask). Left: top of the drawer. Right: after scrolling down.</p><div class="grid"><div class="opt"><span class="tag">H</span><h2>One box: word or question</h2><p>No separate Ask bar. The top input does both: a single word runs Learn, text ending with "?" asks about the current card. Fewest controls, mode is implicit.</p><div class="phone"><div class="drawer"><div class="grab"></div>
+<div class="top"><h4>Translate</h4><span class="rb"><svg viewBox="0 0 24 24"><path d="M6 3h12v18l-6-4-6 4z"/></svg></span><span class="rb"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></span></div>
+<div class="seg"><span>Translate</span><span class="on">Learn</span></div>
+<div class="lbar"><span style="opacity:.5">Auto</span><span>⇅</span><span>English</span></div>
+<div class="input" style="border-radius:12px;padding:12px"><b style="font-size:18px">is it formal?</b><svg class="x" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m9 9 6 6M15 9l-6 6"/></svg></div>
+<div class="chips"><span class="chip">resilient</span><span class="chip">thrive</span><span class="chip">cope with</span><span class="chip">bounce back</span></div>
+<div style="display:flex;justify-content:space-between;margin:10px 0"><span><span class="rb"><svg viewBox="0 0 24 24"><path d="M11 5 6 9H2v6h4l5 4zM15.5 8.5a5 5 0 0 1 0 7"/></svg></span> <span class="rb"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-5-5L5 21"/></svg></span></span><span class="btn"><svg viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/></svg> Ask</span></div>
+<div class="hero"><span class="hw">steady</span><span class="ipa">/ˈstedi/</span><span class="ub">Very common</span><span class="ub c">B1</span><span class="reg">neutral</span></div>
+<div class="sec"><h3>Answer</h3><div class="box">Neutral; fine in writing and speech.</div></div><div class="imgs"><div></div><div></div></div><div class="fl" style="bottom:30px"><span class="rb"><svg viewBox="0 0 24 24"><path d="M11 5 6 9H2v6h4l5 4zM15.5 8.5a5 5 0 0 1 0 7"/></svg></span><span class="rb"><svg viewBox="0 0 24 24"><path d="M4 15c0-4 3.5-7 8-7s8 3 8 7z"/><path d="M6 15v2M18 15v2M20 13h2"/></svg></span></div></div></div></div><div class="opt"><span class="tag">H, scrolled</span><h2>Scrolled: only the input sticks</h2><p>Past the card header, the header, mode switch, languages, recent words and button row scroll away. One compact row stays pinned: input with clear, image, and Go (Learn or Ask by what you typed). Scroll up or tap it to get the full layout back.</p>
+<div class="phone"><div class="drawer" style="padding-top:0">
+<div style="position:absolute;left:0;right:0;top:0;z-index:2;background:rgba(255,255,255,.94);backdrop-filter:blur(12px);border-bottom:1px solid var(--line);padding:8px 12px">
+<div class="grab" style="margin-bottom:8px"></div>
+<div style="display:flex;gap:8px;align-items:center"><div class="input" style="flex:1"><b>steady</b><svg class="x" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m9 9 6 6M15 9l-6 6"/></svg></div><span class="rb"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-5-5L5 21"/></svg></span><span class="rb" style="background:var(--accent);color:#fff"><svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></div></div>
+<div style="padding-top:78px">
+<div class="sec"><h3>Examples</h3><div class="box"><span class="ub c">B1</span> She kept a steady pace.<br><span style="color:var(--muted)">Cô ấy giữ tốc độ đều.</span></div></div>
+<div class="sec"><h3>Collocations</h3><div class="chips" style="flex-wrap:wrap"><span class="chip">steady growth</span><span class="chip">steady job</span><span class="chip">hold steady</span></div></div>
+<div class="sec"><h3>Family</h3><div class="box">steadily (adv) · steadiness (n)</div></div>
+<div class="sec"><h3>Answer</h3><div class="box">Neutral; fine in writing and speech.</div></div>
+</div>
+<div class="fl" style="bottom:30px"><span class="rb"><svg viewBox="0 0 24 24"><path d="M11 5 6 9H2v6h4l5 4zM15.5 8.5a5 5 0 0 1 0 7"/></svg></span><span class="rb"><svg viewBox="0 0 24 24"><path d="M4 15c0-4 3.5-7 8-7s8 3 8 7z"/><path d="M6 15v2M18 15v2M20 13h2"/></svg></span></div>
+</div></div></div></div></body></html>

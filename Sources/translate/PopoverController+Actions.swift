@@ -107,13 +107,12 @@ extension PopoverController {
                 switch result {
                 case let .success(value):
                     self.setResultText(value)
-                    let recordedSource = LearnCard.Encounter.storedSource(
-                        selection: text,
-                        headword: LearnCard.parse(value).headword
-                    )
+                    let source = self.effectiveSourceLanguage(for: text)
+                    let stored = self.swappedLearnStorage(selection: text, context: nil, value: value, source: source, target: pair.target)
+                        ?? (LearnCard.Encounter.storedSource(selection: text, headword: LearnCard.parse(value).headword), source, pair.target)
                     let record = TranslationRecord(
-                        id: UUID(), timestamp: Date(), mode: .learn, sourceText: recordedSource, resultText: value,
-                        sourceLanguage: self.effectiveSourceLanguage(for: text), targetLanguage: pair.target,
+                        id: UUID(), timestamp: Date(), mode: .learn, sourceText: stored.text, resultText: value,
+                        sourceLanguage: stored.source, targetLanguage: stored.target,
                         isSaved: false
                     )
                     do {
@@ -293,6 +292,19 @@ extension PopoverController {
     }
 
     /// Saves a finished result. A Regenerate of an opened record replaces its text in place.
+    /// Learn on a native-language term ("tổ hợp") answers with a card for its target-language
+    /// headword ("combination"). Store it as that headword's own card, languages flipped, so review
+    /// shows and speaks the headword instead of the text that was typed.
+    func swappedLearnStorage(selection: String, context: String?, value: String, source: String, target: String) -> (text: String, source: String, target: String)? {
+        let headword = LearnCard.parse(value).headword.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !headword.isEmpty, source != target,
+              LearnCard.normalizeAnswer(headword) != LearnCard.normalizeAnswer(selection),
+              LanguageDetector.detectedLanguage(selection) == source,
+              LanguageDetector.detectedLanguage(headword) == target
+        else { return nil }
+        return (LearnCard.Encounter.encode(term: headword, context: context ?? selection), target, source)
+    }
+
     func storeResult(_ record: TranslationRecord, generation: Int, bypassCache: Bool) throws -> TranslationRecord {
         if bypassCache, let target = regenerateTarget, target.generation == generation,
            historyStore.records.first(where: { $0.id == target.recordID })?.mode == record.mode,

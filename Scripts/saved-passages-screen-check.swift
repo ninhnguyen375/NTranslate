@@ -52,8 +52,25 @@ func run() {
     WeaveCache.delete(key: key)
     assert(WeaveCache.load(key: key) == nil, "deleted passage must not exist in cache")
 
+    // 3. PassagesView layout with Topic + Tier filters must not crush header action buttons at 753px width
+    let view = PassagesView(frame: NSRect(x: 0, y: 0, width: 753, height: 520))
+    let p1 = WeavePassage(words: ["a"], text: "A: 1\nB: 2", promptVersion: "1", generatedAt: Date(), title: "One", group: "NTranslate", tier: "Tier 1 - Core prompts")
+    let p2 = WeavePassage(words: ["b"], text: "A: 3\nB: 4", promptVersion: "1", generatedAt: Date(), title: "Two", group: "NTranslate", tier: "Tier 3 - Multi-turn")
+    view.reload(entries: [("k1", p1), ("k2", p2)])
+    view.layoutSubtreeIfNeeded()
+    let buttons = view.subviews.flatMap(\.subviews).flatMap(\.subviews).compactMap { $0 as? NSButton }
+    for title in ["Add Skill", "Import", "Create Dialogue"] {
+        let btn = buttons.first { $0.title.contains(title) }
+        assert(btn != nil && btn!.frame.width >= 70, "button \(title) crushed: \(String(describing: btn?.frame))")
+    }
+
     print("saved-passages-screen-check: ok")
 }
+
+extension ReviewWindowController {
+    static func passageHeadline(_ passage: WeavePassage) -> String { passage.title ?? "" }
+}
+enum ReviewWindowController {}
 
 @main
 enum SavedPassagesScreenCheck {

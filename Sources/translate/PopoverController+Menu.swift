@@ -583,7 +583,18 @@ extension PopoverController {
             }
         }
         localMouseMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
-            guard let self, self.panel.isVisible, !self.isPinned else { return event }
+            guard let self, self.panel.isVisible else { return event }
+            // Clicks on chips or blank card space never move focus, so the label keeps its
+            // selection and the floating bar stays; drop both unless the click lands on text or the bar.
+            if !self.selectionFloatingBar.isHidden, event.window === self.panel,
+               let hit = self.panel.contentView?.hitTest(event.locationInWindow),
+               !(hit is NSTextView), !hit.isDescendant(of: self.selectionFloatingBar) {
+                if let editor = self.panel.firstResponder as? NSTextView, editor.isFieldEditor {
+                    self.panel.makeFirstResponder(nil)
+                }
+                self.hideFloatingSelectionBar()
+            }
+            guard !self.isPinned else { return event }
             guard !PopoverLayoutMath.clickIsInsidePanel(click: NSEvent.mouseLocation, panelFrame: self.panel.frame) else { return event }
             self.restoresPreviousAppOnClose = false
             self.closePanel()

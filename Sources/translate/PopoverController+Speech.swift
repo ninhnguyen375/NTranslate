@@ -310,8 +310,12 @@ extension PopoverController {
     func attachAudio(_ data: Data, identity: SpeechIdentity) {
         guard PopoverIntegrationPolicy.canAttachAudio(identity: identity, currentRecordID: currentRecordID),
               let recordID = identity.recordID,
-              historyStore.records.contains(where: { $0.id == recordID })
+              let record = historyStore.records.first(where: { $0.id == recordID })
         else { return }
+        // Review replays a record's source audio as its term. Typed text that only led to the card
+        // ("tổ hợp" for "combination", a sentence for its headword) must not become that audio.
+        if identity.kind == .source, record.mode == .learn,
+           LearnCard.normalizeAnswer(identity.text) != LearnCard.normalizeAnswer(LearnCard.Encounter.split(record.sourceText).term) { return }
         do {
             try historyStore.attachAudio(data, kind: identity.kind == .source ? .source : .result, recordID: recordID)
             _historyWindowController?.reloadHistory()
@@ -333,9 +337,22 @@ extension PopoverController {
 
     @objc func speakInput() { playSpeech(sourceSpeechIdentity(), speed: 1.0) }
     @objc func speakInputSlow() { playSpeech(sourceSpeechIdentity(), speed: config.speechSlowRate) }
-    /// A learn card is far too long to read aloud, so its result buttons speak the source term.
+    /// A learn card is far too long to read aloud, so its result buttons speak the card's headword,
+    /// which may differ from the typed text ("tổ hợp" gives a card for "combination").
     func resultButtonSpeechIdentity() -> SpeechIdentity? {
-        lastExecutionMode == .learn ? sourceSpeechIdentity() : resultSpeechIdentity()
+        guard lastExecutionMode == .learn else { return resultSpeechIdentity() }
+        return learnHeadwordSpeechIdentity(result: lastResultRaw, recordID: currentRecordID) ?? sourceSpeechIdentity()
+    }
+
+    func learnHeadwordSpeechIdentity(result: String, recordID: UUID?) -> SpeechIdentity? {
+        let headword = LearnCard.parse(result).headword.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !headword.isEmpty else { return nil }
+        return SpeechIdentity(
+            kind: .source,
+            text: headword,
+            model: SpeechModelResolver.model(for: LanguageDetector.detectedLanguage(headword), config: config),
+            recordID: recordID
+        )
     }
 
     @objc func speakResult() { playSpeech(resultButtonSpeechIdentity(), speed: 1.0) }

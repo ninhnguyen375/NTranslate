@@ -518,12 +518,24 @@ struct ConfusableDrillItem: Equatable, Sendable {
             for confusable in card.confusables {
                 guard !confusable.contrastSentence.isEmpty,
                       confusable.other.caseInsensitiveCompare(card.headword) != .orderedSame,
+                      !inflections(of: card.headword).contains(where: {
+                          LearnCard.normalizeAnswer($0) == LearnCard.normalizeAnswer(confusable.other)
+                      }),
+                      !inflections(of: confusable.other).contains(where: {
+                          LearnCard.normalizeAnswer($0) == LearnCard.normalizeAnswer(card.headword)
+                      }),
                       let hit = blankOutInflected(card.headword, in: confusable.contrastSentence)
                 else { continue }
+                let head = LearnCard.normalizeAnswer(card.headword)
+                let other = LearnCard.normalizeAnswer(confusable.other)
+                guard head != other + "s", other != head + "s" else { continue }
+                let distractor = matchInflection(of: confusable.other, headword: card.headword, form: hit.form)
+                guard LearnCard.normalizeAnswer(distractor) != LearnCard.normalizeAnswer(hit.form),
+                      !confusable.difference.isEmpty else { continue }
                 items.append(ConfusableDrillItem(
                     sentence: hit.blanked,
                     correct: hit.form,
-                    distractor: matchInflection(of: confusable.other, headword: card.headword, form: hit.form),
+                    distractor: distractor,
                     explanation: confusable.difference
                 ))
                 break

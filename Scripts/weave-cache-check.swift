@@ -45,6 +45,12 @@ func run() {
     assert(WeaveAudioCache.load(text: "hellO", model: "tts-1") == nil)
     assert(WeaveAudioCache.url(text: "hello", model: "tts-1").path.hasPrefix(target.path))
 
+    let imported = Data(#"[{"text":"Topic check","group":"NTranslate","tier":"Tier 2 - Full prompts"}]"#.utf8)
+    assert(try! WeaveCache.importPassages(from: imported) == 1)
+    let lesson = WeaveCache.entries().first { $0.passage.text == "Topic check" }!
+    assert(lesson.passage.group == "NTranslate")
+    assert(lesson.passage.tier == "Tier 2 - Full prompts")
+    assert(WeaveCache.load(key: "abc")?.tier == nil, "old passages must remain readable")
     print("weave-cache-check: ok")
 }
 

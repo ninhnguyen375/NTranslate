@@ -113,6 +113,8 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
     private let summaryView = ReviewSummaryView()
     private let newWordsView = NewWordsView()
     private var keyEventMonitor: Any?
+    /// Same floating bar the reading dialogue shows, for text selected on a study card.
+    private let cardSelectionBar = ReadingSelectionBar()
     private var sessionTimer: Timer?
     private var didShowReview = false
 
@@ -184,6 +186,15 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
         passagesView.delegate = self
         sessionView.readingChatView.onSpeak = { [weak self] line, isSlow in self?.speakReadingLine(line, slow: isSlow) }
         sessionView.readingChatView.onWillRecord = { [weak self] in self?.stopAudio() }
+        sessionView.readingChatView.onPauseAutoPlay = { [weak self] paused in
+            guard let self else { return }
+            if paused { self.audioPlayer?.pause() }
+            else if let player = self.audioPlayer, !player.play() { self.stopAudio() }
+        }
+        sessionView.readingChatView.onAutoPlayRateChanged = { [weak self] rate in
+            self?.activeSpeechRate = rate
+            self?.audioPlayer?.rate = rate
+        }
         sessionView.readingChatView.onAssess = { [weak self] line, url, done in
             guard let translator = self?.translator else {
                 return done(.failure(NSError(domain: "Pronunciation", code: 4, userInfo: [NSLocalizedDescriptionKey: "Translator unavailable"])))
@@ -203,6 +214,21 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
             self.stopAudio()
             self.onTranslateSentence?(line)
         }
+        cardSelectionBar.onSpeak = { [weak self] text, isSlow in self?.speakCardSelection(text, slow: isSlow) }
+        cardSelectionBar.onLearn = { [weak self] text in
+            self?.stopAudio()
+            self?.onLearnSentence?(text)
+        }
+        cardSelectionBar.onTranslate = { [weak self] text in
+            self?.stopAudio()
+            self?.onTranslateSentence?(text)
+        }
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(cardSelectionChanged),
+            name: NSTextView.didChangeSelectionNotification,
+            object: nil
+        )
         // Selecting the text hands it to the field editor, which drops every attribute unless the
         // field says attributes are its own. Without this the reading underlines vanish on click.
         sessionView.resultLabel.allowsEditingTextAttributes = true
@@ -579,6 +605,7 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
     }
 
     private func goHome() {
+        cardSelectionBar.hide()
         stopAudio()
         weaveRequest?.cancel()
         weaveRequest = nil
@@ -589,6 +616,7 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
     // MARK: - Card rendering
 
     private func loadCurrentCard() {
+        cardSelectionBar.hide()
         if recordsToReview.isEmpty || currentIndex >= recordsToReview.count {
             showSummary()
             return
@@ -850,6 +878,7 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
     }
 
     private func revealAnswer() {
+        cardSelectionBar.hide()
         guard screen == .session, !isReadingMode else { return }
         guard !recordsToReview.isEmpty, currentIndex < recordsToReview.count else { return }
         isAnswerRevealed = true
@@ -1058,6 +1087,7 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
     private func showAnswerResult(filling prompt: String, with answer: String) {
         resultSentence = Self.filledSentence(prompt, answer)
         sessionView.termLabel.stringValue = resultSentence ?? answer
+        showResultTranslation()
         sessionView.answerField.isHidden = true
         sessionView.choiceStack.isHidden = true
         sessionView.autoGradeStack.isHidden = true
@@ -1072,6 +1102,36 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
             sentencePrefetch?.waiting = true
         } else {
             speakCurrentSource()
+        }
+    }
+
+    private func showResultTranslation() {
+        guard let sentence = resultSentence, currentIndex < recordsToReview.count else { return }
+        let record = recordsToReview[currentIndex]
+        let card = LearnCard.parse(record.resultText)
+        sessionView.contextLabel.stringValue = ""
+        sessionView.contextLabel.isHidden = true
+        if let example = card.examples.first(where: {
+            $0.sentence.trimmingCharacters(in: .whitespacesAndNewlines) == sentence
+                && !$0.translation.isEmpty
+        }) {
+            sessionView.contextLabel.stringValue = example.translation
+            sessionView.contextLabel.isHidden = false
+            return
+        }
+        _ = translator?.translate(sentence, sourceLang: record.sourceLanguage,
+                                  targetLang: record.targetLanguage, stream: false) { [weak self] result in
+            Task { @MainActor in
+                guard let self, self.screen == .session, !self.isReadingMode,
+                      self.resultSentence == sentence, !self.isAnswerRevealed,
+                      self.currentIndex < self.recordsToReview.count,
+                      self.recordsToReview[self.currentIndex].id == record.id else { return }
+                if case let .success(translation) = result {
+                    self.sessionView.contextLabel.stringValue = translation.text
+                    self.sessionView.contextLabel.isHidden = translation.text.isEmpty
+                    self.adjustWindowHeightForContentIfNeeded()
+                }
+            }
         }
     }
 
@@ -1103,7 +1163,7 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
         let correct = choices[index].caseInsensitiveCompare(drill.correct) == .orderedSame
         let note = drill.explanation.isEmpty
             ? "Answer: \(drill.correct)"
-            : "\(drill.correct): \(drill.explanation)"
+            : drill.explanation
         showAnswerFeedback(correct: correct, note: note)
         autoGrade(correct: correct, nearMiss: false)
         showAnswerResult(filling: drill.sentence, with: drill.correct)
@@ -1410,7 +1470,7 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
         }
         // Return / keypad Enter confirm the auto-grade Continue button.
         if chars == "\r" || chars == "\n" {
-            if resultSentence != nil, !isAnswerRevealed {
+            if !isAnswerRevealed {
                 revealAnswer()
                 return nil
             }
@@ -1656,6 +1716,9 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
             sessionView.hintLabel.isHidden = false
         }
         adjustWindowHeightForContentIfNeeded()
+        sessionView.layoutSubtreeIfNeeded()
+        sessionView.scrollView.contentView.scroll(to: .zero)
+        sessionView.scrollView.reflectScrolledClipView(sessionView.scrollView.contentView)
     }
 
     /// Names the passage on the reading screen. Without a title the header says so and offers the
@@ -1665,6 +1728,7 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
         sessionView.termLabel.font = .systemFont(ofSize: 20, weight: .bold)
         let headline = currentPassage.map { Self.passageHeadline($0.passage) } ?? ""
         sessionView.termLabel.stringValue = headline.isEmpty ? "Untitled passage" : headline
+        sessionView.setReadingToolbar(visible: true, title: sessionView.termLabel.stringValue)
         // The label keeps the height measured for the previous card's font and clips descenders.
         sessionView.termLabel.invalidateIntrinsicContentSize()
         // Only a passage that is actually on disk can keep the title it gets back.
@@ -1752,6 +1816,7 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
     }
 
     private func hideReadingChat() {
+        sessionView.setReadingToolbar(visible: false)
         sessionView.readingChatView.isHidden = true
         sessionView.readingModeControl.isHidden = true
         readingAudioGeneration += 1
@@ -1822,6 +1887,35 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
             text: line,
             model: SpeechModelResolver.model(for: language, config: speechCfg)
         )
+        handleSpeechPlay(speed: sessionView.readingChatView.autoPlayRate ?? (slow ? speechCfg.speechSlowRate : 1.0), identity: identity)
+    }
+
+    /// Card fields hand their selection to the window's field editor; the reading dialogue runs its own bar.
+    @objc private func cardSelectionChanged(_ note: Notification) {
+        guard let editor = note.object as? NSTextView,
+              let field = (editor.delegate as AnyObject?) as? NSView,
+              field.isDescendant(of: sessionView),
+              !field.isDescendant(of: sessionView.readingChatView),
+              field !== sessionView.answerField else { return }
+        let range = editor.selectedRange()
+        let text = range.length > 0
+            ? (editor.string as NSString).substring(with: range).trimmingCharacters(in: .whitespacesAndNewlines)
+            : ""
+        guard !text.isEmpty else {
+            if !cardSelectionBar.isPointerInside { cardSelectionBar.hide() }
+            return
+        }
+        cardSelectionBar.show(text: text, over: editor.firstRect(forCharacterRange: range, actualRange: nil), in: window)
+    }
+
+    private func speakCardSelection(_ text: String, slow: Bool) {
+        let speechCfg = config ?? AppConfig.load()
+        let language = currentIndex < recordsToReview.count ? recordsToReview[currentIndex].sourceLanguage : "English"
+        let identity = SpeechIdentity(
+            kind: .source,
+            text: text,
+            model: SpeechModelResolver.model(for: language, config: speechCfg)
+        )
         handleSpeechPlay(speed: slow ? speechCfg.speechSlowRate : 1.0, identity: identity)
     }
 
@@ -1829,14 +1923,7 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
     /// the translate panel with its history already there.
     private func openTranslateForWord(_ word: String) {
         stopAudio()
-        if let record = readingPool().first(where: {
-            displayTerm(of: $0).caseInsensitiveCompare(word) == .orderedSame
-        }) {
-            onOpenTranslate?(record)
-        } else {
-            // Typed-in words have no saved card: translate them like any other text.
-            onTranslateSentence?(word)
-        }
+        onLearnSentence?(word)
     }
 
     private func presentPassageMenu(from sender: NSButton?) {
@@ -1939,6 +2026,11 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
     }
 
     private func updateSpeakButtonUI() {
+        let slowRate = config?.speechSlowRate ?? AppConfig.default.speechSlowRate
+        cardSelectionBar.applySpeech(
+            activeSpeechIdentity?.text == cardSelectionBar.text ? activeSpeechIdentity.map { speechState.action(for: $0) } ?? .play : .play,
+            isSlow: abs(activeSpeechRate - slowRate) < 0.01
+        )
         if isReadingMode {
             updateReadingSpeechUI()
             return
@@ -2007,7 +2099,7 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
         // A click while this audio loads is ignored; any other click restarts from the beginning.
         if activeSpeechIdentity == identity && activeSpeechRate == speed
             && speechState.action(for: identity) == .loading { return }
-        stopAudio()
+        stopAudio(stopAutoPlay: false)
         playSpeech(identity: identity, speed: speed)
     }
 
@@ -2037,7 +2129,7 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
                 guard let self, self.speechState.accepts(generation: generation, identity: identity) else { return }
                 guard case let .success(data) = result, SpeechAudioPolicy.isValid(data) else {
                     _ = self.speechState.finishLoading(generation: generation, identity: identity)
-                    self.updateSpeakButtonUI()
+                    self.stopAudio()
                     return
                 }
                 if let recordID = identity.recordID {
@@ -2051,6 +2143,7 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
     }
 
     private func startPlayback(_ data: Data, identity: SpeechIdentity, speed: Float, loadingGeneration: Int? = nil) {
+        let speed = sessionView.readingChatView.autoPlayRate ?? speed
         if let loadingGeneration {
             _ = speechState.finishLoading(generation: loadingGeneration, identity: identity)
         }
@@ -2068,7 +2161,9 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
         activeSpeechRate = speed
         SpeechTrim.seekPastLeadingSilence(player, data: data)
 
-        guard player.play() else {
+        if sessionView.readingChatView.isAutoPlayPaused {
+            player.prepareToPlay()
+        } else if !player.play() {
             stopAudio()
             return
         }
@@ -2081,7 +2176,8 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
         startPlayback(data, identity: identity, speed: speed)
     }
 
-    func stopAudio() {
+    func stopAudio(stopAutoPlay: Bool = true) {
+        if stopAutoPlay { sessionView.readingChatView.stopAutoPlay() }
         audioPlayer?.stop()
         audioPlayer = nil
         activeSpeechIdentity = nil
@@ -2091,7 +2187,9 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
 
     func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
         guard player === audioPlayer else { return }
-        stopAudio()
+        let next = flag ? sessionView.readingChatView.nextAutoPlayLine() : nil
+        stopAudio(stopAutoPlay: next == nil)
+        if let next { speakReadingLine(next, slow: false) }
     }
 
     func audioPlayerDecodeErrorDidOccur(_ player: AVAudioPlayer, error: Error?) {

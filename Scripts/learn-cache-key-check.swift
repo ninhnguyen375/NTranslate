@@ -17,10 +17,10 @@ private func expect(_ condition: Bool, _ message: String) {
     }
 }
 
-private func record(_ sourceText: String, mode: TranslationMode = .learn, target: String = "Vietnamese") -> TranslationRecord {
+private func record(_ sourceText: String, mode: TranslationMode = .learn, target: String = "Vietnamese", at timestamp: Date = Date()) -> TranslationRecord {
     TranslationRecord(
         id: UUID(),
-        timestamp: Date(),
+        timestamp: timestamp,
         mode: mode,
         sourceText: sourceText,
         resultText: "x",
@@ -77,6 +77,15 @@ struct LearnCacheKeyCheck {
                "appendIfAbsent must return the existing card, got \(kept.sourceText)")
         expect(store.records.filter { $0.mode == .learn }.count == 1,
                "one card only, got \(store.records.filter { $0.mode == .learn }.count)")
+
+        // Learn "tổ hợp" made the combination card, then its chips were prefetched with the same
+        // context. Looking "tổ hợp" up again must return combination, not the newest chip.
+        let base = Date()
+        try store.append(record("combination (context: tổ hợp)", at: base))
+        try store.append(record("blend (context: tổ hợp)", at: base.addingTimeInterval(5)))
+        try store.append(record("neutrality (context: tổ hợp)", at: base.addingTimeInterval(60)))
+        let hit = lookup("tổ hợp", "Vietnamese")?.sourceText
+        expect(hit == "combination (context: tổ hợp)", "selection must find the card learned from it, got \(hit ?? "nil")")
 
         if failures > 0 {
             print("\(failures) check(s) failed")

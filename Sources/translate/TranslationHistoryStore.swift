@@ -316,7 +316,10 @@ final class TranslationHistoryStore {
             let key = LearnCard.lookupKey(LearnCard.Encounter.split(sourceText).term)
             if let exact = index.byTerm[key]?.first(where: pairMatches) { return exact }
             // Same rule as `sourceMatches` for Learn, answered from the index.
-            return index.byMatch[LearnCard.lookupKey(sourceText)]?.first(where: pairMatches)
+            // Chip and sub-pane cards carry the same encounter text as the card learned from it,
+            // and they are always made after it. The oldest match is the card for this selection.
+            // ponytail: timestamp heuristic, store an explicit selection key if it ever misfires.
+            return index.byMatch[LearnCard.lookupKey(sourceText)]?.filter(pairMatches).min { $0.timestamp < $1.timestamp }
         }
         return records.first {
             $0.mode == mode && pairMatches($0) && Self.sourceMatches($0.sourceText, sourceText, mode: mode)

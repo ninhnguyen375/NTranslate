@@ -50,7 +50,7 @@ nav button:active svg { transform:scale(.82); }
 .seg button, .list button, .pills button { transition:background-color .2s, color .2s, box-shadow .2s, transform .18s; }
 .seg button:active, .pills button:active { transform:scale(.94); }
 .sbar { position:fixed; left:16px; bottom:var(--sb, 80px); z-index:2; display:flex; flex-direction:column; gap:12px; }
-.sbar button.icon { width:51px; height:51px; padding:0; border-radius:999px; background:color-mix(in srgb, var(--card) 45%, transparent); color:var(--accent); border:1px solid var(--line); box-shadow:0 4px 14px rgba(0,0,0,.16); }
+.sbar button.icon { width:51px; height:51px; padding:0; border-radius:999px; background:color-mix(in srgb, var(--card) 85%, transparent); color:var(--accent); border:1px solid var(--line); box-shadow:0 4px 14px rgba(0,0,0,.16); }
 .sbar button svg { width:24px; height:24px; }
 @media (prefers-reduced-motion: reduce) { * { animation:none !important; transition:none !important; } }
 button:disabled { opacity:.5; }
@@ -121,10 +121,15 @@ textarea:focus { box-shadow:0 0 0 3px var(--accent-soft); }
 .pos { font:600 12px ui-monospace, Menlo, monospace; color:var(--accent); flex:none; }
 .hero { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
 .hero .hw { font-size:28px; font-weight:700; letter-spacing:-.02em; }
+.ubadge { font-size:12.5px; font-weight:650; padding:2px 9px; border-radius:999px; background:var(--accent-soft); color:var(--accent); }
+.ubadge.f3 { background:rgba(52,199,89,.16); color:#34c759; }
+.ubadge.f2 { background:rgba(255,149,0,.16); color:#ff9500; }
+.ubadge.f1 { background:rgba(235,79,66,.16); color:#eb4f42; }
+.ubadge.reg { background:var(--card); color:var(--muted); border:1px solid var(--line); }
 .ipa { font:14px ui-monospace, Menlo, monospace; color:var(--muted); }
 .spbar { position:sticky; bottom:0; display:flex; flex-direction:column; align-items:flex-start; gap:12px; padding:10px 0; pointer-events:none; }
 .spbar button, .sbar button { pointer-events:auto; }
-.spbar button.icon { width:51px; height:51px; padding:0; border-radius:999px; background:color-mix(in srgb, var(--card) 45%, transparent); color:var(--accent); border:1px solid var(--line); box-shadow:0 4px 14px rgba(0,0,0,.16); animation:pop .38s cubic-bezier(.34,1.56,.64,1) backwards; }
+.spbar button.icon { width:51px; height:51px; padding:0; border-radius:999px; background:color-mix(in srgb, var(--card) 85%, transparent); color:var(--accent); border:1.5px solid color-mix(in srgb, var(--accent) 55%, var(--line)); box-shadow:0 4px 14px rgba(0,0,0,.16); animation:pop .38s cubic-bezier(.34,1.56,.64,1) backwards; }
 .spbar button svg { width:24px; height:24px; }
 .chips { display:flex; flex-wrap:wrap; gap:6px; }
 .chip { background:var(--accent-soft); color:var(--text); border-radius:999px; padding:5px 11px; font-size:14px; }
@@ -210,9 +215,13 @@ button.gray { background:rgba(142,142,147,.16); color:var(--text); font-weight:6
 button { min-height:44px; }
 .icon, .small, .chip, .pills button, .seg button, .bubble .tools button, nav button { min-height:0; }
 .primary, .reveal { box-shadow:0 4px 14px rgba(10,132,255,.3); }
-#group { flex-wrap:wrap; margin-bottom:12px; }
-#group button { background:var(--card); color:var(--text); padding:8px 14px; font-size:14px; }
-#group button.on { background:var(--accent); color:#fff; }
+#group, #tier { flex-wrap:wrap; margin-bottom:12px; }
+#group button, #tier button { background:var(--card); color:var(--text); padding:8px 14px; font-size:14px; }
+#group button.on, #tier button.on { background:var(--accent); color:#fff; }
+.fhead { font-size:11px; font-weight:700; letter-spacing:.08em; color:var(--muted); margin:4px 0 6px; text-transform:uppercase; }
+#ptr { position:fixed; left:50%; top:calc(env(safe-area-inset-top) + 12px); transform:translate(-50%, -64px); z-index:4; background:var(--card); color:var(--accent); border-radius:999px; padding:7px 14px; font-size:13px; font-weight:600; display:flex; align-items:center; gap:6px; box-shadow:0 4px 16px rgba(0,0,0,.15); opacity:0; pointer-events:none; transition:transform .2s, opacity .2s; }
+#ptr.spin svg { animation:spin .8s linear infinite; }
+@keyframes spin { to { transform:rotate(360deg); } }
 .qchips { display:grid; grid-template-columns:repeat(4,1fr); gap:6px; margin-top:8px; }
 .qchips button { min-height:38px; padding:6px 4px; border-radius:10px; font-size:14px; background:var(--bg); color:var(--text); }
 .qchips button.on { background:var(--accent); color:#fff; font-weight:600; }
@@ -288,21 +297,45 @@ html:has(.drawer.open), html:has(.drawer.open) body { overflow:hidden; }
 #drawer textarea { background:none; box-shadow:none; border-radius:0; border-bottom:1px solid var(--line); padding:8px 0; min-height:90px; font-size:20px; resize:none; }
 #drawer textarea:focus { box-shadow:none; border-bottom-color:var(--accent); }
 .irow { display:flex; align-items:center; justify-content:space-between; margin:8px 0 4px; }
+.irow > span { display:flex; gap:8px; }
+.irow label.icon { display:inline-flex; align-items:center; justify-content:center; cursor:pointer; }
 .irow .primary { width:auto; padding:9px 18px; }
 #drawer .card { background:none; box-shadow:none; padding:0; border-radius:0; margin:12px 0 0; }
 #drawer .box { background:none; padding:0; }
 .rlang { font-size:11px; font-weight:700; letter-spacing:.08em; color:var(--muted); text-transform:uppercase; }
 .rtext { display:flex; align-items:flex-start; gap:8px; }
 .rtext div { flex:1; white-space:pre-wrap; font-size:24px; font-weight:600; line-height:1.3; }
-#drawer .qa, #drawer .qa .sec { display:contents; }
-#drawer .qa h3 { display:none; }
-#drawer .qa .answer { position:sticky; bottom:calc(-24px - env(safe-area-inset-bottom)); background:var(--card); margin:16px -16px 0; padding:10px 16px calc(10px + env(safe-area-inset-bottom)); border-top:1px solid var(--line); }
-#drawer .qa .answer input { border-radius:999px; }
-#drawer .qa .answer button { border-radius:999px; width:44px !important; height:44px; flex:none; padding:0; }
+#drawer .spbar { z-index:1; }
+/* Ask row sits beside the floating speak buttons, in the space they leave at the end. */
+#drawer .qa .answer { display:flex; align-items:center; gap:8px; min-height:51px; margin:-61px 0 0 64px; position:relative; z-index:1; }
+#drawer .qa .answer input { flex:1; margin:0; border-radius:999px; }
+/* Once a thread starts, the input pins to the bottom like a chat and the speak buttons ride above it. */
+#drawer .qa.chat .answer { position:sticky; bottom:calc(-24px - env(safe-area-inset-bottom)); margin:12px -16px 0; padding:8px 16px calc(8px + env(safe-area-inset-bottom)); background:var(--card); border-top:1px solid var(--line); }
+#trOut:has(.qa.chat) .spbar { bottom:72px; }
+#drawer .qa .q { margin:14px 0 0 auto; width:fit-content; max-width:85%; background:var(--accent); color:#fff; border-radius:18px 18px 4px 18px; padding:8px 12px; font-weight:500; }
+#drawer .qa .a { background:var(--bg); border-radius:18px 18px 18px 4px; padding:8px 12px; margin-top:8px; max-width:92%; }
+.qa .a h4 { margin:8px 0 4px; font-size:16px; } .qa .a pre { overflow-x:auto; background:var(--accent-soft); border-radius:8px; padding:8px; font:13px ui-monospace, Menlo, monospace; margin:6px 0; }
+.qa .a blockquote { margin:6px 0; padding-left:10px; border-left:3px solid var(--line); color:var(--muted); } .qa .a ol { padding-left:22px; margin:4px 0; }
+#drawer .qa .answer button { width:44px; height:44px; min-height:0; padding:0; border-radius:999px; flex:none; }
+.tin { position:relative; }
+.tin .clr { position:absolute; right:0; top:6px; color:var(--muted); }
+.recent { display:flex; gap:6px; overflow-x:auto; scrollbar-width:none; margin-top:8px; }
+.recent .chip { white-space:nowrap; flex:none; }
+/* Scrolled past the input: one compact row stays on top. */
+.mini { position:sticky; top:0; z-index:2; margin:0 -16px; padding:8px 16px; background:var(--card); border-bottom:1px solid var(--line); display:flex; gap:8px; align-items:center; }
+.mini.hidden { display:none; }
+.mini input { flex:1; margin:0; border-radius:999px; padding:9px 14px; }
+.mini label svg, .irow label svg { width:18px; height:18px; }
+.mini label { display:inline-flex; align-items:center; justify-content:center; flex:none; cursor:pointer; }
+.mini .primary { width:40px; height:40px; min-height:0; padding:0; border-radius:999px; flex:none; }
+.qa .a { white-space:normal; }
+.qa .a p, .qa .a ul { margin:4px 0; } .qa .a ul { padding-left:20px; }
+.qa .a code { font:14px ui-monospace, Menlo, monospace; background:var(--accent-soft); border-radius:4px; padding:0 4px; }
 </style>
 </head>
 <body>
 <header><button id="back" class="icon hidden" aria-label="Back">&lsaquo; Back</button><h1 id="title">Review</h1><span id="meta" class="muted"></span><button id="installOpen" class="icon round hidden" aria-label="Install on Home Screen"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="4"/><path d="M12 8v8M8 12h8"/></svg></button><button id="theme" class="icon round" aria-label="Toggle dark mode"></button></header>
+<div id="ptr" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg><span>Pull to refresh</span></div>
 <main id="view"></main>
 <div id="selbar" class="selbar hidden"><button data-sel="learn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.8 4.7L18.5 9.5 13.8 11.3 12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"/></svg>Learn</button><button data-sel="translate"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h8M8 3v2M10 5c-1 4-3.5 7-6 8.5M6 9c1.2 2 3 3.5 5 4.5"/><path d="M13 21l4-9 4 9M14.5 18h5"/></svg>Translate</button></div>
 <div id="scrim" class="scrim"></div>
@@ -360,6 +393,7 @@ const svg = d => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" str
 const SPEAKER = svg('<path d="M11 5 6 9H3v6h3l5 4V5z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/>');
 const SLOW = svg('<path d="M4 15c0-4 3-7 7-7s7 3 7 7H4z"/><path d="M18 13h2a2 2 0 0 0 0-4h-1M7 15v3M15 15v3"/>');
 const IC = {
+  image: svg('<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-5-5L5 21"/>'),
   swap: svg('<path d="M7 4v16M3 16l4 4 4-4M17 20V4M13 8l4-4 4 4"/>'),
   play: svg('<path d="M7 4v16l13-8z"/>'),
   shuffle: svg('<path d="M16 3h5v5M4 20 21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/>'),
@@ -371,6 +405,7 @@ const IC = {
   reset: svg('<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/>'),
   eye: svg('<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>'),
   skip: svg('<path d="M5 5l8 7-8 7zM15 5v14"/>'),
+  chat: svg('<path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/>'),
   next: svg('<path d="M5 12h14M13 6l6 6-6 6"/>'),
   undo: svg('<path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-3"/>'),
   bookmark: svg('<path d="M6 3h12v18l-6-4-6 4z"/>'),
@@ -398,7 +433,7 @@ const isDark = () => (document.documentElement.dataset.theme || (matchMedia('(pr
 function applyTheme(t) { if (t) document.documentElement.dataset.theme = t; $('theme').innerHTML = isDark() ? SUN : MOON; }
 applyTheme(store.get('theme'));
 $('theme').onclick = () => { const t = isDark() ? 'light' : 'dark'; store.set('theme', t); applyTheme(t); };
-let state = { tab:'review', cards:[], index:0, done:0, filter: store.get('dialogueGroup') || '' };
+let state = { tab:'review', cards:[], index:0, done:0, filter: store.get('dialogueGroup') || '', tier: store.get('dialogueTier') || '' };
 
 function play(text, id, lang, slow) {
   const q = 'text=' + encodeURIComponent(text) + (id ? '&id=' + id : '') + (lang ? '&lang=' + encodeURIComponent(lang) : '');
@@ -438,9 +473,10 @@ function setDock(html) {
 // Keeps the end of the page clear of whichever bottom bar is showing.
 function pad() {
   const bar = [$('dock'), $('grades')].find(b => !b.classList.contains('hidden'));
-  $('view').style.paddingBottom = bar ? bar.offsetHeight + 'px' : '';
   const nav = 'calc(max(8px, env(safe-area-inset-bottom) - 12px) + 84px)';
   const base = bar === $('dock') ? 'max(' + nav + ', var(--kb, 0px))' : nav;
+  // The floating nav covers the page end too, not just the bar above it.
+  $('view').style.paddingBottom = 'calc(' + nav + ' + ' + (bar ? bar.offsetHeight : 0) + 'px + 8px)';
   document.documentElement.style.setProperty('--sb', 'calc(' + base + ' + ' + (bar ? bar.offsetHeight : 0) + 'px + 10px)');
   return bar ? bar.offsetHeight : 0;
 }
@@ -504,6 +540,13 @@ function swipeable(el, left, right) {
 }
 
 // Learn card: same sections and order as the Mac card.
+// Same badges as the Mac card: frequency (green/orange/red), CEFR level, register.
+function usageHTML(u) {
+  if (!u) return '';
+  return (u.frequency ? '<span class="ubadge f' + u.frequencyLevel + '">' + esc(u.frequency) + '</span>' : '') +
+    (u.cefr ? '<span class="ubadge">' + esc(u.cefr) + '</span>' : '') +
+    (u.register ? '<span class="ubadge reg">' + esc(u.register) + '</span>' : '');
+}
 function learnHTML(c, hero) {
   const sec = (title, body) => '<div class="sec"><h3>' + title + '</h3>' + body + '</div>';
   const chips = list => '<div class="chips">' + list.map(p => '<button class="chip" data-look="' + esc(p.text) + '">' + esc(p.text) +
@@ -511,9 +554,9 @@ function learnHTML(c, hero) {
   let h = '';
   const pairs = list => '<div class="box">' + list.map(p => '<div class="col"><span>' + esc(p.text) + '</span><span>' + esc(p.gloss) + '</span></div>').join('') + '</div>';
   const lines = list => '<div class="box">' + list.map(l => '<div class="mean"><span>' + esc(l) + '</span></div>').join('') + '</div>';
-  if (hero && c.headword) h += '<div class="hero"><span class="hw">' + esc(c.headword) + '</span>' + (c.pronunciation ? '<span class="ipa">' + esc(c.pronunciation) + '</span>' : '') +
+  if (hero && c.headword) h += '<div class="hero"><span class="hw">' + esc(c.headword) + '</span>' + (c.pronunciation ? '<span class="ipa">' + esc(c.pronunciation) + '</span>' : '') + usageHTML(c.usage) +
     '</div>';
-  else if (c.pronunciation) h += '<div class="ipa">' + esc(c.pronunciation) + '</div>';
+  else if (c.pronunciation || c.usage) h += '<div class="hero">' + (c.pronunciation ? '<span class="ipa">' + esc(c.pronunciation) + '</span>' : '') + usageHTML(c.usage) + '</div>';
   if (c.headword) h += '<div class="imgs" data-imgs="' + esc(c.headword) + '"></div>';
   if (c.meanings.length) h += sec('Meaning', '<div class="box">' + c.meanings.map(m => '<div class="mean">' + (m.text ? '<span class="pos">' + esc(m.text) + '</span>' : '') + '<span>' + esc(m.gloss) + '</span></div>').join('') + '</div>');
   if (c.naturalMeaning) h += sec('Meaning', lines([c.naturalMeaning]));
@@ -569,15 +612,43 @@ function wireLearn(root, c, opts) {
   loadImages(root);
 }
 
+// Keep only the next 20 image lookups; failures can be retried when the card opens.
+const imageCache = new Map();
+function prepareImages(term) {
+  if (!term) return Promise.resolve([]);
+  if (imageCache.has(term)) return imageCache.get(term);
+  const timeout = new Promise(resolve => setTimeout(() => resolve([]), 4000));
+  const request = api('/api/images?term=' + encodeURIComponent(term)).then(r => r.json()).then(urls =>
+    Promise.all(urls.slice(0, 2).map(url => new Promise(resolve => {
+      const img = new Image();
+      img.onload = () => resolve(url);
+      img.onerror = () => resolve(null);
+      img.src = url;
+    }))).then(urls => urls.filter(Boolean))
+  ).catch(() => []);
+  const promise = Promise.race([request, timeout]).then(urls => {
+    if (!urls.length && imageCache.get(term) === promise) imageCache.delete(term);
+    return urls;
+  });
+  imageCache.set(term, promise);
+  while (imageCache.size > 20) imageCache.delete(imageCache.keys().next().value);
+  return promise;
+}
+let prefetchSeq = 0;
+async function prefetchCards(cards, index) {
+  const seq = ++prefetchSeq;
+  for (const card of cards.slice(index, index + 20)) {
+    if (seq !== prefetchSeq) break;
+    await prepareImages(card.card && card.card.headword);
+  }
+}
 // Two related photos, like the Mac card. Tapping one opens the image search.
 async function loadImages(root) {
   const box = root.querySelector('[data-imgs]'); if (!box) return;
   const term = box.dataset.imgs;
-  try {
-    const urls = await api('/api/images?term=' + encodeURIComponent(term)).then(r => r.json());
-    const page = 'https://www.google.com/search?tbm=isch&q=' + encodeURIComponent(term);
-    box.innerHTML = urls.slice(0, 2).map(u => '<a href="' + page + '" target="_blank" rel="noopener"><img src="' + esc(u) + '" alt="" loading="lazy" onerror="this.parentNode.remove()"></a>').join('');
-  } catch (e) {}
+  const urls = await prepareImages(term);
+  const page = 'https://www.google.com/search?tbm=isch&q=' + encodeURIComponent(term);
+  box.innerHTML = urls.map(u => '<a href="' + page + '" target="_blank" rel="noopener"><img src="' + esc(u) + '" alt="" onerror="this.parentNode.remove()"></a>').join('');
 }
 
 function lookUp(word) { openDrawer('learn', word); }
@@ -636,10 +707,15 @@ const qkind = () => store.get('qkind') || '';
 async function startReview(mode) {
   $('view').innerHTML = '<p class="muted">Loading…</p>';
   const q = [qkind() ? 'kind=' + qkind() : '', mode ? 'all=1' : ''].filter(Boolean).join('&');
-  state.cards = await api('/api/cards' + (q ? '?' + q : '')).then(r => r.json());
-  if (mode === 'shuffle') for (let i = state.cards.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [state.cards[i], state.cards[j]] = [state.cards[j], state.cards[i]]; }
+  const seq = navSeq;
+  let cards;
+  try { cards = await api('/api/cards' + (q ? '?' + q : '')).then(r => r.json()); }
+  catch (err) { if (seq === navSeq) { fail(err); loadReview(); } return; }
+  if (seq !== navSeq) return;
+  if (mode === 'shuffle') for (let i = cards.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [cards[i], cards[j]] = [cards[j], cards[i]]; }
+  state.cards = cards;
   state.practice = !!mode;
-  state.index = 0; state.done = 0;
+  state.index = 0; state.done = 0; state.graded = {};
   renderCard();
 }
 
@@ -654,6 +730,7 @@ async function loadNewWords(level) {
 }
 
 function renderNewWord() {
+  prefetchCards(nw.words, nw.index);
   const known = nw.level === 'known';
   const w = nw.words[nw.index];
   setHeader('New Words', nw.total ? (nw.total - nw.index) + ' left' : '', loadReview);
@@ -705,6 +782,7 @@ async function decideNewWord(w, d) {
 }
 
 function renderCard() {
+  prefetchCards(state.cards, state.index);
   const card = state.cards[state.index];
   if (!card) {
     focusInput(null);
@@ -717,8 +795,7 @@ function renderCard() {
   leaveMsg = 'Leave this review?';
   const q = card.question && card.question.kind !== 'flip' ? card.question : null;
   const note = card.question && card.question.note ? '<p class="muted" style="text-align:center">' + esc(card.question.note) + '</p>' : '';
-  const termHTML = '<div class="term">' + esc(card.term) + '</div>' +
-    (card.context ? '<div class="context">' + mark(esc(card.context), [card.term]) + '</div>' : '');
+  const termHTML = '<div class="term">' + esc(card.term) + '</div>';
   // A question hides the term and its audio until the card is flipped, except Listen, which is the audio.
   let front = termHTML;
   if (q) {
@@ -749,6 +826,8 @@ function renderCard() {
     if ($('tapHint')) $('tapHint').remove();
     $('backText').classList.remove('hidden');
     if ($('ans')) $('ans').blur();
+    // A card back for relearning offers its earlier grade, like the Mac; the buttons still override it.
+    if (suggested === null && card.id in state.graded) suggested = state.graded[card.id];
     // Flipping a question without answering counts as not recalled, like the Mac.
     if (q && suggested === null) suggested = 0;
     $('grades').querySelectorAll('[data-g]').forEach(b => b.classList.toggle('suggest', b.id !== 'autoGrade' && +b.dataset.g === suggested));
@@ -768,6 +847,8 @@ function renderCard() {
   // Same grading as ReviewPlanner.autoGrade: wrong is Again, a one-letter slip or a slow answer is Hard.
   const answered = (correct, near, shown) => {
     suggested = !correct ? (near ? 1 : 0) : (Date.now() - shownAt <= 6000 ? 2 : 1);
+    // A relearning pass is a reminder: the first attempt's grade stands.
+    if (card.id in state.graded) suggested = state.graded[card.id];
     const fb = $('qfb');
     fb.style.color = correct ? 'var(--easy)' : near ? 'var(--hard)' : 'var(--again)';
     fb.textContent = correct ? 'Correct' : (near ? 'Almost: ' : 'Answer: ') + q.answer;
@@ -828,8 +909,10 @@ async function gradeCard(g) {
   try { if (!state.practice) await post('/api/grade', { id: card.id, grade: g }); }
   catch (err) { toast('Could not save grade: ' + err.message); return; }
   finally { grading = false; }
-  // Again comes back later in the same session, like the Mac review.
-  if (g === 0) state.cards.splice(Math.min(state.index + 4, state.cards.length), 0, card);
+  // Again comes back later in the same session, once, like ReviewPlanner.maxRelearnPerCard on the Mac.
+  const relearned = card.id in state.graded;
+  state.graded[card.id] = g;
+  if (g === 0 && !relearned) state.cards.splice(Math.min(state.index + 4, state.cards.length), 0, card);
   else state.done++;
   state.index++; renderCard(); scrollTo(0, 0);
 }
@@ -844,17 +927,22 @@ function renderDialogues(all) {
   const items = all.filter(i => !pending.has(i.key));
   const groups = [...new Set(items.map(i => i.group).filter(Boolean))].sort();
   if (!groups.includes(state.filter)) state.filter = '';
-  const shown = items.filter(i => !state.filter || i.group === state.filter);
+  const byGroup = items.filter(i => !state.filter || i.group === state.filter);
+  const tiers = [...new Set(byGroup.map(i => i.tier).filter(Boolean))].sort();
+  if (!tiers.includes(state.tier)) state.tier = '';
+  const shown = byGroup.filter(i => !state.tier || i.tier === state.tier);
   $('meta').textContent = shown.length + ' passages';
   setDock('<button id="create" class="primary">' + IC.plus + 'Create Dialogue</button>');
-  $('view').innerHTML = (groups.length ? '<div class="pills" id="group">' + ['', ...groups].map(g => '<button data-g="' + esc(g) + '"' + (g === state.filter ? ' class="on"' : '') + '>' + (g ? esc(g) : 'All') + '</button>').join('') + '</div>' : '') +
+  $('view').innerHTML = (groups.length ? '<div class="fhead">Topic</div><div class="pills" id="group">' + ['', ...groups].map(g => '<button data-g="' + esc(g) + '"' + (g === state.filter ? ' class="on"' : '') + '>' + (g ? esc(g) : 'All Topics') + '</button>').join('') + '</div>' : '') +
+    (tiers.length ? '<div class="fhead">Tier</div><div class="pills" id="tier">' + ['', ...tiers].map(t => '<button data-t="' + esc(t) + '"' + (t === state.tier ? ' class="on"' : '') + '>' + (t ? esc(t) : 'All Tiers') + '</button>').join('') + '</div>' : '') +
     '<div class="plist">' + shown.map(i => '<div class="pwrap"><div class="pacts">' +
       '<button class="ok" data-a="' + (i.isDone ? 'undone' : 'done') + '">' + IC.check + (i.isDone ? 'Undone' : 'Done') + '</button>' +
       (i.count ? '<button class="rs" data-a="reset">' + IC.reset + 'Reset</button>' : '') +
       '<button class="danger" data-a="delete">' + IC.trash + 'Delete</button></div>' +
       '<div class="prow' + (i.isDone ? ' isdone' : '') + '" data-k="' + i.key + '"><span class="lead">' + (i.isDone ? IC.check : IC.chat) + '</span><div class="body"><div class="t">' + esc(i.title) + '</div>' +
       '<div class="muted">' + esc(i.subtitle) + '</div></div>' + (i.isDone ? '' : '<span class="dot"></span>') + '</div></div>').join('') + '</div>';
-  if ($('group')) $('group').onclick = e => { const b = e.target.closest('[data-g]'); if (!b) return; state.filter = b.dataset.g; store.set('dialogueGroup', state.filter); loadDialogues(); };
+  if ($('group')) $('group').onclick = e => { const b = e.target.closest('[data-g]'); if (!b) return; state.filter = b.dataset.g; store.set('dialogueGroup', state.filter); renderDialogues(all); };
+  if ($('tier')) $('tier').onclick = e => { const b = e.target.closest('[data-t]'); if (!b) return; state.tier = b.dataset.t; store.set('dialogueTier', state.tier); renderDialogues(all); };
   $('create').onclick = showCreate;
   // Swipe a row left to reveal its actions; one row open at a time, any other tap closes it.
   let open = null;
@@ -970,7 +1058,7 @@ let tr = { mode:'translate', source:'Auto', target:'Auto', text:'', result:null 
 // Auto: Vietnamese text goes to English, anything else to Vietnamese. Learn always explains in Vietnamese.
 const VI = /[àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ]/i;
 const other = l => l === 'English' ? 'Vietnamese' : 'English';
-const targetFor = text => tr.target !== 'Auto' ? tr.target : tr.source !== 'Auto' && tr.mode !== 'learn' ? other(tr.source) : tr.mode === 'learn' || !VI.test(text) ? 'Vietnamese' : 'English';
+const targetFor = text => tr.mode === 'learn' ? 'Vietnamese' : tr.target !== 'Auto' ? tr.target : tr.source !== 'Auto' && tr.mode !== 'learn' ? other(tr.source) : tr.mode === 'learn' || !VI.test(text) ? 'Vietnamese' : 'English';
 function openDrawer(mode, text) {
   if (mode) tr.mode = mode;
   const fresh = text !== undefined && text !== tr.text;
@@ -999,11 +1087,11 @@ $('drawerMark').onclick = async () => {
 function closeDrawer() { $('drawer').classList.remove('open'); $('scrim').classList.remove('open'); document.activeElement.blur(); }
 
 function loadTranslate() {
-  $('drawerBody').innerHTML = '<div class="seg"><button data-m="translate">Translate</button><button data-m="learn">Learn</button></div>' +
+  $('drawerBody').innerHTML = '<div id="mini" class="mini hidden"><input id="miniIn" class="text" enterkeyhint="go" autocapitalize="off"><label class="icon round" aria-label="Text from image">' + IC.image + '<input id="miniImg" type="file" accept="image/*" hidden></label><button id="miniGo" class="primary" aria-label="Go">' + IC.next + '</button></div><div class="seg"><button data-m="translate">Translate</button><button data-m="learn">Learn</button></div>' +
     '<div class="lbar"><select id="trSource" aria-label="Source language"><option>Auto</option><option>English</option><option>Vietnamese</option></select><button id="trSwap" class="icon" aria-label="Swap languages">' + IC.swap + '</button>' +
     '<select id="trTarget" aria-label="Target language"><option>Auto</option><option>Vietnamese</option><option>English</option></select></div>' +
-    '<textarea id="trInput" placeholder="Type a word or sentence"></textarea>' +
-    '<div class="irow"><button id="speakIn" class="icon round" aria-label="Play">' + SPEAKER + '</button><button id="trGo" class="primary">Translate</button></div><div id="trOut"></div>';
+    '<div class="tin"><textarea id="trInput" enterkeyhint="go" placeholder="Type a word, a question ending with ?, or paste an image"></textarea><button id="trClear" class="icon clr hidden" aria-label="Clear">' + IC.x + '</button></div><div id="recent" class="recent"></div>' +
+    '<div class="irow"><span><button id="speakIn" class="icon round" aria-label="Play">' + SPEAKER + '</button><label class="icon round" aria-label="Text from image">' + IC.image + '<input id="trImg" type="file" accept="image/*" hidden></label></span><button id="trGo" class="primary">Translate</button></div><div id="trOut"></div>';
   $('trInput').value = tr.text; $('trTarget').value = tr.target;
   $('trSource').value = tr.source;
   // Swap flips the direction; a finished translation also moves its result into the input and runs again.
@@ -1015,19 +1103,123 @@ function loadTranslate() {
     if (done) runTranslate();
   };
   const seg = [...$('drawerBody').querySelectorAll('[data-m]')];
-  const paint = () => { seg.forEach(b => b.classList.toggle('on', b.dataset.m === tr.mode)); $('trGo').innerHTML = tr.mode === 'learn' ? IC.sparkles + 'Learn' : IC.next + 'Translate'; $('trSource').disabled = tr.mode === 'learn'; };
+  const paint = () => { seg.forEach(b => b.classList.toggle('on', b.dataset.m === tr.mode)); paintGo(); $('trSource').disabled = $('trTarget').disabled = tr.mode === 'learn'; };
   // Switching mode with text present runs it again, so Learn/Translate is one tap.
   seg.forEach(b => b.onclick = () => { if (tr.mode === b.dataset.m) return; tr.mode = b.dataset.m; paint(); if (tr.text.trim()) runTranslate(); }); paint();
   $('trTarget').onchange = e => tr.target = e.target.value;
   $('trSource').onchange = e => tr.source = e.target.value;
-  $('trInput').oninput = e => tr.text = e.target.value;
+  // The top textarea and the compact scrolled row edit the same text.
+  ['trInput', 'miniIn'].forEach(id => {
+    const el = $(id);
+    el.oninput = e => { tr.text = e.target.value; syncInput(e.target); };
+    // Enter runs; focusing a finished input selects it so the next word replaces it.
+    el.onkeydown = e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); go(); } };
+    el.onfocus = e => { if (tr.result && !isQuestion(tr.text)) setTimeout(() => e.target.select(), 0); };
+    el.onpaste = e => { const f = [...(e.clipboardData?.files || [])].find(f => f.type.startsWith('image/')); if (f) { e.preventDefault(); ocrImage(f); } };
+  });
+  ['trImg', 'miniImg'].forEach(id => $(id).onchange = e => { const f = e.target.files[0]; e.target.value = ''; if (f) ocrImage(f); });
+  $('trClear').onclick = () => { tr.text = ''; syncInput(); $('trInput').focus(); };
+  $('miniGo').onclick = go;
+  const db = $('drawerBody');
+  db.onscroll = () => $('mini').classList.toggle('hidden', !tr.result || db.scrollTop < $('trOut').offsetTop - 40);
+  syncInput(); paintRecent();
   $('speakIn').onclick = () => tr.text.trim() && play(tr.text.trim(), null, tr.mode === 'learn' ? 'English' : tr.source !== 'Auto' ? tr.source : targetFor(tr.text) !== 'English' ? 'English' : 'Vietnamese');
-  $('trGo').onclick = runTranslate;
+  $('trGo').onclick = go;
   if (tr.result) renderResult(); else paintMark();
+}
+
+// Images are read on the Mac (Vision OCR); the phone shrinks them first to stay under the server's 1 MB body cap.
+async function ocrImage(file) {
+  $('trOut').innerHTML = '<p class="muted">Reading image…</p>';
+  try {
+    const bmp = await createImageBitmap(file), k = Math.min(1, 1400 / Math.max(bmp.width, bmp.height));
+    const cv = document.createElement('canvas'); cv.width = Math.round(bmp.width * k); cv.height = Math.round(bmp.height * k);
+    cv.getContext('2d').drawImage(bmp, 0, 0, cv.width, cv.height);
+    const image = cv.toDataURL('image/jpeg', 0.8).split(',')[1];
+    const r = await post('/api/ocr', { image });
+    if (!r.ok) throw new Error(r.statusText);
+    const { text } = await r.json();
+    if (!text.trim()) { $('trOut').innerHTML = '<p class="muted">No text found in the image.</p>'; return; }
+    tr.text = text; $('trInput').value = text; tr.result = null; runTranslate();
+  } catch (err) { $('trOut').innerHTML = '<p class="muted">Failed: ' + esc(err.message) + '</p>'; }
+}
+
+// One box does both: a word runs Learn/Translate, text ending with "?" asks about the result on screen.
+const isQuestion = t => !!tr.result && /\?\s*$/.test(t);
+function paintGo() {
+  if (!$('trGo')) return;
+  $('trGo').innerHTML = isQuestion(tr.text) ? IC.chat + 'Ask' : tr.mode === 'learn' ? IC.sparkles + 'Learn' : IC.next + 'Translate';
+  $('miniGo').innerHTML = isQuestion(tr.text) ? IC.chat : IC.next;
+}
+function syncInput(from) {
+  [$('trInput'), $('miniIn')].forEach(el => { if (el && el !== from) el.value = tr.text; });
+  if ($('trClear')) $('trClear').classList.toggle('hidden', !tr.text);
+  paintGo();
+}
+function go() { isQuestion(tr.text) ? askResult() : runTranslate(); }
+
+// Recent lookups live in this browser only; tapping one runs it again (history hits answer without the LLM).
+const recentKey = 'ntranslate.recent';
+function recentWords() { try { return JSON.parse(localStorage.getItem(recentKey)) || []; } catch { return []; } }
+function addRecent(t) {
+  if (t.length > 40) return;
+  const list = [t, ...recentWords().filter(w => w !== t)].slice(0, 12);
+  try { localStorage.setItem(recentKey, JSON.stringify(list)); } catch {}
+  paintRecent();
+}
+function paintRecent() {
+  const box = $('recent'); if (!box) return;
+  box.innerHTML = recentWords().map(w => '<button class="chip" data-r="' + esc(w) + '">' + esc(w) + '</button>').join('');
+  box.querySelectorAll('[data-r]').forEach(b => b.onclick = () => { tr.text = b.dataset.r; syncInput(); runTranslate(); });
+}
+
+let askHistory = [];
+async function askResult(asked) {
+  const r = tr.result, q = (asked || tr.text).trim(), log = $('qaLog');
+  if (!r || !log || !q) return;
+  log.insertAdjacentHTML('beforeend', '<div class="q">' + esc(q) + '</div><div class="a muted">Thinking…</div>');
+  log.parentNode.classList.add('chat');
+  const a = log.lastElementChild, db = $('drawerBody'), bottom = () => db.scrollTo({ top: db.scrollHeight, behavior:'smooth' });
+  bottom();
+  // Put the word back so the box shows what the card is about.
+  if (!asked) { tr.text = r.source; syncInput(); }
+  document.activeElement.blur();
+  try {
+    const res = await post('/api/ask', { question: q, history: askHistory, source: r.source, result: r.text, target: r.target, sourceLang: r.sourceLanguage }).then(x => x.json());
+    a.innerHTML = md(res.text); a.classList.remove('muted'); askHistory.push({ question: q, answer: res.text });
+    a.previousElementSibling.scrollIntoView({ block:'start', behavior:'smooth' });
+  } catch (err) { a.textContent = 'Failed: ' + err.message; }
+}
+// Markdown Ask answers use: headings, lists (- 1. [ ]), ``` code, > quotes, **bold** __bold__ *italic* _italic_ ~~strike~~ `code`.
+function md(text) {
+  const inline = t => esc(t).replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/(\*\*|__)(?=\S)(.+?)\1/g, '<b>$2</b>').replace(/(^|[^\w*])([*_])(?=\S)(.+?)\2(?!\w)/g, '$1<i>$3</i>')
+    .replace(/~~(.+?)~~/g, '<s>$1</s>');
+  let html = '', list = null, code = null;
+  const close = () => { if (list) { html += '</' + list + '>'; list = null; } };
+  for (const raw of String(text).split('\n')) {
+    if (/^\s*```/.test(raw)) { if (code === null) { close(); code = ''; } else { html += '<pre>' + esc(code) + '</pre>'; code = null; } continue; }
+    if (code !== null) { code += (code ? '\n' : '') + raw; continue; }
+    const line = raw.trim(), m = line.match(/^([-*•+]|\d+[.)])\s+(.*)/);
+    if (m) {
+      const tag = /\d/.test(m[1]) ? 'ol' : 'ul';
+      if (list !== tag) { close(); html += '<' + tag + '>'; list = tag; }
+      html += '<li>' + inline(m[2]).replace(/^\[ \]\s*/, '&#9744; ').replace(/^\[x\]\s*/i, '&#9745; ') + '</li>'; continue;
+    }
+    close();
+    if (!line) continue;
+    if (/^#{1,6}\s/.test(line)) html += '<h4>' + inline(line.replace(/^#+\s*/, '')) + '</h4>';
+    else if (line.startsWith('>')) html += '<blockquote>' + inline(line.replace(/^>\s*/, '')) + '</blockquote>';
+    else if (!/^([-*_])\1{2,}$/.test(line)) html += '<p>' + inline(line) + '</p>';
+  }
+  if (code !== null) html += '<pre>' + esc(code) + '</pre>';
+  close();
+  return html;
 }
 
 async function runTranslate() {
   const text = tr.text.trim(); if (!text) return;
+  addRecent(text); askHistory = [];
   $('trInput').blur();
   $('trGo').disabled = true; $('trOut').innerHTML = '<p class="muted">Working…</p>';
   try {
@@ -1047,9 +1239,11 @@ function renderResult() {
     '<div class="rtext"><div>' + esc(r.text) + '</div></div>') + '</div>' +
     '<div class="spbar">' + (structured ? '<button class="icon round" data-say="1" aria-label="Speak">' + SPEAKER + '</button><button class="icon round" data-say="slow" aria-label="Speak slowly">' + SLOW + '</button>'
       : '<button id="speakOut" class="icon round" aria-label="Play result">' + SPEAKER + '</button>') + '</div>';
-  out.insertAdjacentHTML('beforeend', askHTML());
-  wireAsk(out, { source: r.source, result: r.text, target: r.target, sourceLang: r.sourceLanguage });
-  if (structured) wireLearn(out, r.card, {});
+  out.insertAdjacentHTML('beforeend', '<div class="qa"><div id="qaLog"></div><div class="answer"><input id="qaIn" placeholder="Ask about this result" enterkeyhint="send"><button id="qaGo" class="primary" aria-label="Ask">' + IC.next + '</button></div></div>');
+  const ask = () => { const q = $('qaIn').value; $('qaIn').value = ''; askResult(q); };
+  $('qaGo').onclick = ask; $('qaIn').onkeydown = e => { if (e.key === 'Enter') ask(); };
+  paintGo();
+  if (structured) { wireLearn(out, r.card, {}); out.querySelectorAll(".spbar [data-say]").forEach(b => b.onclick = () => play(r.source, null, "English", b.dataset.say === "slow")); }
   // Learn cards explain an English term, so the term is what gets spoken.
   if ($('speakOut')) $('speakOut').onclick = () => r.mode === 'learn' ? play(r.source, null, 'English') : play(r.text, null, r.target);
 }
@@ -1089,25 +1283,6 @@ $('scrim').onclick = closeDrawer;
 $('drawerClose').onclick = closeDrawer;
 
 // Ask: follow-up questions about one translation, kept for this screen only.
-const askHTML = () => '<div class="card qa"><div class="sec" style="margin:0"><h3>Ask</h3><div id="qaLog"></div>' +
-  '<div class="answer"><input id="qaIn" placeholder="Ask about this result" enterkeyhint="send"><button id="qaGo" class="primary" style="width:auto">' + IC.next + '</button></div></div></div>';
-function wireAsk(root, ctx) {
-  const history = [];
-  const send = async () => {
-    const input = root.querySelector('#qaIn'), go = root.querySelector('#qaGo'), q = input.value.trim(); if (!q) return;
-    const log = root.querySelector('#qaLog');
-    log.insertAdjacentHTML('beforeend', '<div class="q">' + esc(q) + '</div><div class="a muted">Thinking…</div>');
-    const a = log.lastElementChild; input.value = ''; go.disabled = true;
-    try {
-      const r = await post('/api/ask', Object.assign({ question: q, history }, ctx)).then(r => r.json());
-      a.textContent = r.text; a.classList.remove('muted'); history.push({ question: q, answer: r.text });
-    } catch (err) { a.textContent = 'Failed: ' + err.message; }
-    go.disabled = false;
-  };
-  root.querySelector('#qaGo').onclick = send;
-  root.querySelector('#qaIn').onkeydown = e => { if (e.key === 'Enter') send(); };
-}
-
 // History: same search and order as the Mac window.
 let hist = { q:'', saved:false, items:[] };
 let histTimer;
@@ -1175,8 +1350,43 @@ function switchTab(tab) {
     edge = null;
   }, { passive:true });
 }
+// Pull-to-refresh on root tab screens when scrolled to the top.
+{
+  const ptr = $('ptr'), label = ptr.querySelector('span');
+  let y0 = null, x0 = 0, dy = 0, lock = null, busy = false;
+  const canPull = t => !busy && scrollY <= 0 && !leaveMsg && $('back').classList.contains('hidden') && !$('drawer').classList.contains('open') && !t.closest('input, textarea, select, .pills');
+  document.addEventListener('touchstart', e => {
+    const t = e.touches[0];
+    y0 = e.touches.length === 1 && canPull(e.target) ? t.clientY : null; x0 = t.clientX; dy = 0; lock = null;
+  }, { passive:true });
+  document.addEventListener('touchmove', e => {
+    if (y0 === null) return;
+    const my = e.touches[0].clientY - y0, mx = e.touches[0].clientX - x0;
+    if (lock === null && Math.abs(mx) + Math.abs(my) > 10) lock = my > Math.abs(mx) && scrollY <= 0 && !getSelection().toString() ? 'y' : 'no';
+    if (lock !== 'y') { if (lock === 'no') y0 = null; return; }
+    dy = Math.max(0, my);
+    const pull = Math.min(84, dy * 0.5);
+    ptr.style.transition = 'none';
+    ptr.style.opacity = Math.min(1, pull / 48);
+    ptr.style.transform = 'translate(-50%, ' + (pull - 48) + 'px)';
+    label.textContent = dy > 110 ? 'Release to refresh' : 'Pull to refresh';
+  }, { passive:true });
+  document.addEventListener('touchend', async () => {
+    if (y0 === null) return;
+    y0 = null; ptr.style.transition = '';
+    if (lock !== 'y' || dy <= 110) { ptr.style.opacity = 0; ptr.style.transform = 'translate(-50%, -64px)'; return; }
+    busy = true; ptr.classList.add('spin'); label.textContent = 'Refreshing…';
+    ptr.style.opacity = 1; ptr.style.transform = 'translate(-50%, 36px)';
+    cache.clear();
+    try { await ({ review: loadReview, dialogues: loadDialogues, history: fetchHistory })[state.tab](); }
+    catch (err) { fail(err); }
+    ptr.classList.remove('spin'); ptr.style.opacity = 0; ptr.style.transform = 'translate(-50%, -64px)';
+    busy = false;
+  }, { passive:true });
+}
 // The header is fixed so it stays put during iOS rubber-band overscroll; body padding takes its place in the flow.
-new ResizeObserver(() => { document.body.style.paddingTop = document.querySelector('header').offsetHeight + 'px'; }).observe(document.querySelector('header'));
+// border-box: safe-area padding arrives late on iOS and only changes the padding, not the content box.
+new ResizeObserver(() => { document.body.style.paddingTop = document.querySelector('header').offsetHeight + 'px'; }).observe(document.querySelector('header'), { box:'border-box' });
 addEventListener('scroll', () => document.querySelector('header').classList.toggle('compact', scrollY > 24), { passive:true });
 // Fixed bars ride above the on-screen keyboard instead of hiding behind it.
 if (window.visualViewport) {
