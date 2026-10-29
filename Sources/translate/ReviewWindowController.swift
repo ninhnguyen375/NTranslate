@@ -184,6 +184,11 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
         passagesView.delegate = self
         sessionView.readingChatView.onSpeak = { [weak self] line, isSlow in self?.speakReadingLine(line, slow: isSlow) }
         sessionView.readingChatView.onWillRecord = { [weak self] in self?.stopAudio() }
+        sessionView.readingChatView.onStopSpeech = { [weak self] in self?.stopAudio() }
+        sessionView.readingChatView.onAutoPlayRateChanged = { [weak self] rate in
+            self?.activeSpeechRate = rate
+            self?.audioPlayer?.rate = rate
+        }
         sessionView.readingChatView.onAssess = { [weak self] line, url, done in
             guard let translator = self?.translator else {
                 return done(.failure(NSError(domain: "Pronunciation", code: 4, userInfo: [NSLocalizedDescriptionKey: "Translator unavailable"])))
@@ -1822,7 +1827,7 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
             text: line,
             model: SpeechModelResolver.model(for: language, config: speechCfg)
         )
-        handleSpeechPlay(speed: slow ? speechCfg.speechSlowRate : 1.0, identity: identity)
+        handleSpeechPlay(speed: sessionView.readingChatView.autoPlayRate ?? (slow ? speechCfg.speechSlowRate : 1.0), identity: identity)
     }
 
     /// An underlined word came from one of the cards in play, so clicking it can open that card in
@@ -2007,7 +2012,7 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
         // A click while this audio loads is ignored; any other click restarts from the beginning.
         if activeSpeechIdentity == identity && activeSpeechRate == speed
             && speechState.action(for: identity) == .loading { return }
-        stopAudio()
+        stopAudio(stopAutoPlay: false)
         playSpeech(identity: identity, speed: speed)
     }
 
@@ -2037,7 +2042,7 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
                 guard let self, self.speechState.accepts(generation: generation, identity: identity) else { return }
                 guard case let .success(data) = result, SpeechAudioPolicy.isValid(data) else {
                     _ = self.speechState.finishLoading(generation: generation, identity: identity)
-                    self.updateSpeakButtonUI()
+                    self.stopAudio()
                     return
                 }
                 if let recordID = identity.recordID {
@@ -2051,6 +2056,7 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
     }
 
     private func startPlayback(_ data: Data, identity: SpeechIdentity, speed: Float, loadingGeneration: Int? = nil) {
+        let speed = sessionView.readingChatView.autoPlayRate ?? speed
         if let loadingGeneration {
             _ = speechState.finishLoading(generation: loadingGeneration, identity: identity)
         }
@@ -2081,7 +2087,8 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
         startPlayback(data, identity: identity, speed: speed)
     }
 
-    func stopAudio() {
+    func stopAudio(stopAutoPlay: Bool = true) {
+        if stopAutoPlay { sessionView.readingChatView.stopAutoPlay() }
         audioPlayer?.stop()
         audioPlayer = nil
         activeSpeechIdentity = nil
@@ -2091,7 +2098,9 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
 
     func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
         guard player === audioPlayer else { return }
-        stopAudio()
+        let next = flag ? sessionView.readingChatView.nextAutoPlayLine() : nil
+        stopAudio(stopAutoPlay: next == nil)
+        if let next { speakReadingLine(next, slow: false) }
     }
 
     func audioPlayerDecodeErrorDidOccur(_ player: AVAudioPlayer, error: Error?) {
