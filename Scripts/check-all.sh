@@ -47,6 +47,7 @@ checks=(
   "learn-card|$S/LearnCard.swift"
   "learn-badge|$S/VocabPack.swift $S/WeaveCache.swift $S/VocabDiscovery.swift $S/LearnBadgeView.swift"
   "review-planner|$S/LearnCard.swift $S/ReviewPlanner.swift"
+  "study-result-translation|"
   "learn-cache-key|$S/TranslationHistoryStore.swift $S/ReviewPlanner.swift $S/LearnCard.swift"
   "session-regrade|$S/TranslationHistoryStore.swift $S/ReviewPlanner.swift $S/LearnCard.swift"
   "history-write-queue|$S/TranslationHistoryStore.swift $S/ReviewPlanner.swift $S/LearnCard.swift"

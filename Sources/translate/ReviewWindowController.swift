@@ -1058,6 +1058,7 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
     private func showAnswerResult(filling prompt: String, with answer: String) {
         resultSentence = Self.filledSentence(prompt, answer)
         sessionView.termLabel.stringValue = resultSentence ?? answer
+        showResultTranslation()
         sessionView.answerField.isHidden = true
         sessionView.choiceStack.isHidden = true
         sessionView.autoGradeStack.isHidden = true
@@ -1072,6 +1073,35 @@ final class ReviewWindowController: NSWindowController, NSWindowDelegate, @preco
             sentencePrefetch?.waiting = true
         } else {
             speakCurrentSource()
+        }
+    }
+
+    private func showResultTranslation() {
+        guard let sentence = resultSentence, currentIndex < recordsToReview.count else { return }
+        let record = recordsToReview[currentIndex]
+        let card = LearnCard.parse(record.resultText)
+        sessionView.contextLabel.stringValue = ""
+        sessionView.contextLabel.isHidden = true
+        if let example = card.examples.first(where: { $0.sentence == sentence && !$0.translation.isEmpty }) {
+            sessionView.contextLabel.stringValue = example.translation
+            sessionView.contextLabel.isHidden = false
+            return
+        }
+        guard let translator else { return }
+        translator.translate(sentence, sourceLang: record.sourceLanguage, targetLang: "Vietnamese", stream: false) { [weak self] result in
+            Task { @MainActor in
+                guard let self, self.screen == .session, !self.isAnswerRevealed,
+                      self.resultSentence == sentence, self.currentIndex < self.recordsToReview.count,
+                      self.recordsToReview[self.currentIndex].id == record.id else { return }
+                switch result {
+                case let .success(translation):
+                    self.sessionView.contextLabel.stringValue = translation.text
+                case .failure:
+                    self.sessionView.contextLabel.stringValue = "Could not translate this sentence."
+                }
+                self.sessionView.contextLabel.isHidden = false
+                self.adjustWindowHeightForContentIfNeeded()
+            }
         }
     }
 
