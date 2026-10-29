@@ -625,7 +625,15 @@ extension PopoverController {
         }
         restoresPreviousAppOnClose = restoresPreviousAppOnCloseValue
         activatesAppOnShow = activatesApp
+        let animateAppearance = !wasVisible && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        panel.alphaValue = animateAppearance ? 0 : 1
         panel.makeKeyAndOrderFront(nil)
+        if animateAppearance {
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.16
+                panel.animator().alphaValue = 1
+            }
+        }
         if activatesApp {
             NSApp.activate(ignoringOtherApps: true)
         }

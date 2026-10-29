@@ -76,6 +76,16 @@ extension PopoverController {
             isShowingStructuredLearnCard = show
             textScrollView.isHidden = show
             learnCardScrollView.isHidden = !show
+            let incoming = show ? learnCardScrollView : textScrollView
+            if panel.isVisible && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+                incoming.alphaValue = 0
+                NSAnimationContext.runAnimationGroup { context in
+                    context.duration = 0.18
+                    incoming.animator().alphaValue = 1
+                }
+            } else {
+                incoming.alphaValue = 1
+            }
         }
         if show, panel.contentView != nil {
             reflowLayout()
